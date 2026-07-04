@@ -39,7 +39,7 @@ export default function PWAInstallBanner() {
           <Download className="w-5 h-5 text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-[#111111]">Install CBE-Analytics App</p>
+          <p className="text-sm font-semibold text-[#111111]">Install Zamifu Analytics App</p>
           <p className="text-xs text-[#666666] mt-0.5">
             Add to your home screen for quick access, even offline.
           </p>
