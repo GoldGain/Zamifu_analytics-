@@ -215,7 +215,7 @@ export default function ParentFees() {
 
       // Footer
       doc.setFontSize(8); doc.setTextColor(150, 150, 150); doc.setFont('helvetica', 'normal');
-      doc.text('This is an official fee statement from CBE-Analytics School Management System.', 105, 285, { align: 'center' });
+      doc.text('This is an official fee statement from Zamifu Analytics School Management System.', 105, 285, { align: 'center' });
       doc.text('For inquiries, please contact the school administration.', 105, 290, { align: 'center' });
 
       doc.save(`fee_statement_${selectedChild.first_name}_${selectedChild.last_name}_${Date.now()}.pdf`);
