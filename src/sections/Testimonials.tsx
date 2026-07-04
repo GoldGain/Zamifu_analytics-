@@ -7,7 +7,7 @@ const testimonials = [
     role: 'Principal, Greenfield Academy',
     image: 'JM',
     color: 'bg-blue-500',
-    content: 'CBE-Analytics has transformed how we manage our school. The CBE grading automation alone saves our teachers hours of work every term. The fee management system is intuitive and parents love being able to check balances instantly.',
+    content: 'Zamifu Analytics has transformed how we manage our school. The CBE grading automation alone saves our teachers hours of work every term. The fee management system is intuitive and parents love being able to check balances instantly.',
     rating: 5,
   },
   {
@@ -15,7 +15,7 @@ const testimonials = [
     role: 'Head Teacher, Sunrise Primary',
     image: 'GW',
     color: 'bg-green-500',
-    content: 'We switched from manual record-keeping to CBE-Analytics and the difference is night and day. Our report cards are generated instantly, and the attendance tracking has improved our student retention significantly.',
+    content: 'We switched from manual record-keeping to Zamifu Analytics and the difference is night and day. Our report cards are generated instantly, and the attendance tracking has improved our student retention significantly.',
     rating: 5,
   },
   {
@@ -23,7 +23,7 @@ const testimonials = [
     role: 'Director, St. Mary\'s High School',
     image: 'PO',
     color: 'bg-purple-500',
-    content: 'As a CBE institution, we needed a system that understood the Kenyan education system. CBE-Analytics delivers perfectly. The analytics dashboard gives us insights we never had before.',
+    content: 'As a CBE institution, we needed a system that understood the Kenyan education system. Zamifu Analytics delivers perfectly. The analytics dashboard gives us insights we never had before.',
     rating: 5,
   },
   {
@@ -57,7 +57,7 @@ export default function Testimonials() {
           <span className="text-sm font-medium text-[#2563EB] mb-2 block">TESTIMONIALS</span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#111111] mb-4">Loved by Schools Across Kenya</h2>
           <p className="text-[#666666] max-w-2xl mx-auto">
-            Hear from educators, administrators, and parents who trust CBE-Analytics.
+            Hear from educators, administrators, and parents who trust Zamifu Analytics.
           </p>
         </div>
 
