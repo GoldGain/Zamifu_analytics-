@@ -3,8 +3,8 @@ import { ChevronDown } from 'lucide-react';
 
 const faqs = [
   {
-    question: 'Which curriculum does CBE-Analytics support?',
-    answer: 'CBE-Analytics fully supports the Competency-Based Education (CBE) curriculum for PP1 through Grade 12. The system auto-calculates grades according to the CBE grading framework.',
+    question: 'Which curriculum does Zamifu Analytics support?',
+    answer: 'Zamifu Analytics fully supports the Competency-Based Education (CBE) and 8-4-4 curricula for PP1 through Grade 12. The system auto-calculates grades according to the CBE grading framework.',
   },
   {
     question: 'How does the CBE grade calculation work?',
@@ -27,8 +27,8 @@ const faqs = [
     answer: 'A school workspace is activated by registering an account and completing the school setup process. The platform then guides administrators through classes, subjects, users, fees, and reporting configuration.',
   },
   {
-    question: 'Does CBE-Analytics work on mobile devices?',
-    answer: 'Yes, CBE-Analytics is fully responsive and works on smartphones, tablets, and computers. Teachers can mark attendance from their phones, and parents can check results on the go.',
+    question: 'Does Zamifu Analytics work on mobile devices?',
+    answer: 'Yes, Zamifu Analytics is fully responsive and works on smartphones, tablets, and computers. Teachers can mark attendance from their phones, and parents can check results on the go.',
   },
   {
     question: 'How do I get started?',
@@ -46,7 +46,7 @@ export default function FAQ() {
           <span className="text-sm font-medium text-[#2563EB] mb-2 block">FAQ</span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#111111] mb-4">Frequently Asked Questions</h2>
           <p className="text-[#666666]">
-            Everything you need to know about CBE-Analytics.
+            Everything you need to know about Zamifu Analytics.
           </p>
         </div>
 
