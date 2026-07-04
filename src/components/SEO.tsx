@@ -5,7 +5,7 @@
  *
  * Usage:
  *   <SEO
- *     title="Teacher Dashboard | CBE-Analytics"
+ *     title="Teacher Dashboard | Zamifu Analytics"
  *     description="Manage your classes, upload results, and track student performance."
  *     path="/teacher"
  *   />
@@ -23,10 +23,10 @@ interface SEOProps {
   structuredData?: object;
 }
 
-const SITE_NAME = 'CBE-Analytics';
-const BASE_URL = 'https://cbe-analytics.com';
+const SITE_NAME = 'Zamifu Analytics';
+const BASE_URL = 'https://zamifu.company';
 const DEFAULT_DESCRIPTION =
-  "CBE-Analytics is Kenya's leading school management platform supporting Competency-Based Education (CBE). Manage learners, learning areas, assessments, fees, and report cards.";
+  "Zamifu Analytics is Kenya's leading intelligent school management platform. Manage learners, learning areas, assessments, fees, and report cards.";
 const DEFAULT_IMAGE = `${BASE_URL}/og-image.png`;
 
 export default function SEO({
@@ -38,7 +38,7 @@ export default function SEO({
   noindex = false,
   structuredData,
 }: SEOProps) {
-  const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — Kenya's CBE School Management Platform`;
+  const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME} — Kenya's Intelligent School Management Platform`;
   const canonicalUrl = `${BASE_URL}${path}`;
 
   useEffect(() => {
@@ -52,9 +52,9 @@ export default function SEO({
         el = document.createElement('meta');
         // Determine attribute type from selector
         if (selector.includes('property=')) {
-          el.setAttribute('property', selector.match(/property="([^"]+)"/)?.[1] || '');
+          el.setAttribute('property', selector.match(/property="([^"]+)")?.[1] || '');
         } else if (selector.includes('name=')) {
-          el.setAttribute('name', selector.match(/name="([^"]+)"/)?.[1] || '');
+          el.setAttribute('name', selector.match(/name="([^"]+)")?.[1] || '');
         }
         document.head.appendChild(el);
       }
@@ -64,7 +64,7 @@ export default function SEO({
     // ── Standard meta ─────────────────────────────────────────────────────────
     setMeta('meta[name="description"]', description);
     setMeta('meta[name="robots"]', noindex ? 'noindex,nofollow' : 'index,follow');
-    setMeta('meta[name="keywords"]', 'CBE-Analytics, school management system Kenya, competency based education, student results portal, CBE report card, Kenya school portal, CBE portal, school system');
+    setMeta('meta[name="keywords"]', 'Zamifu, Zamifu Analytics, Zamifu Schools, Zamifu Results, school management system Kenya, intelligent school management, CBE Kenya, competency based education, student results portal, Kenya school portal, Zamifu School Management, 8-4-4 curriculum, school system Kenya');
 
     // ── Canonical ─────────────────────────────────────────────────────────────
     let canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
@@ -106,18 +106,18 @@ export default function SEO({
       },
       author: {
         '@type': 'Organization',
-        name: 'CBE-Analytics',
+        name: 'Zamifu Analytics',
         url: BASE_URL,
       },
-      keywords: 'CBE grading, CBE school management, Kenya education, student results, report card',
+      keywords: 'Zamifu, Zamifu Analytics, school management Kenya, intelligent education, student results, report card, CBE, 8-4-4',
     };
 
     const schemaData = structuredData || defaultSchema;
-    let ldScript = document.querySelector<HTMLScriptElement>('script[data-seo="cbe-analytics"]');
+    let ldScript = document.querySelector<HTMLScriptElement>('script[data-seo="zamifu-analytics"]');
     if (!ldScript) {
       ldScript = document.createElement('script');
       ldScript.setAttribute('type', 'application/ld+json');
-      ldScript.setAttribute('data-seo', 'cbe-analytics');
+      ldScript.setAttribute('data-seo', 'zamifu-analytics');
       document.head.appendChild(ldScript);
     }
     ldScript.textContent = JSON.stringify(schemaData);
