@@ -6,7 +6,7 @@ const DEFAULT_SENDER_ID = 'PROCALL';
 
 interface SMSPayload {
   recipient: string;   // Format: 254XXXXXXXXX
-  sender_id: string;   // Must be "CBE-ANALYTICS"
+  sender_id: string;   // Sender ID for SMS
   type: 'plain';       // Must be "plain"
   message: string;     // Plain text only, no emojis
 }
@@ -100,7 +100,7 @@ export function generateWelcomeSMS(
   schoolName?: string
 ): string {
   const schoolLine = schoolName ? ` at ${schoolName}` : '';
-  return `Welcome to CBE-Analytics${schoolLine}!\n\nHello ${firstName}, your ${role} account has been created.\n\nLogin: ${email}\nPassword: ${password}\nPortal: https://cbe-analytics.com\n\nPlease change your password after first login.`;
+  return `Welcome to Zamifu Analytics${schoolLine}!\n\nHello ${firstName}, your ${role} account has been created.\n\nLogin: ${email}\nPassword: ${password}\nPortal: https://zamifu.company\n\nPlease change your password after first login.`;
 }
 
 export function generateResultsSMS(
@@ -111,12 +111,12 @@ export function generateResultsSMS(
   position?: string
 ): string {
   const posLine = position ? `\nPosition: ${position}` : '';
-  return `CBE-Analytics: Results Notification\n\nDear ${parentName},\n${studentName}'s ${termName} results are now available.\nAverage: ${average}%${posLine}\n\nLogin to view full report: https://cbe-analytics.com`;
+  return `Zamifu Analytics: Results Notification\n\nDear ${parentName},\n${studentName}'s ${termName} results are now available.\nAverage: ${average}%${posLine}\n\nLogin to view full report: https://zamifu.company`;
 }
 
 export function generateAnnouncementSMS(
   schoolName: string,
   message: string
 ): string {
-  return `CBE-Analytics: ${schoolName}\n\n${message}`;
+  return `Zamifu Analytics: ${schoolName}\n\n${message}`;
 }
