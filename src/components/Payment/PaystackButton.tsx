@@ -53,7 +53,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
 
       // Get the user's email
       const email = user?.email || 'school@example.com';
-      const reference = `cbe_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      const reference = `zamifu_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
       // @ts-ignore — Paystack is loaded via script
       const handler = window.PaystackPop?.setup({
