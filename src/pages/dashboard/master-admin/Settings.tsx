@@ -4,9 +4,9 @@ import { Save, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function MasterAdminSettings() {
-  const [platformName, setPlatformName] = useState('CBE-Analytics');
+  const [platformName, setPlatformName] = useState('Zamifu Analytics');
   const [currency, setCurrency] = useState('KES');
-  const [supportEmail, setSupportEmail] = useState('support@cbe-analytics.com');
+  const [supportEmail, setSupportEmail] = useState('tutorsultimate@gmail.com');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -32,7 +32,7 @@ export default function MasterAdminSettings() {
         <Settings className="w-6 h-6 text-blue-600" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Platform Settings</h1>
-          <p className="text-gray-500 text-sm mt-1">Configure global CBE-Analytics platform settings</p>
+          <p className="text-gray-500 text-sm mt-1">Configure global Zamifu Analytics platform settings</p>
         </div>
       </div>
 
