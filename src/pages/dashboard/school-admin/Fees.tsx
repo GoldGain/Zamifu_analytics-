@@ -261,7 +261,7 @@ export default function SchoolAdminFees() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(150, 150, 150);
-    doc.text('CBE-Analytics School Management System | Thank you for your payment', 105, 280, { align: 'center' });
+    doc.text('Zamifu Analytics School Management System | Thank you for your payment', 105, 280, { align: 'center' });
     doc.save(`receipt_${student.admission_number}_${Date.now()}.pdf`);
   };
 
