@@ -85,7 +85,7 @@ export const TrialCountdown: React.FC = () => {
           <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center shadow-sm">
             <CreditCard className="w-12 h-12 text-blue-600 mx-auto mb-3" />
             <h4 className="text-lg font-semibold text-gray-900 mb-2">
-              Subscribe to CBE-Analytics
+              Subscribe to Zamifu Analytics
             </h4>
             <p className="text-sm text-gray-600 mb-4">
               Ksh 50 per learner per term
