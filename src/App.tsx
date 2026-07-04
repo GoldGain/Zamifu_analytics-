@@ -47,11 +47,15 @@ import SchoolAdminAssignTeachers from '@/pages/dashboard/school-admin/AssignTeac
 import SchoolAdminAssessments from '@/pages/dashboard/school-admin/Assessments';
 import SchoolAdminAssignRoles from '@/pages/dashboard/school-admin/AssignRoles';
 import SchoolAdminMarksOverview from '@/pages/dashboard/school-admin/MarksOverview';
+import SchoolAdminViewLearners from '@/pages/dashboard/school-admin/ViewLearners';
+import SchoolAdminCommunicate from '@/pages/dashboard/school-admin/Communicate';
+import SchoolAdminPromoteClass from '@/pages/dashboard/school-admin/PromoteClass';
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 import TeacherResultsUpload from '@/pages/dashboard/teacher/ResultsUpload';
 import TeacherAttendance from '@/pages/dashboard/teacher/Attendance';
 import TeacherHomework from '@/pages/dashboard/teacher/Homework';
+import TeacherUploadPapers from '@/pages/dashboard/teacher/UploadPapers';
 import TeacherAnalytics from '@/pages/dashboard/teacher/Analytics';
 import TeacherStudents from '@/pages/dashboard/teacher/Students';
 import TeacherLessonPlan from '@/pages/dashboard/teacher/LessonPlan';
@@ -174,6 +178,9 @@ function AppRoutes() {
       <Route path="/school-admin/assign-roles" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssignRoles /></ProtectedRoute>} />
       <Route path="/school-admin/marks-overview" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminMarksOverview /></ProtectedRoute>} />
       <Route path="/school-admin/bulk-sms" element={<ProtectedRoute allowedRoles={['school_admin']}><BulkSms /></ProtectedRoute>} />
+      <Route path="/school-admin/view-learners" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminViewLearners /></ProtectedRoute>} />
+      <Route path="/school-admin/communicate" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminCommunicate /></ProtectedRoute>} />
+      <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminPromoteClass /></ProtectedRoute>} />
       <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']}><DeanOfStudiesDashboard /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']}><TimetableView /></ProtectedRoute>} />
 
@@ -186,6 +193,7 @@ function AppRoutes() {
       <Route path="/teacher/assessment-progress" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherAssessmentProgress /></ProtectedRoute>} />
       <Route path="/teacher/attendance" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherAttendance /></ProtectedRoute>} />
       <Route path="/teacher/homework" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherHomework /></ProtectedRoute>} />
+      <Route path="/teacher/upload-papers" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherUploadPapers /></ProtectedRoute>} />
       <Route path="/teacher/analytics" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherAnalytics /></ProtectedRoute>} />
       <Route path="/teacher/students" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherStudents /></ProtectedRoute>} />
       <Route path="/teacher/lesson-plan" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherLessonPlan /></ProtectedRoute>} />

@@ -2,7 +2,7 @@
 
 const OLYMPUS_API_URL = 'https://sms.ots.co.ke/api/v3/sms/send';
 const OLYMPUS_API_TOKEN = '3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbfef70cf';
-const DEFAULT_SENDER_ID = 'CBE-ANALYTICS';
+const DEFAULT_SENDER_ID = 'PROCALL';
 
 interface SMSPayload {
   recipient: string;   // Format: 254XXXXXXXXX
