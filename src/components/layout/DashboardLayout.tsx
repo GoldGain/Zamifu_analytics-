@@ -201,7 +201,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleWhatsAppShare = () => {
     const url = encodeURIComponent(window.location.href);
-    const text = encodeURIComponent(`Check out CBE-Analytics - School Management System: ${window.location.origin}`);
+    const text = encodeURIComponent(`Check out Zamifu Analytics - Intelligent School Management System: ${window.location.origin}`);
     window.open(`https://wa.me/?text=${text}%20${url}`, '_blank');
   };
 
@@ -222,9 +222,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {schoolData?.logo_url ? (
               <img src={schoolData.logo_url} alt={schoolData.name} className="w-8 h-8 rounded-lg object-contain bg-white p-0.5" />
             ) : (
-              <img src="/images/logo.png" alt="CBE-Analytics" className="w-8 h-8 rounded-lg object-contain" />
+              <img src="/images/logo.png" alt="Zamifu Analytics" className="w-8 h-8 rounded-lg object-contain" />
             )}
-            <span className="text-lg font-bold truncate max-w-[140px]">{schoolData?.name || 'CBE-Analytics'}</span>
+            <span className="text-lg font-bold truncate max-w-[140px]">{schoolData?.name || 'Zamifu Analytics'}</span>
           </Link>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden">
             <X className="w-5 h-5" />
@@ -298,9 +298,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {schoolData?.logo_url ? (
                 <img src={schoolData.logo_url} alt={schoolData.name} className="w-7 h-7 rounded-lg object-contain bg-gray-100 p-0.5" />
               ) : (
-                <img src="/images/logo.png" alt="CBE-Analytics" className="w-7 h-7 rounded-lg object-contain" />
+                <img src="/images/logo.png" alt="Zamifu Analytics" className="w-7 h-7 rounded-lg object-contain" />
               )}
-              <span className="text-base font-bold text-[#111111]">{schoolData?.name || 'CBE-Analytics'}</span>
+              <span className="text-base font-bold text-[#111111]">{schoolData?.name || 'Zamifu Analytics'}</span>
             </div>
             <div className="flex items-center gap-3">
               <PWAInstallButton variant="icon" />
