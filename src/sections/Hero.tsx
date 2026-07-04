@@ -5,9 +5,11 @@ import { usePWA } from '@/hooks/usePWA';
 
 const CAROUSEL_IMAGES = [
   { src: '/images/students1.jpg', caption: 'Empowering Learners Across Kenya' },
-  { src: '/images/students2.jpg', caption: 'Smart CBE Analytics for Every School' },
+  { src: '/images/students2.jpg', caption: 'Smart Analytics for Every School' },
   { src: '/images/students3.jpg', caption: 'Real-Time Progress Tracking' },
-  { src: '/images/students4.jpg', caption: 'Connecting Teachers, Parents & Learners' },
+  { src: '/images/students4.jpg', caption: 'Celebrating Academic Excellence' },
+  { src: '/images/students5.jpg', caption: 'Technology-Enhanced Learning' },
+  { src: '/images/students6.jpg', caption: 'Connecting Teachers, Parents & Learners' },
 ];
 
 function HeroCarousel() {
@@ -61,7 +63,7 @@ function DownloadAppButton() {
 
   const handleDownload = async () => {
     if (isInstalled) {
-      alert('CBE-Analytics is already installed on your device!');
+      alert('Zamifu Analytics is already installed on your device!');
       return;
     }
     const installed = await install();
@@ -131,7 +133,7 @@ export default function Hero() {
                 <span className="text-sm text-gray-400">Kenya&apos;s #1 School Platform</span>
               </div>
               <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-2">
-                A Smart School
+                An Intelligent School
               </h1>
               <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-6 text-[#E6F24B]">
                 Management System
@@ -254,10 +256,10 @@ export default function Hero() {
           <div className="hero-card md:col-span-4 md:row-span-2 bg-white rounded-2xl p-6 border-4 border-[#1A1A1A] relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-shadow duration-200">
             <div className="text-center">
               <div className="text-5xl md:text-6xl font-bold text-[#1A1A1A] mb-2">2,000+</div>
-              <p className="text-sm text-gray-500 mb-4">Schools Using CBE-Analytics</p>
+              <p className="text-sm text-gray-500 mb-4">Schools Using Zamifu Analytics</p>
             </div>
             <div className="flex justify-center gap-2 mb-4">
-              {['CBE'].map((tag, i) => (
+              {['CBE', '8-4-4'].map((tag, i) => (
                 <span key={i} className="text-xs bg-[#E6F24B] px-3 py-1 rounded-full font-medium">
                   {tag}
                 </span>
