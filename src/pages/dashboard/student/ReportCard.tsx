@@ -351,7 +351,7 @@ export default function StudentReportCard() {
       // Footer
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
-      doc.text('CBE-Analytics School Management System | Support: support@cbe-analytics.com', 105, 285, { align: 'center' });
+      doc.text('Zamifu Analytics School Management System | Support: tutorsultimate@gmail.com', 105, 285, { align: 'center' });
 
       doc.save(`report_card_${student.first_name}_${student.last_name}_${term?.name}.pdf`);
       toast.success('Report card downloaded!');
@@ -436,7 +436,7 @@ export default function StudentReportCard() {
                 onClick={() => {
                   const term = terms.find(t => t.id === selectedTerm);
                   const avg = results.length ? Math.round(results.reduce((s, r) => s + getPercentage(r), 0) / results.length) : 0;
-                  const text = encodeURIComponent(`My CBE-Analytics Report Card\nTerm: ${term?.name || ''} ${term?.academic_year || ''}\nAverage: ${avg}%\nView at: ${window.location.origin}`);
+                  const text = encodeURIComponent(`My Zamifu Analytics Report Card\nTerm: ${term?.name || ''} ${term?.academic_year || ''}\nAverage: ${avg}%\nView at: ${window.location.origin}`);
                   window.open(`https://wa.me/?text=${text}`, '_blank');
                 }}
                 className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700"
