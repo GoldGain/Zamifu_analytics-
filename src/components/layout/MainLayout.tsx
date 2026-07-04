@@ -21,8 +21,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <div className="max-w-7xl mx-auto px-4 md:px-8">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2">
-              <img src="/images/logo.png" alt="CBE-Analytics" className="w-9 h-9 object-contain rounded-lg" />
-              <span className="text-xl font-bold text-[#111111]">CBE-Analytics</span>
+              <img src="/images/logo.png" alt="Zamifu Analytics" className="w-9 h-9 object-contain rounded-lg" />
+              <span className="text-xl font-bold text-[#111111]">Zamifu Analytics</span>
             </Link>
 
             {/* Desktop Nav */}
@@ -99,10 +99,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <div className="grid md:grid-cols-3 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <img src="/images/logo.png" alt="CBE-Analytics" className="w-9 h-9 object-contain rounded-lg" />
-                <span className="text-lg font-bold">CBE-Analytics</span>
+                <img src="/images/logo.png" alt="Zamifu Analytics" className="w-9 h-9 object-contain rounded-lg" />
+                <span className="text-lg font-bold">Zamifu Analytics</span>
               </div>
-              <p className="text-sm text-gray-400">Connecting Schools, Students, and Parents for a brighter future in Kenyan education.</p>
+              <p className="text-sm text-gray-400">Connecting Schools, Students, and Parents for a brighter future in Kenyan education. Smarter Schools, Brighter Futures.</p>
             </div>
             <div>
               <h4 className="font-semibold mb-3">Product</h4>
@@ -121,7 +121,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-gray-400">&copy; 2025 CBE-Analytics. All rights reserved.</p>
+            <p className="text-sm text-gray-400">&copy; 2025 Zamifu Analytics. All rights reserved.</p>
             <p className="text-sm text-gray-400">Designed for Kenyan Schools</p>
           </div>
         </div>
