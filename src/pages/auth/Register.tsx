@@ -185,7 +185,7 @@ export default function Register() {
               <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
                 <GraduationCap className="w-6 h-6 text-white" />
               </div>
-              <span className="text-2xl font-bold text-[#111111]">CBE-Analytics</span>
+              <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
             </Link>
             <h1 className="text-2xl font-bold text-[#111111]">Complete Registration</h1>
             <p className="text-sm text-[#666666] mt-1">Create your password to get started</p>
@@ -282,7 +282,7 @@ export default function Register() {
             <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-[#111111]">CBE-Analytics</span>
+            <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
           <h1 className="text-2xl font-bold text-[#111111]">Create Account</h1>
           <p className="text-sm text-[#666666] mt-1">
