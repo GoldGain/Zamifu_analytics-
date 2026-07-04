@@ -161,7 +161,7 @@ export default function Timetable() {
       // Footer
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
-      doc.text('CBE-Analytics School Management System', 148, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+      doc.text('Zamifu Analytics School Management System', 148, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
 
       doc.save(`timetable_${selectedClass?.name || 'class'}.pdf`);
       toast.success('Timetable exported successfully');
