@@ -93,7 +93,7 @@ export default function ForgotPassword() {
         setGeneratedOtp(newOtp);
         setResetUserId(foundUser.id);
 
-        const message = `Your CBE-Analytics password reset code is: ${newOtp}. This code will expire in 15 minutes. Do not share this code with anyone.`;
+        const message = `Your Zamifu Analytics password reset code is: ${newOtp}. This code will expire in 15 minutes. Do not share this code with anyone.`;
         
         const result = await sendSMS(phone, message);
         
@@ -230,7 +230,7 @@ export default function ForgotPassword() {
               <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
                 <GraduationCap className="w-6 h-6 text-white" />
               </div>
-              <span className="text-2xl font-bold text-[#111111]">CBE-Analytics</span>
+              <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
             </Link>
             <h1 className="text-2xl font-bold text-[#111111]">Verify OTP</h1>
             <p className="text-sm text-[#666666] mt-1">Enter the 6-digit code sent to your phone</p>
@@ -317,7 +317,7 @@ export default function ForgotPassword() {
             <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-[#111111]">CBE-Analytics</span>
+            <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
           <h1 className="text-2xl font-bold text-[#111111]">Reset Password</h1>
           <p className="text-sm text-[#666666] mt-1">We&apos;ll send you a reset link or OTP</p>
