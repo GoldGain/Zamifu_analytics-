@@ -108,7 +108,7 @@ export default function PWAFloatingButton() {
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
           className="group flex items-center gap-2 bg-[#2563EB] hover:bg-[#1d4ed8] text-white pl-4 pr-5 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95"
-          title="Install CBE-Analytics App"
+          title="Install Zamifu Analytics App"
         >
           <div className="relative">
             <Smartphone className="w-5 h-5" />
