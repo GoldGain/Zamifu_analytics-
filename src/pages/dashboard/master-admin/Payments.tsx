@@ -51,7 +51,7 @@ export default function MasterAdminPayments() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cbe-analytics-payments-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `zamifu-analytics-payments-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
