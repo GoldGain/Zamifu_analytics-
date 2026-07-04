@@ -150,8 +150,8 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
       <SEO
-        title="Login — CBE-Analytics School Portal"
-        description="Login to CBE-Analytics, Kenya's school management portal for teachers, students, parents, and administrators. Access CBE results, report cards, and more."
+        title="Login — Zamifu Analytics School Portal"
+        description="Login to Zamifu Analytics, Kenya's intelligent school management portal for teachers, students, parents, and administrators."
         path="/login"
       />
       <div className="w-full max-w-md">
@@ -160,7 +160,7 @@ export default function Login() {
             <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-[#111111]">CBE-Analytics</span>
+            <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
           <h1 className="text-2xl font-bold text-[#111111]">Welcome Back</h1>
           <p className="text-sm text-[#666666] mt-1">Login to your school portal</p>
