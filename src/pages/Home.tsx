@@ -13,7 +13,7 @@ export default function Home() {
 
   const handleInstallClick = async () => {
     if (isInstalled) {
-      alert('CBE-Analytics is already installed on your device!');
+      alert('Zamifu Analytics is already installed on your device!');
       return;
     }
     await install();
@@ -22,21 +22,21 @@ export default function Home() {
   return (
     <>
       <SEO
-        title="CBE-Analytics - School Management System"
-        description="CBE Analytics is Kenya's #1 School Management System supporting Competency-Based Education (CBE). Manage learners, assessments, learning areas, and more."
+        title="Zamifu Analytics - Intelligent School Management System"
+        description="Zamifu Analytics is Kenya's #1 Intelligent School Management System. Manage learners, assessments, learning areas, fees, and report cards. Supporting CBE and 8-4-4 curricula."
         path="/"
         structuredData={{
           '@context': 'https://schema.org',
           '@type': 'WebApplication',
-          name: 'CBE-Analytics',
-          url: 'https://cbe-analytics.com',
-          description: 'Kenya\'s #1 School Management System supporting Competency-Based Education (CBE). Manage learners, assessments, learning areas, and more.',
+          name: 'Zamifu Analytics',
+          url: 'https://zamifu.company',
+          description: "Kenya's #1 Intelligent School Management System. Manage learners, assessments, learning areas, fees, and report cards.",
           applicationCategory: 'EducationApplication',
           operatingSystem: 'Web',
           inLanguage: 'en-KE',
           offers: { '@type': 'Offer', price: '0', priceCurrency: 'KES' },
-          author: { '@type': 'Organization', name: 'CBE-Analytics', url: 'https://cbe-analytics.com' },
-          keywords: 'CBE-Analytics, CBE Analytics, CBE grading Kenya, school management system Kenya, competency based education, student results portal, CBE report card',
+          author: { '@type': 'Organization', name: 'Zamifu Analytics', url: 'https://zamifu.company' },
+          keywords: 'Zamifu, Zamifu Analytics, Zamifu Schools, Zamifu Results, school management Kenya, intelligent education, CBE, 8-4-4',
         }}
       />
       {isInstallable && (
