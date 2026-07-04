@@ -58,7 +58,7 @@ export default function HowItWorks() {
           <span className="text-sm font-medium text-[#2563EB] mb-2 block">HOW IT WORKS</span>
           <h2 className="text-3xl md:text-4xl font-bold text-[#111111] mb-4">Simple 3-Step Process</h2>
           <p className="text-[#666666] max-w-2xl mx-auto">
-            Get your school up and running on CBE-Analytics in minutes, not days.
+            Get your school up and running on Zamifu Analytics in minutes, not days.
           </p>
         </div>
 
