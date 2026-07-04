@@ -21,7 +21,7 @@ export default function PWAInstallButton({ variant = 'button', className = '' }:
       <button
         onClick={handleInstall}
         className={`flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors ${className}`}
-        title="Install CBE-Analytics App"
+        title="Install Zamifu Analytics App"
       >
         <Download className="w-4 h-4" />
         <span className="hidden lg:inline">Download App</span>
@@ -34,7 +34,7 @@ export default function PWAInstallButton({ variant = 'button', className = '' }:
       <button
         onClick={handleInstall}
         className={`p-2 hover:bg-blue-50 rounded-lg transition-colors text-blue-600 ${className}`}
-        title="Install CBE-Analytics App"
+        title="Install Zamifu Analytics App"
       >
         <Smartphone className="w-5 h-5" />
       </button>
