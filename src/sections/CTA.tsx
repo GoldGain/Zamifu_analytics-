@@ -19,7 +19,7 @@ export default function CTA() {
               Ready to Transform Your School?
             </h2>
             <p className="text-white/80 max-w-2xl mx-auto mb-8 text-lg">
-              Join 2,000+ schools across Kenya already using CBE-Analytics to streamline management, improve communication, and enhance learning outcomes.
+              Join 2,000+ schools across Kenya already using Zamifu Analytics to streamline management, improve communication, and enhance learning outcomes.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link
