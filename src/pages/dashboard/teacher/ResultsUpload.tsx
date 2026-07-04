@@ -292,7 +292,7 @@ export default function TeacherResultsUpload() {
     const className = classes.find(c => c.id === selectedClass)?.name || 'Class';
     const termName = terms.find(t => t.id === selectedTerm)?.name || 'Term';
     doc.setFontSize(16);
-    doc.text('CBE-Analytics - Results Report', 14, 15);
+    doc.text('Zamifu Analytics - Results Report', 14, 15);
     doc.setFontSize(11);
     doc.text(`Class: ${className} | Learning Area: ${subjectName} | Term: ${termName}`, 14, 25);
     doc.text(`Out of: ${outOf} marks | Date: ${new Date().toLocaleDateString()}`, 14, 32);
@@ -539,7 +539,7 @@ export default function TeacherResultsUpload() {
     const className = classes.find(c => c.id === selectedClass)?.name || 'Class';
     const termName = terms.find(t => t.id === selectedTerm)?.name || 'Term';
     doc.setFontSize(16);
-    doc.text('CBE-Analytics - Results Report', 14, 15);
+    doc.text('Zamifu Analytics - Results Report', 14, 15);
     doc.setFontSize(11);
     doc.text(`Class: ${className} | Learning Area: ${subjectName} | Term: ${termName}`, 14, 25);
     doc.text(`Out of: ${outOf} marks | Date: ${new Date().toLocaleDateString()}`, 14, 32);
