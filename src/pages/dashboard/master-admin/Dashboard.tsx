@@ -67,7 +67,7 @@ export default function MasterAdminDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Master Admin Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-1">Platform-wide overview — CBE-Analytics</p>
+          <p className="text-gray-500 text-sm mt-1">Platform-wide overview — Zamifu Analytics</p>
         </div>
         <button onClick={fetchStats} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
           <RefreshCw className="w-4 h-4" /> Refresh
