@@ -304,7 +304,7 @@ export default function CurriculumNavigator() {
   const [progressMap, setProgressMap] = useState<Record<string, string>>({});
 
   // School info
-  const [schoolName, setSchoolName] = useState('CBE-Analytics School');
+  const [schoolName, setSchoolName] = useState('Zamifu Analytics School');
 
   // ── Load initial data ──────────────────────────────────────────────────────
   useEffect(() => {
