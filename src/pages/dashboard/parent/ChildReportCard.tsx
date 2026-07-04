@@ -381,7 +381,7 @@ export default function ParentChildReportCard() {
       addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
-      doc.text('CBE-Analytics | Support: support@cbe-analytics.com', 105, 285, { align: 'center' });
+      doc.text('Zamifu Analytics | Support: tutorsultimate@gmail.com', 105, 285, { align: 'center' });
       doc.save(`report_card_${selectedChild.first_name}_${term?.name}.pdf`);
       toast.success('Report card downloaded!');
     } catch (err: any) {
@@ -516,7 +516,7 @@ export default function ParentChildReportCard() {
                   <button onClick={() => {
                     const term = terms.find((t: any) => t.id === selectedTerm);
                     const avg = results.length ? Math.round(results.reduce((s: number, r: any) => s + (r.percentage || r.marks || 0), 0) / results.length) : 0;
-                    const text = encodeURIComponent(`${selectedChild?.first_name}'s CBE-Analytics Report Card\nTerm: ${term?.name || ''} ${term?.academic_year || ''}\nAverage: ${avg}%\nView at: ${window.location.origin}`);
+                    const text = encodeURIComponent(`${selectedChild?.first_name}'s Zamifu Analytics Report Card\nTerm: ${term?.name || ''} ${term?.academic_year || ''}\nAverage: ${avg}%\nView at: ${window.location.origin}`);
                     window.open(`https://wa.me/?text=${text}`, '_blank');
                   }} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700">
                     <Share2 className="w-4 h-4" /> WhatsApp
