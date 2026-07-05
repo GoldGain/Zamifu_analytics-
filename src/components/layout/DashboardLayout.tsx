@@ -39,6 +39,7 @@ import {
   Zap,
   Brain,
   User,
+  RefreshCw,
 } from 'lucide-react';
 
 interface NavItem {
@@ -95,19 +96,20 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
   ],
+  // Issue 29: Deduplicated teacher nav items - removed duplicates
   'teacher': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
     { label: 'Grade Dashboard', icon: <Users className="w-5 h-5" />, path: '/teacher/class-dashboard' },
     { label: 'DoS Dashboard', icon: <GraduationCap className="w-5 h-5" />, path: '/dean-of-studies' },
     { label: 'Subject Dashboard', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/subject-dashboard' },
-    { label: 'My Subjects', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/my-subjects' },
+    { label: 'My Learning Areas', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/my-subjects' },
     { label: 'View Timetable', icon: <Calendar className="w-5 h-5" />, path: '/timetable' },
     { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, path: '/teacher/results/upload' },
     { label: 'View My Marks', icon: <Eye className="w-5 h-5" />, path: '/teacher/view-marks' },
     { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/assessment-progress' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/teacher/attendance' },
-    { label: 'Homework', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/homework' },
-    { label: 'Upload Papers', icon: <Upload className="w-5 h-5" />, path: '/teacher/upload-papers' },
+    // Issue 17: Upload Papers moved under Homework
+    { label: 'Homework & Papers', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/homework' },
     { label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/analytics' },
     { label: 'My Learners', icon: <Users className="w-5 h-5" />, path: '/teacher/students' },
     { label: 'Lesson Plans', icon: <Sparkles className="w-5 h-5" />, path: '/teacher/lesson-plan' },
@@ -124,6 +126,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Homework', icon: <BookOpen className="w-5 h-5" />, path: '/student/homework' },
     { label: 'Papers', icon: <FileText className="w-5 h-5" />, path: '/student/papers' },
     { label: 'Report Card', icon: <FileText className="w-5 h-5" />, path: '/student/report-card' },
+    { label: 'My Portfolio', icon: <Award className="w-5 h-5" />, path: '/student/portfolio' }, // Issue 22
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/student/change-password' },
   ],
   'parent': [
@@ -140,6 +143,17 @@ const navConfig: Record<string, NavItem[]> = {
   ],
 };
 
+// Issue 15: Role-to-dashboard path mapping for multi-role switching
+const ROLE_DASHBOARDS: Record<string, string> = {
+  'school_admin': '/school-admin',
+  'teacher': '/teacher',
+  'student': '/student',
+  'parent': '/parent',
+  'super_admin': '/super-admin',
+  'reseller_super_admin': '/reseller-admin',
+  'master_super_admin': '/master-admin',
+};
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [zoomAvatar, setZoomAvatar] = useState(false);
@@ -147,52 +161,62 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const location = useLocation();
   const navigate = useNavigate();
 
-  const roleKey = user?.role?.replace(/_/g, '-') || '';
-  let navItems = [...(navConfig[roleKey] || [])];
+  // Issue 15: Multi-role support — detect if this teacher is also a school_admin
+  const [additionalRoles, setAdditionalRoles] = useState<string[]>([]);
+  // Issue 29: Teacher role flags (class teacher, DoS)
+  const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [isDoS, setIsDoS] = useState(false);
 
-  // Dynamic role-based navigation for teachers
-  if (user?.role === 'teacher') {
-    const [isClassTeacher, setIsClassTeacher] = useState(false);
-    const [isDoS, setIsDoS] = useState(false);
+  useEffect(() => {
+    if (!user?.id) return;
+    const checkRoles = async () => {
+      // Issue 15: Check if teacher also has school_admin role via profiles or a secondary_roles field
+      try {
+        const { data: profileData } = await (supabase as any)
+          .from('profiles')
+          .select('secondary_roles')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (profileData?.secondary_roles && Array.isArray(profileData.secondary_roles)) {
+          setAdditionalRoles(profileData.secondary_roles);
+        }
+      } catch (err) { /* secondary_roles column may not exist yet */ }
 
-    useEffect(() => {
-      async function checkRoles() {
-        if (!user?.id) return;
-        
-        // Check if teacher is a class teacher
+      if (user.role === 'teacher') {
         const { data: teacherData } = await (supabase as any)
           .from('teachers')
           .select('is_class_teacher, id, school_id')
           .eq('profile_id', user.id)
           .maybeSingle();
-        
-        if (teacherData?.is_class_teacher) {
-          setIsClassTeacher(true);
-        }
-
-        // Check if teacher is Dean of Studies
+        if (teacherData?.is_class_teacher) setIsClassTeacher(true);
         if (teacherData?.school_id) {
-          const { data: schoolData } = await (supabase as any)
+          const { data: schoolInfo } = await (supabase as any)
             .from('schools')
             .select('dean_of_studies_id')
             .eq('id', teacherData.school_id)
             .maybeSingle();
-          
-          if (schoolData?.dean_of_studies_id === teacherData.id) {
-            setIsDoS(true);
-          }
+          if (schoolInfo?.dean_of_studies_id === teacherData.id) setIsDoS(true);
         }
       }
-      checkRoles();
-    }, [user?.id]);
+    };
+    checkRoles();
+  }, [user?.id, user?.role]);
 
-    // Filter nav items based on actual roles
+  const roleKey = user?.role?.replace(/_/g, '-') || '';
+  let navItems = [...(navConfig[roleKey] || [])];
+
+  // Issue 29: Filter teacher nav items based on actual roles (remove items they don't have access to)
+  if (user?.role === 'teacher') {
     navItems = navItems.filter(item => {
       if (item.path === '/teacher/class-dashboard' && !isClassTeacher) return false;
       if (item.path === '/dean-of-studies' && !isDoS) return false;
       return true;
     });
   }
+
+  // Issue 15: If teacher is also school_admin, add a "Switch to Admin" link
+  const canSwitchToAdmin = user?.role === 'teacher' && additionalRoles.includes('school_admin');
+  const canSwitchToTeacher = user?.role === 'school_admin' && additionalRoles.includes('teacher');
 
   const handleLogout = async () => {
     await signOut();
@@ -242,7 +266,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <div>
               <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
-              <p className="text-xs text-gray-400 capitalize">{user?.role?.replace('_', ' ')}</p>
+              <p className="text-xs text-gray-400 capitalize">{user?.role?.replace(/_/g, ' ')}</p>
+              {/* Issue 15: Show additional roles badge */}
+              {additionalRoles.length > 0 && (
+                <p className="text-xs text-blue-400 mt-0.5">+{additionalRoles.map(r => r.replace(/_/g, ' ')).join(', ')}</p>
+              )}
             </div>
           </div>
 
@@ -265,6 +293,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </nav>
 
           <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
+            {/* Issue 15: Multi-role switch buttons */}
+            {canSwitchToAdmin && (
+              <Link
+                to="/school-admin"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-yellow-400 hover:bg-yellow-600 hover:text-white transition-all w-full font-medium"
+              >
+                <RefreshCw className="w-5 h-5" />
+                Switch to Admin View
+              </Link>
+            )}
+            {canSwitchToTeacher && (
+              <Link
+                to="/teacher"
+                onClick={() => setSidebarOpen(false)}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-yellow-400 hover:bg-yellow-600 hover:text-white transition-all w-full font-medium"
+              >
+                <RefreshCw className="w-5 h-5" />
+                Switch to Teacher View
+              </Link>
+            )}
             <button
               onClick={handleWhatsAppShare}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-green-400 hover:bg-green-600 hover:text-white transition-all w-full font-medium"
@@ -346,7 +395,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
         </header>
-
         <main className="p-4 md:p-6">
           {children}
         </main>

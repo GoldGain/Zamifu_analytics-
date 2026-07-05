@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowUpRight, Loader2, AlertTriangle, CheckCircle, Users, ChevronDown } from 'lucide-react';
+import { ArrowUpRight, Loader2, AlertTriangle, CheckCircle, Users, ChevronDown, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ClassOption {
@@ -12,6 +12,9 @@ interface ClassOption {
   studentCount: number;
 }
 
+// Issue 7: Promotion action when destination class has existing learners
+type PromotionAction = 'merge' | 'cancel' | null;
+
 export default function PromoteClass() {
   const { user } = useAuth();
   const [classes, setClasses] = useState<ClassOption[]>([]);
@@ -20,6 +23,8 @@ export default function PromoteClass() {
   const [selectedFromClass, setSelectedFromClass] = useState('');
   const [selectedToClass, setSelectedToClass] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  // Issue 7: State for handling existing learners in destination class
+  const [promotionAction, setPromotionAction] = useState<PromotionAction>(null);
 
   useEffect(() => {
     fetchClasses();
@@ -30,7 +35,6 @@ export default function PromoteClass() {
     try {
       const schoolId = user?.schoolId;
       
-      // Fetch classes with student counts
       const { data: classesData } = await supabaseUntyped
         .from('classes')
         .select('id, name, level, stream')
@@ -38,7 +42,6 @@ export default function PromoteClass() {
         .eq('is_active', true)
         .order('level');
 
-      // Get student counts
       const { data: studentsData } = await supabaseUntyped
         .from('students')
         .select('class_id')
@@ -66,30 +69,50 @@ export default function PromoteClass() {
       toast.error('Source and destination must be different');
       return;
     }
-    setShowConfirm(true);
+    // Issue 7: Check if destination class has existing learners
+    const toClassObj = classes.find(c => c.id === selectedToClass);
+    if (toClassObj && toClassObj.studentCount > 0) {
+      // Show conflict resolution dialog
+      setPromotionAction(null);
+      setShowConfirm(true);
+    } else {
+      // No conflict, proceed directly
+      setPromotionAction('merge');
+      setShowConfirm(true);
+    }
   };
 
   const confirmPromote = async () => {
+    if (promotionAction === 'cancel' || promotionAction === null) {
+      setShowConfirm(false);
+      setPromotionAction(null);
+      return;
+    }
+
     setPromoting(true);
     setShowConfirm(false);
     try {
       const fromClass = classes.find(c => c.id === selectedFromClass);
-      
-      // Update all students from source class to destination class
-      const { error } = await supabaseUntyped
-        .from('students')
-        .update({ class_id: selectedToClass })
-        .eq('class_id', selectedFromClass)
-        .eq('school_id', user?.schoolId)
-        .eq('is_active', true);
+      const toClassObj = classes.find(c => c.id === selectedToClass);
 
-      if (error) throw error;
+      if (promotionAction === 'merge') {
+        // Merge: move all learners from source to destination
+        const { error } = await supabaseUntyped
+          .from('students')
+          .update({ class_id: selectedToClass })
+          .eq('class_id', selectedFromClass)
+          .eq('school_id', user?.schoolId)
+          .eq('is_active', true);
 
-      toast.success(`Successfully promoted all learners from ${fromClass?.name || 'source class'}!`);
-      
-      // Reset selection
+        if (error) throw error;
+        toast.success(
+          `Successfully merged ${fromClass?.studentCount} learner(s) from ${fromClass?.name} into ${toClassObj?.name}!`
+        );
+      }
+
       setSelectedFromClass('');
       setSelectedToClass('');
+      setPromotionAction(null);
       fetchClasses();
     } catch (err: any) {
       toast.error('Promotion failed: ' + err.message);
@@ -99,6 +122,7 @@ export default function PromoteClass() {
 
   const fromClass = classes.find(c => c.id === selectedFromClass);
   const toClass = classes.find(c => c.id === selectedToClass);
+  const destinationHasLearners = toClass && toClass.studentCount > 0;
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -113,6 +137,8 @@ export default function PromoteClass() {
         <div>
           <p className="font-bold mb-1">How it works:</p>
           <p>Select the source class (where learners currently are) and the destination class (where you want to move them). All learners will be moved at once.</p>
+          {/* Issue 7: Explain conflict handling */}
+          <p className="mt-1 text-blue-700">If the destination class already has learners, you will be asked whether to merge them together.</p>
         </div>
       </div>
 
@@ -173,6 +199,13 @@ export default function PromoteClass() {
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 </div>
+                {/* Issue 7: Warn if destination has learners */}
+                {destinationHasLearners && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <Info className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>This class already has <strong>{toClass.studentCount}</strong> learner(s). You will be asked how to handle this.</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -184,6 +217,11 @@ export default function PromoteClass() {
                   <div className="text-sm text-amber-800">
                     <p className="font-bold">You are about to promote:</p>
                     <p><strong>{fromClass.studentCount}</strong> learner(s) from <strong>{fromClass.name}</strong> to <strong>{toClass.name}</strong></p>
+                    {destinationHasLearners && (
+                      <p className="mt-1 text-orange-700 font-medium">
+                        Note: <strong>{toClass.name}</strong> already has <strong>{toClass.studentCount}</strong> learner(s). They will be merged together.
+                      </p>
+                    )}
                     <p className="mt-1 text-amber-600">This action cannot be undone. Please confirm below.</p>
                   </div>
                 </div>
@@ -229,33 +267,84 @@ export default function PromoteClass() {
         </>
       )}
 
-      {/* Confirmation Modal */}
+      {/* Issue 7: Confirmation Modal with conflict resolution */}
       {showConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900">Confirm Promotion</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {destinationHasLearners ? 'Destination Class Has Learners' : 'Confirm Promotion'}
+              </h2>
             </div>
-            <p className="text-sm text-gray-600 mb-6">
-              Are you sure you want to move <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> to <strong>{toClass?.name}</strong>?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowConfirm(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPromote}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700"
-              >
-                Yes, Promote All
-              </button>
-            </div>
+
+            {destinationHasLearners ? (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  <strong>{toClass?.name}</strong> already has <strong>{toClass?.studentCount}</strong> learner(s).
+                  Moving <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> will merge them together.
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  After merging, <strong>{toClass?.name}</strong> will have <strong>{(fromClass?.studentCount || 0) + (toClass?.studentCount || 0)}</strong> learner(s) in total.
+                </p>
+                <p className="text-xs text-gray-400 mb-6">This action cannot be undone. Choose an option below.</p>
+
+                <div className="space-y-2 mb-6">
+                  <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${promotionAction === 'merge' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="radio" name="action" value="merge" checked={promotionAction === 'merge'} onChange={() => setPromotionAction('merge')} className="mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Merge learners together</p>
+                      <p className="text-xs text-gray-500">Move all learners from {fromClass?.name} into {toClass?.name}</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${promotionAction === 'cancel' ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                    <input type="radio" name="action" value="cancel" checked={promotionAction === 'cancel'} onChange={() => setPromotionAction('cancel')} className="mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Cancel promotion</p>
+                      <p className="text-xs text-gray-500">Do nothing and go back</p>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowConfirm(false); setPromotionAction(null); }}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={confirmPromote}
+                    disabled={!promotionAction}
+                    className={`flex-1 px-4 py-2 text-white rounded-xl text-sm font-medium disabled:opacity-50 ${promotionAction === 'cancel' ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                  >
+                    {promotionAction === 'cancel' ? 'Cancel Promotion' : 'Merge & Promote'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure you want to move <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> to <strong>{toClass?.name}</strong>?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowConfirm(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { setPromotionAction('merge'); confirmPromote(); }}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700"
+                  >
+                    Yes, Promote All
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

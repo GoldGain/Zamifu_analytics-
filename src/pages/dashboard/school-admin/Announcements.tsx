@@ -389,11 +389,16 @@ export default function SchoolAdminAnnouncements() {
               onChange={e => setFormData({ ...formData, type: e.target.value as AnnouncementType })}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
             >
-              <option value="general">General</option>
+              <option value="general">General (All)</option>
               <option value="fee_reminder">Fee Reminder</option>
               <option value="exam">Exam</option>
               <option value="event">Event</option>
               <option value="emergency">Emergency</option>
+              {/* Issue 8: Added custom message and group options */}
+              <option value="custom_message">Custom Message</option>
+              <option value="class_group">Class Group</option>
+              <option value="teachers">Teachers Only</option>
+              <option value="parents">Parents Only</option>
             </select>
             <div className="flex gap-3">
               <button type="submit" disabled={adding} className="bg-[#2563EB] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 flex items-center gap-2">

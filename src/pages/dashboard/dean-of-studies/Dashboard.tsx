@@ -47,7 +47,13 @@ export default function DeanOfStudiesDashboard() {
   const [selectedTerm, setSelectedTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'assessments'>('overview');
+  // Issue 12: Added class_lists and mark_lists tabs to DOS Dashboard
+  const [activeTab, setActiveTab] = useState<'overview' | 'assessments' | 'class_lists' | 'mark_lists'>('overview');
+  const [classListStudents, setClassListStudents] = useState<Record<string, any[]>>({});
+  const [markListData, setMarkListData] = useState<any[]>([]);
+  const [selectedMarkClass, setSelectedMarkClass] = useState('');
+  const [loadingClassList, setLoadingClassList] = useState(false);
+  const [loadingMarkList, setLoadingMarkList] = useState(false);
   const [showExamModal, setShowExamModal] = useState(false);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [examForm, setExamForm] = useState(defaultExamForm);
@@ -282,10 +288,13 @@ export default function DeanOfStudiesDashboard() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-200">
+      <div className="flex gap-2 border-b border-gray-200 overflow-x-auto">
         {[
           { key: 'overview', label: 'Marks Progress', icon: <BarChart3 className="w-4 h-4" /> },
           { key: 'assessments', label: 'Assessments', icon: <BookOpen className="w-4 h-4" /> },
+          // Issue 12: Added class lists and mark lists tabs
+          { key: 'class_lists', label: 'Class Lists', icon: <Users className="w-4 h-4" /> },
+          { key: 'mark_lists', label: 'Mark Lists', icon: <GraduationCap className="w-4 h-4" /> },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -521,6 +530,243 @@ export default function DeanOfStudiesDashboard() {
           </div>
         </div>
       )}
+
+      {/* Issue 12: Class Lists Tab */}
+      {activeTab === 'class_lists' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+            <strong>Class Lists</strong> — View all learners in each class. Click a class to expand its student list.
+          </div>
+          {classes.length === 0 ? (
+            <div className="text-center py-10 bg-white rounded-2xl border border-gray-100">
+              <Users className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-500">No classes found</p>
+            </div>
+          ) : (
+            classes.map((cls) => (
+              <ClassListExpander
+                key={cls.id}
+                cls={cls}
+                schoolId={schoolId}
+                isExpanded={expandedClass === `cl-${cls.id}`}
+                onToggle={() => setExpandedClass(expandedClass === `cl-${cls.id}` ? null : `cl-${cls.id}`)}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Issue 12: Mark Lists Tab */}
+      {activeTab === 'mark_lists' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+            <strong>Mark Lists</strong> — View all marks for a class and term.
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <select
+              value={selectedMarkClass}
+              onChange={e => setSelectedMarkClass(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Select Class</option>
+              {classes.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <select
+              value={selectedTerm}
+              onChange={e => setSelectedTerm(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              <option value="">Select Term</option>
+              {terms.map(t => (
+                <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>
+              ))}
+            </select>
+          </div>
+          {selectedMarkClass && selectedTerm && (
+            <MarkListTable classId={selectedMarkClass} termId={selectedTerm} schoolId={schoolId} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Issue 12: Class List Expander component
+function ClassListExpander({ cls, schoolId, isExpanded, onToggle }: { cls: ClassInfo; schoolId: string | null; isExpanded: boolean; onToggle: () => void }) {
+  const [students, setStudents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const loadStudents = async () => {
+    if (loaded || !schoolId) return;
+    setLoading(true);
+    try {
+      const { data } = await (supabase as any)
+        .from('students')
+        .select('id, first_name, last_name, admission_number, gender')
+        .eq('class_id', cls.id)
+        .eq('is_active', true)
+        .order('first_name');
+      setStudents(data || []);
+      setLoaded(true);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const handleToggle = () => {
+    if (!isExpanded) loadStudents();
+    onToggle();
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+      <button onClick={handleToggle} className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center">
+            <Users className="w-5 h-5 text-blue-600" />
+          </div>
+          <div className="text-left">
+            <p className="font-semibold text-gray-900">{cls.name}</p>
+            <p className="text-xs text-gray-500">{cls.student_count || 0} learners</p>
+          </div>
+        </div>
+        {isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+      </button>
+      {isExpanded && (
+        <div className="border-t border-gray-100 overflow-x-auto">
+          {loading ? (
+            <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-600" /></div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Adm #</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Gender</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.length === 0 ? (
+                  <tr><td colSpan={4} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
+                ) : (
+                  students.map((s, i) => (
+                    <tr key={s.id} className="border-b hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-500">{i + 1}</td>
+                      <td className="px-4 py-3 text-gray-600">{s.admission_number || '-'}</td>
+                      <td className="px-4 py-3 font-medium">{s.first_name} {s.last_name}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${s.gender?.toLowerCase() === 'male' ? 'bg-blue-50 text-blue-600' : s.gender?.toLowerCase() === 'female' ? 'bg-pink-50 text-pink-600' : 'bg-gray-50 text-gray-600'}`}>
+                          {s.gender || '-'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Issue 12: Mark List Table component
+function MarkListTable({ classId, termId, schoolId }: { classId: string; termId: string; schoolId: string | null }) {
+  const [marks, setMarks] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadMarks();
+  }, [classId, termId]);
+
+  const loadMarks = async () => {
+    if (!classId || !termId) return;
+    setLoading(true);
+    try {
+      const [{ data: studentsData }, { data: resultsData }] = await Promise.all([
+        (supabase as any).from('students').select('id, first_name, last_name, admission_number').eq('class_id', classId).eq('is_active', true).order('first_name'),
+        (supabase as any).from('results').select('student_id, subject_id, marks, out_of, percentage, subjects(name)').eq('class_id', classId).eq('term_id', termId),
+      ]);
+      setStudents(studentsData || []);
+      setMarks(resultsData || []);
+      const uniqueSubjects: any[] = [];
+      const seenIds = new Set();
+      (resultsData || []).forEach((r: any) => {
+        if (r.subject_id && !seenIds.has(r.subject_id)) {
+          seenIds.add(r.subject_id);
+          uniqueSubjects.push({ id: r.subject_id, name: r.subjects?.name || r.subject_id });
+        }
+      });
+      setSubjects(uniqueSubjects);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  if (loading) return <div className="flex items-center justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>;
+  if (students.length === 0) return <div className="text-center py-10 text-gray-500">No learners found in this class</div>;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-gray-50">
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase sticky left-0 bg-gray-50">#</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase sticky left-8 bg-gray-50">Name</th>
+            {subjects.map(s => (
+              <th key={s.id} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{s.name}</th>
+            ))}
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Avg %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s, i) => {
+            const studentMarks = marks.filter((m: any) => m.student_id === s.id);
+            const avg = studentMarks.length > 0 ? Math.round(studentMarks.reduce((sum: number, m: any) => sum + (m.percentage ?? (m.out_of > 0 ? Math.round((m.marks / m.out_of) * 100) : 0)), 0) / studentMarks.length) : null;
+            return (
+              <tr key={s.id} className="border-b hover:bg-gray-50">
+                <td className="px-4 py-3 text-gray-500 sticky left-0 bg-white">{i + 1}</td>
+                <td className="px-4 py-3 font-medium sticky left-8 bg-white whitespace-nowrap">{s.first_name} {s.last_name}</td>
+                {subjects.map(sub => {
+                  const mark = studentMarks.find((m: any) => m.subject_id === sub.id);
+                  const pct = mark ? (mark.percentage ?? (mark.out_of > 0 ? Math.round((mark.marks / mark.out_of) * 100) : 0)) : null;
+                  return (
+                    <td key={sub.id} className="px-4 py-3 text-center">
+                      {pct !== null ? (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          pct >= 75 ? 'bg-green-100 text-green-700' :
+                          pct >= 50 ? 'bg-blue-100 text-blue-700' :
+                          pct >= 30 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>{pct}%</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  );
+                })}
+                <td className="px-4 py-3 text-center">
+                  {avg !== null ? (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      avg >= 75 ? 'bg-green-100 text-green-700' :
+                      avg >= 50 ? 'bg-blue-100 text-blue-700' :
+                      avg >= 30 ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>{avg}%</span>
+                  ) : <span className="text-gray-300">—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

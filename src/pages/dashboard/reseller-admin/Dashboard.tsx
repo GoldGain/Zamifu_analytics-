@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { School, Users, DollarSign, RefreshCw, Settings } from 'lucide-react';
+import { School, Users, DollarSign, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router';
 
 interface ResellerStats {
@@ -107,18 +107,6 @@ export default function ResellerDashboard() {
         </button>
       </div>
 
-      {/* Parent-Pay Status Banner */}
-      {stats.parentPayEnabled ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2 text-green-700 text-sm">
-          <DollarSign className="w-4 h-4" />
-          <span><strong>Parent-Pay is ENABLED</strong> for your schools. Parents pay KES 50 to view results or download PDFs.</span>
-        </div>
-      ) : (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-2 text-gray-600 text-sm">
-          <Settings className="w-4 h-4" />
-          <span>Parent-Pay is <strong>disabled</strong> for your account. Contact the platform admin to enable it.</span>
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center h-40">

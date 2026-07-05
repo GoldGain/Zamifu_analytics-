@@ -576,7 +576,9 @@ export function drawStudentInfo(
   termName: string,
   academicYear: string,
   position: string,
-  y: number = 38
+  y: number = 38,
+  // Issue 10: Added assessmentName parameter to show on report card
+  assessmentName?: string
 ) {
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(9);
@@ -584,9 +586,15 @@ export function drawStudentInfo(
   doc.text(`Learner: ${studentName}`, 14, y);
   doc.text(`Adm No: ${admissionNo}`, 14, y + 6);
   doc.text(`Class: ${className}`, 14, y + 12);
+  // Issue 10: Show assessment name if provided, otherwise show term name
   doc.text(`Term: ${termName} ${academicYear}`, 120, y);
-  doc.text(`Position: ${position}`, 120, y + 6);
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 12);
+  if (assessmentName) {
+    doc.text(`Assessment: ${assessmentName}`, 120, y + 6);
+    doc.text(`Position: ${position}`, 120, y + 12);
+  } else {
+    doc.text(`Position: ${position}`, 120, y + 6);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 12);
+  }
 
   doc.setDrawColor(37, 99, 235);
   doc.line(14, y + 17, 196, y + 17);

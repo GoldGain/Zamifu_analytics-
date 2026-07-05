@@ -50,7 +50,8 @@ export type PaymentMethod = 'mpesa' | 'bank' | 'cash' | 'cheque' | 'other';
 export type ResultStatus = 'draft' | 'submitted' | 'approved' | 'published';
 export type CBEGrade = 'EE' | 'ME' | 'AE' | 'BE';
 export type CBESublevel = 'EE1' | 'EE2' | 'ME1' | 'ME2' | 'AE1' | 'AE2' | 'BE1' | 'BE2';
-export type AnnouncementType = 'general' | 'fee_reminder' | 'exam' | 'event' | 'emergency';
+// Issue 8: Added custom_message and group announcement types
+export type AnnouncementType = 'general' | 'fee_reminder' | 'exam' | 'event' | 'emergency' | 'custom_message' | 'class_group' | 'teachers' | 'parents';
 export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday';
 
 export interface Database {

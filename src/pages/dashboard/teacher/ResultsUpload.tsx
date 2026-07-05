@@ -21,6 +21,11 @@ const PRIMARY_SUBJECTS = [
   'Kiswahili Sarufi', 'Mathematics', 'Science and Technology', 'Social Studies',
   'Religious Education', 'Creative Arts', 'Physical and Health Education', 'Indigenous Languages',
 ];
+// Issue 28: Computer Studies only available from Grade 4 onwards
+const PRIMARY_SUBJECTS_GRADE4_PLUS = [
+  ...PRIMARY_SUBJECTS,
+  'Computer Studies',
+];
 
 // Junior School: 9 learning areas as per CBE curriculum
 const JUNIOR_SUBJECTS = [
@@ -41,16 +46,17 @@ const SUBJECTS_ = [
   'Agriculture', 'Computer Studies',
 ];
 
-function getPresetSubjectsForBand(band: string, className: string = ''): string[] {
+function getPresetSubjectsForBand(band: string, className: string = '', gradeLevel?: number | string | null): string[] {
   if (band === '') return SUBJECTS_;
   if (band === 'senior') return SENIOR_SUBJECTS;
   if (band === 'junior') return JUNIOR_SUBJECTS;
-  
   // Distinguish between PP1/PP2 and Primary
   if (/pp1|pp2|pre.?primary/i.test(className)) {
     return PRE_PRIMARY_SUBJECTS;
   }
-  
+  // Issue 28: Computer Studies only from Grade 4 onwards
+  const gl = Number(gradeLevel || 0);
+  if (gl >= 4) return PRIMARY_SUBJECTS_GRADE4_PLUS;
   return PRIMARY_SUBJECTS; // primary (default)
 }
 
@@ -114,8 +120,26 @@ export default function TeacherResultsUpload() {
         supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         (supabase as any).from('school_exams').select('id, name, type, term_id').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
       ]);
-      setClasses(c || []);
-      setSubjects(s || []);
+      // Issue 14: Filter classes and subjects to only those assigned to this teacher
+      let filteredClasses = c || [];
+      let filteredSubjects = s || [];
+      try {
+        const { data: teacherRec } = await (supabase as any).from('teachers').select('id').eq('profile_id', user?.id).maybeSingle();
+        if (teacherRec?.id) {
+          const { data: assignments } = await (supabase as any)
+            .from('teacher_subjects')
+            .select('class_id, subject_id')
+            .eq('teacher_id', teacherRec.id);
+          if (assignments && assignments.length > 0) {
+            const assignedClassIds = [...new Set(assignments.map((a: any) => a.class_id).filter(Boolean))];
+            const assignedSubjectIds = [...new Set(assignments.map((a: any) => a.subject_id).filter(Boolean))];
+            if (assignedClassIds.length > 0) filteredClasses = (c || []).filter((cls: any) => assignedClassIds.includes(cls.id));
+            if (assignedSubjectIds.length > 0) filteredSubjects = (s || []).filter((sub: any) => assignedSubjectIds.includes(sub.id));
+          }
+        }
+      } catch (assignErr) { console.warn('Could not filter teacher assignments:', assignErr); }
+      setClasses(filteredClasses);
+      setSubjects(filteredSubjects);
       setExams(ex || []);
 
       // Auto-create default terms if none exist
@@ -168,7 +192,7 @@ export default function TeacherResultsUpload() {
   const currentClassData = classes.find((c: any) => c.id === selectedClass);
   const currentBand = getSchoolLevelBand(currentClassData);
   const currentGradeLabel = gradeDisplayLabel(currentBand);
-  const presetSubjects = getPresetSubjectsForBand(currentBand, currentClassData?.name || '');
+  const presetSubjects = getPresetSubjectsForBand(currentBand, currentClassData?.name || '', currentClassData?.grade_level ?? currentClassData?.level); // Issue 28
 
   // DB subjects filtered to match the class curriculum
   const dbSubjectsFiltered = subjects.filter((s: any) => {
@@ -249,12 +273,38 @@ export default function TeacherResultsUpload() {
 
   // ── Manual Entry helpers ─────────────────────────────────────────────────────
   const updateManualMark = (idx: number, value: string) => {
+    // Issue 24: Prevent marks above max
+    const numVal = parseFloat(value);
+    if (value !== '' && !isNaN(numVal) && numVal > outOf) {
+      toast.error(`Mark cannot exceed maximum of ${outOf}`);
+      return;
+    }
     setManualRows(prev => {
       const updated = [...prev];
       updated[idx] = { ...updated[idx], marks: value };
       return updated;
     });
     setManualPreviewReady(false);
+  };
+
+  // Issue 23: Excel-like keyboard navigation for marks cells
+  const handleMarkKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
+    const total = manualRows.length;
+    if (e.key === 'ArrowDown' || e.key === 'Enter') {
+      e.preventDefault();
+      const nextIdx = (idx + 1) % total;
+      const nextInput = document.querySelector<HTMLInputElement>(`[data-mark-idx="${nextIdx}"]`);
+      nextInput?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIdx = (idx - 1 + total) % total;
+      const prevInput = document.querySelector<HTMLInputElement>(`[data-mark-idx="${prevIdx}"]`);
+      prevInput?.focus();
+    } else if (e.key === 'Tab') {
+      const nextIdx = e.shiftKey ? (idx - 1 + total) % total : (idx + 1) % total;
+      const nextInput = document.querySelector<HTMLInputElement>(`[data-mark-idx="${nextIdx}"]`);
+      if (nextInput) { e.preventDefault(); nextInput.focus(); }
+    }
   };
 
   const calculateManualGrades = () => {
@@ -791,7 +841,7 @@ export default function TeacherResultsUpload() {
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">#</th>
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Student Name</th>
+                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learner Name</th> {/* Issue 26 */}
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Adm #</th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks (out of {outOf})</th>
                         {manualPreviewReady && (
@@ -819,8 +869,11 @@ export default function TeacherResultsUpload() {
                                 max={outOf}
                                 value={row.marks}
                                 onChange={e => updateManualMark(idx, e.target.value)}
+                                onKeyDown={e => handleMarkKeyDown(e, idx)}
+                                data-mark-idx={idx}
                                 placeholder={`0 - ${outOf}`}
                                 className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-center"
+                                title="Use Arrow Up/Down or Enter to navigate between students"
                               />
                             </td>
                             {manualPreviewReady && previewRow && (
@@ -933,7 +986,7 @@ export default function TeacherResultsUpload() {
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Rank</th>
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Student</th>
+                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learner</th> {/* Issue 26 */}
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks</th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Out Of</th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>

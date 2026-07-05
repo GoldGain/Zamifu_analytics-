@@ -34,6 +34,9 @@ const EXAM_TYPES = [
   'Holiday Assignment',
   'Weekly Assessment',
   'Revision Test',
+  // Issue 5: Added Formative and Summative assessment types
+  'Formative Assessment',
+  'Summative Assessment',
   'Custom',
 ];
 

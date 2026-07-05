@@ -157,11 +157,17 @@ export default function SchoolAdminResults() {
     setLoading(false);
   };
 
-  const filtered = results.filter(r =>
-    r.students?.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.students?.last_name?.toLowerCase().includes(search.toLowerCase()) ||
-    r.subjects?.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = results.filter(r => {
+    // Issue 4: Filter by selected class and term so the table only shows relevant results
+    if (selectedClass && r.class_id !== selectedClass) return false;
+    if (selectedTerm && r.term_id !== selectedTerm) return false;
+    if (!search) return true;
+    return (
+      r.students?.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+      r.students?.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+      r.subjects?.name?.toLowerCase().includes(search.toLowerCase())
+    );
+  });
 
   const gradeColor = (grade: string) => {
     if (grade?.startsWith('EE')) return 'bg-green-100 text-green-700';
@@ -176,7 +182,7 @@ export default function SchoolAdminResults() {
     try {
       const { error: updateError } = await supabaseUntyped.from('results').update({ status: 'published', published_at: new Date().toISOString() }).eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
       if (updateError) throw updateError;
-      const { data: classStudents } = await supabaseUntyped.from('students').select('id, profile_id, first_name, last_name').eq('class_id', selectedClass).eq('is_active', true);
+      const { data: classStudents } = await supabaseUntyped.from('students').select('id, profile_id, first_name, last_name, parent_phone, parent_name').eq('class_id', selectedClass).eq('is_active', true);
       if (!classStudents) throw new Error('Failed to fetch learners');
       const studentIds = classStudents.map(s => s.id);
       const { data: parentRelations } = await supabaseUntyped.from('parent_student_links').select('parent_id').in('student_id', studentIds);
@@ -196,6 +202,34 @@ export default function SchoolAdminResults() {
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
         await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': supabaseAnonKey }, body: JSON.stringify({ userIds: allUserIds, title: notifTitle, message: notifMessage }) });
       } catch (pushErr) { console.warn('Push notification delivery warning:', pushErr); }
+      // Issue 13: Send SMS to parents when results are published
+      try {
+        const { sendSMS, generateResultsSMS } = await import('@/lib/sms');
+        let smsSentCount = 0;
+        for (const student of classStudents) {
+          if (student.parent_phone) {
+            const { data: studentResults } = await supabaseUntyped
+              .from('results')
+              .select('marks, out_of, percentage')
+              .eq('student_id', student.id)
+              .eq('term_id', selectedTerm);
+            const avgPct = studentResults && studentResults.length > 0
+              ? Math.round(studentResults.reduce((s: number, r: any) => s + (r.percentage ?? (r.out_of > 0 ? Math.round((r.marks / r.out_of) * 100) : 0)), 0) / studentResults.length)
+              : null;
+            if (avgPct !== null) {
+              const smsMsg = generateResultsSMS(
+                student.parent_name || 'Parent',
+                `${student.first_name} ${student.last_name}`,
+                `${termData?.name || ''} ${termData?.academic_year || ''}`,
+                String(avgPct)
+              );
+              const smsResult = await sendSMS(student.parent_phone, smsMsg);
+              if (smsResult.success) smsSentCount++;
+            }
+          }
+        }
+        if (smsSentCount > 0) toast.success(`SMS sent to ${smsSentCount} parent(s)!`);
+      } catch (smsErr) { console.warn('SMS notification warning:', smsErr); }
       toast.success(`Results published! ${allUserIds.length} users notified.`);
       fetchAll();
     } catch (err: any) { toast.error('Failed to publish results: ' + err.message); console.error(err); }

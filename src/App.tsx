@@ -80,6 +80,7 @@ import ParentChatbot from '@/pages/dashboard/parent/Chatbot';
 import ParentChildReportCard from '@/pages/dashboard/parent/ChildReportCard';
 import StudentReportCard from '@/pages/dashboard/student/ReportCard';
 import StudentChangePassword from '@/pages/dashboard/student/ChangePassword';
+import StudentPortfolio from '@/pages/dashboard/student/Portfolio'; // Issue 22
 import SchoolAdminChangePassword from '@/pages/dashboard/school-admin/ChangePassword';
 import TeacherChangePassword from '@/pages/dashboard/teacher/ChangePassword';
 import ParentChangePassword from '@/pages/dashboard/parent/ChangePassword';
@@ -213,6 +214,7 @@ function AppRoutes() {
       <Route path="/student/homework" element={<ProtectedRoute allowedRoles={['student']}><StudentHomework /></ProtectedRoute>} />
       <Route path="/student/report-card" element={<ProtectedRoute allowedRoles={['student']}><StudentReportCard /></ProtectedRoute>} />
       <Route path="/student/change-password" element={<ProtectedRoute allowedRoles={['student']}><StudentChangePassword /></ProtectedRoute>} />
+      <Route path="/student/portfolio" element={<ProtectedRoute allowedRoles={['student']}><StudentPortfolio /></ProtectedRoute>} /> {/* Issue 22 */}
 
       {/* Parent routes */}
       <Route path="/parent" element={<ProtectedRoute allowedRoles={['parent']}><ParentDashboard /></ProtectedRoute>} />

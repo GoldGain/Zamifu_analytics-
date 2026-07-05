@@ -21,6 +21,9 @@ export interface TimetableConfig {
   second_break_end: string;
   lunch_start: string;
   lunch_end: string;
+  // Issue 3: Support explicit activities start/end times
+  activities_start?: string;
+  activities_end?: string;
   activities?: Record<string, string>;
 }
 
@@ -30,18 +33,15 @@ export interface TimetableConfig {
  */
 const timeToMinutes = (time: string | null | undefined): number => {
   if (!time || typeof time !== 'string') {
-    console.warn(`timeToMinutes received invalid time: ${time}, returning 0`);
     return 0;
   }
   const parts = time.split(':');
   if (parts.length < 2) {
-    console.warn(`timeToMinutes received malformed time: ${time}, returning 0`);
     return 0;
   }
   const h = Number(parts[0]);
   const m = Number(parts[1]);
   if (isNaN(h) || isNaN(m)) {
-    console.warn(`timeToMinutes received non-numeric time: ${time}, returning 0`);
     return 0;
   }
   return h * 60 + m;
@@ -79,14 +79,6 @@ export function generateSlots(config: TimetableConfig): TimetableSlot[] {
   const secondBreakEnd = safeString(config?.second_break_end, '12:20');
   const lunchStart = safeString(config?.lunch_start, '12:50');
   const lunchEnd = safeString(config?.lunch_end, '13:30');
-
-  console.log('generateSlots called with config:', {
-    duration,
-    schoolStart,
-    firstBreakStart, firstBreakEnd,
-    secondBreakStart, secondBreakEnd,
-    lunchStart, lunchEnd
-  });
 
   let currentMinutes = timeToMinutes(schoolStart);
   const slots: TimetableSlot[] = [];
@@ -201,17 +193,25 @@ export function generateSlots(config: TimetableConfig): TimetableSlot[] {
   });
   currentMinutes += duration;
 
-  // ACTIVITIES (after lesson 8) — use school_end if available for flexible end times
-  const schoolEndMinutes = config?.school_end ? timeToMinutes(config.school_end) : currentMinutes + duration;
+  // Issue 3: ACTIVITIES — use activities_start/activities_end if configured, else fall back to school_end
+  // This ensures the timetable ends at the correct configured time, not a hardcoded 3:20 PM
+  const activitiesStartTime = config?.activities_start
+    ? safeString(config.activities_start, minutesToTime(currentMinutes))
+    : minutesToTime(currentMinutes);
+  
+  const activitiesEndTime = config?.activities_end
+    ? safeString(config.activities_end, '')
+    : config?.school_end
+    ? safeString(config.school_end, minutesToTime(currentMinutes + 40))
+    : minutesToTime(currentMinutes + 40);
+
   slots.push({
     slot_order: 12,
     label: 'ACTIVITIES',
     slot_type: 'activities',
-    start_time: minutesToTime(currentMinutes),
-    end_time: minutesToTime(Math.max(currentMinutes + duration, schoolEndMinutes)),
+    start_time: activitiesStartTime,
+    end_time: activitiesEndTime || minutesToTime(currentMinutes + 40),
   });
-
-  console.log('Generated slots:', slots.map(s => `${s.slot_order}: ${s.label} (${s.start_time}-${s.end_time})`));
 
   return slots;
 }

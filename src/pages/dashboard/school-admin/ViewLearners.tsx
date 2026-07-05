@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Users, Loader2, ChevronDown, ChevronUp, Search, Download } from 'lucide-react';
+import { Users, Loader2, ChevronDown, ChevronUp, Search, Download, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Student {
@@ -31,6 +31,8 @@ export default function ViewLearners() {
   const [loading, setLoading] = useState(true);
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // Issue 11: Add grade/level filter
+  const [selectedLevel, setSelectedLevel] = useState<string>('');
 
   useEffect(() => {
     fetchLearners();
@@ -41,7 +43,6 @@ export default function ViewLearners() {
     try {
       const schoolId = user?.schoolId;
       
-      // Fetch all classes
       const { data: classesData } = await supabaseUntyped
         .from('classes')
         .select('id, name, level, stream')
@@ -49,7 +50,6 @@ export default function ViewLearners() {
         .eq('is_active', true)
         .order('level');
 
-      // Fetch all students for this school
       const { data: studentsData } = await supabaseUntyped
         .from('students')
         .select('id, first_name, last_name, admission_number, gender, date_of_birth, parent_name, parent_phone, class_id')
@@ -60,9 +60,9 @@ export default function ViewLearners() {
       const groups: ClassGroup[] = [];
       
       (classesData || []).forEach((cls: any) => {
-        const classStudents = (studentsData || []).filter((s: Student) => s.class_id === cls.id);
-        const totalBoys = classStudents.filter((s: Student) => s.gender?.toLowerCase() === 'male').length;
-        const totalGirls = classStudents.filter((s: Student) => s.gender?.toLowerCase() === 'female').length;
+        const classStudents = (studentsData || []).filter((s: any) => s.class_id === cls.id);
+        const totalBoys = classStudents.filter((s: any) => s.gender?.toLowerCase() === 'male').length;
+        const totalGirls = classStudents.filter((s: any) => s.gender?.toLowerCase() === 'female').length;
         
         groups.push({
           classId: cls.id,
@@ -75,7 +75,6 @@ export default function ViewLearners() {
         });
       });
 
-      // Sort by level
       groups.sort((a, b) => (a.level || 0) - (b.level || 0));
       setClassGroups(groups);
     } catch (err: any) {
@@ -88,14 +87,23 @@ export default function ViewLearners() {
     window.print();
   };
 
-  const filteredGroups = classGroups.map(group => ({
-    ...group,
-    students: group.students.filter(s => 
-      `${s.first_name} ${s.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
-      (s.admission_number || '').toLowerCase().includes(search.toLowerCase()) ||
-      (s.parent_name || '').toLowerCase().includes(search.toLowerCase())
-    ),
-  })).filter(group => group.students.length > 0 || !search);
+  // Issue 11: Get unique levels for filter dropdown
+  const uniqueLevels = Array.from(new Set(classGroups.map(g => g.level).filter(l => l !== null))).sort((a, b) => (a as number) - (b as number));
+
+  const filteredGroups = classGroups
+    .filter(group => {
+      // Issue 11: Filter by selected level/grade
+      if (selectedLevel && String(group.level) !== selectedLevel) return false;
+      return true;
+    })
+    .map(group => ({
+      ...group,
+      students: group.students.filter(s => 
+        `${s.first_name} ${s.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
+        (s.admission_number || '').toLowerCase().includes(search.toLowerCase()) ||
+        (s.parent_name || '').toLowerCase().includes(search.toLowerCase())
+      ),
+    })).filter(group => group.students.length > 0 || !search);
 
   const totalStudents = classGroups.reduce((sum, g) => sum + g.students.length, 0);
   const totalBoys = classGroups.reduce((sum, g) => sum + g.totalBoys, 0);
@@ -105,8 +113,8 @@ export default function ViewLearners() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#111111]">View Learners by Class</h1>
-          <p className="text-sm text-[#666666]">View all learners organized by their class</p>
+          <h1 className="text-2xl font-bold text-[#111111]">View Learners by Grade</h1>
+          <p className="text-sm text-[#666666]">View all learners organized by grade and class</p>
         </div>
         <button
           onClick={handlePrint}
@@ -136,16 +144,32 @@ export default function ViewLearners() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search learners by name, admission number, or parent name..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full pl-11 pr-4 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
-        />
+      {/* Search and Grade Filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search learners by name, admission number, or parent name..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-11 pr-4 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+          />
+        </div>
+        {/* Issue 11: Grade/Level filter dropdown */}
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <select
+            value={selectedLevel}
+            onChange={e => setSelectedLevel(e.target.value)}
+            className="pl-9 pr-4 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB] appearance-none min-w-[160px]"
+          >
+            <option value="">All Grades</option>
+            {uniqueLevels.map(level => (
+              <option key={level} value={String(level)}>Grade {level}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Class Groups */}
@@ -174,7 +198,7 @@ export default function ViewLearners() {
                     <div className="text-left">
                       <h3 className="font-semibold text-gray-900">{group.className} {group.stream && `(${group.stream})`}</h3>
                       <p className="text-xs text-gray-500">
-                        Level {group.level || '-'} • {group.students.length} learners
+                        {group.level ? `Grade ${group.level}` : 'Level -'} • {group.students.length} learners
                         {group.totalBoys > 0 && ` • ${group.totalBoys} boys`}
                         {group.totalGirls > 0 && ` • ${group.totalGirls} girls`}
                       </p>

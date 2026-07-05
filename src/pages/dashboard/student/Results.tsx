@@ -303,7 +303,7 @@ export default function StudentResults() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Subject</th>
+                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Learning Area</th> {/* Issue 26 */}
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Marks</th>
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">%</th>
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Grade</th>

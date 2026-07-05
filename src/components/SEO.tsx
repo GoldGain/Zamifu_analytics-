@@ -52,9 +52,11 @@ export default function SEO({
         el = document.createElement('meta');
         // Determine attribute type from selector
         if (selector.includes('property=')) {
-          el.setAttribute('property', selector.match(/property="([^"]+)")?.[1] || '');
+          const propMatch = selector.match(/property="([^"]+)"/);
+          el.setAttribute('property', propMatch ? propMatch[1] : '');
         } else if (selector.includes('name=')) {
-          el.setAttribute('name', selector.match(/name="([^"]+)")?.[1] || '');
+          const nameMatch = selector.match(/name="([^"]+)"/);
+          el.setAttribute('name', nameMatch ? nameMatch[1] : '');
         }
         document.head.appendChild(el);
       }

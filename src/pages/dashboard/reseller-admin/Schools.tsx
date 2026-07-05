@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Edit, RefreshCw, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Plus, Edit, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface SchoolForm {
@@ -12,15 +12,11 @@ interface SchoolForm {
   principal_name: string;
   phone: string;
   email: string;
-  parent_pay_enabled: boolean;
-  view_results_fee: number;
-  pdf_report_fee: number;
 }
 
 const defaultForm: SchoolForm = {
-      name: '', code: '', county: '', curriculum: 'CBE',
+  name: '', code: '', county: '', curriculum: 'CBE',
   principal_name: '', phone: '', email: '',
-  parent_pay_enabled: false, view_results_fee: 50, pdf_report_fee: 50,
 };
 
 export default function ResellerSchools() {
@@ -28,11 +24,14 @@ export default function ResellerSchools() {
   const [schools, setSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [resellerId, setResellerId] = useState<string | null>(null);
-  const [resellerPayEnabled, setResellerPayEnabled] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<SchoolForm>(defaultForm);
   const [saving, setSaving] = useState(false);
+  // Issue 1: Delete state
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteName, setConfirmDeleteName] = useState('');
 
   useEffect(() => {
     if (user) fetchData();
@@ -45,7 +44,6 @@ export default function ResellerSchools() {
     
     if (resellerData) {
       setResellerId(resellerData.id);
-      setResellerPayEnabled(resellerData.parent_pay_enabled);
       const { data: schoolsData } = await supabase
         .from('schools').select('*').eq('reseller_id', resellerData.id).order('created_at', { ascending: false });
       setSchools(schoolsData || []);
@@ -67,9 +65,6 @@ export default function ResellerSchools() {
         phone: form.phone,
         email: form.email,
         reseller_id: resellerId,
-        parent_pay_enabled: resellerPayEnabled ? form.parent_pay_enabled : false,
-        view_results_fee: form.view_results_fee,
-        pdf_report_fee: form.pdf_report_fee,
         status: 'active',
         subscription_plan: 'basic',
       };
@@ -95,12 +90,40 @@ export default function ResellerSchools() {
     setForm({
       name: s.name, code: s.code, county: s.county || '', curriculum: (Array.isArray(s.curriculum) ? s.curriculum[0] : s.curriculum) || 'CBE',
       principal_name: s.principal_name || '', phone: s.phone || '', email: s.email || '',
-      parent_pay_enabled: s.parent_pay_enabled || false,
-      view_results_fee: s.view_results_fee || 50,
-      pdf_report_fee: s.pdf_report_fee || 50,
     });
     setEditingId(s.id);
     setShowForm(true);
+  };
+
+  // Issue 1: Handle delete with confirmation
+  const handleDeleteClick = (s: any) => {
+    setConfirmDeleteId(s.id);
+    setConfirmDeleteName(s.name);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!confirmDeleteId) return;
+    setDeletingId(confirmDeleteId);
+    setConfirmDeleteId(null);
+    try {
+      // Delete related data first to avoid FK constraint errors
+      await supabase.from('students').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('teachers').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('classes').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('subjects').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('terms').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('results').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('announcements').delete().eq('school_id', confirmDeleteId);
+      // Delete the school itself
+      const { error } = await supabase.from('schools').delete().eq('id', confirmDeleteId);
+      if (error) throw error;
+      toast.success(`School "${confirmDeleteName}" deleted successfully`);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete school');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -120,6 +143,32 @@ export default function ResellerSchools() {
           </button>
         </div>
       </div>
+
+      {/* Issue 1: Delete Confirmation Dialog */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete School</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              Are you sure you want to delete <strong>"{confirmDeleteName}"</strong>? This will permanently remove the school and all its associated data (students, teachers, classes, results). This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
+              >
+                Delete School
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Form */}
       {showForm && (
@@ -163,34 +212,6 @@ export default function ResellerSchools() {
               <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-
-            {/* Parent-Pay settings (only if reseller has it enabled) */}
-            {resellerPayEnabled && (
-              <>
-                <div className="md:col-span-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={form.parent_pay_enabled} onChange={e => setForm({...form, parent_pay_enabled: e.target.checked})}
-                      className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-gray-700">Enable Parent-Pay for this school</span>
-                  </label>
-                </div>
-                {form.parent_pay_enabled && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">View Results Fee (KES)</label>
-                      <input type="number" value={form.view_results_fee} onChange={e => setForm({...form, view_results_fee: parseInt(e.target.value)})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">PDF Report Fee (KES)</label>
-                      <input type="number" value={form.pdf_report_fee} onChange={e => setForm({...form, pdf_report_fee: parseInt(e.target.value)})}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-
             <div className="md:col-span-2 flex gap-3 justify-end">
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
               <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
@@ -218,7 +239,6 @@ export default function ResellerSchools() {
                   <th className="px-4 py-3">Code</th>
                   <th className="px-4 py-3">Curriculum</th>
                   <th className="px-4 py-3">County</th>
-                  <th className="px-4 py-3">Parent-Pay</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
@@ -231,18 +251,22 @@ export default function ResellerSchools() {
                     <td className="px-4 py-3">{s.curriculum === 'CBE' ? 'CBE' : (s.curriculum || 'CBE')}</td>
                     <td className="px-4 py-3">{s.county || '—'}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.parent_pay_enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {s.parent_pay_enabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {s.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => handleEdit(s)} className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600">
+                    <td className="px-4 py-3 flex items-center gap-1">
+                      <button onClick={() => handleEdit(s)} className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600" title="Edit school">
                         <Edit className="w-4 h-4" />
+                      </button>
+                      {/* Issue 1: Delete button */}
+                      <button
+                        onClick={() => handleDeleteClick(s)}
+                        disabled={deletingId === s.id}
+                        className="p-1.5 hover:bg-red-50 rounded-lg text-red-500 disabled:opacity-50"
+                        title="Delete school"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>

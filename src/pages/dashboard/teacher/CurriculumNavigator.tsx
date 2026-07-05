@@ -1267,12 +1267,150 @@ Respond ONLY with a valid JSON array (no markdown):
       )}
 
       {!selectedSubject && (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <Brain className="w-14 h-14 text-blue-200 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-600 mb-2">KICD Curriculum Intelligence</h3>
-          <p className="text-gray-400 text-sm max-w-md mx-auto">
-            Select a Grade and Subject above to explore the CBE curriculum tree, generate lesson plans, schemes of work, and AI-powered exams.
-          </p>
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <Brain className="w-14 h-14 text-blue-200 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-600 mb-2">KICD Curriculum Intelligence</h3>
+            <p className="text-gray-400 text-sm max-w-md mx-auto">
+              Select a Grade and Subject above to explore the CBE curriculum tree, generate lesson plans, schemes of work, and AI-powered exams.
+            </p>
+          </div>
+          {/* Issue 20: KICD Curriculum Design Upload */}
+          <KICDDesignUploadPanel schoolId={user?.schoolId || ''} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Issue 20: KICD Curriculum Design Upload Panel
+function KICDDesignUploadPanel({ schoolId }: { schoolId: string }) {
+  const [designs, setDesigns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ title: '', grade: '', subject: '', description: '' });
+  const [file, setFile] = useState<File | null>(null);
+  const { user } = useAuth();
+
+  useEffect(() => { fetchDesigns(); }, []);
+
+  const fetchDesigns = async () => {
+    setLoading(true);
+    const { data } = await supabaseUntyped.from('kicd_curriculum_designs').select('*').eq('school_id', schoolId).order('created_at', { ascending: false });
+    setDesigns(data || []);
+    setLoading(false);
+  };
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file && !form.description) { toast.error('Please add a file or description'); return; }
+    setUploading(true);
+    try {
+      let fileUrl = null;
+      if (file) {
+        const { supabase } = await import('@/lib/supabase/client');
+        const ext = file.name.split('.').pop();
+        const path = `kicd_designs/${schoolId}/${Date.now()}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('school-files').upload(path, file);
+        if (upErr) throw upErr;
+        const { data: { publicUrl } } = supabase.storage.from('school-files').getPublicUrl(path);
+        fileUrl = publicUrl;
+      }
+      const { error } = await supabaseUntyped.from('kicd_curriculum_designs').insert({
+        school_id: schoolId,
+        uploaded_by: user?.id,
+        title: form.title,
+        grade: form.grade,
+        subject: form.subject,
+        description: form.description,
+        file_url: fileUrl,
+        file_type: file ? file.name.split('.').pop() : null,
+      });
+      if (error) throw error;
+      toast.success('Curriculum design uploaded!');
+      setShowAdd(false);
+      setForm({ title: '', grade: '', subject: '', description: '' });
+      setFile(null);
+      fetchDesigns();
+    } catch (err: any) {
+      toast.error('Upload failed: ' + err.message);
+    }
+    setUploading(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this curriculum design?')) return;
+    await supabaseUntyped.from('kicd_curriculum_designs').delete().eq('id', id);
+    toast.success('Deleted');
+    fetchDesigns();
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+            <FileText className="w-5 h-5 text-green-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">KICD Curriculum Designs</h3>
+            <p className="text-xs text-gray-500">Upload and view KICD curriculum design documents</p>
+          </div>
+        </div>
+        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
+          <Upload className="w-4 h-4" /> Upload Design
+        </button>
+      </div>
+
+      {showAdd && (
+        <form onSubmit={handleUpload} className="border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input placeholder="Title *" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" required />
+            <input placeholder="Grade (e.g. Grade 4)" value={form.grade} onChange={e => setForm({ ...form, grade: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
+            <input placeholder="Subject" value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} className="px-3 py-2 border rounded-lg text-sm" />
+          </div>
+          <textarea placeholder="Description / notes" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} className="w-full px-3 py-2 border rounded-lg text-sm" rows={2} />
+          <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="w-full text-sm" accept=".pdf,.doc,.docx,.ppt,.pptx" />
+          <div className="flex gap-3">
+            <button type="submit" disabled={uploading} className="bg-green-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {uploading ? 'Uploading...' : 'Upload'}
+            </button>
+            <button type="button" onClick={() => setShowAdd(false)} className="border px-5 py-2 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div className="text-center py-6"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></div>
+      ) : designs.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">No KICD curriculum designs uploaded yet. Upload PDF or document files to share with teachers.</p>
+      ) : (
+        <div className="grid gap-3">
+          {designs.map((d) => (
+            <div key={d.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <FileText className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{d.title}</p>
+                  <p className="text-xs text-gray-500">{[d.grade, d.subject].filter(Boolean).join(' · ')}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {d.file_url && (
+                  <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600">
+                    <Download className="w-4 h-4" />
+                  </a>
+                )}
+                <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

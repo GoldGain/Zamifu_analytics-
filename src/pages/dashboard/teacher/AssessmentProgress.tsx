@@ -207,10 +207,19 @@ export default function AssessmentProgress() {
                     <p className="text-sm font-bold text-[#111111]">{p.percentComplete}%</p>
                     <p className="text-xs text-gray-500">{p.enteredSubjects}/{p.totalSubjects} learning areas</p>
                   </div>
+                  {/* Issue 25: Clear status badge showing Completed / In Progress / Not Started */}
                   {p.percentComplete === 100 ? (
-                    <CheckCircle className="w-6 h-6 text-green-500" />
+                    <span className="flex items-center gap-1 text-xs font-bold bg-green-100 text-green-700 px-2.5 py-1 rounded-full border border-green-200 whitespace-nowrap">
+                      <CheckCircle className="w-3.5 h-3.5" /> Completed
+                    </span>
+                  ) : p.percentComplete > 0 ? (
+                    <span className="flex items-center gap-1 text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full border border-orange-200 whitespace-nowrap">
+                      <AlertCircle className="w-3.5 h-3.5" /> In Progress
+                    </span>
                   ) : (
-                    <AlertCircle className="w-6 h-6 text-orange-500" />
+                    <span className="flex items-center gap-1 text-xs font-bold bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full border border-gray-200 whitespace-nowrap">
+                      <AlertCircle className="w-3.5 h-3.5" /> Not Started
+                    </span>
                   )}
                 </div>
               </button>
