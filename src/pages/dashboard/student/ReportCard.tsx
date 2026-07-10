@@ -70,9 +70,7 @@ export default function StudentReportCard() {
           setSelectedTerm(termsData[0].id);
         }
 
-        // Fetch school info (logo, principal, etc.)
         await fetchSchoolInfo(studentData.school_id);
-        // Fetch signatures
         await fetchSignatures(studentData.school_id, studentData.classes?.class_teacher_id);
       }
     } catch (err) {
@@ -98,7 +96,6 @@ export default function StudentReportCard() {
           phone: data.phone || '',
           email: data.email || '',
         });
-        // Also set principal signature from school data
         setSignatures(prev => ({
           ...prev,
           principal_signature_url: data.principal_signature_url || null,
@@ -107,7 +104,6 @@ export default function StudentReportCard() {
         setSchoolInfo({ name: 'School' });
       }
     } catch (err: any) {
-      // If column doesn't exist, fetch without it
       try {
         const { data } = await supabaseUntyped
           .from('schools')
@@ -134,7 +130,6 @@ export default function StudentReportCard() {
   };
 
   const fetchSignatures = async (schoolId: string, classTeacherId?: string) => {
-    // Principal signature — column now exists after migration
     let principalSigUrl: string | null = null;
     try {
       const { data: schoolSig } = await supabaseUntyped
@@ -143,9 +138,7 @@ export default function StudentReportCard() {
         .eq('id', schoolId)
         .maybeSingle();
       principalSigUrl = schoolSig?.principal_signature_url || null;
-    } catch {
-      // Column may not exist on older deployments — ignore
-    }
+    } catch {}
 
     let teacherSigUrl: string | null = null;
     if (classTeacherId) {
@@ -156,9 +149,7 @@ export default function StudentReportCard() {
           .eq('id', classTeacherId)
           .maybeSingle();
         teacherSigUrl = teacherSig?.signature_url || null;
-      } catch {
-        // Ignore errors fetching teacher signature
-      }
+      } catch {}
     }
 
     setSignatures(prev => ({
@@ -179,13 +170,12 @@ export default function StudentReportCard() {
     if (!student || !selectedTerm) return;
     const { data } = await supabaseUntyped
       .from('results')
-      .select('*, subjects(name), terms(name, academic_year)')
+      .select('*, subjects(name), terms(name, academic_year), exams(name)')
       .eq('student_id', student.id)
       .eq('term_id', selectedTerm)
       .order('subjects(name)');
     setResults(data || []);
     await fetchPreviousAvg();
-    // Fetch class-wide best per subject
     const { data: classResults } = await supabaseUntyped
       .from('results')
       .select('*, students(id, first_name, last_name), subjects(name)')
@@ -285,7 +275,6 @@ export default function StudentReportCard() {
       const position = results[0]?.class_position || results[0]?.position || null;
       const positionStr = formatPosition(position, totalStudents || 0);
 
-      // AI comment — subject-specific with all scores
       const subjectScores = results.map(r => ({
         name: r.subjects?.name || 'Unknown',
         percentage: getPercentage(r),
@@ -300,18 +289,13 @@ export default function StudentReportCard() {
         position, totalStudents || 0, isNew, classDataForGrading, subjectScores
       );
 
-      // Header with logo
       await drawReportHeader(doc, schoolInfo);
 
-      // Student photo (top-right corner) — bigger (35x35mm ~132px)
       const photoUrl = student.photo_url || null;
       if (photoUrl) {
-        try {
-          await addStudentPhotoToPDF(doc, photoUrl, 163, 30, 35);
-        } catch {}
+        try { await addStudentPhotoToPDF(doc, photoUrl, 163, 30, 35); } catch {}
       }
 
-      // Student info
       drawStudentInfo(
         doc,
         studentFullName,
@@ -322,33 +306,27 @@ export default function StudentReportCard() {
         positionStr,
       );
 
-      // Results table
+      // Show assessment name if available
+      const assessmentName = results[0]?.exams?.name || '';
+      if (assessmentName) {
+        doc.setFontSize(9);
+        doc.setTextColor(37, 99, 235);
+        doc.text(`Assessment: ${assessmentName}`, 120, 70);
+      }
+
       const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
-
-      // Summary
       const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
-
-      // Deviation
       const devEndY = drawDeviation(doc, deviation, previousAvg, summaryEndY);
-
-      // Performance trend graph
       let trendEndY = devEndY;
       if (trendData.length >= 2) {
         drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band, is);
         trendEndY = devEndY + 55;
       }
-
-      // Achievements
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
-
-      // AI Comment
       const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
-
-      // Signatures
       addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
 
-      // Footer
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
       doc.text('Zamifu Analytics School Management System | Support: tutorsultimate@gmail.com', 105, 285, { align: 'center' });
@@ -367,7 +345,7 @@ export default function StudentReportCard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#111111]">Report Card</h1>
+        <h1 className="text-2xl font-bold text-[#111111]">Learner Report Card</h1>
         <p className="text-sm text-[#666666]">Download your official academic report card</p>
       </div>
 
@@ -389,7 +367,7 @@ export default function StudentReportCard() {
               <p className="text-sm text-[#666666]">Assessment #: {student.admission_number}</p>
               <p className="text-sm text-[#666666]">Class: {student.classes?.name}</p>
             </div>
-{zoomPhoto && <PhotoZoomModal photoUrl={zoomPhoto} altText={student.first_name} onClose={() => setZoomPhoto(null)} />}
+            {zoomPhoto && <PhotoZoomModal photoUrl={zoomPhoto} altText={student.first_name} onClose={() => setZoomPhoto(null)} />}
             {student.photo_url ? (
               <img
                 src={student.photo_url}
@@ -422,7 +400,14 @@ export default function StudentReportCard() {
       {results.length > 0 && (
         <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-[#111111]">Results Preview ({results.length} subjects)</h3>
+            <h3 className="font-semibold text-[#111111]">
+              Results Preview ({results.length} subjects)
+              {results[0]?.exams?.name && (
+                <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                  {results[0]?.exams?.name}
+                </span>
+              )}
+            </h3>
             <div className="flex gap-2">
               <button
                 onClick={generatePDF}
@@ -470,7 +455,7 @@ export default function StudentReportCard() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learning Area</th> {/* Issue 27 */}
+                  <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learning Area</th>
                   <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks</th>
                   <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>
                   <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{is ? ' Grade' : 'CBE Grade'}</th>
