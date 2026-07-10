@@ -96,7 +96,6 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
   ],
-  // Issue 29: Deduplicated teacher nav items - removed duplicates
   'teacher': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
     { label: 'Grade Dashboard', icon: <Users className="w-5 h-5" />, path: '/teacher/class-dashboard' },
@@ -108,7 +107,6 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'View My Marks', icon: <Eye className="w-5 h-5" />, path: '/teacher/view-marks' },
     { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/assessment-progress' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/teacher/attendance' },
-    // Issue 17: Upload Papers moved under Homework
     { label: 'Homework & Papers', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/homework' },
     { label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/analytics' },
     { label: 'My Learners', icon: <Users className="w-5 h-5" />, path: '/teacher/students' },
@@ -126,7 +124,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Homework', icon: <BookOpen className="w-5 h-5" />, path: '/student/homework' },
     { label: 'Papers', icon: <FileText className="w-5 h-5" />, path: '/student/papers' },
     { label: 'Report Card', icon: <FileText className="w-5 h-5" />, path: '/student/report-card' },
-    { label: 'My Portfolio', icon: <Award className="w-5 h-5" />, path: '/student/portfolio' }, // Issue 22
+    { label: 'My Portfolio', icon: <Award className="w-5 h-5" />, path: '/student/portfolio' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/student/change-password' },
   ],
   'parent': [
@@ -143,7 +141,6 @@ const navConfig: Record<string, NavItem[]> = {
   ],
 };
 
-// Issue 15: Role-to-dashboard path mapping for multi-role switching
 const ROLE_DASHBOARDS: Record<string, string> = {
   'school_admin': '/school-admin',
   'teacher': '/teacher',
@@ -161,16 +158,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Issue 15: Multi-role support — detect if this teacher is also a school_admin
   const [additionalRoles, setAdditionalRoles] = useState<string[]>([]);
-  // Issue 29: Teacher role flags (class teacher, DoS)
   const [isClassTeacher, setIsClassTeacher] = useState(false);
   const [isDoS, setIsDoS] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
     const checkRoles = async () => {
-      // Issue 15: Check if teacher also has school_admin role via profiles or a secondary_roles field
       try {
         const { data: profileData } = await (supabase as any)
           .from('profiles')
@@ -205,7 +199,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const roleKey = user?.role?.replace(/_/g, '-') || '';
   let navItems = [...(navConfig[roleKey] || [])];
 
-  // Issue 29: Filter teacher nav items based on actual roles (remove items they don't have access to)
   if (user?.role === 'teacher') {
     navItems = navItems.filter(item => {
       if (item.path === '/teacher/class-dashboard' && !isClassTeacher) return false;
@@ -214,7 +207,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     });
   }
 
-  // Issue 15: If teacher is also school_admin, add a "Switch to Admin" link
   const canSwitchToAdmin = user?.role === 'teacher' && additionalRoles.includes('school_admin');
   const canSwitchToTeacher = user?.role === 'school_admin' && additionalRoles.includes('teacher');
 
@@ -231,7 +223,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-[#F5F3EF]">
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -239,14 +230,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         />
       )}
 
-      {/* Sidebar */}
       <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-[#1A1A1A] text-white transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between p-4 border-b border-gray-800">
           <Link to="/" className="flex items-center gap-2">
             {schoolData?.logo_url ? (
               <img src={schoolData.logo_url} alt={schoolData.name} className="w-8 h-8 rounded-lg object-contain bg-white p-0.5" />
             ) : (
-              <img src="/images/logo.png" alt="Zamifu Analytics" className="w-8 h-8 rounded-lg object-contain" />
+              <img src="/logo.png" alt="Zamifu Analytics" className="w-8 h-8 rounded-lg object-contain" />
             )}
             <span className="text-lg font-bold truncate max-w-[140px]">{schoolData?.name || 'Zamifu Analytics'}</span>
           </Link>
@@ -267,7 +257,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div>
               <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
               <p className="text-xs text-gray-400 capitalize">{user?.role?.replace(/_/g, ' ')}</p>
-              {/* Issue 15: Show additional roles badge */}
               {additionalRoles.length > 0 && (
                 <p className="text-xs text-blue-400 mt-0.5">+{additionalRoles.map(r => r.replace(/_/g, ' ')).join(', ')}</p>
               )}
@@ -293,7 +282,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </nav>
 
           <div className="mt-4 pt-4 border-t border-gray-800 space-y-2">
-            {/* Issue 15: Multi-role switch buttons */}
             {canSwitchToAdmin && (
               <Link
                 to="/school-admin"
@@ -332,9 +320,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* Main content */}
       <div className="lg:ml-64 min-h-screen">
-        {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] px-4 md:px-6 py-3">
           <div className="flex items-center justify-between">
             <button 
@@ -347,7 +333,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {schoolData?.logo_url ? (
                 <img src={schoolData.logo_url} alt={schoolData.name} className="w-7 h-7 rounded-lg object-contain bg-gray-100 p-0.5" />
               ) : (
-                <img src="/images/logo.png" alt="Zamifu Analytics" className="w-7 h-7 rounded-lg object-contain" />
+                <img src="/logo.png" alt="Zamifu Analytics" className="w-7 h-7 rounded-lg object-contain" />
               )}
               <span className="text-base font-bold text-[#111111]">{schoolData?.name || 'Zamifu Analytics'}</span>
             </div>
