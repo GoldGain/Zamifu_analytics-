@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Send, Loader2, MessageSquare, Users, CheckCircle, AlertCircle, FileText, Bell } from 'lucide-react';
+import { Send, Loader2, MessageSquare, Users, CheckCircle, AlertCircle, Bell, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { sendBulkSMS, generateResultsSMS, generateAnnouncementSMS } from '@/lib/sms';
+import { sendBulkSMS, generateAnnouncementSMS } from '@/lib/sms';
 
-type SMSType = 'results' | 'announcement' | 'custom';
+type SMSType = 'announcement' | 'custom';
 
 interface Student {
   id: string;
@@ -28,7 +28,6 @@ export default function BulkSms() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
-  const [termName, setTermName] = useState('');
   const [recipientCount, setRecipientCount] = useState(0);
 
   useEffect(() => {
@@ -42,7 +41,6 @@ export default function BulkSms() {
   }, [selectedClass]);
 
   useEffect(() => {
-    // Count recipients with valid phone numbers
     const validPhones = students.filter(s => s.parent_phone && s.parent_phone.length >= 10);
     setRecipientCount(validPhones.length);
   }, [students]);
@@ -83,14 +81,6 @@ export default function BulkSms() {
 
   const getPreviewMessage = (student: Student): string => {
     switch (smsType) {
-      case 'results':
-        return generateResultsSMS(
-          student.parent_name || 'Parent',
-          `${student.first_name} ${student.last_name}`,
-          termName || 'this term',
-          '[Average will be inserted]',
-          undefined
-        );
       case 'announcement':
         return generateAnnouncementSMS(
           user?.schoolName || 'School',
@@ -120,14 +110,12 @@ export default function BulkSms() {
     for (const student of validStudents) {
       let personalizedMessage = message;
 
-      // Replace placeholders
       personalizedMessage = personalizedMessage
         .replace(/{learner_name}/g, `${student.first_name} ${student.last_name}`)
         .replace(/{parent_name}/g, student.parent_name || 'Parent')
         .replace(/{assessment_number}/g, student.admission_number || '')
         .replace(/{class}/g, student.classes?.name || '')
-        .replace(/{school}/g, user?.schoolName || 'School')
-        .replace(/{term}/g, termName || '');
+        .replace(/{school}/g, user?.schoolName || 'School');
 
       const result = await sendBulkSMS([student.parent_phone], personalizedMessage);
       if (result.success) {
@@ -154,24 +142,19 @@ export default function BulkSms() {
         <p className="text-sm text-[#666666]">Send SMS messages to parents</p>
       </div>
 
+      {/* Automated Results SMS Info */}
+      <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex gap-3 text-sm text-green-900">
+        <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-green-600" />
+        <div>
+          <p className="font-bold mb-1">Results SMS are now automated!</p>
+          <p>When you publish results via the Results page, SMS notifications are sent automatically to all parents. No need to compose results SMS manually.</p>
+        </div>
+      </div>
+
       {/* SMS Type Selection */}
       <div className="bg-white rounded-2xl p-6 border border-gray-100">
         <p className="text-sm font-semibold text-gray-700 mb-3">Select SMS Type</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button
-            onClick={() => setSmsType('results')}
-            className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
-              smsType === 'results'
-                ? 'border-blue-500 bg-blue-50 text-blue-700'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <FileText className="w-5 h-5" />
-            <div className="text-left">
-              <p className="text-sm font-medium">Results SMS</p>
-              <p className="text-xs text-gray-500">Notify about uploaded results</p>
-            </div>
-          </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <button
             onClick={() => setSmsType('announcement')}
             className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
@@ -229,19 +212,6 @@ export default function BulkSms() {
       <div className="bg-white rounded-2xl p-6 border border-gray-100">
         <p className="text-sm font-semibold text-gray-700 mb-3">Compose Message</p>
 
-        {smsType === 'results' && (
-          <div className="mb-4">
-            <label className="block text-xs text-gray-500 mb-1">Term Name (optional)</label>
-            <input
-              type="text"
-              value={termName}
-              onChange={(e) => setTermName(e.target.value)}
-              placeholder="e.g. Term 1 2025"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
-            />
-          </div>
-        )}
-
         {smsType === 'announcement' && (
           <div className="mb-4">
             <label className="block text-xs text-gray-500 mb-1">Subject / Title</label>
@@ -266,7 +236,7 @@ export default function BulkSms() {
           />
           <div className="flex items-center justify-between mt-1">
             <p className="text-xs text-gray-400">{message.length} characters</p>
-            <p className="text-xs text-gray-400">Sender: ZAMIFU</p>
+            <p className="text-xs text-gray-400">Sender: PROCALL</p>
           </div>
         </div>
 
@@ -274,7 +244,7 @@ export default function BulkSms() {
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4">
           <p className="text-xs font-semibold text-blue-800 mb-1">Available Placeholders:</p>
           <div className="flex flex-wrap gap-2">
-            {['{learner_name}', '{parent_name}', '{assessment_number}', '{class}', '{school}', '{term}'].map((ph) => (
+            {['{learner_name}', '{parent_name}', '{assessment_number}', '{class}', '{school}'].map((ph) => (
               <button
                 key={ph}
                 onClick={() => setMessage((prev) => prev + ph)}
