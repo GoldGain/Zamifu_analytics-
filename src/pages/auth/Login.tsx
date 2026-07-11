@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase/client';
-import { GraduationCap, Eye, EyeOff, Loader2, User, Mail } from 'lucide-react';
+import { Eye, EyeOff, Loader2, User, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import PWAInstallButton from '@/components/PWAInstallButton';
@@ -157,9 +157,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
+            <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
             <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
           <h1 className="text-2xl font-bold text-[#111111]">Welcome Back</h1>

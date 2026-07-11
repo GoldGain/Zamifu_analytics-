@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { sendSMS } from '@/lib/sms';
-import { GraduationCap, Loader2, ArrowLeft, Check, Mail, User, Phone } from 'lucide-react';
+import { Loader2, ArrowLeft, Check, Mail, User, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ForgotPassword() {
@@ -227,9 +227,7 @@ export default function ForgotPassword() {
 
           <div className="text-center mb-8">
             <Link to="/" className="inline-flex items-center gap-2 mb-6">
-              <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
-                <GraduationCap className="w-6 h-6 text-white" />
-              </div>
+              <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
               <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
             </Link>
             <h1 className="text-2xl font-bold text-[#111111]">Verify OTP</h1>
@@ -314,9 +312,7 @@ export default function ForgotPassword() {
 
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 bg-[#2563EB] rounded-xl flex items-center justify-center">
-              <GraduationCap className="w-6 h-6 text-white" />
-            </div>
+            <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
             <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
           <h1 className="text-2xl font-bold text-[#111111]">Reset Password</h1>
