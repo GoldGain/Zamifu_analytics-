@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { Zap, CheckCircle, Loader2, Clock, AlertCircle } from 'lucide-react';
+import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateSlots, getLessonCountForLevel } from '@/lib/timetable-generator';
+import { generateSlots, getLessonCountForLevel, getLevelConfig } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 
 // Frontend config interface (matches what timetable-generator expects)
@@ -65,6 +65,17 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
   'junior': [7, 8, 9],
   'senior': [10, 11, 12],
   'form-3-4': [11, 12], // Form 3=11, Form 4=12 in 8-4-4
+};
+
+// Display info for each level's lesson structure
+const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; note: string }> = {
+  'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
+  'lower-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'upper-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'combined-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { lessons: 9, afterLunch: 3, note: '3 lessons after lunch' },
+  'form-3-4': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
 };
 
 export default function TimetableGenerate() {
@@ -318,8 +329,10 @@ export default function TimetableGenerate() {
         <Clock className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
         <div>
           <p className="font-bold mb-1">School Day Structure:</p>
-          <p>Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → Lesson 7 [+8 for Junior/8-4-4] [+8,9 for Senior] → <strong>ACTIVITIES</strong></p>
-          <p className="mt-1 text-xs text-blue-700">Lower/Upper Primary: <strong>7 lessons</strong> | Junior School &amp; 8-4-4: <strong>8 lessons</strong> | Senior School: <strong>9 lessons</strong></p>
+          <p>Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7] [+ Lesson 8 for Junior/8-4-4] [+ Lesson 9 for Senior] → <strong>ACTIVITIES</strong></p>
+          <p className="mt-1 text-xs text-blue-700">
+            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower/Upper Primary: <strong>7 lessons (1 after lunch)</strong> | Junior School &amp; 8-4-4: <strong>8 lessons (2 after lunch)</strong> | Senior School: <strong>9 lessons (3 after lunch)</strong>
+          </p>
         </div>
       </div>
 
@@ -346,6 +359,8 @@ export default function TimetableGenerate() {
           {LEVEL_GROUPS.map(({ key, label, grades }) => {
             const hasConfig = !!levelConfigs[key];
             const isSelected = selectedLevels.has(key);
+            const lessonInfo = LEVEL_LESSON_INFO[key];
+            const isPrePrimary = key === 'pre-primary';
             return (
               <label
                 key={key}
@@ -362,6 +377,12 @@ export default function TimetableGenerate() {
                 <div className="flex-1">
                   <p className="font-semibold text-sm text-gray-900">{label}</p>
                   <p className="text-xs text-gray-500">{grades}</p>
+                  {lessonInfo && (
+                    <p className={`text-xs mt-0.5 font-medium ${isPrePrimary ? 'text-amber-600' : 'text-blue-600'}`}>
+                      <Info className="w-3 h-3 inline mr-1" />
+                      {lessonInfo.lessons} lessons/day{lessonInfo.afterLunch > 0 ? ` — ${lessonInfo.afterLunch} after lunch` : ' — ends at lunch'}
+                    </p>
+                  )}
                 </div>
                 {hasConfig ? (
                   <span className="text-xs text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-full">Configured</span>
