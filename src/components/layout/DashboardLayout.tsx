@@ -200,6 +200,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const roleKey = user?.role?.replace(/_/g, '-') || '';
   let navItems = [...(navConfig[roleKey] || [])];
 
+  // Issue 5: Add Assessments nav link for DoS users
+  if (user?.role === 'teacher' && isDoS) {
+    // Insert the Assessments link after Assessment Progress
+    const assessmentProgressIndex = navItems.findIndex(item => item.path === '/teacher/assessment-progress');
+    const assessmentsLink: NavItem = { 
+      label: 'Manage Assessments', 
+      icon: <BookOpen className="w-5 h-5" />, 
+      path: '/teacher/assessments' 
+    };
+    if (assessmentProgressIndex >= 0) {
+      navItems.splice(assessmentProgressIndex + 1, 0, assessmentsLink);
+    } else {
+      navItems.push(assessmentsLink);
+    }
+  }
+
   if (user?.role === 'teacher') {
     navItems = navItems.filter(item => {
       if (item.path === '/teacher/class-dashboard' && !isClassTeacher) return false;
@@ -258,6 +274,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div>
               <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
               <p className="text-xs text-gray-400 capitalize">{user?.role?.replace(/_/g, ' ')}</p>
+              {isDoS && (
+                <p className="text-xs text-purple-400 mt-0.5 font-medium">Dean of Studies</p>
+              )}
               {additionalRoles.length > 0 && (
                 <p className="text-xs text-blue-400 mt-0.5">+{additionalRoles.map(r => r.replace(/_/g, ' ')).join(', ')}</p>
               )}
