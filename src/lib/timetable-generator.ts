@@ -1,6 +1,14 @@
 /**
  * Shared timetable generation logic
- * Break order: Lesson 1&2 -> FIRST BREAK -> Lesson 3&4 -> SECOND BREAK -> Lesson 5&6 -> LUNCH -> Lesson 7&8 -> ACTIVITIES
+ * Break order: Lesson 1&2 -> FIRST BREAK -> Lesson 3&4 -> SECOND BREAK -> Lesson 5&6 -> LUNCH -> Lesson 7 (optional) -> Lesson 8 (optional) -> Lesson 9 (optional) -> ACTIVITIES
+ *
+ * Level-based lesson counts:
+ * - Pre-Primary (PP1-PP2): 6 lessons (school ends at lunch, NO lessons after lunch)
+ * - Lower Primary (Grade 1-3): 7 lessons (1 after lunch)
+ * - Upper Primary (Grade 4-6): 7 lessons (1 after lunch)
+ * - Junior School (Grade 7-9): 8 lessons (2 after lunch)
+ * - Senior School (Grade 10-12): 9 lessons (3 after lunch)
+ * - 8-4-4 (Form 1-4): 8 lessons (2 after lunch)
  */
 
 export interface TimetableSlot {
@@ -21,11 +29,46 @@ export interface TimetableConfig {
   second_break_end: string;
   lunch_start: string;
   lunch_end: string;
-  // Issue 3: Support explicit activities start/end times
+  // Support explicit activities start/end times
   activities_start?: string;
   activities_end?: string;
   activities?: Record<string, string>;
 }
+
+/**
+ * Level configuration with total lessons and after-lunch lesson count
+ */
+export interface LevelLessonConfig {
+  totalLessons: number;
+  afterLunch: number;
+  lunchEndTime: string;
+}
+
+/**
+ * Full level configuration mapping
+ */
+export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
+  // Pre-Primary: 6 lessons, ends at lunch (NO lessons after lunch)
+  'pre-primary': { totalLessons: 6, afterLunch: 0, lunchEndTime: '12:30' },
+  // Lower Primary: 7 lessons, 1 after lunch
+  'lower-primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
+  // Upper Primary: 7 lessons, 1 after lunch
+  'upper-primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
+  // Combined Primary: 7 lessons, 1 after lunch
+  'combined-primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
+  // Junior School: 8 lessons, 2 after lunch
+  'junior': { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
+  // Senior School: 9 lessons, 3 after lunch
+  'senior': { totalLessons: 9, afterLunch: 3, lunchEndTime: '14:00' },
+  // 8-4-4 Form 3-4: 8 lessons, 2 after lunch
+  'form-3-4': { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
+  // Legacy keys
+  'lower_primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
+  'upper_primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
+  'junior_school': { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
+  'senior_school': { totalLessons: 9, afterLunch: 3, lunchEndTime: '14:00' },
+  '8-4-4': { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
+};
 
 /**
  * Safely convert time string to minutes.
@@ -64,17 +107,12 @@ const safeString = (value: string | null | undefined, fallback: string): string 
 };
 
 /**
- * Level-based lesson count configuration
- * - Pre-Primary (PP1-PP2): 7 lessons (1 after lunch)
- * - Lower Primary (Grade 1-3): 7 lessons (1 after lunch)
- * - Upper Primary (Grade 4-6): 7 lessons (1 after lunch)
- * - Junior School (Grade 7-9): 8 lessons (2 after lunch)
- * - Senior School (Grade 10-12): 9 lessons (3 after lunch)
- * - 8-4-4 (Form 1-4): 8 lessons (2 after lunch)
+ * Legacy lesson count map for backward compatibility.
+ * Use getLessonCountForLevel() or getLevelConfig() for new code.
  */
 export const LESSON_COUNTS: Record<string, number> = {
   // Hyphen-format keys (used by TimetableGenerate.tsx LEVEL_GROUPS)
-  'pre-primary': 7,
+  'pre-primary': 6,
   'lower-primary': 7,
   'upper-primary': 7,
   'combined-primary': 7,
@@ -91,29 +129,58 @@ export const LESSON_COUNTS: Record<string, number> = {
 
 /** Get lesson count for a given level. Falls back to 8. */
 export function getLessonCountForLevel(level: string): number {
-  // Try direct match first
+  // Try LEVEL_CONFIG first (new approach)
+  const config = getLevelConfig(level);
+  if (config) return config.totalLessons;
+  // Fallback to LESSON_COUNTS
   if (LESSON_COUNTS[level] !== undefined) return LESSON_COUNTS[level];
-  // Try normalizing hyphens to underscores
   const normalized = level.replace(/-/g, '_');
   if (LESSON_COUNTS[normalized] !== undefined) return LESSON_COUNTS[normalized];
-  // Default to 8
   return 8;
+}
+
+/** Get full level config for a given level. Returns null if not found. */
+export function getLevelConfig(level: string): LevelLessonConfig | null {
+  if (LEVEL_CONFIG[level]) return LEVEL_CONFIG[level];
+  const normalized = level.replace(/-/g, '_');
+  if (LEVEL_CONFIG[normalized]) return LEVEL_CONFIG[normalized];
+  return null;
+}
+
+/** Get the number of lessons after lunch for a given level. */
+export function getAfterLunchCount(level: string): number {
+  const config = getLevelConfig(level);
+  if (config) return config.afterLunch;
+  // Fallback: estimate from lesson count
+  const total = getLessonCountForLevel(level);
+  if (total <= 6) return 0;
+  if (total === 7) return 1;
+  if (total === 8) return 2;
+  if (total >= 9) return 3;
+  return 2;
+}
+
+/** Check if a level has lessons after lunch */
+export function hasLessonsAfterLunch(level: string): boolean {
+  return getAfterLunchCount(level) > 0;
 }
 
 /**
  * Generate time slots following the exact break order from the timetable image:
- * Lesson 1 -> Lesson 2 -> FIRST BREAK -> Lesson 3 -> Lesson 4 -> SECOND BREAK -> Lesson 5 -> Lesson 6 -> LUNCH -> Lesson 7 -> Lesson 8 (optional) -> Lesson 9 (optional) -> ACTIVITIES
- * 
+ * Lesson 1 -> Lesson 2 -> FIRST BREAK -> Lesson 3 -> Lesson 4 -> SECOND BREAK -> Lesson 5 -> Lesson 6 -> LUNCH -> [Lesson 7] -> [Lesson 8] -> [Lesson 9] -> ACTIVITIES
+ *
+ * For Pre-Primary (6 lessons): school ends at lunch, no lessons after lunch, no activities
+ *
  * @param config - The timetable configuration
- * @param maxLessons - Maximum number of lessons (7, 8, or 9). Defaults to 8.
+ * @param maxLessons - Maximum number of lessons (6, 7, 8, or 9). Defaults to 8.
  */
 export function generateSlots(config: TimetableConfig, maxLessons?: number): TimetableSlot[] {
-  const targetLessons = maxLessons && maxLessons >= 7 && maxLessons <= 9 ? maxLessons : 8;
-  
+  const targetLessons = maxLessons && maxLessons >= 6 && maxLessons <= 9 ? maxLessons : 8;
+
   // Use defaults for any missing values to prevent crashes
   const duration = config?.lesson_duration || 40;
   const schoolStart = safeString(config?.school_start, '08:20');
-  
+
   // Break times with safe fallbacks
   const firstBreakStart = safeString(config?.first_break_start, '09:40');
   const firstBreakEnd = safeString(config?.first_break_end, '10:20');
@@ -213,19 +280,27 @@ export function generateSlots(config: TimetableConfig, maxLessons?: number): Tim
     start_time: lunchStart,
     end_time: lunchEnd,
   });
+
+  // For Pre-Primary (6 lessons): school ends at lunch, no more lessons
+  if (targetLessons <= 6) {
+    return slots;
+  }
+
   currentMinutes = timeToMinutes(lunchEnd);
 
-  // Lesson 7 (always present)
-  slots.push({
-    slot_order: 10,
-    label: 'Lesson 7',
-    slot_type: 'lesson',
-    start_time: minutesToTime(currentMinutes),
-    end_time: minutesToTime(currentMinutes + duration),
-  });
-  currentMinutes += duration;
+  // Lesson 7 (present if target >= 7)
+  if (targetLessons >= 7) {
+    slots.push({
+      slot_order: 10,
+      label: 'Lesson 7',
+      slot_type: 'lesson',
+      start_time: minutesToTime(currentMinutes),
+      end_time: minutesToTime(currentMinutes + duration),
+    });
+    currentMinutes += duration;
+  }
 
-  // Lesson 8 (only if targetLessons >= 8)
+  // Lesson 8 (only if target >= 8)
   if (targetLessons >= 8) {
     slots.push({
       slot_order: 11,
@@ -237,7 +312,7 @@ export function generateSlots(config: TimetableConfig, maxLessons?: number): Tim
     currentMinutes += duration;
   }
 
-  // Lesson 9 (only if targetLessons >= 9)
+  // Lesson 9 (only if target >= 9)
   if (targetLessons >= 9) {
     slots.push({
       slot_order: 12,
@@ -253,7 +328,7 @@ export function generateSlots(config: TimetableConfig, maxLessons?: number): Tim
   const activitiesStartTime = config?.activities_start
     ? safeString(config.activities_start, minutesToTime(currentMinutes))
     : minutesToTime(currentMinutes);
-  
+
   const activitiesEndTime = config?.activities_end
     ? safeString(config.activities_end, '')
     : config?.school_end
