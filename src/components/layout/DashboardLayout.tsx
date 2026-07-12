@@ -198,7 +198,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const roleKey = user?.role?.replace(/_/g, '-') || '';
   let navItems = [...(navConfig[roleKey] || [])];
 
-  // Issue 5: Add Assessments nav link for DoS users
+  // Add Assessments nav link for DoS users
   if (user?.role === 'teacher' && isDoS) {
     // Insert the Assessments link after Assessment Progress
     const assessmentProgressIndex = navItems.findIndex(item => item.path === '/teacher/assessment-progress');
