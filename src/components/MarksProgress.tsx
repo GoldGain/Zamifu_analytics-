@@ -17,9 +17,10 @@ interface MarksProgressProps {
   termId: string;
   schoolId: string;
   compact?: boolean;
+  examId?: string;
 }
 
-export function MarksProgress({ classId, className, termId, schoolId, compact = false }: MarksProgressProps) {
+export function MarksProgress({ classId, className, termId, schoolId, compact = false, examId }: MarksProgressProps) {
   const [subjects, setSubjects] = useState<SubjectProgress[]>([]);
   const [totalStudents, setTotalStudents] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -27,7 +28,7 @@ export function MarksProgress({ classId, className, termId, schoolId, compact = 
 
   useEffect(() => {
     if (classId && termId && schoolId) fetchProgress();
-  }, [classId, termId, schoolId]);
+  }, [classId, termId, schoolId, examId]);
 
   const fetchProgress = async () => {
     setLoading(true);
@@ -63,13 +64,15 @@ export function MarksProgress({ classId, className, termId, schoolId, compact = 
       // For each subject, count how many students have results entered
       const progressData: SubjectProgress[] = await Promise.all(
         assignments.map(async (a: any) => {
-          const { count: enteredCount } = await (supabase as any)
+          let resultsQuery = (supabase as any)
             .from('results')
             .select('*', { count: 'exact', head: true })
             .eq('class_id', classId)
             .eq('subject_id', a.subject_id)
             .eq('term_id', termId)
             .eq('school_id', schoolId);
+          if (examId) resultsQuery = resultsQuery.eq('exam_id', examId);
+          const { count: enteredCount } = await resultsQuery;
 
           const entered = enteredCount || 0;
           const pct = studentCount > 0 ? Math.round((entered / studentCount) * 100) : 0;

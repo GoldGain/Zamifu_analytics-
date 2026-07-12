@@ -470,11 +470,17 @@ export default function TeacherResultsUpload() {
         submitted_at: new Date().toISOString(),
       }));
 
+      // Use exam_id in conflict key so different assessments don't overwrite each other
+      // If exam_id is set, use the exam-specific unique index; otherwise use the no-exam index
+      const conflictKey = selectedExam
+        ? 'student_id,subject_id,term_id,exam_id'
+        : 'student_id,subject_id,term_id';
       const { error: insertError } = await supabaseUntyped.from('results').upsert(records, {
-        onConflict: 'student_id,subject_id,term_id',
+        onConflict: conflictKey,
         ignoreDuplicates: false,
       });
       if (insertError) {
+        // Fallback: try insert (handles cases where constraint doesn't exist yet)
         const { error: insertError2 } = await supabaseUntyped.from('results').insert(records);
         if (insertError2) throw new Error(insertError2.message);
       }

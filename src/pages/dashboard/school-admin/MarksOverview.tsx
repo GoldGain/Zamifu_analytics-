@@ -22,6 +22,8 @@ export default function MarksOverview() {
   const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [terms, setTerms] = useState<Term[]>([]);
   const [selectedTerm, setSelectedTerm] = useState('');
+  const [selectedExam, setSelectedExam] = useState('');
+  const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
 
@@ -32,7 +34,7 @@ export default function MarksOverview() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [{ data: classesData }, { data: termsData }] = await Promise.all([
+      const [{ data: classesData }, { data: termsData }, { data: examsData }] = await Promise.all([
         (supabase as any)
           .from('classes')
           .select('id, name, level')
@@ -44,9 +46,16 @@ export default function MarksOverview() {
           .select('id, name, academic_year, is_current')
           .eq('school_id', user?.schoolId)
           .order('academic_year', { ascending: false }),
+        (supabase as any)
+          .from('school_exams')
+          .select('id, name, type')
+          .eq('school_id', user?.schoolId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false }),
       ]);
 
       setClasses(classesData || []);
+      setExams(examsData || []);
       const allTerms = termsData || [];
       setTerms(allTerms);
 

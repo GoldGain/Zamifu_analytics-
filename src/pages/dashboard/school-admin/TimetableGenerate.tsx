@@ -313,7 +313,8 @@ export default function TimetableGenerate() {
         <Clock className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
         <div>
           <p className="font-bold mb-1">School Day Structure:</p>
-          <p>Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → Lesson 7 &amp; 8 → <strong>ACTIVITIES</strong></p>
+          <p>Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → Lesson 7 [+8 for Junior/8-4-4] [+8,9 for Senior] → <strong>ACTIVITIES</strong></p>
+          <p className="mt-1 text-xs text-blue-700">Lower/Upper Primary: <strong>7 lessons</strong> | Junior School &amp; 8-4-4: <strong>8 lessons</strong> | Senior School: <strong>9 lessons</strong></p>
         </div>
       </div>
 

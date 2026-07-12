@@ -72,6 +72,15 @@ const safeString = (value: string | null | undefined, fallback: string): string 
  * - 8-4-4 (Form 1-4): 8 lessons (2 after lunch)
  */
 export const LESSON_COUNTS: Record<string, number> = {
+  // Hyphen-format keys (used by TimetableGenerate.tsx LEVEL_GROUPS)
+  'lower-primary': 7,
+  'upper-primary': 7,
+  'combined-primary': 7,
+  'pre-primary': 6,
+  'junior': 8,
+  'senior': 9,
+  'form-3-4': 8,
+  // Underscore-format keys (legacy fallback)
   lower_primary: 7,
   upper_primary: 7,
   junior_school: 8,
@@ -81,7 +90,13 @@ export const LESSON_COUNTS: Record<string, number> = {
 
 /** Get lesson count for a given level. Falls back to 8. */
 export function getLessonCountForLevel(level: string): number {
-  return LESSON_COUNTS[level] || 8;
+  // Try direct match first
+  if (LESSON_COUNTS[level] !== undefined) return LESSON_COUNTS[level];
+  // Try normalizing hyphens to underscores
+  const normalized = level.replace(/-/g, '_');
+  if (LESSON_COUNTS[normalized] !== undefined) return LESSON_COUNTS[normalized];
+  // Default to 8
+  return 8;
 }
 
 /**

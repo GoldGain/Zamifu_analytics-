@@ -50,10 +50,27 @@ export default function ViewMarks() {
   const [submittingAll, setSubmittingAll] = useState(false);
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
+  const [filterExam, setFilterExam] = useState<string>('');
+  const [exams, setExams] = useState<any[]>([]);
 
   useEffect(() => {
     fetchMarks();
+    fetchExams();
   }, [user?.id]);
+
+  const fetchExams = async () => {
+    try {
+      const { data } = await supabaseUntyped
+        .from('school_exams')
+        .select('id, name, type')
+        .eq('school_id', user?.schoolId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      setExams(data || []);
+    } catch (err) {
+      console.warn('Could not load exams', err);
+    }
+  };
 
   const fetchMarks = async () => {
     setLoading(true);
@@ -199,7 +216,8 @@ export default function ViewMarks() {
     const matchesClass = filterClass ? m.class_id === filterClass : true;
     const matchesSubject = filterSubject ? m.subject_id === filterSubject : true;
     const matchesStatus = filterStatus === 'all' ? true : m.status === filterStatus;
-    return matchesSearch && matchesClass && matchesSubject && matchesStatus;
+    const matchesExam = filterExam ? m.exam_id === filterExam : true;
+    return matchesSearch && matchesClass && matchesSubject && matchesStatus && matchesExam;
   });
 
   // Group marks by class and subject
@@ -316,6 +334,18 @@ export default function ViewMarks() {
           <option value="draft">Draft</option>
           <option value="submitted">Submitted</option>
         </select>
+        {exams.length > 0 && (
+          <select
+            value={filterExam}
+            onChange={(e) => setFilterExam(e.target.value)}
+            className="px-4 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+          >
+            <option value="">All Assessments</option>
+            {exams.map((ex: any) => (
+              <option key={ex.id} value={ex.id}>{ex.name}{ex.type ? ` (${ex.type})` : ''}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Grouped Marks */}

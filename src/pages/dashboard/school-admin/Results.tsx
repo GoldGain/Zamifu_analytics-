@@ -116,7 +116,7 @@ export default function SchoolAdminResults() {
     let sch: any = null;
     try {
       const results = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number), subjects(name), classes(curriculum, grade_level, level, name), exams(name)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email').eq('id', schoolId).maybeSingle(),
@@ -130,7 +130,7 @@ export default function SchoolAdminResults() {
     } catch (err: any) {
       if (err.message?.includes('motto')) {
         const results = await Promise.all([
-          supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number), subjects(name), classes(curriculum, grade_level, level, name), exams(name)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+          supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
           supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
           supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
           supabaseUntyped.from('schools').select('name, logo_url, principal_name, principal_signature_url, address, phone, email').eq('id', schoolId).maybeSingle(),
@@ -1052,7 +1052,7 @@ export default function SchoolAdminResults() {
                       {/* Issue 11-12: Show assessment name */}
                       <td className="px-4 py-3 border border-gray-200">
                         <span className="text-xs px-2 py-1 bg-purple-50 text-purple-700 rounded-full font-medium">
-                          {r.exams?.name || 'General'}
+                          {r.school_exams?.name || r.exams?.name || 'General'}
                         </span>
                       </td>
                       <td className="px-4 py-3 border border-gray-200 text-sm font-bold text-[#111111]">{pct}%</td>
