@@ -78,21 +78,38 @@ export default function MarksOverview() {
         <p className="text-sm text-gray-500 mt-1">Monitor marks entry progress across all classes</p>
       </div>
 
-      {/* Term selector */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Select Term</label>
-        <select
-          value={selectedTerm}
-          onChange={(e) => setSelectedTerm(e.target.value)}
-          className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">-- Select a term --</option>
-          {terms.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name} ({t.academic_year}){t.is_current ? ' ✓ Current' : ''}
-            </option>
-          ))}
-        </select>
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-col sm:flex-row gap-4">
+        <div className="flex-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Term</label>
+          <select
+            value={selectedTerm}
+            onChange={(e) => setSelectedTerm(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">-- Select a term --</option>
+            {terms.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.academic_year}){t.is_current ? ' ✓ Current' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        {exams.length > 0 && (
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Assessment</label>
+            <select
+              value={selectedExam}
+              onChange={(e) => setSelectedExam(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Assessments</option>
+              {exams.map((ex: any) => (
+                <option key={ex.id} value={ex.id}>{ex.name}{ex.type ? ` (${ex.type})` : ''}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -138,6 +155,7 @@ export default function MarksOverview() {
                       className={cls.name}
                       termId={selectedTerm}
                       schoolId={user?.schoolId || ''}
+                      examId={selectedExam}
                     />
                   </div>
                 </div>
