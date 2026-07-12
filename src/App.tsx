@@ -202,6 +202,11 @@ function AppRoutes() {
       <Route path="/teacher/change-password" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherChangePassword /></ProtectedRoute>} />
       <Route path="/teacher/profile" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherProfile /></ProtectedRoute>} />
       <Route path="/teacher/curriculum" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherCurriculumNavigator /></ProtectedRoute>} />
+      {/* Issue 5: DoS can manage assessments - shared Assessments component for teachers */}
+      <Route path="/teacher/assessments" element={<ProtectedRoute allowedRoles={['teacher']}><SchoolAdminAssessments /></ProtectedRoute>} />
+
+      {/* Dean of Studies routes - accessible to teachers who are DoS */}
+      <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']}><DeanOfStudiesDashboard /></ProtectedRoute>} />
 
       {/* Student routes */}
       <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />
