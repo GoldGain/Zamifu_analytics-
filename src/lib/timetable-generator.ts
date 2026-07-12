@@ -1,6 +1,6 @@
 /**
  * Shared timetable generation logic
- * Break order: Lesson 1&2 → FIRST BREAK → Lesson 3&4 → SECOND BREAK → Lesson 5&6 → LUNCH → Lesson 7&8 → ACTIVITIES
+ * Break order: Lesson 1&2 -> FIRST BREAK -> Lesson 3&4 -> SECOND BREAK -> Lesson 5&6 -> LUNCH -> Lesson 7&8 -> ACTIVITIES
  */
 
 export interface TimetableSlot {
@@ -65,6 +65,7 @@ const safeString = (value: string | null | undefined, fallback: string): string 
 
 /**
  * Level-based lesson count configuration
+ * - Pre-Primary (PP1-PP2): 7 lessons (1 after lunch)
  * - Lower Primary (Grade 1-3): 7 lessons (1 after lunch)
  * - Upper Primary (Grade 4-6): 7 lessons (1 after lunch)
  * - Junior School (Grade 7-9): 8 lessons (2 after lunch)
@@ -73,10 +74,10 @@ const safeString = (value: string | null | undefined, fallback: string): string 
  */
 export const LESSON_COUNTS: Record<string, number> = {
   // Hyphen-format keys (used by TimetableGenerate.tsx LEVEL_GROUPS)
+  'pre-primary': 7,
   'lower-primary': 7,
   'upper-primary': 7,
   'combined-primary': 7,
-  'pre-primary': 6,
   'junior': 8,
   'senior': 9,
   'form-3-4': 8,
@@ -101,7 +102,7 @@ export function getLessonCountForLevel(level: string): number {
 
 /**
  * Generate time slots following the exact break order from the timetable image:
- * Lesson 1 → Lesson 2 → FIRST BREAK → Lesson 3 → Lesson 4 → SECOND BREAK → Lesson 5 → Lesson 6 → LUNCH → Lesson 7 → Lesson 8 (optional) → Lesson 9 (optional) → ACTIVITIES
+ * Lesson 1 -> Lesson 2 -> FIRST BREAK -> Lesson 3 -> Lesson 4 -> SECOND BREAK -> Lesson 5 -> Lesson 6 -> LUNCH -> Lesson 7 -> Lesson 8 (optional) -> Lesson 9 (optional) -> ACTIVITIES
  * 
  * @param config - The timetable configuration
  * @param maxLessons - Maximum number of lessons (7, 8, or 9). Defaults to 8.
@@ -248,7 +249,7 @@ export function generateSlots(config: TimetableConfig, maxLessons?: number): Tim
     currentMinutes += duration;
   }
 
-  // ACTIVITIES — use activities_start/activities_end if configured, else fall back to school_end
+  // ACTIVITIES -- use activities_start/activities_end if configured, else fall back to school_end
   const activitiesStartTime = config?.activities_start
     ? safeString(config.activities_start, minutesToTime(currentMinutes))
     : minutesToTime(currentMinutes);
@@ -279,7 +280,7 @@ export function getActivityForDay(config: TimetableConfig | null, day: number): 
 }
 
 /**
- * Format time for display (e.g., "08:20" → "8:20")
+ * Format time for display (e.g., "08:20" -> "8:20")
  * Handles null/undefined safely
  */
 export function formatTimeDisplay(time: string | null | undefined): string {
@@ -296,5 +297,5 @@ export function formatTimeDisplay(time: string | null | undefined): string {
  * Format time range for header display
  */
 export function formatTimeRange(start: string | null | undefined, end: string | null | undefined): string {
-  return `${formatTimeDisplay(start)}–${formatTimeDisplay(end)}`;
+  return `${formatTimeDisplay(start)}-${formatTimeDisplay(end)}`;
 }
