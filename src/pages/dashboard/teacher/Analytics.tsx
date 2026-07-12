@@ -63,7 +63,7 @@ export default function TeacherAnalytics() {
 
       // Get teacher's subject/class assignments
       const { data: assignments } = await supabaseUntyped
-        .from('teacher_subjects')
+        .from('teacher_subject_assignments')
         .select('class_id, subject_id, classes(name), subjects(name)')
         .eq('teacher_id', teacherData?.id);
 

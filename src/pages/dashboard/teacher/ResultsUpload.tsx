@@ -127,7 +127,7 @@ export default function TeacherResultsUpload() {
         const { data: teacherRec } = await (supabase as any).from('teachers').select('id').eq('profile_id', user?.id).maybeSingle();
         if (teacherRec?.id) {
           const { data: assignments } = await (supabase as any)
-            .from('teacher_subjects')
+            .from('teacher_subject_assignments')
             .select('class_id, subject_id')
             .eq('teacher_id', teacherRec.id);
           if (assignments && assignments.length > 0) {

@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateSlots } from '@/lib/timetable-generator';
+import { generateSlots, getLessonCountForLevel } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 
 // Frontend config interface (matches what timetable-generator expects)
@@ -206,8 +206,9 @@ export default function TimetableGenerate() {
           }
         }
 
-        // Generate time slots for this level
-        const slots = generateSlots(config);
+        // Generate time slots for this level with correct lesson count
+        const lessonCount = getLessonCountForLevel(levelKey);
+        const slots = generateSlots(config, lessonCount);
 
         const { data: createdSlots, error: slotError } = await supabase
           .from('timetable_time_slots')

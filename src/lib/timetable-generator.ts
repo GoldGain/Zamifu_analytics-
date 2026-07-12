@@ -64,10 +64,36 @@ const safeString = (value: string | null | undefined, fallback: string): string 
 };
 
 /**
- * Generate time slots following the exact break order from the timetable image:
- * Lesson 1 → Lesson 2 → FIRST BREAK → Lesson 3 → Lesson 4 → SECOND BREAK → Lesson 5 → Lesson 6 → LUNCH → Lesson 7 → Lesson 8 → ACTIVITIES
+ * Level-based lesson count configuration
+ * - Lower Primary (Grade 1-3): 7 lessons (1 after lunch)
+ * - Upper Primary (Grade 4-6): 7 lessons (1 after lunch)
+ * - Junior School (Grade 7-9): 8 lessons (2 after lunch)
+ * - Senior School (Grade 10-12): 9 lessons (3 after lunch)
+ * - 8-4-4 (Form 1-4): 8 lessons (2 after lunch)
  */
-export function generateSlots(config: TimetableConfig): TimetableSlot[] {
+export const LESSON_COUNTS: Record<string, number> = {
+  lower_primary: 7,
+  upper_primary: 7,
+  junior_school: 8,
+  senior_school: 9,
+  '8-4-4': 8,
+};
+
+/** Get lesson count for a given level. Falls back to 8. */
+export function getLessonCountForLevel(level: string): number {
+  return LESSON_COUNTS[level] || 8;
+}
+
+/**
+ * Generate time slots following the exact break order from the timetable image:
+ * Lesson 1 → Lesson 2 → FIRST BREAK → Lesson 3 → Lesson 4 → SECOND BREAK → Lesson 5 → Lesson 6 → LUNCH → Lesson 7 → Lesson 8 (optional) → Lesson 9 (optional) → ACTIVITIES
+ * 
+ * @param config - The timetable configuration
+ * @param maxLessons - Maximum number of lessons (7, 8, or 9). Defaults to 8.
+ */
+export function generateSlots(config: TimetableConfig, maxLessons?: number): TimetableSlot[] {
+  const targetLessons = maxLessons && maxLessons >= 7 && maxLessons <= 9 ? maxLessons : 8;
+  
   // Use defaults for any missing values to prevent crashes
   const duration = config?.lesson_duration || 40;
   const schoolStart = safeString(config?.school_start, '08:20');
@@ -173,7 +199,7 @@ export function generateSlots(config: TimetableConfig): TimetableSlot[] {
   });
   currentMinutes = timeToMinutes(lunchEnd);
 
-  // Lesson 7
+  // Lesson 7 (always present)
   slots.push({
     slot_order: 10,
     label: 'Lesson 7',
@@ -183,18 +209,31 @@ export function generateSlots(config: TimetableConfig): TimetableSlot[] {
   });
   currentMinutes += duration;
 
-  // Lesson 8
-  slots.push({
-    slot_order: 11,
-    label: 'Lesson 8',
-    slot_type: 'lesson',
-    start_time: minutesToTime(currentMinutes),
-    end_time: minutesToTime(currentMinutes + duration),
-  });
-  currentMinutes += duration;
+  // Lesson 8 (only if targetLessons >= 8)
+  if (targetLessons >= 8) {
+    slots.push({
+      slot_order: 11,
+      label: 'Lesson 8',
+      slot_type: 'lesson',
+      start_time: minutesToTime(currentMinutes),
+      end_time: minutesToTime(currentMinutes + duration),
+    });
+    currentMinutes += duration;
+  }
 
-  // Issue 3: ACTIVITIES — use activities_start/activities_end if configured, else fall back to school_end
-  // This ensures the timetable ends at the correct configured time, not a hardcoded 3:20 PM
+  // Lesson 9 (only if targetLessons >= 9)
+  if (targetLessons >= 9) {
+    slots.push({
+      slot_order: 12,
+      label: 'Lesson 9',
+      slot_type: 'lesson',
+      start_time: minutesToTime(currentMinutes),
+      end_time: minutesToTime(currentMinutes + duration),
+    });
+    currentMinutes += duration;
+  }
+
+  // ACTIVITIES — use activities_start/activities_end if configured, else fall back to school_end
   const activitiesStartTime = config?.activities_start
     ? safeString(config.activities_start, minutesToTime(currentMinutes))
     : minutesToTime(currentMinutes);
@@ -206,7 +245,7 @@ export function generateSlots(config: TimetableConfig): TimetableSlot[] {
     : minutesToTime(currentMinutes + 40);
 
   slots.push({
-    slot_order: 12,
+    slot_order: targetLessons >= 9 ? 13 : targetLessons >= 8 ? 13 : 12,
     label: 'ACTIVITIES',
     slot_type: 'activities',
     start_time: activitiesStartTime,

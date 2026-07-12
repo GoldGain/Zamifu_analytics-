@@ -96,7 +96,7 @@ export default function TeacherTimetable() {
 
       // Get teacher's assignments
       const { data: assignments } = await supabaseUntyped
-        .from('teacher_subjects')
+        .from('teacher_subject_assignments')
         .select('class_id, subject_id, classes(name), subjects(name)')
         .eq('teacher_id', teacherData.id);
 
@@ -168,7 +168,7 @@ export default function TeacherTimetable() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
       const { data, error } = await supabase
-        .from('teacher_subjects')
+        .from('teacher_subject_assignments')
         .select('subjects(id, name)')
         .eq('teacher_id', authUser.id);
       if (error) throw error;

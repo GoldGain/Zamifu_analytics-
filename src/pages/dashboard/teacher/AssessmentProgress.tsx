@@ -51,7 +51,7 @@ export default function AssessmentProgress() {
 
       // Get teacher's class-subject assignments
       const { data: assignments } = await supabaseUntyped
-        .from('teacher_subjects')
+        .from('teacher_subject_assignments')
         .select('*, classes(id, name), subjects(id, name)')
         .eq('teacher_id', teacherId);
 

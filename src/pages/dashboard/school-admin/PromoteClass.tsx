@@ -13,7 +13,6 @@ interface ClassOption {
   grade_level: number | null;
 }
 
-type PromotionAction = 'merge' | 'cancel' | null;
 type PromotionMode = 'promote' | 'graduate' | null;
 
 export default function PromoteClass() {
@@ -24,7 +23,6 @@ export default function PromoteClass() {
   const [selectedFromClass, setSelectedFromClass] = useState('');
   const [selectedToClass, setSelectedToClass] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
-  const [promotionAction, setPromotionAction] = useState<PromotionAction>(null);
   const [promotionMode, setPromotionMode] = useState<PromotionMode>(null);
 
   useEffect(() => {
@@ -77,8 +75,7 @@ export default function PromoteClass() {
 
     // If Grade 9, offer graduation option
     if (isGrade9(fromClass)) {
-      setPromotionMode(null);
-      setPromotionAction(null);
+      setPromotionMode('graduate');
       setShowConfirm(true);
       return;
     }
@@ -93,26 +90,11 @@ export default function PromoteClass() {
       return;
     }
 
-    const toClassObj = classes.find(c => c.id === selectedToClass);
-    if (toClassObj && toClassObj.studentCount > 0) {
-      setPromotionAction(null);
-      setPromotionMode('promote');
-      setShowConfirm(true);
-    } else {
-      setPromotionAction('merge');
-      setPromotionMode('promote');
-      setShowConfirm(true);
-    }
+    setPromotionMode('promote');
+    setShowConfirm(true);
   };
 
   const confirmPromote = async () => {
-    if (promotionAction === 'cancel' || promotionAction === null) {
-      setShowConfirm(false);
-      setPromotionAction(null);
-      setPromotionMode(null);
-      return;
-    }
-
     setPromoting(true);
     setShowConfirm(false);
     try {
@@ -138,25 +120,21 @@ export default function PromoteClass() {
       } else {
         // Normal promotion: move learners to destination class
         const toClassObj = classes.find(c => c.id === selectedToClass);
+        const { error } = await supabaseUntyped
+          .from('students')
+          .update({ class_id: selectedToClass })
+          .eq('class_id', selectedFromClass)
+          .eq('school_id', user?.schoolId)
+          .eq('is_active', true);
 
-        if (promotionAction === 'merge') {
-          const { error } = await supabaseUntyped
-            .from('students')
-            .update({ class_id: selectedToClass })
-            .eq('class_id', selectedFromClass)
-            .eq('school_id', user?.schoolId)
-            .eq('is_active', true);
-
-          if (error) throw error;
-          toast.success(
-            `Successfully promoted ${fromClass?.studentCount} learner(s) from ${fromClass?.name} to ${toClassObj?.name}!`
-          );
-        }
+        if (error) throw error;
+        toast.success(
+          `Successfully promoted ${fromClass?.studentCount} learner(s) from ${fromClass?.name} to ${toClassObj?.name}!`
+        );
       }
 
       setSelectedFromClass('');
       setSelectedToClass('');
-      setPromotionAction(null);
       setPromotionMode(null);
       fetchClasses();
     } catch (err: any) {
@@ -181,8 +159,8 @@ export default function PromoteClass() {
         <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
         <div>
           <p className="font-bold mb-1">How it works:</p>
-          <p>Select the source class. For Grade 9, you can graduate learners. For other classes, select a destination class to promote all learners at once.</p>
-          <p className="mt-1 text-blue-700">If the destination class already has learners, you can merge them together.</p>
+          <p>Select the source class. For Grade 9, learners will be graduated. For other classes, select a destination class to promote all learners at once.</p>
+          <p className="mt-1 text-blue-700">Promote from the highest class downwards. Grade 9 learners will be marked as graduated.</p>
         </div>
       </div>
 
@@ -253,7 +231,7 @@ export default function PromoteClass() {
                     {destinationHasLearners && (
                       <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                         <Info className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>This class already has <strong>{toClass.studentCount}</strong> learner(s). You will be asked how to handle this.</span>
+                        <span>This class already has <strong>{toClass.studentCount}</strong> learner(s). They will be combined after promotion.</span>
                       </div>
                     )}
                   </div>
@@ -278,7 +256,7 @@ export default function PromoteClass() {
                         <p><strong>{fromClass.studentCount}</strong> learner(s) from <strong>{fromClass.name}</strong> {toClass && `to <strong>${toClass.name}</strong>`}</p>
                         {destinationHasLearners && (
                           <p className="mt-1 text-orange-700 font-medium">
-                            Note: <strong>{toClass.name}</strong> already has <strong>{toClass.studentCount}</strong> learner(s). They will be merged together.
+                            Note: <strong>{toClass.name}</strong> already has <strong>{toClass.studentCount}</strong> learner(s). All learners will be combined in {toClass.name}.
                           </p>
                         )}
                       </>
@@ -339,7 +317,7 @@ export default function PromoteClass() {
                 {fromIsGrade9 ? <GraduationCap className="w-5 h-5 text-purple-600" /> : <AlertTriangle className="w-5 h-5 text-amber-600" />}
               </div>
               <h2 className="text-lg font-bold text-gray-900">
-                {fromIsGrade9 ? 'Confirm Graduation' : destinationHasLearners ? 'Destination Class Has Learners' : 'Confirm Promotion'}
+                {fromIsGrade9 ? 'Confirm Graduation' : 'Confirm Promotion'}
               </h2>
             </div>
 
@@ -352,76 +330,27 @@ export default function PromoteClass() {
                   These learners will be marked as <strong>graduated</strong> and will no longer appear in active class lists.
                 </p>
                 <p className="text-xs text-gray-400 mb-6">This action cannot be undone.</p>
-
-                <div className="space-y-2 mb-6">
-                  <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${promotionMode === 'graduate' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                    <input type="radio" name="action" value="graduate" checked={promotionMode === 'graduate'} onChange={() => { setPromotionMode('graduate'); setPromotionAction('merge'); }} className="mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Graduate learners</p>
-                      <p className="text-xs text-gray-500">Mark all learners from {fromClass?.name} as graduated</p>
-                    </div>
-                  </label>
-                  <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${promotionMode === null && promotionAction === 'cancel' ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                    <input type="radio" name="action" value="cancel" checked={promotionMode === null && promotionAction === 'cancel'} onChange={() => { setPromotionMode(null); setPromotionAction('cancel'); }} className="mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Cancel</p>
-                      <p className="text-xs text-gray-500">Do nothing and go back</p>
-                    </div>
-                  </label>
-                </div>
-
                 <div className="flex gap-3">
-                  <button onClick={() => { setShowConfirm(false); setPromotionAction(null); setPromotionMode(null); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">
-                    Back
-                  </button>
-                  <button onClick={confirmPromote} disabled={!promotionMode} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50">
+                  <button onClick={() => { setShowConfirm(false); setPromotionMode(null); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Back</button>
+                  <button onClick={confirmPromote} className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700">
                     Graduate
-                  </button>
-                </div>
-              </>
-            ) : destinationHasLearners ? (
-              <>
-                <p className="text-sm text-gray-600 mb-4">
-                  <strong>{toClass?.name}</strong> already has <strong>{toClass?.studentCount}</strong> learner(s).
-                  Moving <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> will merge them together.
-                </p>
-                <p className="text-sm text-gray-600 mb-4">
-                  After merging, <strong>{toClass?.name}</strong> will have <strong>{(fromClass?.studentCount || 0) + (toClass?.studentCount || 0)}</strong> learner(s) in total.
-                </p>
-                <p className="text-xs text-gray-400 mb-6">This action cannot be undone. Choose an option below.</p>
-
-                <div className="space-y-2 mb-6">
-                  <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${promotionAction === 'merge' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                    <input type="radio" name="action" value="merge" checked={promotionAction === 'merge'} onChange={() => setPromotionAction('merge')} className="mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Merge learners together</p>
-                      <p className="text-xs text-gray-500">Move all learners from {fromClass?.name} into {toClass?.name}</p>
-                    </div>
-                  </label>
-                  <label className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${promotionAction === 'cancel' ? 'border-red-400 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                    <input type="radio" name="action" value="cancel" checked={promotionAction === 'cancel'} onChange={() => setPromotionAction('cancel')} className="mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Cancel promotion</p>
-                      <p className="text-xs text-gray-500">Do nothing and go back</p>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="flex gap-3">
-                  <button onClick={() => { setShowConfirm(false); setPromotionAction(null); setPromotionMode(null); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Back</button>
-                  <button onClick={confirmPromote} disabled={!promotionAction} className={`flex-1 px-4 py-2 text-white rounded-xl text-sm font-medium disabled:opacity-50 ${promotionAction === 'cancel' ? 'bg-gray-500 hover:bg-gray-600' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                    {promotionAction === 'cancel' ? 'Cancel Promotion' : 'Merge & Promote'}
                   </button>
                 </div>
               </>
             ) : (
               <>
-                <p className="text-sm text-gray-600 mb-6">
-                  Are you sure you want to move <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> to <strong>{toClass?.name}</strong>?
+                <p className="text-sm text-gray-600 mb-4">
+                  Are you sure you want to promote <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> to <strong>{toClass?.name}</strong>?
                 </p>
+                {destinationHasLearners && (
+                  <p className="text-sm text-amber-600 mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <strong>Note:</strong> {toClass?.name} already has {toClass?.studentCount} learner(s). After promotion, {toClass?.name} will have {(fromClass?.studentCount || 0) + (toClass?.studentCount || 0)} learners total.
+                  </p>
+                )}
+                <p className="text-xs text-gray-400 mb-6">This action cannot be undone.</p>
                 <div className="flex gap-3">
                   <button onClick={() => setShowConfirm(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>
-                  <button onClick={() => { setPromotionAction('merge'); setPromotionMode('promote'); confirmPromote(); }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
+                  <button onClick={confirmPromote} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
                     Yes, Promote All
                   </button>
                 </div>

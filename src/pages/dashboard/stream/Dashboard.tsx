@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { BarChart3, Users, Filter, Loader2, TrendingUp, Award, BookOpen, Search } from 'lucide-react';
+import { BarChart3, Users, Filter, Loader2, TrendingUp, Award, BookOpen, Search, ClipboardList } from 'lucide-react';
 import { getSchoolLevelBand } from '@/lib/grading';
 
 interface StudentRanking {
@@ -37,6 +37,8 @@ export default function StreamDashboard() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'rankings' | 'subjects'>('rankings');
   const [classInfo, setClassInfo] = useState<any>(null);
+  const [exams, setExams] = useState<any[]>([]);
+  const [selectedExam, setSelectedExam] = useState<string>('');
 
   useEffect(() => {
     if (user?.schoolId) fetchInitialData();
@@ -44,7 +46,7 @@ export default function StreamDashboard() {
 
   useEffect(() => {
     if (selectedClass && selectedTerm) fetchStreamData();
-  }, [selectedClass, selectedTerm]);
+  }, [selectedClass, selectedTerm, selectedExam]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -68,6 +70,14 @@ export default function StreamDashboard() {
         .order('academic_year', { ascending: false });
       setTerms(termsData || []);
       if (termsData && termsData.length > 0) setSelectedTerm(termsData[0].id);
+
+      const { data: examsData } = await supabaseUntyped
+        .from('school_exams')
+        .select('id, name, type, is_active')
+        .eq('school_id', user?.schoolId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+      setExams(examsData || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -96,12 +106,18 @@ export default function StreamDashboard() {
         return;
       }
 
-      // Fetch all results for this class and term
-      const { data: results } = await supabaseUntyped
+      // Fetch all results for this class and term (optionally filtered by assessment)
+      let resultsQuery = supabaseUntyped
         .from('results')
-        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_, points_, subjects(id, name)')
+        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_, points_, exam_id, subjects(id, name)')
         .eq('class_id', selectedClass)
         .eq('term_id', selectedTerm);
+      
+      if (selectedExam) {
+        resultsQuery = resultsQuery.eq('exam_id', selectedExam);
+      }
+      
+      const { data: results } = await resultsQuery;
 
       const is = String(cls?.curriculum || '').toUpperCase() === '';
 
@@ -214,10 +230,20 @@ export default function StreamDashboard() {
           {terms.length > 0 && (
             <select
               value={selectedTerm}
-              onChange={e => setSelectedTerm(e.target.value)}
+              onChange={e => { setSelectedTerm(e.target.value); setSelectedExam(''); }}
               className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
             >
               {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
+            </select>
+          )}
+          {exams.length > 0 && (
+            <select
+              value={selectedExam}
+              onChange={e => setSelectedExam(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
+            >
+              <option value="">All Assessments</option>
+              {exams.map(e => <option key={e.id} value={e.id}>{e.name} {e.type ? `(${e.type})` : ''}</option>)}
             </select>
           )}
         </div>

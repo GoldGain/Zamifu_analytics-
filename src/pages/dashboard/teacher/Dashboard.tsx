@@ -76,7 +76,7 @@ export default function TeacherDashboard() {
     try {
       // Get all subject-class assignments for this teacher
       const { data: assignments } = await supabaseUntyped
-        .from('teacher_subjects')
+        .from('teacher_subject_assignments')
         .select('*, subjects(name), classes(id, name, level, grade_level, curriculum)')
         .eq('teacher_id', teacherId);
 

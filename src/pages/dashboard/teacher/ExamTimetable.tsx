@@ -74,7 +74,7 @@ export default function ExamTimetable() {
       if (!user) return;
 
       const { data, error } = await supabase
-        .from('teacher_subjects')
+        .from('teacher_subject_assignments')
         .select('subjects(id, name)')
         .eq('teacher_id', user.id);
 
