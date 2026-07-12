@@ -47,7 +47,6 @@ import SchoolAdminAssignTeachers from '@/pages/dashboard/school-admin/AssignTeac
 import SchoolAdminAssessments from '@/pages/dashboard/school-admin/Assessments';
 import SchoolAdminAssignRoles from '@/pages/dashboard/school-admin/AssignRoles';
 import SchoolAdminMarksOverview from '@/pages/dashboard/school-admin/MarksOverview';
-// ViewLearners merged into Students.tsx
 import SchoolAdminCommunicate from '@/pages/dashboard/school-admin/Communicate';
 import SchoolAdminPromoteClass from '@/pages/dashboard/school-admin/PromoteClass';
 import SchoolAdminClassRank from '@/pages/dashboard/school-admin/ClassRank';
@@ -65,7 +64,6 @@ import TeacherExamTimetable from '@/pages/dashboard/teacher/ExamTimetable';
 import TeacherViewMarks from '@/pages/dashboard/teacher/ViewMarks';
 import TeacherAssessmentProgress from '@/pages/dashboard/teacher/AssessmentProgress';
 import TeacherTimetable from '@/pages/dashboard/teacher/Timetable';
-// BulkSms removed - integrated into Publish and Notify
 import ClassTeacherDashboard from '@/pages/dashboard/class-teacher/Dashboard';
 import SubjectTeacherDashboard from '@/pages/dashboard/subject-teacher/Dashboard';
 import StreamDashboard from '@/pages/dashboard/stream/Dashboard';
@@ -180,12 +178,9 @@ function AppRoutes() {
       <Route path="/school-admin/assessments" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssessments /></ProtectedRoute>} />
       <Route path="/school-admin/assign-roles" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssignRoles /></ProtectedRoute>} />
       <Route path="/school-admin/marks-overview" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminMarksOverview /></ProtectedRoute>} />
-      {/* BulkSms removed - integrated into Publish and Notify */}
-      {/* ViewLearners merged into Students.tsx */}
       <Route path="/school-admin/communicate" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminCommunicate /></ProtectedRoute>} />
       <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminPromoteClass /></ProtectedRoute>} />
       <Route path="/school-admin/class-rank" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminClassRank /></ProtectedRoute>} />
-      <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']}><DeanOfStudiesDashboard /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']}><TimetableView /></ProtectedRoute>} />
 
       {/* Teacher routes */}
