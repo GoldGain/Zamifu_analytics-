@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { Clock, Save, AlertCircle, Copy, ChevronDown } from 'lucide-react';
+import { Clock, Save, AlertCircle, Copy, ChevronDown, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import { getLevelConfig } from '@/lib/timetable-generator';
 
 // ─── Level Groups ────────────────────────────────────────────────────────────
 
@@ -19,11 +20,11 @@ export const LEVEL_GROUPS = [
 // Default timings per level group
 const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   'pre-primary': {
-    start_time: '08:30', end_time: '14:30', period_duration: 35,
+    start_time: '08:30', end_time: '12:30', period_duration: 35,
     first_break_start: '09:45', first_break_end: '10:15',
-    second_break_start: '11:30', second_break_end: '12:00',
-    lunch_start: '12:30', lunch_end: '13:00',
-    activities_start: '13:00', activities_end: '14:30',
+    second_break_start: '11:15', second_break_end: '11:35',
+    lunch_start: '12:00', lunch_end: '12:30',
+    activities_start: '', activities_end: '',
   },
   'lower-primary': {
     start_time: '08:20', end_time: '15:00', period_duration: 40,
@@ -67,6 +68,17 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
     lunch_start: '12:50', lunch_end: '13:30',
     activities_start: '17:00', activities_end: '17:40',
   },
+};
+
+// Lesson info per level for display
+const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; note: string }> = {
+  'pre-primary': { total: 6, afterLunch: 0, note: 'School ends at lunch' },
+  'lower-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'upper-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'combined-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { total: 9, afterLunch: 3, note: '3 lessons after lunch' },
+  'form-3-4': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -160,6 +172,8 @@ export default function TimetableSetup() {
   };
 
   const currentConfig = configs[selectedLevel] || DEFAULT_CONFIGS[selectedLevel] || DEFAULT_CONFIGS['lower-primary'];
+  const lessonInfo = LEVEL_LESSON_INFO[selectedLevel];
+  const isPrePrimary = selectedLevel === 'pre-primary';
 
   const handleConfigChange = (field: keyof LevelConfig, value: any) => {
     setConfigs(prev => ({
@@ -245,7 +259,10 @@ export default function TimetableSetup() {
         <div>
           <p className="font-bold mb-1">School Day Structure:</p>
           <p>
-            Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → Lesson 7 &amp; 8 → <strong>ACTIVITIES</strong>
+            Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7+] → <strong>ACTIVITIES</strong>
+          </p>
+          <p className="mt-1 text-xs text-blue-700">
+            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower/Upper Primary: <strong>7 lessons</strong> | Junior/8-4-4: <strong>8 lessons</strong> | Senior: <strong>9 lessons</strong>
           </p>
         </div>
       </div>
@@ -265,9 +282,22 @@ export default function TimetableSetup() {
           </select>
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
         </div>
-        <p className="text-xs text-gray-500 mt-2">
-          Grades: <strong>{LEVEL_GROUPS.find(l => l.key === selectedLevel)?.grades}</strong>
-        </p>
+        <div className="mt-3 p-3 bg-gray-50 rounded-xl">
+          <p className="text-xs text-gray-500">
+            Grades: <strong>{LEVEL_GROUPS.find(l => l.key === selectedLevel)?.grades}</strong>
+          </p>
+          {lessonInfo && (
+            <p className={`text-xs mt-1 font-semibold ${isPrePrimary ? 'text-amber-600' : 'text-blue-600'}`}>
+              <Info className="w-3 h-3 inline mr-1" />
+              {lessonInfo.total} lessons per day — {lessonInfo.note}
+              {isPrePrimary && (
+                <span className="block mt-0.5 text-amber-500 font-normal">
+                  Activities field can be left empty — Pre-Primary ends at lunch time.
+                </span>
+              )}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Level Configuration Form */}
@@ -304,8 +334,18 @@ export default function TimetableSetup() {
           <TimeInput label="LUNCH ends" value={currentConfig.lunch_end} onChange={v => handleConfigChange('lunch_end', v)} />
           <div className="hidden md:block" />
 
-          <TimeInput label="ACTIVITIES starts" value={currentConfig.activities_start} onChange={v => handleConfigChange('activities_start', v)} />
-          <TimeInput label="ACTIVITIES ends" value={currentConfig.activities_end} onChange={v => handleConfigChange('activities_end', v)} />
+          {!isPrePrimary && (
+            <>
+              <TimeInput label="ACTIVITIES starts" value={currentConfig.activities_start} onChange={v => handleConfigChange('activities_start', v)} />
+              <TimeInput label="ACTIVITIES ends" value={currentConfig.activities_end} onChange={v => handleConfigChange('activities_end', v)} />
+            </>
+          )}
+          {isPrePrimary && (
+            <div className="md:col-span-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+              <Info className="w-4 h-4 inline mr-1" />
+              Pre-Primary ends at lunch time — no activities configuration needed.
+            </div>
+          )}
         </div>
 
         <button
@@ -370,6 +410,8 @@ export default function TimetableSetup() {
             <thead>
               <tr className="border-b bg-gray-50">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Level</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Lessons/Day</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">After Lunch</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Start</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">End</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Duration</th>
@@ -379,6 +421,7 @@ export default function TimetableSetup() {
             <tbody>
               {LEVEL_GROUPS.map(({ key, label }) => {
                 const cfg = configs[key] || DEFAULT_CONFIGS[key];
+                const info = LEVEL_LESSON_INFO[key];
                 return (
                   <tr
                     key={key}
@@ -386,6 +429,16 @@ export default function TimetableSetup() {
                     onClick={() => setSelectedLevel(key)}
                   >
                     <td className="px-4 py-3 font-medium text-[#111111]">{label}</td>
+                    <td className="px-4 py-3">
+                      <span className={`font-semibold ${info?.afterLunch === 0 ? 'text-amber-600' : 'text-blue-600'}`}>
+                        {info?.total || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${info?.afterLunch === 0 ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                        {info?.afterLunch === 0 ? 'Ends at lunch' : `${info?.afterLunch} lesson${info?.afterLunch !== 1 ? 's' : ''}`}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.start_time || '-'}</td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.end_time || '-'}</td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.period_duration || 40} min</td>
