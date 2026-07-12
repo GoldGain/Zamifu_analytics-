@@ -40,7 +40,6 @@ import {
   Brain,
   User,
   RefreshCw,
-  ListOrdered,
 } from 'lucide-react';
 
 interface NavItem {
@@ -86,7 +85,6 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Fees', icon: <CreditCard className="w-5 h-5" />, path: '/school-admin/fees' },
     { label: 'Results', icon: <FileText className="w-5 h-5" />, path: '/school-admin/results' },
     { label: 'Assessments', icon: <BookOpen className="w-5 h-5" />, path: '/school-admin/assessments' },
-    { label: 'Class Rank List', icon: <ListOrdered className="w-5 h-5" />, path: '/school-admin/class-rank' },
     { label: 'Marks Overview', icon: <BarChart3 className="w-5 h-5" />, path: '/school-admin/marks-overview' },
     { label: 'Assign Roles', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/assign-roles' },
     { label: 'Stream Dashboard', icon: <BarChart3 className="w-5 h-5" />, path: '/school-admin/stream-dashboard' },

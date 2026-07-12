@@ -92,6 +92,9 @@ export default function TeacherResultsUpload() {
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
   const [exams, setExams] = useState<any[]>([]);
+  // Issue 8: Store full assignments to filter subjects per selected class
+  const [teacherAssignments, setTeacherAssignments] = useState<{class_id: string; subject_id: string}[]>([]);
+  const [allSubjects, setAllSubjects] = useState<any[]>([]);
   const [outOf, setOutOf] = useState(100);
 
   // Subject selection: 'db' = from DB, 'preset' = from pre-populated list, 'manual' = typed
@@ -120,9 +123,9 @@ export default function TeacherResultsUpload() {
         supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         (supabase as any).from('school_exams').select('id, name, type, term_id').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
       ]);
-      // Issue 14: Filter classes and subjects to only those assigned to this teacher
+      // Issue 8: Filter classes and subjects to only those assigned to this teacher (per class)
       let filteredClasses = c || [];
-      let filteredSubjects = s || [];
+      const allSubjectsData = s || [];
       try {
         const { data: teacherRec } = await (supabase as any).from('teachers').select('id').eq('profile_id', user?.id).maybeSingle();
         if (teacherRec?.id) {
@@ -132,14 +135,16 @@ export default function TeacherResultsUpload() {
             .eq('teacher_id', teacherRec.id);
           if (assignments && assignments.length > 0) {
             const assignedClassIds = [...new Set(assignments.map((a: any) => a.class_id).filter(Boolean))];
-            const assignedSubjectIds = [...new Set(assignments.map((a: any) => a.subject_id).filter(Boolean))];
             if (assignedClassIds.length > 0) filteredClasses = (c || []).filter((cls: any) => assignedClassIds.includes(cls.id));
-            if (assignedSubjectIds.length > 0) filteredSubjects = (s || []).filter((sub: any) => assignedSubjectIds.includes(sub.id));
+            // Store full assignments for per-class subject filtering
+            setTeacherAssignments(assignments);
           }
         }
       } catch (assignErr) { console.warn('Could not filter teacher assignments:', assignErr); }
       setClasses(filteredClasses);
-      setSubjects(filteredSubjects);
+      setAllSubjects(allSubjectsData);
+      // Initially show no subjects until a class is selected
+      setSubjects([]);
       setExams(ex || []);
 
       // Auto-create default terms if none exist
@@ -186,7 +191,22 @@ export default function TeacherResultsUpload() {
     // Reset subject selection when class changes
     setSelectedSubject('');
     setManualSubjectName('');
-  }, [selectedClass]);
+    // Issue 8: Filter subjects to only those assigned to this teacher FOR THIS CLASS
+    if (selectedClass && teacherAssignments.length > 0) {
+      const classSubjectIds = teacherAssignments
+        .filter((a) => a.class_id === selectedClass)
+        .map((a) => a.subject_id)
+        .filter(Boolean);
+      if (classSubjectIds.length > 0) {
+        setSubjects(allSubjects.filter((sub: any) => classSubjectIds.includes(sub.id)));
+      } else {
+        // No specific assignments for this class — show all school subjects as fallback
+        setSubjects(allSubjects);
+      }
+    } else if (allSubjects.length > 0) {
+      setSubjects(allSubjects);
+    }
+  }, [selectedClass, teacherAssignments, allSubjects]);
 
   // ── Derived: current class data & band ──────────────────────────────────────
   const currentClassData = classes.find((c: any) => c.id === selectedClass);

@@ -64,7 +64,7 @@ export default function Assessments() {
     if (user?.schoolId) {
       fetchData();
     }
-  }, [user?.schoolId]);
+  }, [user?.schoolId, user?.id]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -129,20 +129,31 @@ export default function Assessments() {
       };
 
       if (editingExam) {
-        const { error } = await (supabase as any)
+        const { data: updatedData, error } = await (supabase as any)
           .from('school_exams')
           .update(payload)
-          .eq('id', editingExam.id);
+          .eq('id', editingExam.id)
+          .select('*, terms(name)');
         if (error) throw error;
+        // Optimistic update
+        if (updatedData && updatedData.length > 0) {
+          setExams(prev => prev.map(e => e.id === editingExam.id ? updatedData[0] : e));
+        }
         toast.success('Assessment updated successfully');
       } else {
-        const { error } = await (supabase as any)
+        const { data: newData, error } = await (supabase as any)
           .from('school_exams')
-          .insert(payload);
+          .insert(payload)
+          .select('*, terms(name)');
         if (error) throw error;
+        // Optimistic update — add to list immediately
+        if (newData && newData.length > 0) {
+          setExams(prev => [newData[0], ...prev]);
+        }
         toast.success('Assessment created successfully');
       }
       setShowModal(false);
+      // Also refresh from DB to ensure consistency
       fetchData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to save assessment');

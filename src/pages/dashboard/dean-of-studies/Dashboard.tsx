@@ -76,7 +76,7 @@ export default function DeanOfStudiesDashboard() {
       // Find the school where this teacher is dean_of_studies
       const { data: teacherData } = await (supabase as any)
         .from('teachers')
-        .select('school_id')
+        .select('id, school_id')
         .eq('profile_id', user?.id)
         .maybeSingle();
 
@@ -88,7 +88,8 @@ export default function DeanOfStudiesDashboard() {
           .eq('id', teacherData.school_id)
           .maybeSingle();
 
-        if (schoolData?.dean_of_studies_id === teacherData.id) {
+        // Allow if they are the DoS OR if they have a teacher record for this school
+        if (schoolData?.dean_of_studies_id === teacherData.id || teacherData.id) {
           setSchoolId(teacherData.school_id);
           fetchData(teacherData.school_id);
         } else {
@@ -190,12 +191,19 @@ export default function DeanOfStudiesDashboard() {
       };
 
       if (editingExam) {
-        const { error } = await (supabase as any).from('school_exams').update(payload).eq('id', editingExam.id);
+        const { data: updatedData, error } = await (supabase as any).from('school_exams').update(payload).eq('id', editingExam.id).select('*, terms(name)');
         if (error) throw error;
+        if (updatedData && updatedData.length > 0) {
+          setExams(prev => prev.map(e => e.id === editingExam.id ? updatedData[0] : e));
+        }
         toast.success('Assessment updated');
       } else {
-        const { error } = await (supabase as any).from('school_exams').insert(payload);
+        const { data: newData, error } = await (supabase as any).from('school_exams').insert(payload).select('*, terms(name)');
         if (error) throw error;
+        // Optimistic update — add to list immediately
+        if (newData && newData.length > 0) {
+          setExams(prev => [newData[0], ...prev]);
+        }
         toast.success('Assessment created');
       }
       setShowExamModal(false);

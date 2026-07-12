@@ -175,9 +175,11 @@ export default function TimetableGenerate() {
       const activities: Record<string, string> = {};
       (activitiesData || []).forEach((a: any) => { activities[String(a.day_of_week)] = a.activity_name; });
 
-      // Clear existing entries for selected levels
-      await supabase.from('timetable_entries').delete().eq('school_id', schoolId);
-      await supabase.from('timetable_time_slots').delete().eq('school_id', schoolId);
+      // Clear existing entries and slots ONLY for selected levels (prevents duplicate key errors)
+      for (const levelKey of Array.from(selectedLevels)) {
+        await (supabase as any).from('timetable_entries').delete().eq('school_id', schoolId).eq('level_group', levelKey);
+        await (supabase as any).from('timetable_time_slots').delete().eq('school_id', schoolId).eq('level_group', levelKey);
+      }
 
       const teacherBusy = new Set<string>();
       const classBusy = new Set<string>();
@@ -210,11 +212,12 @@ export default function TimetableGenerate() {
         const lessonCount = getLessonCountForLevel(levelKey);
         const slots = generateSlots(config, lessonCount);
 
-        const { data: createdSlots, error: slotError } = await supabase
+        const { data: createdSlots, error: slotError } = await (supabase as any)
           .from('timetable_time_slots')
           .insert(slots.map(s => ({
             ...s,
             school_id: schoolId,
+            level_group: levelKey,
             slot_type: s.slot_type === 'activities' ? 'activity' : s.slot_type,
           })))
           .select();
@@ -243,6 +246,7 @@ export default function TimetableGenerate() {
                 day_of_week: day,
                 time_slot_id: slot.id,
                 class_id: cls.id,
+                level_group: levelKey,
                 entry_type: isActivity ? 'activity' : slot.slot_type,
                 activity_name: isActivity ? (config.activities?.[String(day)] || 'Activity') : slot.label,
               });
@@ -266,6 +270,7 @@ export default function TimetableGenerate() {
                     day_of_week: day,
                     time_slot_id: slot.id,
                     class_id: cls.id,
+                    level_group: levelKey,
                     subject_id: assignment.subject_id,
                     teacher_id: assignment.teacher_id,
                     entry_type: 'lesson',

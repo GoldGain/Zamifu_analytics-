@@ -49,7 +49,6 @@ import SchoolAdminAssignRoles from '@/pages/dashboard/school-admin/AssignRoles';
 import SchoolAdminMarksOverview from '@/pages/dashboard/school-admin/MarksOverview';
 import SchoolAdminCommunicate from '@/pages/dashboard/school-admin/Communicate';
 import SchoolAdminPromoteClass from '@/pages/dashboard/school-admin/PromoteClass';
-import SchoolAdminClassRank from '@/pages/dashboard/school-admin/ClassRank';
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 import TeacherResultsUpload from '@/pages/dashboard/teacher/ResultsUpload';
@@ -180,7 +179,6 @@ function AppRoutes() {
       <Route path="/school-admin/marks-overview" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminMarksOverview /></ProtectedRoute>} />
       <Route path="/school-admin/communicate" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminCommunicate /></ProtectedRoute>} />
       <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminPromoteClass /></ProtectedRoute>} />
-      <Route path="/school-admin/class-rank" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminClassRank /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']}><TimetableView /></ProtectedRoute>} />
 
       {/* Teacher routes */}

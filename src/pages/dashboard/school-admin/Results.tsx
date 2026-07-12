@@ -164,7 +164,7 @@ export default function SchoolAdminResults() {
     if (selectedTerm && r.term_id !== selectedTerm) return false;
     // Issue 11-12: Filter by assessment/exam name
     if (selectedExam) {
-      const examName = r.exams?.name || '';
+      const examName = r.school_exams?.name || r.exams?.name || '';
       const examId = r.exam_id || '';
       if (examId !== selectedExam && examName !== selectedExam) return false;
     }
@@ -318,7 +318,7 @@ export default function SchoolAdminResults() {
 
   const fetchClassResults = async () => {
     if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term first'); return null; }
-    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, gender, photo_url), subjects(name), exams(name)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, gender, photo_url), subjects(name), school_exams(name)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
     if (error) { toast.error('Failed to fetch results: ' + error.message); return null; }
     return data || [];
   };
@@ -345,7 +345,7 @@ export default function SchoolAdminResults() {
     const byStudent: Record<string, any> = {};
     rawResults.forEach((r: any) => {
       const sid = r.students?.id || r.student_id;
-      if (!byStudent[sid]) { byStudent[sid] = { student: r.students, subjects: {}, totalPct: 0, totalPoints: 0, count: 0, gender: r.students?.gender || null, examName: r.exams?.name || '' }; }
+      if (!byStudent[sid]) {       byStudent[sid] = { student: r.students, subjects: {}, totalPct: 0, totalPoints: 0, count: 0, gender: r.students?.gender || null, examName: r.school_exams?.name || r.exams?.name || '' }; }
       const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
       const subName = r.subjects?.name || 'Unknown';
       byStudent[sid].subjects[subName] = pct;
@@ -355,8 +355,8 @@ export default function SchoolAdminResults() {
       byStudent[sid].totalPoints += r.cbc_points || 0;
       byStudent[sid].count += 1;
       // Store assessment name for display
-      if (r.exams?.name && !byStudent[sid].examName) {
-        byStudent[sid].examName = r.exams.name;
+      if ((r.school_exams?.name || r.exams?.name) && !byStudent[sid].examName) {
+        byStudent[sid].examName = r.school_exams?.name || r.exams?.name;
       }
     });
     const summaries = Object.entries(byStudent).map(([sid, v]: [string, any]) => ({

@@ -39,12 +39,19 @@ export default function AssessmentProgress() {
       // Get teacher record
       const { data: teacherData } = await supabaseUntyped
         .from('teachers')
-        .select('id')
+        .select('id, school_id')
         .eq('profile_id', user?.id)
         .single();
 
       const teacherId = teacherData?.id;
       if (!teacherId) {
+        setLoading(false);
+        return;
+      }
+
+      // Issue 9: Resolve school_id from teacher record as fallback when user.schoolId is null
+      const resolvedSchoolId = user?.schoolId || teacherData?.school_id;
+      if (!resolvedSchoolId) {
         setLoading(false);
         return;
       }
@@ -64,7 +71,7 @@ export default function AssessmentProgress() {
       const { data: exams } = await supabaseUntyped
         .from('school_exams')
         .select('*, terms(name, academic_year)')
-        .eq('school_id', user?.schoolId)
+        .eq('school_id', resolvedSchoolId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
