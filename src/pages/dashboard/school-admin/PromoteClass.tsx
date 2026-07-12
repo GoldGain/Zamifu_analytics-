@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowUpRight, Loader2, AlertTriangle, CheckCircle, Users, ChevronDown, Info, GraduationCap } from 'lucide-react';
+import { ArrowUpRight, Loader2, AlertTriangle, CheckCircle, Users, ChevronDown, Info, GraduationCap, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ClassOption {
@@ -65,7 +65,7 @@ export default function PromoteClass() {
     return cls.grade_level === 9 || /grade\s*9|grade9|g9|class\s*9/i.test(name);
   };
 
-  const handlePromote = async () => {
+  const handlePromote = () => {
     if (!selectedFromClass) {
       toast.error('Please select a source class');
       return;
@@ -87,6 +87,13 @@ export default function PromoteClass() {
     }
     if (selectedFromClass === selectedToClass) {
       toast.error('Source and destination must be different');
+      return;
+    }
+
+    // Issue 9: Check if destination class has learners - prevent merge
+    const toClassObj = classes.find(c => c.id === selectedToClass);
+    if (toClassObj && toClassObj.studentCount > 0) {
+      toast.error(`Cannot promote to ${toClassObj.name} — it already has ${toClassObj.studentCount} learner(s). Please select an empty class.`);
       return;
     }
 
@@ -120,6 +127,18 @@ export default function PromoteClass() {
       } else {
         // Normal promotion: move learners to destination class
         const toClassObj = classes.find(c => c.id === selectedToClass);
+        
+        // Issue 9: Double-check destination is still empty before promoting
+        const { data: destStudents } = await supabaseUntyped
+          .from('students')
+          .select('id')
+          .eq('class_id', selectedToClass)
+          .eq('is_active', true);
+        
+        if (destStudents && destStudents.length > 0) {
+          throw new Error(`Destination class ${toClassObj?.name} now has ${destStudents.length} learner(s). Cannot promote to a non-empty class.`);
+        }
+        
         const { error } = await supabaseUntyped
           .from('students')
           .update({ class_id: selectedToClass })
@@ -148,6 +167,9 @@ export default function PromoteClass() {
   const destinationHasLearners = toClass && toClass.studentCount > 0;
   const fromIsGrade9 = isGrade9(fromClass);
 
+  // Issue 9: Filter destination classes to only show empty classes
+  const emptyDestinationClasses = classes.filter(c => c.id !== selectedFromClass && c.studentCount === 0);
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
@@ -159,8 +181,17 @@ export default function PromoteClass() {
         <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
         <div>
           <p className="font-bold mb-1">How it works:</p>
-          <p>Select the source class. For Grade 9, learners will be graduated. For other classes, select a destination class to promote all learners at once.</p>
+          <p>Select the source class. For Grade 9, learners will be graduated. For other classes, select an empty destination class to promote all learners at once.</p>
           <p className="mt-1 text-blue-700">Promote from the highest class downwards. Grade 9 learners will be marked as graduated.</p>
+        </div>
+      </div>
+
+      {/* Issue 9: Show warning about merge restriction */}
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex gap-3 text-sm text-red-900">
+        <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600" />
+        <div>
+          <p className="font-bold mb-1">Important:</p>
+          <p>Promotion is only allowed to <strong>empty classes</strong>. You cannot merge learners into a class that already has students. Please ensure the destination class has no learners before promoting.</p>
         </div>
       </div>
 
@@ -210,28 +241,31 @@ export default function PromoteClass() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-[#111111] mb-2">To Class (Destination)</label>
+                    <label className="block text-sm font-medium text-[#111111] mb-2">To Class (Empty Destination)</label>
                     <div className="relative">
                       <select
                         value={selectedToClass}
                         onChange={e => setSelectedToClass(e.target.value)}
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white appearance-none pr-10"
+                        disabled={emptyDestinationClasses.length === 0}
                       >
-                        <option value="">Select destination class</option>
-                        {classes
-                          .filter(c => c.id !== selectedFromClass)
-                          .map(c => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} {c.stream ? `(${c.stream})` : ''} — {c.studentCount} learners
-                            </option>
-                          ))}
+                        <option value="">
+                          {emptyDestinationClasses.length === 0 
+                            ? 'No empty classes available' 
+                            : 'Select empty destination class'}
+                        </option>
+                        {emptyDestinationClasses.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.stream ? `(${c.stream})` : ''} — {c.studentCount} learners
+                          </option>
+                        ))}
                       </select>
                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                     </div>
-                    {destinationHasLearners && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                        <Info className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>This class already has <strong>{toClass.studentCount}</strong> learner(s). They will be combined after promotion.</span>
+                    {emptyDestinationClasses.length === 0 && selectedFromClass && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>No empty classes available. Please create a new empty class first.</span>
                       </div>
                     )}
                   </div>
@@ -254,11 +288,9 @@ export default function PromoteClass() {
                       <>
                         <p className="font-bold">You are about to promote:</p>
                         <p><strong>{fromClass.studentCount}</strong> learner(s) from <strong>{fromClass.name}</strong> {toClass && `to <strong>${toClass.name}</strong>`}</p>
-                        {destinationHasLearners && (
-                          <p className="mt-1 text-orange-700 font-medium">
-                            Note: <strong>{toClass.name}</strong> already has <strong>{toClass.studentCount}</strong> learner(s). All learners will be combined in {toClass.name}.
-                          </p>
-                        )}
+                        <p className="mt-1 text-green-700 font-medium">
+                          Destination class will have exactly <strong>{fromClass.studentCount}</strong> learner(s) after promotion.
+                        </p>
                       </>
                     )}
                     <p className="mt-1 text-amber-600">This action cannot be undone. Please confirm below.</p>
@@ -290,6 +322,7 @@ export default function PromoteClass() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Class</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Level</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Learners</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -299,6 +332,13 @@ export default function PromoteClass() {
                       <td className="px-4 py-3 text-gray-600">{c.level || '-'}</td>
                       <td className="px-4 py-3">
                         <span className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-full">{c.studentCount}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {c.studentCount === 0 ? (
+                          <span className="text-xs px-2 py-1 bg-green-50 text-green-600 rounded-full">Empty</span>
+                        ) : (
+                          <span className="text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded-full">Has learners</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -342,11 +382,9 @@ export default function PromoteClass() {
                 <p className="text-sm text-gray-600 mb-4">
                   Are you sure you want to promote <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong> to <strong>{toClass?.name}</strong>?
                 </p>
-                {destinationHasLearners && (
-                  <p className="text-sm text-amber-600 mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <strong>Note:</strong> {toClass?.name} already has {toClass?.studentCount} learner(s). After promotion, {toClass?.name} will have {(fromClass?.studentCount || 0) + (toClass?.studentCount || 0)} learners total.
-                  </p>
-                )}
+                <p className="text-sm text-green-700 mb-4 bg-green-50 border border-green-200 rounded-lg p-3">
+                  <strong>Safe promotion:</strong> {toClass?.name} is empty. After promotion, it will have exactly {fromClass?.studentCount} learner(s).
+                </p>
                 <p className="text-xs text-gray-400 mb-6">This action cannot be undone.</p>
                 <div className="flex gap-3">
                   <button onClick={() => setShowConfirm(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>
