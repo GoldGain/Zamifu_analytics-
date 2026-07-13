@@ -40,6 +40,7 @@ import {
   Brain,
   User,
   RefreshCw,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface NavItem {
@@ -103,6 +104,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'View Timetable', icon: <Calendar className="w-5 h-5" />, path: '/timetable' },
     { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, path: '/teacher/results/upload' },
     { label: 'View My Marks', icon: <Eye className="w-5 h-5" />, path: '/teacher/view-marks' },
+    { label: 'Marklist', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/teacher/marklist' },
     { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/assessment-progress' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/teacher/attendance' },
     { label: 'Homework & Papers', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/homework' },

@@ -86,6 +86,8 @@ import ParentChangePassword from '@/pages/dashboard/parent/ChangePassword';
 import TimetableView from '@/pages/dashboard/TimetableView';
 import TeacherCurriculumNavigator from '@/pages/dashboard/teacher/CurriculumNavigator';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
+import TeacherMarklist from '@/pages/dashboard/teacher/Marklist';
+import PathwayFinder from '@/components/PathwayFinder';
 import SchoolAdminProfile from '@/pages/dashboard/school-admin/Profile';
 import ParentProfile from '@/pages/dashboard/parent/Profile';
 import ParentFeeTranscript from '@/pages/dashboard/parent/FeeTranscript';
@@ -200,6 +202,7 @@ function AppRoutes() {
       <Route path="/teacher/change-password" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherChangePassword /></ProtectedRoute>} />
       <Route path="/teacher/profile" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherProfile /></ProtectedRoute>} />
       <Route path="/teacher/curriculum" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherCurriculumNavigator /></ProtectedRoute>} />
+      <Route path="/teacher/marklist" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMarklist /></ProtectedRoute>} />
       {/* Issue 5: DoS can manage assessments - shared Assessments component for teachers */}
       <Route path="/teacher/assessments" element={<ProtectedRoute allowedRoles={['teacher']}><SchoolAdminAssessments /></ProtectedRoute>} />
 
@@ -231,6 +234,9 @@ function AppRoutes() {
 
       {/* General routes */}
       <Route path="/timetable" element={<ProtectedRoute allowedRoles={['school_admin', 'teacher', 'student', 'parent', 'super_admin', 'reseller_super_admin', 'master_super_admin']}><TimetableView /></ProtectedRoute>} />
+
+      {/* Public Pathway Finder route */}
+      <Route path="/pathway-finder" element={<PublicRoute><PathwayFinder /></PublicRoute>} />
 
       {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />

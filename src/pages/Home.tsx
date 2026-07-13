@@ -7,6 +7,9 @@ import CTA from '@/sections/CTA';
 import { usePWA } from '@/hooks/usePWA';
 import { Smartphone, Phone, Mail } from 'lucide-react';
 import SEO from '@/components/SEO';
+import StudentCarousel from '@/components/StudentCarousel';
+import PathwayFinder from '@/components/PathwayFinder';
+import InterestsSection from '@/components/InterestsSection';
 
 export default function Home() {
   const { isInstallable, isInstalled, install } = usePWA();
@@ -47,11 +50,25 @@ export default function Home() {
           <Smartphone className="w-4 h-4" /> Download App
         </button>
       )}
+      
+      {/* Student Image Carousel - Hero Replacement */}
+      <StudentCarousel />
+      
+      {/* Existing sections */}
       <Hero />
+      
+      {/* Interests Section */}
+      <InterestsSection />
+      
+      {/* Pathway Finder */}
+      <PathwayFinder />
+      
       <Features />
       <HowItWorks />
       <Testimonials />
       <FAQ />
+      
+      {/* Contact Section */}
       <section className="py-12 bg-gray-50">
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold mb-4">Contact Us</h2>
@@ -76,6 +93,7 @@ export default function Home() {
           </a>
         </div>
       </section>
+      
       <CTA />
     </>
   );
