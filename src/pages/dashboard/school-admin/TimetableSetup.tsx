@@ -202,11 +202,20 @@ export default function TimetableSetup() {
   const isPrePrimary = selectedLevel === 'pre-primary';
 
   const handleConfigChange = (field: keyof LevelConfig, value: any) => {
+    let v = value;
+    const timeFields = [
+      'start_time','end_time','first_break_start','first_break_end',
+      'second_break_start','second_break_end','lunch_start','lunch_end',
+      'activities_start','activities_end',
+    ];
+    if (timeFields.includes(field) && typeof v === 'string' && v.includes(':')) {
+      v = v.slice(0, 5);
+    }
     setConfigs(prev => ({
       ...prev,
       [selectedLevel]: {
         ...prev[selectedLevel],
-        [field]: value,
+        [field]: v,
       },
     }));
   };
@@ -230,14 +239,12 @@ export default function TimetableSetup() {
       const lessonsPerDay = Math.max(6, Math.min(9, Number(cfg.lessons_per_day ?? (6 + afterLunch))));
       // Keep invariant: total = 6 before lunch + after lunch
       const normalizedLessons = 6 + afterLunch;
-      const { error } = await supabaseUntyped
-        .from('timetable_level_configs')
-        .upsert({
+      const payload = {
           school_id: schoolId,
           level_group: selectedLevel,
           start_time: normalizeTime(cfg.start_time),
           end_time: normalizeTime(cfg.end_time),
-          period_duration: cfg.period_duration || 40,
+          period_duration: Number(cfg.period_duration) || 40,
           first_break_start: normalizeTime(cfg.first_break_start),
           first_break_end: normalizeTime(cfg.first_break_end),
           second_break_start: normalizeTime(cfg.second_break_start),
@@ -249,20 +256,43 @@ export default function TimetableSetup() {
           lessons_per_day: normalizedLessons,
           after_lunch_lessons: afterLunch,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'school_id,level_group' });
-      // Reflect normalized values in local state
+        };
+      console.info('[TimetableSetup] saving', payload);
+
+      const { data: savedRows, error } = await supabaseUntyped
+        .from('timetable_level_configs')
+        .upsert(payload, { onConflict: 'school_id,level_group' })
+        .select('*');
+
+      if (error) throw new Error('Failed to save: ' + error.message);
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error('Save returned no rows — check database permissions (RLS).');
+      }
+
+      const saved = savedRows[0];
+      // Reflect exact DB values in local state so UI matches what Generate will use
       setConfigs(prev => ({
         ...prev,
         [selectedLevel]: {
-          ...prev[selectedLevel],
-          lessons_per_day: normalizedLessons,
-          after_lunch_lessons: afterLunch,
+          start_time: (saved.start_time || payload.start_time || '').toString().slice(0, 5),
+          end_time: (saved.end_time || payload.end_time || '').toString().slice(0, 5),
+          period_duration: saved.period_duration || payload.period_duration,
+          first_break_start: (saved.first_break_start || payload.first_break_start || '').toString().slice(0, 5),
+          first_break_end: (saved.first_break_end || payload.first_break_end || '').toString().slice(0, 5),
+          second_break_start: (saved.second_break_start || payload.second_break_start || '').toString().slice(0, 5),
+          second_break_end: (saved.second_break_end || payload.second_break_end || '').toString().slice(0, 5),
+          lunch_start: (saved.lunch_start || payload.lunch_start || '').toString().slice(0, 5),
+          lunch_end: (saved.lunch_end || payload.lunch_end || '').toString().slice(0, 5),
+          activities_start: (saved.activities_start || payload.activities_start || '').toString().slice(0, 5),
+          activities_end: (saved.activities_end || payload.activities_end || '').toString().slice(0, 5),
+          lessons_per_day: saved.lessons_per_day ?? normalizedLessons,
+          after_lunch_lessons: saved.after_lunch_lessons ?? afterLunch,
         },
       }));
 
-      if (error) throw new Error('Failed to save: ' + error.message);
-
-      toast.success(`Configuration saved for ${LEVEL_GROUPS.find(l => l.key === selectedLevel)?.label}!`);
+      toast.success(
+        `Saved ${LEVEL_GROUPS.find(l => l.key === selectedLevel)?.label}: start ${(saved.start_time || '').toString().slice(0,5)}, lunch ${(saved.lunch_start || '').toString().slice(0,5)}–${(saved.lunch_end || '').toString().slice(0,5)}, ${saved.lessons_per_day ?? normalizedLessons} lessons (${saved.after_lunch_lessons ?? afterLunch} after lunch). Now open Generate Timetable.`
+      );
     } catch (err: any) {
       toast.error(err.message || 'Failed to save configuration');
     } finally {

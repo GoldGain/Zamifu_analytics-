@@ -175,6 +175,20 @@ export default function TimetableGenerate() {
     try {
       setGenerating(true);
       const schoolId = user?.schoolId;
+      if (!schoolId) throw new Error('No school ID — please log in again.');
+
+      // ALWAYS re-fetch level configs from DB at generate-time so edited times from
+      // Timetable Setup are applied (never rely on stale React state).
+      const { data: freshLevelConfigs, error: lcErr } = await supabaseUntyped
+        .from('timetable_level_configs')
+        .select('*')
+        .eq('school_id', schoolId);
+      if (lcErr) throw new Error('Could not load timetable setup: ' + lcErr.message);
+      const freshLcMap: Record<string, any> = {};
+      (freshLevelConfigs || []).forEach((lc: any) => {
+        if (lc.level_group) freshLcMap[lc.level_group] = lc;
+      });
+      setLevelConfigs(freshLcMap);
 
       // Fetch all active classes
       const { data: allClasses } = await supabase.from('classes').select('id, name, level, grade_level, stream, school_id, is_active').eq('school_id', schoolId).eq('is_active', true);
@@ -190,6 +204,17 @@ export default function TimetableGenerate() {
       const activities: Record<string, string> = {};
       (activitiesData || []).forEach((a: any) => { activities[String(a.day_of_week)] = a.activity_name; });
 
+      // Require a saved Setup config for each selected level (prevents silent default times)
+      const missingSetup = Array.from(selectedLevels).filter((k) => !freshLcMap[k]);
+      if (missingSetup.length > 0) {
+        const labels = missingSetup
+          .map((k) => LEVEL_GROUPS.find((l) => l.key === k)?.label || k)
+          .join(', ');
+        throw new Error(
+          `Save Timetable Setup first for: ${labels}. Open Timetable Setup → edit times → Save Configuration, then generate.`
+        );
+      }
+
       // Clear existing entries/slots for selected levels + legacy "default" (old generator)
       // so View Timetable never mixes wrong lesson counts across levels.
       const levelsToClear = new Set<string>([...Array.from(selectedLevels), 'default']);
@@ -197,25 +222,26 @@ export default function TimetableGenerate() {
         await (supabase as any).from('timetable_entries').delete().eq('school_id', schoolId).eq('level_group', levelKey);
         await (supabase as any).from('timetable_time_slots').delete().eq('school_id', schoolId).eq('level_group', levelKey);
       }
-      // Also remove orphan entries for classes that will be regenerated (any level_group)
-      // Handled per-level below when we know which classes match.
 
       const teacherBusy = new Set<string>();
       const classBusy = new Set<string>();
       const allEntries: any[] = [];
+      const generatedSummary: string[] = [];
 
       // Process each selected level group
       for (const levelKey of Array.from(selectedLevels)) {
-        // Get config for this level (level-specific or legacy fallback)
-        const levelDbConfig = levelConfigs[levelKey];
-        const config: FrontendConfig = levelDbConfig
-          ? mapLevelConfigToFrontend(levelDbConfig, activities)
-          : (legacyConfig || {
-              lesson_duration: 40, school_start: '08:20', school_end: '15:40',
-              first_break_start: '09:40', first_break_end: '10:20',
-              second_break_start: '11:40', second_break_end: '12:20',
-              lunch_start: '12:50', lunch_end: '13:30', activities,
-            });
+        // ALWAYS use fresh DB config for this level (edited times from Setup)
+        const levelDbConfig = freshLcMap[levelKey];
+        if (!levelDbConfig) {
+          throw new Error(`No saved setup for ${levelKey}. Save it in Timetable Setup first.`);
+        }
+        const config: FrontendConfig = mapLevelConfigToFrontend(levelDbConfig, activities);
+        console.info(`[timetable] using DB times for ${levelKey}`, {
+          start: config.school_start,
+          lunch: `${config.lunch_start}-${config.lunch_end}`,
+          duration: config.lesson_duration,
+          after_lunch: config.after_lunch_lessons,
+        });
 
         // Validate required fields
         const requiredFields = ['first_break_start', 'first_break_end', 'second_break_start', 'second_break_end', 'lunch_start', 'lunch_end'];
@@ -251,6 +277,12 @@ export default function TimetableGenerate() {
           })))
           .select();
         if (slotError) throw slotError;
+
+        const lessonN = (createdSlots || []).filter((s: any) => s.slot_type === 'lesson').length;
+        const afterN = targets.afterLunch;
+        generatedSummary.push(
+          `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${lessonN} lessons (${afterN} after lunch), start ${config.school_start}`
+        );
 
         // Filter classes for this level group
         const gradeRange = LEVEL_GROUP_GRADE_RANGES[levelKey] || [];
@@ -344,7 +376,10 @@ export default function TimetableGenerate() {
       }
 
       const levelLabels = Array.from(selectedLevels).map(k => LEVEL_GROUPS.find(l => l.key === k)?.label).join(', ');
-      toast.success(`Timetable generated for: ${levelLabels}`);
+      toast.success(
+          `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
+          { duration: 8000 }
+        );
       fetchData();
     } catch (err: any) {
       console.error(err);

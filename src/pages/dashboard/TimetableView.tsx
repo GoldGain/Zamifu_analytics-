@@ -205,14 +205,17 @@ function buildDisplaySlotsForLevel(
   levelKey: string,
   levelConfig?: any | null
 ): TimeSlot[] {
-  const targets = LEVEL_LESSON_TARGETS[levelKey] || LEVEL_LESSON_TARGETS['default'];
+  // Never treat unknown/default as a real level for column counts when we know the class level
+  const key = levelKey === 'default' ? 'lower-primary' : levelKey;
+  const targets = LEVEL_LESSON_TARGETS[key] || { total: 7, afterLunch: 1 };
   const byLevel = (lg: string) =>
     dedupeByOrder(all.filter((s) => (s.level_group || 'default') === lg));
 
-  let candidates = byLevel(levelKey);
-  if (!candidates.length && levelKey === 'combined-primary') {
+  let candidates = byLevel(key);
+  if (!candidates.length && key === 'combined-primary') {
     candidates = byLevel('lower-primary');
   }
+  // Do NOT fall back to legacy "default" slots — they have wrong after-lunch counts
 
   const counts = countLessons(candidates);
   const countsMatch =
@@ -220,17 +223,38 @@ function buildDisplaySlotsForLevel(
     counts.total === targets.total &&
     counts.afterLunch === targets.afterLunch;
 
+  // Prefer DB slots only when structure is exactly correct for this level
   if (countsMatch) {
-    // Pre-primary: strip any activities after lunch for a clean end-at-lunch grid
+    let slots = candidates;
     if (targets.afterLunch === 0) {
-      return candidates.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity');
+      // Pre-primary: no post-lunch lesson columns and no activities column clutter
+      slots = slots.filter((s) => {
+        if (s.slot_type === 'lesson') {
+          // keep only first 6 lessons by order among lessons
+          return true;
+        }
+        return s.slot_type !== 'activities' && s.slot_type !== 'activity';
+      });
+      // Extra safety: drop any lesson after lunch if present
+      const lunchOrder = slots.find((s) => s.slot_type === 'lunch')?.slot_order;
+      if (lunchOrder != null) {
+        slots = slots.filter(
+          (s) => !(s.slot_type === 'lesson' && s.slot_order > lunchOrder)
+        );
+      }
     }
-    return candidates;
+    // Senior: ensure we have lessons through 9 — if DB missing a lesson, fall through to synth
+    const lessonLabels = slots.filter((s) => s.slot_type === 'lesson').map((s) => s.label);
+    if (targets.total === 9 && !lessonLabels.some((l) => /9/.test(l || ''))) {
+      // fall through to synthesize
+    } else {
+      return slots;
+    }
   }
 
-  // Synthesize correct structure from Timetable Setup config (or safe defaults)
+  // Synthesize CORRECT column structure from Setup times + level rules
   const cfg: TimetableConfig = {
-    lesson_duration: levelConfig?.period_duration || 40,
+    lesson_duration: Number(levelConfig?.period_duration) || 40,
     school_start: (levelConfig?.start_time || '08:20').toString().slice(0, 5),
     school_end: (levelConfig?.end_time || '15:40').toString().slice(0, 5),
     first_break_start: (levelConfig?.first_break_start || '09:40').toString().slice(0, 5),
@@ -249,16 +273,15 @@ function buildDisplaySlotsForLevel(
     after_lunch_lessons: targets.afterLunch,
   };
 
-  const generated = generateSlots(cfg, targets.total, levelKey);
-  // Map to TimeSlot shape with stable synthetic ids (for column keys only)
+  const generated = generateSlots(cfg, targets.total, key);
   return generated.map((s: TimetableSlot, i: number) => ({
-    id: `synth-${levelKey}-${s.slot_order}-${i}`,
+    id: `synth-${key}-${s.slot_order}-${i}`,
     slot_order: s.slot_order,
-    start_time: s.start_time,
-    end_time: s.end_time,
-    slot_type: s.slot_type === 'activities' ? 'activity' : s.slot_type,
+    start_time: s.start_time.length === 5 ? s.start_time + ':00' : s.start_time,
+    end_time: s.end_time.length === 5 ? s.end_time + ':00' : s.end_time,
+    slot_type: (s.slot_type === 'activities' ? 'activity' : s.slot_type) as TimeSlot['slot_type'],
     label: s.label,
-    level_group: levelKey,
+    level_group: key,
   }));
 }
 
