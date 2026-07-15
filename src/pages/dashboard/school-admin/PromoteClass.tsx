@@ -59,10 +59,26 @@ export default function PromoteClass() {
     setLoading(false);
   };
 
-  const isGrade9 = (cls: ClassOption | undefined): boolean => {
+  /** Grade 9 (junior exit) and Grade 12 / Form 4 (senior exit) must GRADUATE, not promote */
+  const isGraduationClass = (cls: ClassOption | undefined): boolean => {
     if (!cls) return false;
-    const name = cls.name?.toLowerCase() || '';
-    return cls.grade_level === 9 || /grade\s*9|grade9|g9|class\s*9/i.test(name);
+    const name = (cls.name || '').toLowerCase();
+    const grade = Number(cls.grade_level ?? cls.level);
+    if (grade === 9 || grade === 12) return true;
+    // Name patterns
+    if (/grade\s*9\b|grade9|\bg9\b|class\s*9\b/.test(name)) return true;
+    if (/grade\s*12\b|grade12|\bg12\b|class\s*12\b/.test(name)) return true;
+    if (/form\s*4\b|form4|\bf4\b/.test(name)) return true;
+    return false;
+  };
+
+  const graduationLabel = (cls: ClassOption | undefined): string => {
+    if (!cls) return 'exit class';
+    const name = (cls.name || '').toLowerCase();
+    const grade = Number(cls.grade_level ?? cls.level);
+    if (grade === 12 || /grade\s*12|form\s*4/.test(name)) return 'Grade 12 / Form 4';
+    if (grade === 9 || /grade\s*9/.test(name)) return 'Grade 9';
+    return cls.name;
   };
 
   const handlePromote = () => {
@@ -73,8 +89,8 @@ export default function PromoteClass() {
 
     const fromClass = classes.find(c => c.id === selectedFromClass);
 
-    // If Grade 9, offer graduation option
-    if (isGrade9(fromClass)) {
+    // If Grade 9 or Grade 12 / Form 4, offer graduation
+    if (isGraduationClass(fromClass)) {
       setPromotionMode('graduate');
       setShowConfirm(true);
       return;
@@ -108,7 +124,7 @@ export default function PromoteClass() {
       const fromClass = classes.find(c => c.id === selectedFromClass);
 
       if (promotionMode === 'graduate') {
-        // Grade 9 graduation: mark learners as graduated
+        // Exit-class graduation (G9 / G12 / Form 4)
         const { error } = await supabaseUntyped
           .from('students')
           .update({ 
@@ -167,7 +183,7 @@ export default function PromoteClass() {
   const fromClass = classes.find(c => c.id === selectedFromClass);
   const toClass = classes.find(c => c.id === selectedToClass);
   const destinationHasLearners = toClass && toClass.studentCount > 0;
-  const fromIsGrade9 = isGrade9(fromClass);
+  const fromIsGraduation = isGraduationClass(fromClass);
 
   // Issue 9: Filter destination classes to only show empty classes
   const emptyDestinationClasses = classes.filter(c => c.id !== selectedFromClass && c.studentCount === 0);
@@ -176,15 +192,15 @@ export default function PromoteClass() {
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold text-[#111111]">Promote Whole Class</h1>
-        <p className="text-sm text-[#666666]">Move all learners from one class to another, or graduate Grade 9 learners</p>
+        <p className="text-sm text-[#666666]">Move all learners from one class to another, or graduate Grade 9 and Grade 12 / Form 4 learners</p>
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex gap-3 text-sm text-blue-900">
         <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
         <div>
           <p className="font-bold mb-1">How it works:</p>
-          <p>Select the source class. For Grade 9, learners will be graduated. For other classes, select an empty destination class to promote all learners at once.</p>
-          <p className="mt-1 text-blue-700">Promote from the highest class downwards. Grade 9 learners will be marked as graduated.</p>
+          <p>Select the source class. For Grade 9 and Grade 12 / Form 4, learners will be graduated. For other classes, select an empty destination class to promote all learners at once.</p>
+          <p className="mt-1 text-blue-700">Promote from the highest class downwards. Grade 9 and Grade 12 / Form 4 learners will be marked as graduated.</p>
         </div>
       </div>
 
@@ -228,15 +244,15 @@ export default function PromoteClass() {
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 </div>
-                {fromIsGrade9 && (
+                {fromIsGraduation && (
                   <div className="mt-2 flex items-center gap-2 text-xs text-purple-600 bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
                     <GraduationCap className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span><strong>Grade 9 detected!</strong> You can graduate these learners.</span>
+                    <span><strong>{graduationLabel(fromClass)} detected!</strong> These learners will graduate (not promote).</span>
                   </div>
                 )}
               </div>
 
-              {!fromIsGrade9 && (
+              {!fromIsGraduation && (
                 <>
                   <div className="hidden md:flex items-center justify-center pt-6">
                     <ArrowUpRight className="w-8 h-8 text-gray-300" />
@@ -280,9 +296,9 @@ export default function PromoteClass() {
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="text-sm text-amber-800">
-                    {fromIsGrade9 ? (
+                    {fromIsGraduation ? (
                       <>
-                        <p className="font-bold">You are about to graduate:</p>
+                        <p className="font-bold">You are about to graduate ({graduationLabel(fromClass)}):</p>
                         <p><strong>{fromClass.studentCount}</strong> learner(s) from <strong>{fromClass.name}</strong></p>
                         <p className="mt-1 text-purple-700 font-medium">These learners will be marked as graduated and become inactive.</p>
                       </>
@@ -303,15 +319,15 @@ export default function PromoteClass() {
 
             <button
               onClick={handlePromote}
-              disabled={!selectedFromClass || (!fromIsGrade9 && !selectedToClass) || promoting}
+              disabled={!selectedFromClass || (!fromIsGraduation && !selectedToClass) || promoting}
               className={`mt-6 w-full flex items-center justify-center gap-2 text-white px-6 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition-colors ${
-                fromIsGrade9 
+                fromIsGraduation 
                   ? 'bg-purple-600 hover:bg-purple-700' 
                   : 'bg-[#2563EB] hover:bg-[#1d4ed8]'
               }`}
             >
-              {promoting ? <Loader2 className="w-4 h-4 animate-spin" /> : fromIsGrade9 ? <GraduationCap className="w-4 h-4" /> : <Users className="w-4 h-4" />}
-              {promoting ? 'Processing...' : fromIsGrade9 ? `GRADUATE ${fromClass?.studentCount || ''} LEARNERS` : 'PROMOTE WHOLE CLASS'}
+              {promoting ? <Loader2 className="w-4 h-4 animate-spin" /> : fromIsGraduation ? <GraduationCap className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+              {promoting ? 'Processing...' : fromIsGraduation ? `GRADUATE ${fromClass?.studentCount || ''} LEARNERS` : 'PROMOTE WHOLE CLASS'}
             </button>
           </div>
 
@@ -355,21 +371,21 @@ export default function PromoteClass() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${fromIsGrade9 ? 'bg-purple-100' : 'bg-amber-100'}`}>
-                {fromIsGrade9 ? <GraduationCap className="w-5 h-5 text-purple-600" /> : <AlertTriangle className="w-5 h-5 text-amber-600" />}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${fromIsGraduation ? 'bg-purple-100' : 'bg-amber-100'}`}>
+                {fromIsGraduation ? <GraduationCap className="w-5 h-5 text-purple-600" /> : <AlertTriangle className="w-5 h-5 text-amber-600" />}
               </div>
               <h2 className="text-lg font-bold text-gray-900">
-                {fromIsGrade9 ? 'Confirm Graduation' : 'Confirm Promotion'}
+                {fromIsGraduation ? 'Confirm Graduation (G9 / G12 / Form 4)' : 'Confirm Promotion'}
               </h2>
             </div>
 
-            {fromIsGrade9 ? (
+            {fromIsGraduation ? (
               <>
                 <p className="text-sm text-gray-600 mb-4">
                   You are about to graduate <strong>{fromClass?.studentCount}</strong> learner(s) from <strong>{fromClass?.name}</strong>.
                 </p>
                 <p className="text-sm text-gray-600 mb-4">
-                  These learners will be marked as <strong>graduated</strong> and will no longer appear in active class lists.
+                  These learners will be marked as <strong>graduated</strong> (Grade 9 junior exit or Grade 12 / Form 4 senior exit) and will no longer appear in active class lists. View them under Graduated Students.
                 </p>
                 <p className="text-xs text-gray-400 mb-6">This action cannot be undone.</p>
                 <div className="flex gap-3">
