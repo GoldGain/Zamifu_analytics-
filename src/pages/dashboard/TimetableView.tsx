@@ -8,6 +8,7 @@ interface SchoolClass {
   id: string;
   name: string;
   level: number;
+  grade_level?: number | null;
   stream?: string | null;
 }
 
@@ -34,6 +35,7 @@ interface TimeSlot {
   end_time: string;
   slot_type: 'lesson' | 'break' | 'lunch' | 'activities' | 'activity';
   label: string;
+  level_group?: string | null;
 }
 
 interface TeacherKeyEntry {
@@ -118,6 +120,71 @@ const fmt = (t: string): string => {
   return `${hour}:${min}`;
 };
 
+
+/** Map a class to timetable level_group key */
+function resolveClassLevelGroup(cls: SchoolClass): string {
+  const grade = Number(cls.grade_level ?? cls.level);
+  const name = String(cls.name || '').toLowerCase();
+  if (grade === -2 || grade === -1 || grade === 0 || /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return 'pre-primary';
+  if ((grade >= 1 && grade <= 3) || /grade\s*[123]\b/.test(name)) return 'lower-primary';
+  if ((grade >= 4 && grade <= 6) || /grade\s*[456]\b/.test(name)) return 'upper-primary';
+  if ((grade >= 7 && grade <= 9) || /grade\s*[789]\b/.test(name)) return 'junior';
+  if ((grade >= 10 && grade <= 12) || /grade\s*(10|11|12)\b/.test(name)) return 'senior';
+  if (/form\s*[12]\b/.test(name)) return 'form-3-4'; // treat early forms like 8-4-4 band if present
+  if (/form\s*[34]\b/.test(name)) return 'form-3-4';
+  // fallback by level number ranges
+  if (!isNaN(grade)) {
+    if (grade <= 0) return 'pre-primary';
+    if (grade <= 3) return 'lower-primary';
+    if (grade <= 6) return 'upper-primary';
+    if (grade <= 9) return 'junior';
+    if (grade <= 12) return 'senior';
+  }
+  return 'default';
+}
+
+const LEVEL_LABELS: Record<string, string> = {
+  'pre-primary': 'Pre-Primary (6 lessons, 0 after lunch)',
+  'lower-primary': 'Lower Primary (7 lessons, 1 after lunch)',
+  'upper-primary': 'Upper Primary (7 lessons, 1 after lunch)',
+  'combined-primary': 'Combined Primary (7 lessons, 1 after lunch)',
+  'junior': 'Junior School (8 lessons, 2 after lunch)',
+  'senior': 'Senior School (9 lessons, 3 after lunch)',
+  'form-3-4': '8-4-4 Form 3-4 (8 lessons, 2 after lunch)',
+  'default': 'Legacy default',
+};
+
+/** Pick the best slot set for a level from all school slots */
+function pickSlotsForLevel(all: TimeSlot[], levelKey: string): TimeSlot[] {
+  const byLevel = (lg: string) =>
+    all
+      .filter((s) => (s.level_group || 'default') === lg)
+      .sort((a, b) => a.slot_order - b.slot_order);
+
+  let slots = byLevel(levelKey);
+  // combined-primary can fall back to lower-primary structure
+  if (!slots.length && levelKey === 'combined-primary') {
+    slots = byLevel('lower-primary');
+  }
+  // only use legacy default if no level-specific slots exist at all for this school
+  if (!slots.length) {
+    const anyLevelSpecific = all.some((s) => s.level_group && s.level_group !== 'default');
+    if (!anyLevelSpecific) {
+      slots = byLevel('default');
+    }
+  }
+  // Deduplicate by slot_order within the chosen level only
+  const seen = new Set<number>();
+  const unique: TimeSlot[] = [];
+  for (const s of slots) {
+    if (!seen.has(s.slot_order)) {
+      seen.add(s.slot_order);
+      unique.push(s);
+    }
+  }
+  return unique;
+}
+
 export default function TimetableView() {
   const { user } = useAuth();
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -129,6 +196,7 @@ export default function TimetableView() {
   const [error, setError] = useState<string | null>(null);
   const [schoolName, setSchoolName] = useState('');
   const [selectedClass, setSelectedClass] = useState<string>('all');
+  const [selectedLevelGroup, setSelectedLevelGroup] = useState<string>('auto');
   const [downloadingClass, setDownloadingClass] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -167,7 +235,7 @@ export default function TimetableView() {
   const fetchClasses = async () => {
     const { data, error: err } = await supabase
       .from('classes')
-      .select('id, name, level, stream')
+      .select('id, name, level, grade_level, stream')
       .eq('school_id', user?.schoolId)
       .eq('is_active', true)
       .order('level')
@@ -190,7 +258,7 @@ export default function TimetableView() {
     const { data, error: err } = await supabase
       .from('timetable_entries')
       .select(
-        `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name,
+        `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name, level_group,
         teachers(teacher_number, first_name, last_name), subjects(name, code)`
       )
       .eq('school_id', user?.schoolId);
@@ -267,20 +335,38 @@ export default function TimetableView() {
     );
   };
 
-  /** All slots in order, deduplicated by slot_order (take first per order) */
-  const allSlots = useMemo(() => {
-    const seen = new Set<number>();
-    const unique: TimeSlot[] = [];
-    [...timeSlots]
-      .sort((a, b) => a.slot_order - b.slot_order)
-      .forEach(s => {
-        if (!seen.has(s.slot_order)) {
-          seen.add(s.slot_order);
-          unique.push(s);
-        }
-      });
-    return unique;
+  /** Available level groups that actually have slots */
+  const availableLevelGroups = useMemo(() => {
+    const set = new Set<string>();
+    timeSlots.forEach((s) => set.add(s.level_group || 'default'));
+    // Prefer non-default first
+    return Array.from(set).sort((a, b) => {
+      if (a === 'default') return 1;
+      if (b === 'default') return -1;
+      return a.localeCompare(b);
+    });
   }, [timeSlots]);
+
+  /** Active level for the grid: explicit filter, or inferred from selected class, or first non-default */
+  const activeLevelGroup = useMemo(() => {
+    if (selectedLevelGroup !== 'auto') return selectedLevelGroup;
+    if (selectedClass !== 'all') {
+      const cls = classes.find((c) => c.id === selectedClass);
+      if (cls) {
+        const lg = resolveClassLevelGroup(cls);
+        // prefer that level's slots if present
+        if (timeSlots.some((s) => (s.level_group || 'default') === lg)) return lg;
+      }
+    }
+    const nonDefault = availableLevelGroups.find((g) => g !== 'default');
+    return nonDefault || availableLevelGroups[0] || 'default';
+  }, [selectedLevelGroup, selectedClass, classes, timeSlots, availableLevelGroups]);
+
+  /** CRITICAL: only slots for the active level — never merge levels by slot_order */
+  const allSlots = useMemo(
+    () => pickSlotsForLevel(timeSlots, activeLevelGroup),
+    [timeSlots, activeLevelGroup]
+  );
 
   const lessonSlots = useMemo(() => allSlots.filter(s => s.slot_type === 'lesson'), [allSlots]);
 
@@ -328,9 +414,19 @@ export default function TimetableView() {
 
   /** Classes to display (filtered if a specific class is selected) */
   const displayClasses = useMemo(() => {
-    if (selectedClass === 'all') return classes;
-    return classes.filter(c => c.id === selectedClass);
-  }, [classes, selectedClass]);
+    let list = classes;
+    if (selectedClass !== 'all') {
+      list = classes.filter(c => c.id === selectedClass);
+    } else if (selectedLevelGroup !== 'auto') {
+      list = classes.filter(c => resolveClassLevelGroup(c) === selectedLevelGroup);
+    } else if (activeLevelGroup && activeLevelGroup !== 'default') {
+      // When showing "all" with auto level, only show classes that match active level
+      // so the column structure matches their lesson count.
+      const matched = classes.filter(c => resolveClassLevelGroup(c) === activeLevelGroup);
+      list = matched.length > 0 ? matched : classes;
+    }
+    return list;
+  }, [classes, selectedClass, selectedLevelGroup, activeLevelGroup]);
 
   const downloadPdf = async (classId?: string, className?: string) => {
     const targetId = classId ? `timetable-class-${classId}` : 'timetable-print-area';
@@ -376,7 +472,7 @@ export default function TimetableView() {
   // Summary strip for lesson counts (from generated slots in DB)
   const summaryBanner = (
     <div className="mx-4 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-      <span className="font-semibold">Timetable structure:</span>
+      <span className="font-semibold">Timetable structure ({activeLevelGroup}):</span>
       <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
       <span className="text-blue-300">|</span>
       <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
@@ -508,7 +604,14 @@ const timetableStyles = `
     }
   `;
 
-  const renderTimetableTable = (classesToRender: SchoolClass[], tableId: string) => (
+  const renderTimetableTable = (classesToRender: SchoolClass[], tableId: string, slotsOverride?: TimeSlot[]) => {
+    const slotsForTable =
+      slotsOverride ||
+      (classesToRender.length === 1
+        ? pickSlotsForLevel(timeSlots, resolveClassLevelGroup(classesToRender[0]))
+        : allSlots);
+    return (
+
     <div id={tableId} className="bb-wrap rounded-lg overflow-hidden">
       <div className="mb-4 text-center">
         <h2 className="text-2xl font-black tracking-tighter text-blue-400 uppercase">
@@ -527,7 +630,7 @@ const timetableStyles = `
             <tr>
               <th rowSpan={2} className="tt-header">DAYS</th>
               <th rowSpan={2} className="tt-header">CLASS</th>
-              {allSlots.map(slot => {
+              {slotsForTable.map(slot => {
                 if (slot.slot_type === 'break') {
                   return (
                     <th key={slot.id} rowSpan={2} className="tt-break-header">
@@ -562,7 +665,7 @@ const timetableStyles = `
               </th>
             </tr>
             <tr>
-              {allSlots.map(slot => {
+              {slotsForTable.map(slot => {
                 if (slot.slot_type === 'break' || slot.slot_type === 'lunch') return null;
                 if (slot.slot_type === 'activities' || slot.slot_type === 'activity') return null;
                 return (
@@ -584,7 +687,7 @@ const timetableStyles = `
                       </td>
                     )}
                     <td className="tt-class">{displayClassName(cls)}</td>
-                    {allSlots.map(slot => {
+                    {slotsForTable.map(slot => {
                       if (slot.slot_type === 'break') {
                         if (clsIdx === 0) {
                           return (
@@ -649,6 +752,7 @@ const timetableStyles = `
       )}
     </div>
   );
+  };
 
   return (
     <div className="max-w-full mx-auto space-y-4 p-4 bg-gray-100 min-h-screen">
@@ -701,10 +805,38 @@ const timetableStyles = `
         </div>
       )}
 
-      {/* Filter by class */}
-      <div className="no-print bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+      {/* Filter by level group — each level has its own lesson count / after-lunch structure */}
+      <div className="no-print bg-white rounded-2xl p-4 shadow-sm border border-gray-200 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-bold text-gray-700 text-sm">Level:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedLevelGroup('auto')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedLevelGroup === 'auto' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          >
+            Auto
+          </button>
+          {availableLevelGroups.map((lg) => (
+            <button
+              key={lg}
+              type="button"
+              onClick={() => { setSelectedLevelGroup(lg); setSelectedClass('all'); }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedLevelGroup === lg ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              title={LEVEL_LABELS[lg] || lg}
+            >
+              {lg}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500">
+          Active structure: <strong>{LEVEL_LABELS[activeLevelGroup] || activeLevelGroup}</strong>
+          {' '}· {slotSummary.totalLessons} lessons/day · {slotSummary.afterLunch} after lunch
+          {availableLevelGroups.includes('default') && availableLevelGroups.length > 1 ? (
+            <span className="text-amber-600"> · Tip: re-generate each level to replace legacy &quot;default&quot; slots</span>
+          ) : null}
+        </p>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="font-bold text-gray-700 text-sm">View:</span>
+          <span className="font-bold text-gray-700 text-sm">Class:</span>
           <button
             onClick={() => setSelectedClass('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClass === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
@@ -714,10 +846,15 @@ const timetableStyles = `
           {classes.map(cls => (
             <button
               key={cls.id}
-              onClick={() => setSelectedClass(cls.id)}
+              onClick={() => {
+                setSelectedClass(cls.id);
+                // snap level to this class so lesson columns match
+                setSelectedLevelGroup(resolveClassLevelGroup(cls));
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedClass === cls.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               {displayClassName(cls)}
+              <span className="ml-1 opacity-60 font-normal">({resolveClassLevelGroup(cls)})</span>
             </button>
           ))}
         </div>

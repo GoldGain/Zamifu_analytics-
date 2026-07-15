@@ -177,7 +177,7 @@ export default function TimetableGenerate() {
       const schoolId = user?.schoolId;
 
       // Fetch all active classes
-      const { data: allClasses } = await supabase.from('classes').select('*').eq('school_id', schoolId).eq('is_active', true);
+      const { data: allClasses } = await supabase.from('classes').select('id, name, level, grade_level, stream, school_id, is_active').eq('school_id', schoolId).eq('is_active', true);
       const { data: assignments } = await supabase.from('teacher_subject_assignments').select('*, subjects(name, code)').eq('school_id', schoolId).eq('is_active', true);
 
       if (!allClasses?.length || !assignments?.length) {
@@ -190,11 +190,15 @@ export default function TimetableGenerate() {
       const activities: Record<string, string> = {};
       (activitiesData || []).forEach((a: any) => { activities[String(a.day_of_week)] = a.activity_name; });
 
-      // Clear existing entries and slots ONLY for selected levels (prevents duplicate key errors)
-      for (const levelKey of Array.from(selectedLevels)) {
+      // Clear existing entries/slots for selected levels + legacy "default" (old generator)
+      // so View Timetable never mixes wrong lesson counts across levels.
+      const levelsToClear = new Set<string>([...Array.from(selectedLevels), 'default']);
+      for (const levelKey of Array.from(levelsToClear)) {
         await (supabase as any).from('timetable_entries').delete().eq('school_id', schoolId).eq('level_group', levelKey);
         await (supabase as any).from('timetable_time_slots').delete().eq('school_id', schoolId).eq('level_group', levelKey);
       }
+      // Also remove orphan entries for classes that will be regenerated (any level_group)
+      // Handled per-level below when we know which classes match.
 
       const teacherBusy = new Set<string>();
       const classBusy = new Set<string>();
@@ -251,12 +255,34 @@ export default function TimetableGenerate() {
         // Filter classes for this level group
         const gradeRange = LEVEL_GROUP_GRADE_RANGES[levelKey] || [];
         const levelClasses = allClasses.filter((cls: any) => {
-          const gradeLevel = cls.grade_level ?? cls.level;
-          return gradeRange.includes(Number(gradeLevel));
+          const gradeLevel = Number(cls.grade_level ?? cls.level);
+          if (gradeRange.includes(gradeLevel)) return true;
+          // Name-based fallback (e.g. "Grade 7 East", "PP1", "Form 4")
+          const name = String(cls.name || '').toLowerCase();
+          if (levelKey === 'pre-primary' && /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return true;
+          if (levelKey === 'lower-primary' && /grade\s*[123]\b/.test(name)) return true;
+          if (levelKey === 'upper-primary' && /grade\s*[456]\b/.test(name)) return true;
+          if (levelKey === 'combined-primary' && /grade\s*[1-6]\b/.test(name)) return true;
+          if (levelKey === 'junior' && /grade\s*[789]\b/.test(name)) return true;
+          if (levelKey === 'senior' && /grade\s*(10|11|12)\b/.test(name)) return true;
+          if (levelKey === 'form-3-4' && /form\s*[34]\b/.test(name)) return true;
+          return false;
         });
 
-        // If no classes match the grade range, use all classes for this level (fallback)
-        const classesToProcess = levelClasses.length > 0 ? levelClasses : allClasses;
+        // NEVER fall back to all classes — that assigns wrong lesson counts to every grade.
+        const classesToProcess = levelClasses;
+        if (classesToProcess.length === 0) {
+          console.warn(`[timetable] No classes matched grade range for ${levelKey}; slots created but no class entries.`);
+          toast.message(`No classes found for ${LEVEL_GROUPS.find(l => l.key === levelKey)?.label || levelKey}. Slots saved; assign grade levels to classes.`);
+        } else {
+          // Remove any leftover entries for these classes under other level_groups
+          const classIds = classesToProcess.map((c: any) => c.id);
+          await (supabase as any)
+            .from('timetable_entries')
+            .delete()
+            .eq('school_id', schoolId)
+            .in('class_id', classIds);
+        }
 
         const fixedSlots = createdSlots?.filter(s => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type)) || [];
         const lessonSlots = createdSlots?.filter(s => s.slot_type === 'lesson').sort((a, b) => a.slot_order - b.slot_order) || [];
