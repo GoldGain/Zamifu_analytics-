@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateSlots, getLessonCountForLevel, getLevelConfig } from '@/lib/timetable-generator';
+import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 
 // Frontend config interface (matches what timetable-generator expects)
@@ -21,6 +21,8 @@ interface FrontendConfig {
   activities_start?: string;
   activities_end?: string;
   activities: Record<string, string>;
+  lessons_per_day?: number;
+  after_lunch_lessons?: number;
 }
 
 // Map level config DB row to frontend config
@@ -37,6 +39,8 @@ const mapLevelConfigToFrontend = (dbConfig: any, dbActivities: Record<string, st
   activities_start: dbConfig.activities_start?.slice(0, 5) || undefined,
   activities_end: dbConfig.activities_end?.slice(0, 5) || undefined,
   activities: dbActivities,
+  lessons_per_day: typeof dbConfig.lessons_per_day === 'number' ? dbConfig.lessons_per_day : undefined,
+  after_lunch_lessons: typeof dbConfig.after_lunch_lessons === 'number' ? dbConfig.after_lunch_lessons : undefined,
 });
 
 // Map legacy school_timetable_config to frontend config
@@ -219,9 +223,19 @@ export default function TimetableGenerate() {
           }
         }
 
-        // Generate time slots for this level with correct lesson count
-        const lessonCount = getLessonCountForLevel(levelKey);
-        const slots = generateSlots(config, lessonCount);
+        // Generate time slots using DB lesson counts (fallback to level defaults)
+        const targets = resolveLessonTargets(levelKey, config);
+        const lessonCount = targets.totalLessons;
+        const slots = generateSlots(
+          {
+            ...config,
+            lessons_per_day: targets.totalLessons,
+            after_lunch_lessons: targets.afterLunch,
+          },
+          lessonCount,
+          levelKey
+        );
+        console.info(`[timetable] ${levelKey}: ${targets.totalLessons} lessons (${targets.afterLunch} after lunch), ${slots.filter(s => s.slot_type === 'lesson').length} lesson slots generated`);
 
         const { data: createdSlots, error: slotError } = await (supabase as any)
           .from('timetable_time_slots')
@@ -331,7 +345,7 @@ export default function TimetableGenerate() {
           <p className="font-bold mb-1">School Day Structure:</p>
           <p>Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7] [+ Lesson 8 for Junior/8-4-4] [+ Lesson 9 for Senior] → <strong>ACTIVITIES</strong></p>
           <p className="mt-1 text-xs text-blue-700">
-            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower/Upper Primary: <strong>7 lessons (1 after lunch)</strong> | Junior School &amp; 8-4-4: <strong>8 lessons (2 after lunch)</strong> | Senior School: <strong>9 lessons (3 after lunch)</strong>
+            Lesson structure is loaded from <strong>Timetable Setup</strong> (DB). Defaults: Pre-Primary 6/0 · Lower/Upper 7/1 · Junior & 8-4-4 8/2 · Senior 9/3 (total / after lunch).
           </p>
         </div>
       </div>
@@ -359,8 +373,16 @@ export default function TimetableGenerate() {
           {LEVEL_GROUPS.map(({ key, label, grades }) => {
             const hasConfig = !!levelConfigs[key];
             const isSelected = selectedLevels.has(key);
-            const lessonInfo = LEVEL_LESSON_INFO[key];
-            const isPrePrimary = key === 'pre-primary';
+            const defaults = LEVEL_LESSON_INFO[key];
+            const dbCfg = levelConfigs[key];
+            const afterLunch = typeof dbCfg?.after_lunch_lessons === 'number'
+              ? dbCfg.after_lunch_lessons
+              : (defaults?.afterLunch ?? 1);
+            const totalLessons = typeof dbCfg?.lessons_per_day === 'number'
+              ? dbCfg.lessons_per_day
+              : (defaults?.lessons ?? (6 + afterLunch));
+            const lessonInfo = { lessons: totalLessons, afterLunch, note: defaults?.note || '' };
+            const isPrePrimary = afterLunch === 0;
             return (
               <label
                 key={key}

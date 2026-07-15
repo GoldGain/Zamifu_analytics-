@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { AlertCircle, Download, Printer, RefreshCw } from 'lucide-react';
-import { formatTimeDisplay } from '@/lib/timetable-generator';
+import { formatTimeDisplay, summarizeSlots } from '@/lib/timetable-generator';
 
 interface SchoolClass {
   id: string;
@@ -284,6 +284,8 @@ export default function TimetableView() {
 
   const lessonSlots = useMemo(() => allSlots.filter(s => s.slot_type === 'lesson'), [allSlots]);
 
+  const slotSummary = useMemo(() => summarizeSlots(allSlots as any), [allSlots]);
+
   const entryLookup = useMemo(() => {
     const lookup = new Map<string, TimetableEntry[]>();
     entries.forEach((entry) => {
@@ -370,7 +372,35 @@ export default function TimetableView() {
     </div>
   );
 
-  const timetableStyles = `
+  
+  // Summary strip for lesson counts (from generated slots in DB)
+  const summaryBanner = (
+    <div className="mx-4 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <span className="font-semibold">Timetable structure:</span>
+      <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
+      <span className="text-blue-300">|</span>
+      <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
+      <span className="text-blue-300">|</span>
+      <span>
+        <strong>{slotSummary.afterLunch}</strong> after lunch
+        {slotSummary.afterLunch === 0 ? ' (ends at lunch)' : ''}
+      </span>
+      {slotSummary.hasActivities && (
+        <>
+          <span className="text-blue-300">|</span>
+          <span>Activities until {formatTimeDisplay(slotSummary.schoolEnd)}</span>
+        </>
+      )}
+      {slotSummary.lunchEnd && (
+        <>
+          <span className="text-blue-300">|</span>
+          <span>Lunch ends {formatTimeDisplay(slotSummary.lunchEnd)}</span>
+        </>
+      )}
+    </div>
+  );
+
+const timetableStyles = `
     .bb-wrap {
       background-color: #1a1a1a;
       color: #e0e0e0;
@@ -692,6 +722,8 @@ export default function TimetableView() {
           ))}
         </div>
       </div>
+
+      {summaryBanner}
 
       {/* Main Timetable (full or filtered) */}
       <div id="timetable-print-area">

@@ -36,6 +36,7 @@ export const LEVEL_GROUPS = [
 const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   'pre-primary': {
     start_time: '08:30', end_time: '12:30', period_duration: 35,
+    lessons_per_day: 6, after_lunch_lessons: 0,
     first_break_start: '09:45', first_break_end: '10:15',
     second_break_start: '11:15', second_break_end: '11:35',
     lunch_start: '12:00', lunch_end: '12:30',
@@ -43,6 +44,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'lower-primary': {
     start_time: '08:20', end_time: '15:00', period_duration: 40,
+    lessons_per_day: 7, after_lunch_lessons: 1,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -50,6 +52,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'upper-primary': {
     start_time: '08:00', end_time: '15:30', period_duration: 40,
+    lessons_per_day: 7, after_lunch_lessons: 1,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -57,6 +60,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'combined-primary': {
     start_time: '08:20', end_time: '15:00', period_duration: 40,
+    lessons_per_day: 7, after_lunch_lessons: 1,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -64,6 +68,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'junior': {
     start_time: '08:00', end_time: '16:00', period_duration: 40,
+    lessons_per_day: 8, after_lunch_lessons: 2,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -71,6 +76,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'senior': {
     start_time: '08:00', end_time: '16:30', period_duration: 40,
+    lessons_per_day: 9, after_lunch_lessons: 3,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -78,6 +84,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'form-3-4': {
     start_time: '08:00', end_time: '17:00', period_duration: 40,
+    lessons_per_day: 8, after_lunch_lessons: 2,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -110,6 +117,8 @@ interface LevelConfig {
   lunch_end: string;
   activities_start: string;
   activities_end: string;
+  lessons_per_day: number;
+  after_lunch_lessons: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -163,6 +172,8 @@ export default function TimetableSetup() {
             start_time: dbConfig.start_time?.slice(0, 5) || DEFAULT_CONFIGS[key].start_time,
             end_time: dbConfig.end_time?.slice(0, 5) || DEFAULT_CONFIGS[key].end_time,
             period_duration: dbConfig.period_duration || DEFAULT_CONFIGS[key].period_duration,
+            lessons_per_day: dbConfig.lessons_per_day ?? DEFAULT_CONFIGS[key].lessons_per_day ?? LEVEL_LESSON_INFO[key]?.total ?? 7,
+            after_lunch_lessons: dbConfig.after_lunch_lessons ?? DEFAULT_CONFIGS[key].after_lunch_lessons ?? LEVEL_LESSON_INFO[key]?.afterLunch ?? 1,
             first_break_start: dbConfig.first_break_start?.slice(0, 5) || DEFAULT_CONFIGS[key].first_break_start,
             first_break_end: dbConfig.first_break_end?.slice(0, 5) || DEFAULT_CONFIGS[key].first_break_end,
             second_break_start: dbConfig.second_break_start?.slice(0, 5) || DEFAULT_CONFIGS[key].second_break_start,
@@ -206,6 +217,19 @@ export default function TimetableSetup() {
       if (!schoolId) throw new Error('No school ID found. Please log in again.');
 
       const cfg = configs[selectedLevel];
+      const requiredTimes: (keyof LevelConfig)[] = [
+        'start_time', 'end_time', 'first_break_start', 'first_break_end',
+        'second_break_start', 'second_break_end', 'lunch_start', 'lunch_end',
+      ];
+      for (const key of requiredTimes) {
+        if (!normalizeTime(String(cfg[key] ?? ''))) {
+          throw new Error(`Invalid time for ${String(key).replace(/_/g, ' ')}. Use HH:MM format.`);
+        }
+      }
+      const afterLunch = Math.max(0, Math.min(3, Number(cfg.after_lunch_lessons ?? 0)));
+      const lessonsPerDay = Math.max(6, Math.min(9, Number(cfg.lessons_per_day ?? (6 + afterLunch))));
+      // Keep invariant: total = 6 before lunch + after lunch
+      const normalizedLessons = 6 + afterLunch;
       const { error } = await supabaseUntyped
         .from('timetable_level_configs')
         .upsert({
@@ -213,7 +237,7 @@ export default function TimetableSetup() {
           level_group: selectedLevel,
           start_time: normalizeTime(cfg.start_time),
           end_time: normalizeTime(cfg.end_time),
-          period_duration: cfg.period_duration,
+          period_duration: cfg.period_duration || 40,
           first_break_start: normalizeTime(cfg.first_break_start),
           first_break_end: normalizeTime(cfg.first_break_end),
           second_break_start: normalizeTime(cfg.second_break_start),
@@ -222,8 +246,19 @@ export default function TimetableSetup() {
           lunch_end: normalizeTime(cfg.lunch_end),
           activities_start: normalizeTime(cfg.activities_start),
           activities_end: normalizeTime(cfg.activities_end),
+          lessons_per_day: normalizedLessons,
+          after_lunch_lessons: afterLunch,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'school_id,level_group' });
+      // Reflect normalized values in local state
+      setConfigs(prev => ({
+        ...prev,
+        [selectedLevel]: {
+          ...prev[selectedLevel],
+          lessons_per_day: normalizedLessons,
+          after_lunch_lessons: afterLunch,
+        },
+      }));
 
       if (error) throw new Error('Failed to save: ' + error.message);
 
@@ -333,6 +368,27 @@ export default function TimetableSetup() {
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
               min={20} max={90}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#111111] mb-2">Lessons after lunch</label>
+            <select
+              value={currentConfig.after_lunch_lessons ?? 1}
+              onChange={e => {
+                const after = parseInt(e.target.value) || 0;
+                handleConfigChange('after_lunch_lessons', after);
+                handleConfigChange('lessons_per_day', 6 + after);
+              }}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            >
+              <option value={0}>0 — ends at lunch (Pre-Primary)</option>
+              <option value={1}>1 — Lower / Upper Primary</option>
+              <option value={2}>2 — Junior / 8-4-4</option>
+              <option value={3}>3 — Senior School</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Total lessons/day = 6 before lunch + {currentConfig.after_lunch_lessons ?? 0} after = <strong>{6 + (currentConfig.after_lunch_lessons ?? 0)}</strong>
+            </p>
           </div>
           <TimeInput label="School starts" value={currentConfig.start_time} onChange={v => handleConfigChange('start_time', v)} />
           <TimeInput label="School ends" value={currentConfig.end_time} onChange={v => handleConfigChange('end_time', v)} />
@@ -445,13 +501,13 @@ export default function TimetableSetup() {
                   >
                     <td className="px-4 py-3 font-medium text-[#111111]">{label}</td>
                     <td className="px-4 py-3">
-                      <span className={`font-semibold ${info?.afterLunch === 0 ? 'text-amber-600' : 'text-blue-600'}`}>
+                      <span className={`font-semibold ${(cfg?.after_lunch_lessons ?? info?.afterLunch) === 0 ? 'text-amber-600' : 'text-blue-600'}`}>
                         {info?.total || '-'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${info?.afterLunch === 0 ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
-                        {info?.afterLunch === 0 ? 'Ends at lunch' : `${info?.afterLunch} lesson${info?.afterLunch !== 1 ? 's' : ''}`}
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${(cfg?.after_lunch_lessons ?? info?.afterLunch) === 0 ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                        {(cfg?.after_lunch_lessons ?? info?.afterLunch) === 0 ? 'Ends at lunch' : `${cfg?.after_lunch_lessons ?? info?.afterLunch} lesson${(cfg?.after_lunch_lessons ?? info?.afterLunch) !== 1 ? 's' : ''}`}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.start_time || '-'}</td>
