@@ -2,7 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { AlertCircle, Download, Printer, RefreshCw } from 'lucide-react';
-import { formatTimeDisplay, summarizeSlots } from '@/lib/timetable-generator';
+import {
+  formatTimeDisplay,
+  summarizeSlots,
+  generateSlots,
+  resolveLessonTargets,
+  type TimetableConfig,
+  type TimetableSlot,
+} from '@/lib/timetable-generator';
 
 interface SchoolClass {
   id: string;
@@ -154,29 +161,32 @@ const LEVEL_LABELS: Record<string, string> = {
   'default': 'Legacy default',
 };
 
-/** Pick the best slot set for a level from all school slots */
-function pickSlotsForLevel(all: TimeSlot[], levelKey: string): TimeSlot[] {
-  const byLevel = (lg: string) =>
-    all
-      .filter((s) => (s.level_group || 'default') === lg)
-      .sort((a, b) => a.slot_order - b.slot_order);
+/** Expected lesson structure per level (source of truth for columns) */
+const LEVEL_LESSON_TARGETS: Record<string, { total: number; afterLunch: number }> = {
+  'pre-primary': { total: 6, afterLunch: 0 },
+  'lower-primary': { total: 7, afterLunch: 1 },
+  'upper-primary': { total: 7, afterLunch: 1 },
+  'combined-primary': { total: 7, afterLunch: 1 },
+  'junior': { total: 8, afterLunch: 2 },
+  'senior': { total: 9, afterLunch: 3 },
+  'form-3-4': { total: 8, afterLunch: 2 },
+  'default': { total: 8, afterLunch: 2 },
+};
 
-  let slots = byLevel(levelKey);
-  // combined-primary can fall back to lower-primary structure
-  if (!slots.length && levelKey === 'combined-primary') {
-    slots = byLevel('lower-primary');
-  }
-  // only use legacy default if no level-specific slots exist at all for this school
-  if (!slots.length) {
-    const anyLevelSpecific = all.some((s) => s.level_group && s.level_group !== 'default');
-    if (!anyLevelSpecific) {
-      slots = byLevel('default');
-    }
-  }
-  // Deduplicate by slot_order within the chosen level only
+function countLessons(slots: { slot_type: string }[]): { total: number; afterLunch: number } {
+  const lunchIdx = slots.findIndex((s) => s.slot_type === 'lunch');
+  const lessons = slots.filter((s) => s.slot_type === 'lesson');
+  const after =
+    lunchIdx >= 0
+      ? slots.slice(lunchIdx + 1).filter((s) => s.slot_type === 'lesson').length
+      : 0;
+  return { total: lessons.length, afterLunch: after };
+}
+
+function dedupeByOrder(slots: TimeSlot[]): TimeSlot[] {
   const seen = new Set<number>();
   const unique: TimeSlot[] = [];
-  for (const s of slots) {
+  for (const s of [...slots].sort((a, b) => a.slot_order - b.slot_order)) {
     if (!seen.has(s.slot_order)) {
       seen.add(s.slot_order);
       unique.push(s);
@@ -185,11 +195,84 @@ function pickSlotsForLevel(all: TimeSlot[], levelKey: string): TimeSlot[] {
   return unique;
 }
 
+/**
+ * Build the COLUMN structure for a level.
+ * - Prefer DB slots for that level_group when counts match expected structure
+ * - Otherwise synthesize with generateSlots so Pre-Primary never shows L7–L9 etc.
+ */
+function buildDisplaySlotsForLevel(
+  all: TimeSlot[],
+  levelKey: string,
+  levelConfig?: any | null
+): TimeSlot[] {
+  const targets = LEVEL_LESSON_TARGETS[levelKey] || LEVEL_LESSON_TARGETS['default'];
+  const byLevel = (lg: string) =>
+    dedupeByOrder(all.filter((s) => (s.level_group || 'default') === lg));
+
+  let candidates = byLevel(levelKey);
+  if (!candidates.length && levelKey === 'combined-primary') {
+    candidates = byLevel('lower-primary');
+  }
+
+  const counts = countLessons(candidates);
+  const countsMatch =
+    candidates.length > 0 &&
+    counts.total === targets.total &&
+    counts.afterLunch === targets.afterLunch;
+
+  if (countsMatch) {
+    // Pre-primary: strip any activities after lunch for a clean end-at-lunch grid
+    if (targets.afterLunch === 0) {
+      return candidates.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity');
+    }
+    return candidates;
+  }
+
+  // Synthesize correct structure from Timetable Setup config (or safe defaults)
+  const cfg: TimetableConfig = {
+    lesson_duration: levelConfig?.period_duration || 40,
+    school_start: (levelConfig?.start_time || '08:20').toString().slice(0, 5),
+    school_end: (levelConfig?.end_time || '15:40').toString().slice(0, 5),
+    first_break_start: (levelConfig?.first_break_start || '09:40').toString().slice(0, 5),
+    first_break_end: (levelConfig?.first_break_end || '10:20').toString().slice(0, 5),
+    second_break_start: (levelConfig?.second_break_start || '11:40').toString().slice(0, 5),
+    second_break_end: (levelConfig?.second_break_end || '12:20').toString().slice(0, 5),
+    lunch_start: (levelConfig?.lunch_start || '12:50').toString().slice(0, 5),
+    lunch_end: (levelConfig?.lunch_end || '13:30').toString().slice(0, 5),
+    activities_start: levelConfig?.activities_start
+      ? String(levelConfig.activities_start).slice(0, 5)
+      : undefined,
+    activities_end: levelConfig?.activities_end
+      ? String(levelConfig.activities_end).slice(0, 5)
+      : undefined,
+    lessons_per_day: targets.total,
+    after_lunch_lessons: targets.afterLunch,
+  };
+
+  const generated = generateSlots(cfg, targets.total, levelKey);
+  // Map to TimeSlot shape with stable synthetic ids (for column keys only)
+  return generated.map((s: TimetableSlot, i: number) => ({
+    id: `synth-${levelKey}-${s.slot_order}-${i}`,
+    slot_order: s.slot_order,
+    start_time: s.start_time,
+    end_time: s.end_time,
+    slot_type: s.slot_type === 'activities' ? 'activity' : s.slot_type,
+    label: s.label,
+    level_group: levelKey,
+  }));
+}
+
+/** @deprecated name kept for call sites */
+function pickSlotsForLevel(all: TimeSlot[], levelKey: string, levelConfig?: any | null): TimeSlot[] {
+  return buildDisplaySlotsForLevel(all, levelKey, levelConfig);
+}
+
 export default function TimetableView() {
   const { user } = useAuth();
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [entries, setEntries] = useState<TimetableEntry[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [levelConfigs, setLevelConfigs] = useState<Record<string, any>>({});
   const [activities, setActivities] = useState<SchoolActivity[]>([]);
   const [teacherKey, setTeacherKey] = useState<TeacherKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,6 +295,7 @@ export default function TimetableView() {
         fetchSchoolName(),
         fetchClasses(),
         fetchTimeSlots(),
+        fetchLevelConfigs(),
         fetchEntries(),
         fetchTeacherKey(),
         fetchActivities(),
@@ -242,6 +326,24 @@ export default function TimetableView() {
       .order('name');
     if (err) throw err;
     setClasses((data || []) as SchoolClass[]);
+  };
+
+
+  const fetchLevelConfigs = async () => {
+    const { data, error: err } = await supabase
+      .from('timetable_level_configs')
+      .select('*')
+      .eq('school_id', user?.schoolId);
+    if (err) {
+      console.warn('level configs', err);
+      setLevelConfigs({});
+      return;
+    }
+    const map: Record<string, any> = {};
+    (data || []).forEach((row: any) => {
+      if (row.level_group) map[row.level_group] = row;
+    });
+    setLevelConfigs(map);
   };
 
   const fetchTimeSlots = async () => {
@@ -347,26 +449,47 @@ export default function TimetableView() {
     });
   }, [timeSlots]);
 
-  /** Active level for the grid: explicit filter, or inferred from selected class, or first non-default */
+  /** Active level for the grid: selected class ALWAYS wins (correct columns per class) */
   const activeLevelGroup = useMemo(() => {
-    if (selectedLevelGroup !== 'auto') return selectedLevelGroup;
     if (selectedClass !== 'all') {
       const cls = classes.find((c) => c.id === selectedClass);
-      if (cls) {
-        const lg = resolveClassLevelGroup(cls);
-        // prefer that level's slots if present
-        if (timeSlots.some((s) => (s.level_group || 'default') === lg)) return lg;
-      }
+      if (cls) return resolveClassLevelGroup(cls);
     }
+    if (selectedLevelGroup !== 'auto') return selectedLevelGroup;
     const nonDefault = availableLevelGroups.find((g) => g !== 'default');
-    return nonDefault || availableLevelGroups[0] || 'default';
-  }, [selectedLevelGroup, selectedClass, classes, timeSlots, availableLevelGroups]);
+    return nonDefault || availableLevelGroups[0] || 'lower-primary';
+  }, [selectedLevelGroup, selectedClass, classes, availableLevelGroups]);
 
-  /** CRITICAL: only slots for the active level — never merge levels by slot_order */
+  /**
+   * Columns for the active level only.
+   * Pre-primary → 6 lessons, 0 after lunch (no L7/L8/L9 columns).
+   * Senior → 9 lessons, 3 after lunch (columns through Lesson 9).
+   */
   const allSlots = useMemo(
-    () => pickSlotsForLevel(timeSlots, activeLevelGroup),
-    [timeSlots, activeLevelGroup]
+    () => buildDisplaySlotsForLevel(timeSlots, activeLevelGroup, levelConfigs[activeLevelGroup]),
+    [timeSlots, activeLevelGroup, levelConfigs]
   );
+
+  /** Map real DB time_slot_id → slot_order for cell matching when display slots are synthetic */
+  const slotIdToOrder = useMemo(() => {
+    const m = new Map<string, number>();
+    timeSlots.forEach((s) => m.set(s.id, s.slot_order));
+    return m;
+  }, [timeSlots]);
+
+  /** Map slot_order → entries by day+class for robust matching */
+  const entriesByOrder = useMemo(() => {
+    const m = new Map<string, TimetableEntry[]>();
+    entries.forEach((entry) => {
+      const order = slotIdToOrder.get(entry.time_slot_id);
+      if (order == null) return;
+      const key = `${entry.day_of_week}-${entry.class_id}-${order}`;
+      const list = m.get(key) || [];
+      list.push(entry);
+      m.set(key, list);
+    });
+    return m;
+  }, [entries, slotIdToOrder]);
 
   const lessonSlots = useMemo(() => allSlots.filter(s => s.slot_type === 'lesson'), [allSlots]);
 
@@ -383,8 +506,12 @@ export default function TimetableView() {
     return lookup;
   }, [entries]);
 
-  const getEntries = (day: number, classId: string, slotId: string): TimetableEntry[] => {
-    return entryLookup.get(`${day}-${classId}-${slotId}`) || [];
+  const getEntries = (day: number, classId: string, slot: TimeSlot): TimetableEntry[] => {
+    // Prefer exact time_slot_id match (real DB slots)
+    const byId = entryLookup.get(`${day}-${classId}-${slot.id}`);
+    if (byId && byId.length) return byId;
+    // Synthetic display slots: match by slot_order
+    return entriesByOrder.get(`${day}-${classId}-${slot.slot_order}`) || [];
   };
 
   const getCellDisplay = (entriesForCell: TimetableEntry[]): string => {
@@ -608,7 +735,11 @@ const timetableStyles = `
     const slotsForTable =
       slotsOverride ||
       (classesToRender.length === 1
-        ? pickSlotsForLevel(timeSlots, resolveClassLevelGroup(classesToRender[0]))
+        ? buildDisplaySlotsForLevel(
+            timeSlots,
+            resolveClassLevelGroup(classesToRender[0]),
+            levelConfigs[resolveClassLevelGroup(classesToRender[0])]
+          )
         : allSlots);
     return (
 
@@ -620,8 +751,14 @@ const timetableStyles = `
         {classesToRender.length === 1 && (
           <p className="text-green-400 font-bold text-sm mt-1">
             Class: {displayClassName(classesToRender[0])}
+            {' · '}
+            {LEVEL_LABELS[resolveClassLevelGroup(classesToRender[0])] || resolveClassLevelGroup(classesToRender[0])}
           </p>
         )}
+        <p className="text-blue-300 text-xs mt-1">
+          {countLessons(slotsForTable).total} lessons/day · {countLessons(slotsForTable).afterLunch} after lunch
+          {countLessons(slotsForTable).afterLunch === 0 ? ' · ends at lunch (no post-lunch lesson columns)' : ''}
+        </p>
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
       <div className="overflow-x-auto">
@@ -717,7 +854,7 @@ const timetableStyles = `
                       if (slot.slot_type === 'activities' || slot.slot_type === 'activity') {
                         return null;
                       }
-                      const cellEntries = getEntries(dayIdx + 1, cls.id, slot.id);
+                      const cellEntries = getEntries(dayIdx + 1, cls.id, slot);
                       const display = getCellDisplay(cellEntries);
                       return (
                         <td key={slot.id} className="tt-cell">
