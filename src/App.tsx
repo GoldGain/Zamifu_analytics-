@@ -8,6 +8,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import PWAInstallBanner from '@/components/PWAInstallBanner';
 import PWAFloatingButton from '@/components/PWAFloatingButton';
+import AIAssistant from '@/components/AIAssistant';
 import Home from '@/pages/Home';
 import Login from '@/pages/auth/Login';
 import Register from '@/pages/auth/Register';
@@ -34,6 +35,7 @@ import SuperAdminAnalytics from '@/pages/dashboard/super-admin/Analytics';
 import SuperAdminSettings from '@/pages/dashboard/super-admin/Settings';
 import SchoolAdminDashboard from '@/pages/dashboard/school-admin/Dashboard';
 import SchoolAdminStudents from '@/pages/dashboard/school-admin/Students';
+import SchoolAdminGraduatedStudents from '@/pages/dashboard/school-admin/GraduatedStudents';
 import SchoolAdminTeachers from '@/pages/dashboard/school-admin/Teachers';
 import SchoolAdminClasses from '@/pages/dashboard/school-admin/Classes';
 import SchoolAdminFees from '@/pages/dashboard/school-admin/Fees';
@@ -87,6 +89,7 @@ import TimetableView from '@/pages/dashboard/TimetableView';
 import TeacherCurriculumNavigator from '@/pages/dashboard/teacher/CurriculumNavigator';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherMarklist from '@/pages/dashboard/teacher/Marklist';
+import TeacherClassList from '@/pages/dashboard/teacher/ClassList';
 import PathwayFinder from '@/components/PathwayFinder';
 import SchoolAdminProfile from '@/pages/dashboard/school-admin/Profile';
 import ParentProfile from '@/pages/dashboard/parent/Profile';
@@ -162,7 +165,8 @@ function AppRoutes() {
       {/* School Admin routes */}
       <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminDashboard /></ProtectedRoute>} />
       <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']}><StreamDashboard /></ProtectedRoute>} />
-      <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminStudents /></ProtectedRoute>} />
+      <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminStudents />
+      <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
       <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminTeachers /></ProtectedRoute>} />
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminClasses /></ProtectedRoute>} />
       <Route path="/school-admin/fees" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminFees /></ProtectedRoute>} />
@@ -203,6 +207,7 @@ function AppRoutes() {
       <Route path="/teacher/profile" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherProfile /></ProtectedRoute>} />
       <Route path="/teacher/curriculum" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherCurriculumNavigator /></ProtectedRoute>} />
       <Route path="/teacher/marklist" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMarklist /></ProtectedRoute>} />
+      <Route path="/teacher/class-list" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherClassList /></ProtectedRoute>} />
       {/* Issue 5: DoS can manage assessments - shared Assessments component for teachers */}
       <Route path="/teacher/assessments" element={<ProtectedRoute allowedRoles={['teacher']}><SchoolAdminAssessments /></ProtectedRoute>} />
 
@@ -253,6 +258,7 @@ export default function App() {
           <AppRoutes />
           <PWAInstallBanner />
           <PWAFloatingButton />
+          <AIAssistant />
           <Toaster position="top-right" richColors closeButton />
         </TrialProvider>
       </AuthProvider>

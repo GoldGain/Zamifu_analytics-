@@ -7,6 +7,21 @@ import { getLevelConfig } from '@/lib/timetable-generator';
 
 // ─── Level Groups ────────────────────────────────────────────────────────────
 
+
+/** Normalize HTML time / free text to HH:MM:SS for Postgres time columns */
+function normalizeTime(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const v = String(value).trim();
+  if (!v) return null;
+  const m = v.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  const hh = m[1].padStart(2, '0');
+  const mm = m[2];
+  const ss = (m[3] || '00').padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+
 export const LEVEL_GROUPS = [
   { key: 'pre-primary', label: 'Pre-Primary (PP1, PP2)', grades: 'PP1, PP2' },
   { key: 'lower-primary', label: 'Lower Primary (Grade 1-3)', grades: 'Grade 1, 2, 3' },
@@ -196,17 +211,17 @@ export default function TimetableSetup() {
         .upsert({
           school_id: schoolId,
           level_group: selectedLevel,
-          start_time: cfg.start_time,
-          end_time: cfg.end_time,
+          start_time: normalizeTime(cfg.start_time),
+          end_time: normalizeTime(cfg.end_time),
           period_duration: cfg.period_duration,
-          first_break_start: cfg.first_break_start,
-          first_break_end: cfg.first_break_end,
-          second_break_start: cfg.second_break_start,
-          second_break_end: cfg.second_break_end,
-          lunch_start: cfg.lunch_start,
-          lunch_end: cfg.lunch_end,
-          activities_start: cfg.activities_start,
-          activities_end: cfg.activities_end,
+          first_break_start: normalizeTime(cfg.first_break_start),
+          first_break_end: normalizeTime(cfg.first_break_end),
+          second_break_start: normalizeTime(cfg.second_break_start),
+          second_break_end: normalizeTime(cfg.second_break_end),
+          lunch_start: normalizeTime(cfg.lunch_start),
+          lunch_end: normalizeTime(cfg.lunch_end),
+          activities_start: normalizeTime(cfg.activities_start),
+          activities_end: normalizeTime(cfg.activities_end),
           updated_at: new Date().toISOString(),
         }, { onConflict: 'school_id,level_group' });
 

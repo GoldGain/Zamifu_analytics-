@@ -114,7 +114,9 @@ export default function PromoteClass() {
           .update({ 
             is_active: false, 
             status: 'graduated',
+            learner_status: 'graduated',
             graduation_date: new Date().toISOString(),
+            graduation_year: new Date().getFullYear(),
           })
           .eq('class_id', selectedFromClass)
           .eq('school_id', user?.schoolId)

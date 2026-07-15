@@ -75,6 +75,7 @@ const navConfig: Record<string, NavItem[]> = {
   'school-admin': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/school-admin' },
     { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/school-admin/students' },
+    { label: 'Graduated Students', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/graduated-students' },
     { label: 'Teachers', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teachers' },
     { label: 'Grades', icon: <School className="w-5 h-5" />, path: '/school-admin/classes' },
     { label: 'Learning Areas', icon: <Library className="w-5 h-5" />, path: '/school-admin/subjects' },
@@ -105,6 +106,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, path: '/teacher/results/upload' },
     { label: 'View My Marks', icon: <Eye className="w-5 h-5" />, path: '/teacher/view-marks' },
     { label: 'Marklist', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/teacher/marklist' },
+    { label: 'Class List', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/teacher/class-list' },
     { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/assessment-progress' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/teacher/attendance' },
     { label: 'Homework & Papers', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/homework' },

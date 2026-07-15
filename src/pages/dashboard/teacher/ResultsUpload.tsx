@@ -200,11 +200,15 @@ export default function TeacherResultsUpload() {
       if (classSubjectIds.length > 0) {
         setSubjects(allSubjects.filter((sub: any) => classSubjectIds.includes(sub.id)));
       } else {
-        // No specific assignments for this class — show all school subjects as fallback
-        setSubjects(allSubjects);
+        // Strong restriction: no assigned learning areas for this class
+        setSubjects([]);
       }
+    } else if (teacherAssignments.length > 0) {
+      // Teacher has assignments but none for this class
+      setSubjects([]);
     } else if (allSubjects.length > 0) {
-      setSubjects(allSubjects);
+      // No assignment rows at all — keep empty to enforce assignment policy
+      setSubjects([]);
     }
   }, [selectedClass, teacherAssignments, allSubjects]);
 

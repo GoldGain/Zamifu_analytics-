@@ -69,21 +69,38 @@ export default function Assessments() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [{ data: examsData }, { data: termsData }] = await Promise.all([
-        (supabase as any)
-          .from('school_exams')
-          .select('*, terms(name)')
-          .eq('school_id', user?.schoolId)
-          .order('created_at', { ascending: false }),
-        (supabase as any)
-          .from('terms')
-          .select('id, name, academic_year')
-          .eq('school_id', user?.schoolId)
-          .order('academic_year', { ascending: false }),
-      ]);
-      setExams(examsData || []);
+      const { data: termsData } = await (supabase as any)
+        .from('terms')
+        .select('id, name, academic_year')
+        .eq('school_id', user?.schoolId)
+        .order('academic_year', { ascending: false });
       setTerms(termsData || []);
+
+      // Prefer embedded term name; fall back if PostgREST relationship is missing
+      let examsData: any[] | null = null;
+      const embedded = await (supabase as any)
+        .from('school_exams')
+        .select('*, terms(name)')
+        .eq('school_id', user?.schoolId)
+        .order('created_at', { ascending: false });
+      if (embedded.error) {
+        const plain = await (supabase as any)
+          .from('school_exams')
+          .select('*')
+          .eq('school_id', user?.schoolId)
+          .order('created_at', { ascending: false });
+        if (plain.error) throw plain.error;
+        const termMap = Object.fromEntries((termsData || []).map((t: any) => [t.id, t.name]));
+        examsData = (plain.data || []).map((e: any) => ({
+          ...e,
+          terms: e.term_id ? { name: termMap[e.term_id] || '' } : null,
+        }));
+      } else {
+        examsData = embedded.data || [];
+      }
+      setExams(examsData || []);
     } catch (err) {
+      console.error(err);
       toast.error('Failed to load assessments');
     } finally {
       setLoading(false);
