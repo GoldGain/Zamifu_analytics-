@@ -239,11 +239,16 @@ export default function TimetableSetup() {
       const lessonsPerDay = Math.max(6, Math.min(9, Number(cfg.lessons_per_day ?? (6 + afterLunch))));
       // Keep invariant: total = 6 before lunch + after lunch
       const normalizedLessons = 6 + afterLunch;
+      // end_time is no longer edited in UI — use Activities End (or Lunch End for pre-primary)
+      const derivedEnd =
+        normalizeTime(cfg.activities_end) ||
+        normalizeTime(cfg.lunch_end) ||
+        normalizeTime(cfg.end_time);
       const payload = {
           school_id: schoolId,
           level_group: selectedLevel,
           start_time: normalizeTime(cfg.start_time),
-          end_time: normalizeTime(cfg.end_time),
+          end_time: derivedEnd,
           period_duration: Number(cfg.period_duration) || 40,
           first_break_start: normalizeTime(cfg.first_break_start),
           first_break_end: normalizeTime(cfg.first_break_end),
@@ -421,7 +426,7 @@ export default function TimetableSetup() {
             </p>
           </div>
           <TimeInput label="School starts" value={currentConfig.start_time} onChange={v => handleConfigChange('start_time', v)} />
-          <TimeInput label="School ends" value={currentConfig.end_time} onChange={v => handleConfigChange('end_time', v)} />
+          <div className="hidden md:block" />
 
           <TimeInput label="FIRST BREAK starts" value={currentConfig.first_break_start} onChange={v => handleConfigChange('first_break_start', v)} />
           <TimeInput label="FIRST BREAK ends" value={currentConfig.first_break_end} onChange={v => handleConfigChange('first_break_end', v)} />
@@ -514,7 +519,7 @@ export default function TimetableSetup() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Lessons/Day</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">After Lunch</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Start</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">End</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Activities</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Duration</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Lunch</th>
               </tr>
@@ -541,7 +546,7 @@ export default function TimetableSetup() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.start_time || '-'}</td>
-                    <td className="px-4 py-3 text-gray-600">{cfg?.end_time || '-'}</td>
+                    <td className="px-4 py-3 text-gray-600">{cfg?.activities_start && cfg?.activities_end ? `${cfg.activities_start} – ${cfg.activities_end}` : (cfg?.activities_end || cfg?.end_time || '-')}</td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.period_duration || 40} min</td>
                     <td className="px-4 py-3 text-gray-600">{cfg?.lunch_start || '-'} – {cfg?.lunch_end || '-'}</td>
                   </tr>

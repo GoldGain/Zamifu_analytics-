@@ -40,41 +40,70 @@ export interface AiInsight {
 }
 
 const PAGE_GUIDES: Record<string, string> = {
-  '/': 'Landing page. Use Pathway Finder, explore interests, then Login or Register your school.',
-  '/pathway-finder': 'Pathway Finder: interests → grades → recommended CBE senior pathways.',
-  '/auth/login': 'Sign in with school email and password. Use Forgot Password if needed.',
-  '/school-admin': 'School Admin hub: learners, teachers, assessments, fees, timetable, results.',
-  '/school-admin/students': 'Manage learners. Use Graduated Students for alumni (G9 / G12).',
-  '/school-admin/graduated-students': 'Alumni list. Filter by graduation year.',
-  '/school-admin/assessments': 'Create CATs, midterms, end-term. Names appear on report cards.',
-  '/school-admin/results': 'Review marks. Publish & Notify sends Olympus SMS (PROCALL) to parents.',
+  '/':
+    'Welcome to Zamifu Analytics, a modern school management system. Here you can learn about our services, explore educational pathways, and join our community. Click Login to access your dashboard, or use Pathway Finder to discover CBE senior school pathways based on interests and grades.',
+  '/pathway-finder':
+    'Pathway Finder helps learners map interests and grades to recommended CBE senior pathways. Complete each step carefully, review the recommendations, and share results with teachers or parents when ready.',
+  '/auth/login':
+    'Sign in with your school email and password to open the dashboard for your role. Use Forgot Password if you cannot access your account, then contact your school admin if you still need help.',
+  '/school-admin':
+    'Welcome to the School Admin Dashboard. Here you can view school statistics, manage students and teachers, create and review timetables, manage exams and results, work with financial reports and fees, and send messages or announcements to parents.',
+  '/school-admin/students':
+    'Manage active learners: add, edit, search, and review class placement. Use Graduated Students for alumni after Grade 9 or Grade 12 / Form 4 graduation.',
+  '/school-admin/graduated-students':
+    'Browse alumni records and filter by graduation year. Use this list for historical results, certificates, and follow-up after learners leave active classes.',
+  '/school-admin/assessments':
+    'Create and manage CATs, midterms, and end-term assessments. Assessment names appear on report cards, so keep titles clear and consistent for teachers and parents.',
+  '/school-admin/results':
+    'Review uploaded marks, validate completeness, then publish. Publish and Notify can send Olympus SMS (sender PROCALL) so parents receive result alerts.',
   '/school-admin/promote-class':
-    'Promote whole classes. Grade 9 and Grade 12 / Form 4 GRADUATE (not promote). Destination must be empty.',
+    'Promote whole classes at term or year end. Grade 9 and Grade 12 / Form 4 use GRADUATE instead of promote. Destination classes must be empty before promotion.',
   '/school-admin/timetable/setup':
-    'Edit ALL times per level. Set lessons after lunch (0–3). Save before Generate.',
+    'Configure the school day per level group. Set School starts, Break, Lunch, Activities Start, and Activities End. Choose lessons after lunch (0 to 3), then Save Configuration before generating a timetable. There is no separate School Ends field; Activities End defines the end of the day period.',
   '/school-admin/timetable/generate':
-    'Generate from saved Setup. Each level: Pre-Primary 6/0, Lower/Upper 7/1, Junior 8/2, Senior 9/3, 8-4-4 8/2.',
+    'Generate timetables from saved Setup times. Select one or more level groups, confirm Activities Start/End and break/lunch times shown for each configured level, then generate. Lesson counts come from Setup (for example Pre-Primary 6/0, Lower/Upper 7/1, Junior 8/2, Senior 9/3).',
   '/school-admin/timetable/view':
-    'View/download timetable. Click a class to see correct columns for that level only.',
-  '/school-admin/stream-dashboard': 'Stream performance. Filter by class, term, assessment.',
-  '/school-admin/fees': 'Fee structures, invoices, and payments.',
-  '/school-admin/teachers': 'Manage teachers and assignments.',
-  '/school-admin/classes': 'Manage grades/streams.',
-  '/teacher': 'Teacher home: uploads, subjects, class tools.',
-  '/teacher/results/upload': 'Upload only assigned learning areas for the selected class.',
-  '/teacher/class-list': 'Name + Adm No, add columns, save cells, download PDF.',
-  '/teacher/marklist': 'Flexible marklist columns and PDF export.',
-  '/teacher/my-subjects': 'Your assigned learning areas.',
-  '/teacher/attendance': 'Mark daily attendance.',
-  '/teacher/homework': 'Assign and review homework.',
-  '/student/portfolio': 'All historical results across years — including after graduation.',
-  '/student/results': 'Published results for terms.',
-  '/student/fees': 'Your fee balance and payments.',
-  '/parent': 'Parent hub: children, fees, results, conferences.',
-  '/parent/chatbot': 'Full parent AI page (fees, results, homework, meetings).',
-  '/parent/fees': 'Children fee balances and payments.',
-  '/parent/children': 'Linked children profiles.',
-  '/dean-of-studies': 'DoS: assessments, class lists, academic progress.',
+    'View and download the school timetable. Activities Start and Activities End appear with Break and Lunch so you can verify the full day structure. Select a class to see the correct columns for that level only.',
+  '/school-admin/stream-dashboard':
+    'Review stream performance with filters for class, term, and assessment. Use this page to compare cohorts and spot classes that need academic support.',
+  '/school-admin/fees':
+    'Manage fee structures, invoices, and payments. Track balances, record payments, and follow up with families who still owe fees.',
+  '/school-admin/teachers':
+    'Manage teacher profiles and teaching assignments. Keep subject and class assignments accurate so uploads and timetables stay correct.',
+  '/school-admin/classes':
+    'Manage grades and streams. Keep grade levels accurate so timetable generation and promotion routes map to the right learner groups.',
+  '/teacher':
+    'Welcome Teacher. Here you can view your timetable, upload student grades for assigned learning areas, open class lists, communicate with parents, and review student reports.',
+  '/teacher/results/upload':
+    'Upload marks only for learning areas assigned to you for the selected class. Double-check the assessment and term before saving.',
+  '/teacher/class-list':
+    'Open the class list with name and admission number, add custom columns, save cell values, and download a PDF for meetings or records.',
+  '/teacher/marklist':
+    'Build a flexible marklist with the columns you need, enter scores, and export a PDF for class or department use.',
+  '/teacher/my-subjects':
+    'See the learning areas assigned to you. If a subject is missing, ask a school admin to update teacher assignments.',
+  '/teacher/attendance':
+    'Mark daily attendance for your classes. Keep records current so parents and admins can trust attendance reports.',
+  '/teacher/homework':
+    'Assign homework, set due dates, and review submissions. Use clear titles so learners and parents understand the task.',
+  '/student':
+    'Welcome Student. Here you can view your timetable, check published results, open your portfolio, and follow communications from teachers.',
+  '/student/portfolio':
+    'Review historical results across years, including records that remain after graduation. Use this page for long-term progress tracking.',
+  '/student/results':
+    'Check published results for each term and assessment once your school has released them.',
+  '/student/fees':
+    'View your fee balance and payment history. Contact the school office if a payment is missing or a balance looks incorrect.',
+  '/parent':
+    'Welcome Parent. Here you can view your child progress, check results, communicate with teachers, and review attendance or fee information linked to your children.',
+  '/parent/chatbot':
+    'Use the parent assistant for guided help on fees, results, homework, and meetings. Ask one clear question at a time for the best answer.',
+  '/parent/fees':
+    'Review fee balances and payments for linked children. Follow up with the school if a recent payment has not appeared yet.',
+  '/parent/children':
+    'Open linked children profiles, confirm class placement, and jump into results or fee details for each child.',
+  '/dean-of-studies':
+    'Welcome Dean of Studies. Here you can view academic statistics, manage examinations, review student performance trends, and support curriculum decisions across classes.',
 };
 
 function guideForPath(path: string): string {
@@ -85,7 +114,7 @@ function guideForPath(path: string): string {
   return (
     match
       ? PAGE_GUIDES[match]
-      : 'Zamifu Analytics page. Ask how to complete a task or where a feature lives.'
+      : 'You are on a Zamifu Analytics page. Ask how to complete a task on this screen, where a feature lives, or what each section is for. I will explain the page and give step-by-step guidance.'
   );
 }
 
@@ -150,23 +179,26 @@ export function roleQuickActions(role?: AiRole): { label: string; query: string 
 function buildSystemPrompt(ctx: AiContext, liveNotes: string): string {
   const role = ctx.role || 'guest';
   return [
-    'You are Zamifu Copilot, the powerful in-app AI for Zamifu Analytics (Kenya CBE + 8-4-4 school management).',
-    'Be accurate, step-by-step, and concise. Prefer numbered steps with menu paths.',
+    'You are Zamifu Copilot, the in-app assistant for Zamifu Analytics (Kenya CBE and 8-4-4 school management).',
+    'Write in natural, conversational language. Do not use excessive punctuation such as !!!, ???, or long ellipses.',
+    'Be accurate, thorough, and friendly. Prefer clear numbered steps with menu paths when guiding a task.',
+    'Always explain the current page using the page guide, then answer the user question with practical next steps.',
     `User role: ${role}.`,
     ctx.schoolName ? `School: ${ctx.schoolName}.` : '',
     ctx.userName ? `User: ${ctx.userName}.` : '',
     `Current path: ${ctx.pagePath}.`,
     `Page guide: ${guideForPath(ctx.pagePath)}`,
-    liveNotes ? `LIVE SCHOOL DATA (use this, do not invent):\\n${liveNotes}` : '',
+    liveNotes ? `LIVE SCHOOL DATA (use this, do not invent):\n${liveNotes}` : '',
     'Rules:',
     '- Never invent credentials or delete production data.',
     '- Graduation: Grade 9 AND Grade 12 / Form 4 graduate; Grades 1–8 and 10–11 promote to empty destination classes.',
-    '- Timetable: Pre-Primary 6 lessons (0 after lunch), Lower/Upper Primary 7 (1), Junior 8 (2), Senior 9 (3), 8-4-4 8 (2).',
+    '- Timetable times come from Timetable Setup. Activities Start and Activities End define the activities window; there is no separate School Ends field in Setup.',
+    '- Default lesson counts when Setup is empty: Pre-Primary 6 (0 after lunch), Lower/Upper Primary 7 (1), Junior 8 (2), Senior 9 (3), 8-4-4 8 (2).',
     '- SMS: Publish & Notify uses Olympus SMS sender PROCALL.',
     '- Teachers may only upload assigned learning areas.',
   ]
     .filter(Boolean)
-    .join('\\n');
+    .join('\n');
 }
 
 /** Live insights for the notification strip + AI context */

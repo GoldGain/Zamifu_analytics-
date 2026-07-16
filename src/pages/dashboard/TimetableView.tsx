@@ -620,29 +620,57 @@ export default function TimetableView() {
 
   
   // Summary strip for lesson counts (from generated slots in DB)
+  const activeLevelConfig = levelConfigs[activeLevelGroup] || null;
+  const activitiesStartDisplay =
+    activeLevelConfig?.activities_start
+      ? formatTimeDisplay(String(activeLevelConfig.activities_start).slice(0, 5))
+      : (slotSummary.hasActivities
+          ? formatTimeDisplay((allSlots.find((s) => s.slot_type === 'activities' || s.slot_type === 'activity') as any)?.start_time)
+          : null);
+  const activitiesEndDisplay =
+    activeLevelConfig?.activities_end
+      ? formatTimeDisplay(String(activeLevelConfig.activities_end).slice(0, 5))
+      : (slotSummary.hasActivities ? formatTimeDisplay(slotSummary.schoolEnd) : null);
+  const breakStartDisplay = activeLevelConfig?.first_break_start
+    ? formatTimeDisplay(String(activeLevelConfig.first_break_start).slice(0, 5))
+    : null;
+  const breakEndDisplay = activeLevelConfig?.first_break_end
+    ? formatTimeDisplay(String(activeLevelConfig.first_break_end).slice(0, 5))
+    : null;
+  const lunchStartDisplay = activeLevelConfig?.lunch_start
+    ? formatTimeDisplay(String(activeLevelConfig.lunch_start).slice(0, 5))
+    : null;
+  const lunchEndDisplay = activeLevelConfig?.lunch_end
+    ? formatTimeDisplay(String(activeLevelConfig.lunch_end).slice(0, 5))
+    : (slotSummary.lunchEnd ? formatTimeDisplay(slotSummary.lunchEnd) : null);
+
   const summaryBanner = (
-    <div className="mx-4 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-      <span className="font-semibold">Timetable structure ({activeLevelGroup}):</span>
-      <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
-      <span className="text-blue-300">|</span>
-      <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
-      <span className="text-blue-300">|</span>
-      <span>
-        <strong>{slotSummary.afterLunch}</strong> after lunch
-        {slotSummary.afterLunch === 0 ? ' (ends at lunch)' : ''}
-      </span>
-      {slotSummary.hasActivities && (
-        <>
-          <span className="text-blue-300">|</span>
-          <span>Activities until {formatTimeDisplay(slotSummary.schoolEnd)}</span>
-        </>
-      )}
-      {slotSummary.lunchEnd && (
-        <>
-          <span className="text-blue-300">|</span>
-          <span>Lunch ends {formatTimeDisplay(slotSummary.lunchEnd)}</span>
-        </>
-      )}
+    <div className="mx-4 mb-3 space-y-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-semibold">Timetable structure ({activeLevelGroup}):</span>
+        <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
+        <span className="text-blue-300">|</span>
+        <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
+        <span className="text-blue-300">|</span>
+        <span>
+          <strong>{slotSummary.afterLunch}</strong> after lunch
+          {slotSummary.afterLunch === 0 ? ' (ends at lunch)' : ''}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm">
+        {activitiesStartDisplay && (
+          <span>⏰ Activities Start: <strong>{activitiesStartDisplay}</strong></span>
+        )}
+        {activitiesEndDisplay && (
+          <span>⏰ Activities End: <strong>{activitiesEndDisplay}</strong></span>
+        )}
+        {(breakStartDisplay || breakEndDisplay) && (
+          <span>🍽️ Break: <strong>{breakStartDisplay || '—'}</strong> – <strong>{breakEndDisplay || '—'}</strong></span>
+        )}
+        {(lunchStartDisplay || lunchEndDisplay) && (
+          <span>🍽️ Lunch: <strong>{lunchStartDisplay || '—'}</strong> – <strong>{lunchEndDisplay || '—'}</strong></span>
+        )}
+      </div>
     </div>
   );
 
@@ -778,10 +806,33 @@ const timetableStyles = `
             {LEVEL_LABELS[resolveClassLevelGroup(classesToRender[0])] || resolveClassLevelGroup(classesToRender[0])}
           </p>
         )}
-        <p className="text-blue-300 text-xs mt-1">
+                <p className="text-blue-300 text-xs mt-1">
           {countLessons(slotsForTable).total} lessons/day · {countLessons(slotsForTable).afterLunch} after lunch
           {countLessons(slotsForTable).afterLunch === 0 ? ' · ends at lunch (no post-lunch lesson columns)' : ''}
         </p>
+        {(() => {
+          const levelKey = classesToRender.length === 1
+            ? resolveClassLevelGroup(classesToRender[0])
+            : activeLevelGroup;
+          const cfg = levelConfigs[levelKey];
+          const actStart = cfg?.activities_start ? formatTimeDisplay(String(cfg.activities_start).slice(0, 5)) : null;
+          const actEnd = cfg?.activities_end ? formatTimeDisplay(String(cfg.activities_end).slice(0, 5)) : null;
+          const brk = cfg?.first_break_start && cfg?.first_break_end
+            ? `${formatTimeDisplay(String(cfg.first_break_start).slice(0, 5))} – ${formatTimeDisplay(String(cfg.first_break_end).slice(0, 5))}`
+            : null;
+          const lunch = cfg?.lunch_start && cfg?.lunch_end
+            ? `${formatTimeDisplay(String(cfg.lunch_start).slice(0, 5))} – ${formatTimeDisplay(String(cfg.lunch_end).slice(0, 5))}`
+            : null;
+          if (!actStart && !actEnd && !brk && !lunch) return null;
+          return (
+            <p className="text-blue-200 text-[11px] mt-1 flex flex-wrap justify-center gap-x-3 gap-y-0.5">
+              {actStart && <span>⏰ Activities Start: {actStart}</span>}
+              {actEnd && <span>⏰ Activities End: {actEnd}</span>}
+              {brk && <span>🍽️ Break: {brk}</span>}
+              {lunch && <span>🍽️ Lunch: {lunch}</span>}
+            </p>
+          );
+        })()}
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
       <div className="overflow-x-auto">
@@ -820,8 +871,19 @@ const timetableStyles = `
                   </th>
                 );
               })}
-              <th rowSpan={2} className="tt-header" style={{ width: '60px', minWidth: '60px', color: '#33cc33' }}>
-                AFTER-SCHOOL ACTIVITIES
+              <th rowSpan={2} className="tt-header" style={{ width: '72px', minWidth: '72px', color: '#33cc33' }}>
+                <span style={{display:'block'}}>ACTIVITIES</span>
+                {(() => {
+                  const act = slotsForTable.find((s) => s.slot_type === 'activities' || s.slot_type === 'activity');
+                  if (!act) return <span style={{display:'block', fontSize:'0.55rem', color:'#8f8'}}>AFTER SCHOOL</span>;
+                  return (
+                    <>
+                      <span style={{display:'block', fontSize:'0.5rem', color:'#8f8'}}>{fmt(act.start_time)}</span>
+                      <span style={{display:'block', fontSize:'0.5rem', color:'#8f8'}}>—</span>
+                      <span style={{display:'block', fontSize:'0.5rem', color:'#8f8'}}>{fmt(act.end_time)}</span>
+                    </>
+                  );
+                })()}
               </th>
             </tr>
             <tr>

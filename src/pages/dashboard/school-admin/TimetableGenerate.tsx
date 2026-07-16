@@ -7,6 +7,19 @@ import { toast } from 'sonner';
 import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 
+function fmtTime(t?: string | null): string {
+  if (!t) return '—';
+  const raw = String(t).slice(0, 5);
+  const [hStr, mStr] = raw.split(':');
+  const h = Number(hStr);
+  const m = mStr || '00';
+  if (Number.isNaN(h)) return raw;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+}
+
+
 // Frontend config interface (matches what timetable-generator expects)
 interface FrontendConfig {
   lesson_duration: number;
@@ -239,6 +252,7 @@ export default function TimetableGenerate() {
         console.info(`[timetable] using DB times for ${levelKey}`, {
           start: config.school_start,
           lunch: `${config.lunch_start}-${config.lunch_end}`,
+          activities: `${config.activities_start || '—'}-${config.activities_end || '—'}`,
           duration: config.lesson_duration,
           after_lunch: config.after_lunch_lessons,
         });
@@ -400,14 +414,32 @@ export default function TimetableGenerate() {
         <p className="text-gray-500 text-sm mt-1">Select which level groups to generate timetables for.</p>
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-900 flex gap-3">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-900 flex gap-3">
         <Clock className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
-        <div>
+        <div className="w-full">
           <p className="font-bold mb-1">School Day Structure:</p>
-          <p>Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7] [+ Lesson 8 for Junior/8-4-4] [+ Lesson 9 for Senior] → <strong>ACTIVITIES</strong></p>
+          <p>Lesson 1 & 2 → <strong>FIRST BREAK</strong> → Lesson 3 & 4 → <strong>SECOND BREAK</strong> → Lesson 5 & 6 → <strong>LUNCH</strong> → [Lesson 7] [+ Lesson 8 for Junior/8-4-4] [+ Lesson 9 for Senior] → <strong>ACTIVITIES</strong></p>
           <p className="mt-1 text-xs text-blue-700">
-            Lesson structure is loaded from <strong>Timetable Setup</strong> (DB). Defaults: Pre-Primary 6/0 · Lower/Upper 7/1 · Junior & 8-4-4 8/2 · Senior 9/3 (total / after lunch).
+            Lesson structure and all times are loaded from <strong>Timetable Setup</strong> (database). Configured levels use saved Activities Start/End, Break, and Lunch times.
           </p>
+          {Array.from(selectedLevels).some((k) => levelConfigs[k]) && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {Array.from(selectedLevels).map((key) => {
+                const cfg = levelConfigs[key];
+                if (!cfg) return null;
+                const label = LEVEL_GROUPS.find((l) => l.key === key)?.label || key;
+                return (
+                  <div key={key} className="rounded-xl border border-blue-200 bg-white/80 px-3 py-2 text-xs text-blue-950">
+                    <p className="font-bold mb-1">{label} timeline</p>
+                    <p>⏰ Activities Start: <strong>{fmtTime(cfg.activities_start)}</strong></p>
+                    <p>⏰ Activities End: <strong>{fmtTime(cfg.activities_end)}</strong></p>
+                    <p>🍽️ Break: <strong>{fmtTime(cfg.first_break_start)}</strong> – <strong>{fmtTime(cfg.first_break_end)}</strong></p>
+                    <p>🍽️ Lunch: <strong>{fmtTime(cfg.lunch_start)}</strong> – <strong>{fmtTime(cfg.lunch_end)}</strong></p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -464,7 +496,16 @@ export default function TimetableGenerate() {
                     <p className={`text-xs mt-0.5 font-medium ${isPrePrimary ? 'text-amber-600' : 'text-blue-600'}`}>
                       <Info className="w-3 h-3 inline mr-1" />
                       {lessonInfo.lessons} lessons/day{lessonInfo.afterLunch > 0 ? ` — ${lessonInfo.afterLunch} after lunch` : ' — ends at lunch'}
-                    </p>
+                  )}
+                  {hasConfig && (
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
+                      <span>Start: <strong>{fmtTime(dbCfg?.start_time)}</strong></span>
+                      {(dbCfg?.activities_start || dbCfg?.activities_end) ? (
+                        <span>Activities: <strong>{fmtTime(dbCfg?.activities_start)}</strong> – <strong>{fmtTime(dbCfg?.activities_end)}</strong></span>
+                      ) : null}
+                      <span>Break: <strong>{fmtTime(dbCfg?.first_break_start)}</strong> – <strong>{fmtTime(dbCfg?.first_break_end)}</strong></span>
+                      <span>Lunch: <strong>{fmtTime(dbCfg?.lunch_start)}</strong> – <strong>{fmtTime(dbCfg?.lunch_end)}</strong></span>
+                    </div>
                   )}
                 </div>
                 {hasConfig ? (
