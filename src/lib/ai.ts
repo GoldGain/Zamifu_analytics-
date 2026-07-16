@@ -1,4 +1,4 @@
-/**
+/
  * Zamifu System AI — powerful in-app assistant for every portal.
  * - Page-aware guidance
  * - Role-specific live insights from Supabase
@@ -202,7 +202,7 @@ function buildSystemPrompt(ctx: AiContext, liveNotes: string): string {
     .join('\n');
 }
 
-/** Live insights for the notification strip + AI context */
+/ Live insights for the notification strip + AI context */
 export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
   const insights: AiInsight[] = [];
   const role = (ctx.role || '').replace(/-/g, '_');
