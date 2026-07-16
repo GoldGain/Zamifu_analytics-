@@ -73,7 +73,7 @@ export default function AIAssistant() {
     setMessages([
       {
         role: 'assistant',
-        content: `Hi${first}. I am **Zamifu Copilot**, your in-app guide.\n\n**${ctx.pageTitle}**\n${intro}\n\nAsk me to explain this page, walk through a task step by step, or use a quick action below.`,
+        content: `Hi${first}. I am Zamifu Copilot, your guide for this page.\n\nYou are on ${ctx.pageTitle}.\n${intro}\n\nAsk me to explain this page, walk through a task, or use a quick action below.`,
       },
     ]);
     setShowInsights(true);
@@ -217,7 +217,7 @@ export default function AIAssistant() {
             ))}
             {loading && (
               <div className="flex items-center gap-2 px-1 text-xs text-gray-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking with live context
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Thinking
               </div>
             )}
             <div ref={endRef} />
@@ -246,7 +246,7 @@ export default function AIAssistant() {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask anything about Zamifu"
+                placeholder="Ask about this page or any Zamifu task"
                 className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               />
               <button
@@ -260,7 +260,7 @@ export default function AIAssistant() {
             </form>
             <p className="mt-2 flex items-center gap-1 text-[10px] text-gray-400">
               <MessageCircle className="h-3 w-3" />
-              Page-aware · role insights · DeepSeek when configured
+              Page-aware help for your role
             </p>
           </div>
         </div>
