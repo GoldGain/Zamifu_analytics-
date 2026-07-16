@@ -165,7 +165,7 @@ function AppRoutes() {
       {/* School Admin routes */}
       <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminDashboard /></ProtectedRoute>} />
       <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']}><StreamDashboard /></ProtectedRoute>} />
-      <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminStudents />
+      <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminStudents /></ProtectedRoute>} />
       <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
       <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminTeachers /></ProtectedRoute>} />
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminClasses /></ProtectedRoute>} />
