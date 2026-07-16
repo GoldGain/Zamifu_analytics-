@@ -40,15 +40,16 @@ interface FrontendConfig {
 
 // Map level config DB row to frontend config
 const mapLevelConfigToFrontend = (dbConfig: any, dbActivities: Record<string, string>): FrontendConfig => ({
+  // Multi-tenant: only use this school's saved Setup values. No invented school times.
   lesson_duration: dbConfig.period_duration || 40,
-  school_start: dbConfig.start_time?.slice(0, 5) || '08:20',
-  school_end: dbConfig.end_time?.slice(0, 5) || '15:40',
-  first_break_start: dbConfig.first_break_start?.slice(0, 5) || '09:40',
-  first_break_end: dbConfig.first_break_end?.slice(0, 5) || '10:20',
-  second_break_start: dbConfig.second_break_start?.slice(0, 5) || '11:40',
-  second_break_end: dbConfig.second_break_end?.slice(0, 5) || '12:20',
-  lunch_start: dbConfig.lunch_start?.slice(0, 5) || '12:50',
-  lunch_end: dbConfig.lunch_end?.slice(0, 5) || '13:30',
+  school_start: dbConfig.start_time?.slice(0, 5) || '',
+  school_end: (dbConfig.end_time || dbConfig.activities_end || dbConfig.lunch_end)?.slice(0, 5) || '',
+  first_break_start: dbConfig.first_break_start?.slice(0, 5) || '',
+  first_break_end: dbConfig.first_break_end?.slice(0, 5) || '',
+  second_break_start: dbConfig.second_break_start?.slice(0, 5) || '',
+  second_break_end: dbConfig.second_break_end?.slice(0, 5) || '',
+  lunch_start: dbConfig.lunch_start?.slice(0, 5) || '',
+  lunch_end: dbConfig.lunch_end?.slice(0, 5) || '',
   activities_start: dbConfig.activities_start?.slice(0, 5) || undefined,
   activities_end: dbConfig.activities_end?.slice(0, 5) || undefined,
   activities: dbActivities,
@@ -61,14 +62,14 @@ const mapDbToFrontend = (dbConfig: any, dbActivities: Record<string, string>): F
   if (!dbConfig) return null;
   return {
     lesson_duration: dbConfig.lesson_duration_minutes || 40,
-    school_start: dbConfig.school_start_time?.slice(0, 5) || '08:20',
-    school_end: dbConfig.school_end_time?.slice(0, 5) || '15:40',
-    first_break_start: dbConfig.morning_break_start?.slice(0, 5) || '09:40',
-    first_break_end: dbConfig.morning_break_end?.slice(0, 5) || '10:20',
-    second_break_start: dbConfig.afternoon_break_start?.slice(0, 5) || '11:40',
-    second_break_end: dbConfig.afternoon_break_end?.slice(0, 5) || '12:20',
-    lunch_start: dbConfig.lunch_start?.slice(0, 5) || '12:50',
-    lunch_end: dbConfig.lunch_end?.slice(0, 5) || '13:30',
+    school_start: dbConfig.school_start_time?.slice(0, 5) || '',
+    school_end: dbConfig.school_end_time?.slice(0, 5) || '',
+    first_break_start: dbConfig.morning_break_start?.slice(0, 5) || '',
+    first_break_end: dbConfig.morning_break_end?.slice(0, 5) || '',
+    second_break_start: dbConfig.afternoon_break_start?.slice(0, 5) || '',
+    second_break_end: dbConfig.afternoon_break_end?.slice(0, 5) || '',
+    lunch_start: dbConfig.lunch_start?.slice(0, 5) || '',
+    lunch_end: dbConfig.lunch_end?.slice(0, 5) || '',
     activities: dbActivities,
   };
 };
@@ -258,7 +259,7 @@ export default function TimetableGenerate() {
         });
 
         // Validate required fields
-        const requiredFields = ['first_break_start', 'first_break_end', 'second_break_start', 'second_break_end', 'lunch_start', 'lunch_end'];
+        const requiredFields = ['school_start', 'first_break_start', 'first_break_end', 'second_break_start', 'second_break_end', 'lunch_start', 'lunch_end'];
         for (const field of requiredFields) {
           if (!config[field as keyof FrontendConfig]) {
             toast.error(`Missing ${field} in configuration for ${LEVEL_GROUPS.find(l => l.key === levelKey)?.label}. Please configure it first.`);

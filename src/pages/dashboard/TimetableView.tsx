@@ -252,28 +252,38 @@ function buildDisplaySlotsForLevel(
     }
   }
 
-  // Synthesize CORRECT column structure from Setup times + level rules
+  // Multi-tenant: never invent school clock times. Only use this school's Setup.
+  const required = [
+    levelConfig?.start_time,
+    levelConfig?.first_break_start,
+    levelConfig?.first_break_end,
+    levelConfig?.second_break_start,
+    levelConfig?.second_break_end,
+    levelConfig?.lunch_start,
+    levelConfig?.lunch_end,
+  ];
+  if (!levelConfig || required.some((v) => !v)) {
+    if (candidates.length) return candidates;
+    return [];
+  }
+
   const cfg: TimetableConfig = {
-    lesson_duration: Number(levelConfig?.period_duration) || 40,
-    school_start: (levelConfig?.start_time || '08:20').toString().slice(0, 5),
-    school_end: (levelConfig?.end_time || '15:40').toString().slice(0, 5),
-    first_break_start: (levelConfig?.first_break_start || '09:40').toString().slice(0, 5),
-    first_break_end: (levelConfig?.first_break_end || '10:20').toString().slice(0, 5),
-    second_break_start: (levelConfig?.second_break_start || '11:40').toString().slice(0, 5),
-    second_break_end: (levelConfig?.second_break_end || '12:20').toString().slice(0, 5),
-    lunch_start: (levelConfig?.lunch_start || '12:50').toString().slice(0, 5),
-    lunch_end: (levelConfig?.lunch_end || '13:30').toString().slice(0, 5),
-    activities_start: levelConfig?.activities_start
-      ? String(levelConfig.activities_start).slice(0, 5)
-      : undefined,
-    activities_end: levelConfig?.activities_end
-      ? String(levelConfig.activities_end).slice(0, 5)
-      : undefined,
-    lessons_per_day: targets.total,
-    after_lunch_lessons: targets.afterLunch,
+    lesson_duration: Number(levelConfig.period_duration) || 40,
+    school_start: String(levelConfig.start_time).slice(0, 5),
+    school_end: String(levelConfig.end_time || levelConfig.activities_end || levelConfig.lunch_end).slice(0, 5),
+    first_break_start: String(levelConfig.first_break_start).slice(0, 5),
+    first_break_end: String(levelConfig.first_break_end).slice(0, 5),
+    second_break_start: String(levelConfig.second_break_start).slice(0, 5),
+    second_break_end: String(levelConfig.second_break_end).slice(0, 5),
+    lunch_start: String(levelConfig.lunch_start).slice(0, 5),
+    lunch_end: String(levelConfig.lunch_end).slice(0, 5),
+    activities_start: levelConfig.activities_start ? String(levelConfig.activities_start).slice(0, 5) : undefined,
+    activities_end: levelConfig.activities_end ? String(levelConfig.activities_end).slice(0, 5) : undefined,
+    lessons_per_day: typeof levelConfig.lessons_per_day === 'number' ? levelConfig.lessons_per_day : targets.total,
+    after_lunch_lessons: typeof levelConfig.after_lunch_lessons === 'number' ? levelConfig.after_lunch_lessons : targets.afterLunch,
   };
 
-  const generated = generateSlots(cfg, targets.total, key);
+  const generated = generateSlots(cfg, cfg.lessons_per_day || targets.total, key);
   return generated.map((s: TimetableSlot, i: number) => ({
     id: `synth-${key}-${s.slot_order}-${i}`,
     slot_order: s.slot_order,
@@ -619,35 +629,11 @@ export default function TimetableView() {
   );
 
   
-  // Summary strip for lesson counts (from generated slots in DB)
-  const activeLevelConfig = levelConfigs[activeLevelGroup] || null;
-  const activitiesStartDisplay =
-    activeLevelConfig?.activities_start
-      ? formatTimeDisplay(String(activeLevelConfig.activities_start).slice(0, 5))
-      : (slotSummary.hasActivities
-          ? formatTimeDisplay((allSlots.find((s) => s.slot_type === 'activities' || s.slot_type === 'activity') as any)?.start_time)
-          : null);
-  const activitiesEndDisplay =
-    activeLevelConfig?.activities_end
-      ? formatTimeDisplay(String(activeLevelConfig.activities_end).slice(0, 5))
-      : (slotSummary.hasActivities ? formatTimeDisplay(slotSummary.schoolEnd) : null);
-  const breakStartDisplay = activeLevelConfig?.first_break_start
-    ? formatTimeDisplay(String(activeLevelConfig.first_break_start).slice(0, 5))
-    : null;
-  const breakEndDisplay = activeLevelConfig?.first_break_end
-    ? formatTimeDisplay(String(activeLevelConfig.first_break_end).slice(0, 5))
-    : null;
-  const lunchStartDisplay = activeLevelConfig?.lunch_start
-    ? formatTimeDisplay(String(activeLevelConfig.lunch_start).slice(0, 5))
-    : null;
-  const lunchEndDisplay = activeLevelConfig?.lunch_end
-    ? formatTimeDisplay(String(activeLevelConfig.lunch_end).slice(0, 5))
-    : (slotSummary.lunchEnd ? formatTimeDisplay(slotSummary.lunchEnd) : null);
-
+  // Structure summary only. Clock times come from this school's Setup / generated slots.
   const summaryBanner = (
-    <div className="mx-4 mb-3 space-y-2 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+    <div className="mx-4 mb-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="font-semibold">Timetable structure ({activeLevelGroup}):</span>
+        <span className="font-semibold">Structure ({LEVEL_LABELS[activeLevelGroup] || activeLevelGroup}):</span>
         <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
         <span className="text-blue-300">|</span>
         <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
@@ -657,24 +643,13 @@ export default function TimetableView() {
           {slotSummary.afterLunch === 0 ? ' (ends at lunch)' : ''}
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm">
-        {activitiesStartDisplay && (
-          <span>⏰ Activities Start: <strong>{activitiesStartDisplay}</strong></span>
-        )}
-        {activitiesEndDisplay && (
-          <span>⏰ Activities End: <strong>{activitiesEndDisplay}</strong></span>
-        )}
-        {(breakStartDisplay || breakEndDisplay) && (
-          <span>🍽️ Break: <strong>{breakStartDisplay || '—'}</strong> – <strong>{breakEndDisplay || '—'}</strong></span>
-        )}
-        {(lunchStartDisplay || lunchEndDisplay) && (
-          <span>🍽️ Lunch: <strong>{lunchStartDisplay || '—'}</strong> – <strong>{lunchEndDisplay || '—'}</strong></span>
-        )}
-      </div>
+      <p className="mt-1 text-xs text-blue-700">
+        Break, lunch, and activities times come from Timetable Setup for this school. Edit Setup, then regenerate to refresh the grid.
+      </p>
     </div>
   );
 
-const timetableStyles = `
+  const timetableStyles = `
     .bb-wrap {
       background-color: #1a1a1a;
       color: #e0e0e0;
@@ -792,6 +767,14 @@ const timetableStyles = `
             levelConfigs[resolveClassLevelGroup(classesToRender[0])]
           )
         : allSlots);
+    if (!slotsForTable.length) {
+      return (
+        <div id={tableId} className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 text-sm">
+          No timetable slots for this level yet. Open Timetable Setup, save times for this school, then Generate Timetable.
+        </div>
+      );
+    }
+
     return (
 
     <div id={tableId} className="bb-wrap rounded-lg overflow-hidden">
@@ -810,29 +793,6 @@ const timetableStyles = `
           {countLessons(slotsForTable).total} lessons/day · {countLessons(slotsForTable).afterLunch} after lunch
           {countLessons(slotsForTable).afterLunch === 0 ? ' · ends at lunch (no post-lunch lesson columns)' : ''}
         </p>
-        {(() => {
-          const levelKey = classesToRender.length === 1
-            ? resolveClassLevelGroup(classesToRender[0])
-            : activeLevelGroup;
-          const cfg = levelConfigs[levelKey];
-          const actStart = cfg?.activities_start ? formatTimeDisplay(String(cfg.activities_start).slice(0, 5)) : null;
-          const actEnd = cfg?.activities_end ? formatTimeDisplay(String(cfg.activities_end).slice(0, 5)) : null;
-          const brk = cfg?.first_break_start && cfg?.first_break_end
-            ? `${formatTimeDisplay(String(cfg.first_break_start).slice(0, 5))} – ${formatTimeDisplay(String(cfg.first_break_end).slice(0, 5))}`
-            : null;
-          const lunch = cfg?.lunch_start && cfg?.lunch_end
-            ? `${formatTimeDisplay(String(cfg.lunch_start).slice(0, 5))} – ${formatTimeDisplay(String(cfg.lunch_end).slice(0, 5))}`
-            : null;
-          if (!actStart && !actEnd && !brk && !lunch) return null;
-          return (
-            <p className="text-blue-200 text-[11px] mt-1 flex flex-wrap justify-center gap-x-3 gap-y-0.5">
-              {actStart && <span>⏰ Activities Start: {actStart}</span>}
-              {actEnd && <span>⏰ Activities End: {actEnd}</span>}
-              {brk && <span>🍽️ Break: {brk}</span>}
-              {lunch && <span>🍽️ Lunch: {lunch}</span>}
-            </p>
-          );
-        })()}
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
       <div className="overflow-x-auto">

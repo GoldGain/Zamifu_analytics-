@@ -32,6 +32,14 @@ function titleFromPath(path: string): string {
   return parts[parts.length - 1]?.replace(/-/g, ' ') || 'Page';
 }
 
+function formatChatText(text: string): string {
+  return String(text || '')
+    .split('\\n')
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function severityClass(s: AiInsight['severity']) {
   if (s === 'warning') return 'border-amber-200 bg-amber-50 text-amber-900';
   if (s === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-900';
@@ -73,7 +81,12 @@ export default function AIAssistant() {
     setMessages([
       {
         role: 'assistant',
-        content: `Hi${first}. I am Zamifu Copilot, your guide for this page.\n\nYou are on ${ctx.pageTitle}.\n${intro}\n\nAsk me to explain this page, walk through a task, or use a quick action below.`,
+        content: `Hi${first}. I am Zamifu Copilot, your guide for this page.
+
+You are on ${ctx.pageTitle}.
+${intro}
+
+Ask me to explain this page, walk through a task, or use a quick action below.`,
       },
     ]);
     setShowInsights(true);
@@ -88,9 +101,9 @@ export default function AIAssistant() {
           // Auto-open once per path when there is a warning insight
           const key = location.pathname + ':' + (user?.id || 'guest');
           const hasWarning = data.some((i) => i.severity === 'warning');
-          if (hasWarning && shownPopupFor.current !== key) {
+          // Keep insights available without auto-popping the chat on every page.
+          if (hasWarning) {
             shownPopupFor.current = key;
-            setOpen(true);
           }
         }
       } finally {
@@ -193,8 +206,8 @@ export default function AIAssistant() {
                     key={ins.id}
                     className={`rounded-lg border px-2.5 py-1.5 text-[11px] leading-snug ${severityClass(ins.severity)}`}
                   >
-                    <p className="font-semibold">{ins.title}</p>
-                    <p className="opacity-90">{ins.body}</p>
+                    <p className="font-semibold">{formatChatText(ins.title)}</p>
+                    <p className="opacity-90 whitespace-pre-wrap">{formatChatText(ins.body)}</p>
                   </div>
                 ))}
               </div>
@@ -211,7 +224,7 @@ export default function AIAssistant() {
                       : 'rounded-bl-md border border-gray-100 bg-white text-gray-800 shadow-sm'
                   }`}
                 >
-                  {m.content}
+                  {formatChatText(m.content)}
                 </div>
               </div>
             ))}

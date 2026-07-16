@@ -227,7 +227,7 @@ export default function TimetableSetup() {
 
       const cfg = configs[selectedLevel];
       const requiredTimes: (keyof LevelConfig)[] = [
-        'start_time', 'end_time', 'first_break_start', 'first_break_end',
+        'start_time', 'first_break_start', 'first_break_end',
         'second_break_start', 'second_break_end', 'lunch_start', 'lunch_end',
       ];
       for (const key of requiredTimes) {

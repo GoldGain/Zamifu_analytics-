@@ -22,9 +22,9 @@ export default function StudentResults() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('id, class_id, school_id, classes(name)')
+        .select('id, class_id, school_id, status, graduation_year, classes(name)')
         .eq('profile_id', user?.id)
-        .single();
+        .maybeSingle();
       if (studentData) {
         setStudent(studentData);
         // Fetch terms
@@ -184,6 +184,12 @@ export default function StudentResults() {
         <h1 className="text-2xl font-bold text-[#111111]">My Results</h1>
         <p className="text-sm text-[#666666]">View your academic performance and progress</p>
       </div>
+
+      {student?.status === 'graduated' && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+          Graduated learner record{student?.graduation_year ? ` (${student.graduation_year})` : ''}. Published results remain available here.
+        </div>
+      )}
 
       {/* Term Selector */}
       <div className="bg-white rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">

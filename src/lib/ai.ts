@@ -193,7 +193,7 @@ function buildSystemPrompt(ctx: AiContext, liveNotes: string): string {
     'Rules:',
     '- Never invent credentials or delete production data.',
     '- Graduation: Grade 9 and Grade 12 / Form 4 graduate; Grades 1-8 and 10-11 promote to empty destination classes.',
-    '- Timetable times come from Timetable Setup. Activities Start and Activities End define the activities window. There is no School Ends field in Setup.',
+    '- Timetable times are per school from Timetable Setup only. Never invent clock times. There is no School Ends field; use Activities Start/End when configured.',
     '- Default lesson counts when Setup is empty: Pre-Primary 6 (0 after lunch), Lower/Upper Primary 7 (1), Junior 8 (2), Senior 9 (3), 8-4-4 8 (2).',
     '- SMS: Publish and Notify uses Olympus SMS sender PROCALL.',
     '- Teachers may only upload assigned learning areas.',
@@ -202,7 +202,7 @@ function buildSystemPrompt(ctx: AiContext, liveNotes: string): string {
     .join('\n');
 }
 
-/ Live insights for the notification strip + AI context */
+/** Live insights for the notification strip + AI context */
 export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
   const insights: AiInsight[] = [];
   const role = (ctx.role || '').replace(/-/g, '_');
@@ -246,15 +246,15 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
         insights.push({
           id: 'missing-uploads',
           severity: 'warning',
-          title: `${missing.length} teacher(s) with no uploaded results yet`,
-          body: names + (missing.length > 8 ? '…' : ''),
+          title: `${missing.length} teacher(s) still need to upload results`,
+          body: (names + (missing.length > 8 ? ' and others' : '')) + '. Assign subjects under Teacher Assignments, then ask teachers to use Results Upload.',
         });
       } else {
         insights.push({
           id: 'uploads-ok',
           severity: 'success',
-          title: 'Results uploads look active',
-          body: 'Assigned teachers have recent result activity (or no assignments yet).',
+          title: 'Results uploads are on track',
+          body: 'Assigned teachers have recent result activity, or there are no active assignments yet. Use Teacher Assignments to map subjects, then teachers upload from Results Upload.',
         });
       }
 
@@ -433,7 +433,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
   insights.unshift({
     id: 'page',
     severity: 'info',
-    title: `On this page: ${ctx.pageTitle || ctx.pagePath}`,
+    title: `This page: ${ctx.pageTitle || ctx.pagePath}`,
     body: guideForPath(ctx.pagePath),
   });
 
@@ -442,7 +442,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
 
 async function buildLiveNotes(ctx: AiContext): Promise<string> {
   const insights = await fetchRoleInsights(ctx);
-  return insights.map((i) => `- [${i.severity}] ${i.title}: ${i.body}`).join('\\n');
+  return insights.map((i) => `- [${i.severity}] ${i.title}: ${i.body}`).join('\n');
 }
 
 async function offlineAnswer(question: string, ctx: AiContext): Promise<string> {
@@ -460,13 +460,13 @@ async function offlineAnswer(question: string, ctx: AiContext): Promise<string> 
   ) {
     const insights = await fetchRoleInsights(ctx);
     const m = insights.find((i) => i.id === 'missing-uploads' || i.id === 'uploads-ok');
-    if (m) return `${m.title}\\n\\n${m.body}\\n\\nTip: assign subjects under Teacher Assignments, then teachers use Upload Results.`;
+    if (m) return `${m.title}\n\n${m.body}`;
   }
 
   if (q.includes('fee') || q.includes('balance') || q.includes('ada') || q.includes('salio')) {
     const insights = await fetchRoleInsights(ctx);
     const fee = insights.find((i) => i.id === 'child-fee');
-    if (fee) return `${fee.title}\\n\\n${fee.body}`;
+    if (fee) return `${fee.title}\n\n${fee.body}`;
     if (role === 'student') return 'Open Fees in the sidebar to see your balance and payment history.';
     if (role === 'school_admin') return 'Go to Fees to manage structures, invoices, and payments.';
   }
@@ -474,32 +474,32 @@ async function offlineAnswer(question: string, ctx: AiContext): Promise<string> 
   if (q.includes('result') || q.includes('mark') || q.includes('performance') || q.includes('matokeo')) {
     const insights = await fetchRoleInsights(ctx);
     const r = insights.find((i) => i.id === 'child-results' || i.id === 'student-progress');
-    if (r) return `${r.title}\\n\\n${r.body}`;
+    if (r) return `${r.title}\n\n${r.body}`;
   }
 
   if (q.includes('pending') || q.includes('task') || q.includes('assignment')) {
     const insights = await fetchRoleInsights(ctx);
     const a = insights.find((i) => i.id === 'assignments' || i.id === 'upload-tip');
-    if (a) return `${a.title}\\n\\n${a.body}`;
+    if (a) return `${a.title}\n\n${a.body}`;
   }
 
   if (q.includes('this page') || q.includes('explain') || q.includes('what is this') || q.includes('how do i use')) {
-    return `About this page\\n\\n${page}\\n\\nAsk a specific task (e.g. “publish results”, “graduate grade 12”).`;
+    return `About this page\n\n${page}\n\nAsk a specific task (e.g. “publish results”, “graduate grade 12”).`;
   }
   if (q.includes('publish') || q.includes('notify') || q.includes('sms')) {
-    return 'Publish & Notify\\n\\n1. School Admin → Results\\n2. Filter class / term / assessment\\n3. Click Publish & Notify\\n4. Parents get Olympus SMS from PROCALL with a portal link.';
+    return 'Publish & Notify\n\n1. School Admin → Results\n2. Filter class / term / assessment\n3. Click Publish & Notify\n4. Parents get Olympus SMS from PROCALL with a portal link.';
   }
   if (q.includes('graduate') || q.includes('promote') || q.includes('grade 12') || q.includes('grade 9') || q.includes('form 4')) {
-    return 'Promotion and Graduation\\n\\n1. School Admin → Promote Grade\\n2. Select source class\\n3. Grade 9 and Grade 12 / Form 4 → system switches to GRADUATE (status=graduated, year set)\\n4. Other grades → choose an empty destination class\\n5. Alumni appear under Graduated Students (filter by year).';
+    return 'Promotion and Graduation\n\n1. School Admin → Promote Grade\n2. Select source class\n3. Grade 9 and Grade 12 / Form 4 → system switches to GRADUATE (status=graduated, year set)\n4. Other grades → choose an empty destination class\n5. Alumni appear under Graduated Students (filter by year).';
   }
   if (q.includes('timetable') || q.includes('after lunch') || q.includes('lesson')) {
-    return 'Timetable\\n\\n1. Setup → edit times + lessons after lunch (0–3) → Save (toast shows saved times)\\n2. Generate → select levels → Generate (reloads Setup from DB)\\n3. View → click a class for correct columns:\\n   - Pre-Primary: 6 lessons, 0 after lunch\\n   - Lower/Upper Primary: 7 / 1\\n   - Junior: 8 / 2\\n   - Senior: 9 / 3\\n   - 8-4-4: 8 / 2';
+    return 'Timetable\n\n1. Setup → edit times + lessons after lunch (0–3) → Save (toast shows saved times)\n2. Generate → select levels → Generate (reloads Setup from DB)\n3. View → click a class for correct columns:\n   - Pre-Primary: 6 lessons, 0 after lunch\n   - Lower/Upper Primary: 7 / 1\n   - Junior: 8 / 2\n   - Senior: 9 / 3\n   - 8-4-4: 8 / 2';
   }
   if (q.includes('class list') || q.includes('add column')) {
-    return 'Class List (Teachers)\\n\\n1. Teacher → Class List\\n2. Select class\\n3. Add Column → enter values per learner\\n4. Download PDF';
+    return 'Class List (Teachers)\n\n1. Teacher → Class List\n2. Select class\n3. Add Column → enter values per learner\n4. Download PDF';
   }
   if (q.includes('assessment') || q.includes('exam') || q.includes('cat')) {
-    return 'Assessments\\n\\nSchool Admin or DoS → Assessments → Create → name + type + term → Save. Names show on report cards and Results.';
+    return 'Assessments\n\nSchool Admin or DoS → Assessments → Create → name + type + term → Save. Names show on report cards and Results.';
   }
   if (q.includes('pathway') || q.includes('interest')) {
     return 'Open Pathway Finder on the landing page or nav. Complete interests → grades → recommended pathways.';
@@ -520,9 +520,9 @@ async function offlineAnswer(question: string, ctx: AiContext): Promise<string> 
   const live = insights
     .slice(0, 3)
     .map((i) => `• ${i.title} — ${i.body}`)
-    .join('\\n');
+    .join('\n');
 
-  return `Page: ${page}\\n\\nLive insights\\n${live}\\n\\nYou asked: “${question.trim()}”\\n\\nTry: explain this page · publish results · graduate grade 12 · fee balance · who has not uploaded.`;
+  return `Page: ${page}\n\nLive insights\n${live}\n\nYou asked: "${question.trim()}"\n\nYou can also ask me to explain this page, publish results, graduate a class, check a fee balance, or list teachers who have not uploaded.`;
 }
 
 export async function askZamifuAssistant(

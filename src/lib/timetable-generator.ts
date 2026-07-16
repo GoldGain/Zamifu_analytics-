@@ -45,24 +45,23 @@ export interface TimetableConfig {
 export interface LevelLessonConfig {
   totalLessons: number;
   afterLunch: number;
-  lunchEndTime: string;
 }
 
 /** Built-in defaults — used only when DB does not supply counts */
 export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
-  'pre-primary': { totalLessons: 6, afterLunch: 0, lunchEndTime: '12:30' },
-  'lower-primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
-  'upper-primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
-  'combined-primary': { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
-  junior: { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
-  senior: { totalLessons: 9, afterLunch: 3, lunchEndTime: '14:00' },
-  'form-3-4': { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
+  'pre-primary': { totalLessons: 6, afterLunch: 0 },
+  'lower-primary': { totalLessons: 7, afterLunch: 1 },
+  'upper-primary': { totalLessons: 7, afterLunch: 1 },
+  'combined-primary': { totalLessons: 7, afterLunch: 1 },
+  junior: { totalLessons: 8, afterLunch: 2 },
+  senior: { totalLessons: 9, afterLunch: 3 },
+  'form-3-4': { totalLessons: 8, afterLunch: 2 },
   // legacy aliases
-  lower_primary: { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
-  upper_primary: { totalLessons: 7, afterLunch: 1, lunchEndTime: '13:30' },
-  junior_school: { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
-  senior_school: { totalLessons: 9, afterLunch: 3, lunchEndTime: '14:00' },
-  '8-4-4': { totalLessons: 8, afterLunch: 2, lunchEndTime: '14:00' },
+  lower_primary: { totalLessons: 7, afterLunch: 1 },
+  upper_primary: { totalLessons: 7, afterLunch: 1 },
+  junior_school: { totalLessons: 8, afterLunch: 2 },
+  senior_school: { totalLessons: 9, afterLunch: 3 },
+  '8-4-4': { totalLessons: 8, afterLunch: 2 },
 };
 
 /** @deprecated prefer LEVEL_CONFIG */
@@ -200,13 +199,19 @@ export function generateSlots(
   const afterLunch = targets.afterLunch;
 
   const duration = config?.lesson_duration || 40;
-  const schoolStart = safeString(config?.school_start, '08:20');
-  const firstBreakStart = safeString(config?.first_break_start, '09:40');
-  const firstBreakEnd = safeString(config?.first_break_end, '10:20');
-  const secondBreakStart = safeString(config?.second_break_start, '11:40');
-  const secondBreakEnd = safeString(config?.second_break_end, '12:20');
-  const lunchStart = safeString(config?.lunch_start, '12:50');
-  const lunchEnd = safeString(config?.lunch_end, '13:30');
+  // Multi-tenant: refuse to invent school-specific clock times.
+  const schoolStart = (config?.school_start || '').toString().slice(0, 5);
+  const firstBreakStart = (config?.first_break_start || '').toString().slice(0, 5);
+  const firstBreakEnd = (config?.first_break_end || '').toString().slice(0, 5);
+  const secondBreakStart = (config?.second_break_start || '').toString().slice(0, 5);
+  const secondBreakEnd = (config?.second_break_end || '').toString().slice(0, 5);
+  const lunchStart = (config?.lunch_start || '').toString().slice(0, 5);
+  const lunchEnd = (config?.lunch_end || '').toString().slice(0, 5);
+  if (!schoolStart || !firstBreakStart || !firstBreakEnd || !secondBreakStart || !secondBreakEnd || !lunchStart || !lunchEnd) {
+    throw new Error(
+      'Missing timetable times for this school level. Save Timetable Setup (start, breaks, lunch) before generating.'
+    );
+  }
 
   let currentMinutes = timeToMinutes(schoolStart);
   const slots: TimetableSlot[] = [];
@@ -276,17 +281,17 @@ export function generateSlots(
   const hasActivityTimes = !!(config?.activities_start || config?.activities_end);
   if (afterLunch > 0 || hasActivityTimes) {
     const activitiesStartTime = config?.activities_start
-      ? safeString(config.activities_start, minutesToTime(currentMinutes))
+      ? String(config.activities_start).slice(0, 5)
       : minutesToTime(currentMinutes);
 
     const activitiesEndTime = config?.activities_end
-      ? safeString(config.activities_end, '')
+      ? String(config.activities_end).slice(0, 5)
       : config?.school_end
-        ? safeString(config.school_end, minutesToTime(currentMinutes + 40))
-        : minutesToTime(currentMinutes + 40);
+        ? String(config.school_end).slice(0, 5)
+        : '';
 
-    // Only add if we have a valid end after start
-    if (timeToMinutes(activitiesEndTime) > timeToMinutes(activitiesStartTime)) {
+    // Only add when this school configured a real activities end time
+    if (activitiesEndTime && timeToMinutes(activitiesEndTime) > timeToMinutes(activitiesStartTime)) {
       slots.push({
         slot_order: order++,
         label: 'ACTIVITIES',

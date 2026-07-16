@@ -106,9 +106,9 @@ export default function StudentPortfolio() {
     try {
       const { data: student } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name)')
+        .select('*, status, graduation_year, classes(name)')
         .eq('profile_id', user?.id)
-        .single();
+        .maybeSingle();
 
       if (!student) { setLoading(false); return; }
 
@@ -183,6 +183,13 @@ export default function StudentPortfolio() {
         <h1 className="text-2xl font-bold text-[#111111]">My Portfolio</h1>
         <p className="text-sm text-[#666666]">Your academic journey, achievements, and pathway recommendations</p>
       </div>
+
+      {student?.status === 'graduated' && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+          You are marked as graduated{student?.graduation_year ? ` (${student.graduation_year})` : ''}.
+          Your historical results stay available here after graduation.
+        </div>
+      )}
 
       {/* Profile Card */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-6 text-white">
