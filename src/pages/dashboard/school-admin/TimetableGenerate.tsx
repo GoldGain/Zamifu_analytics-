@@ -496,6 +496,7 @@ export default function TimetableGenerate() {
                     <p className={`text-xs mt-0.5 font-medium ${isPrePrimary ? 'text-amber-600' : 'text-blue-600'}`}>
                       <Info className="w-3 h-3 inline mr-1" />
                       {lessonInfo.lessons} lessons/day{lessonInfo.afterLunch > 0 ? ` — ${lessonInfo.afterLunch} after lunch` : ' — ends at lunch'}
+                    </p>
                   )}
                   {hasConfig && (
                     <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
