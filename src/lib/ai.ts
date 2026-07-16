@@ -1,4 +1,4 @@
-/
+/**
  * Zamifu System AI — powerful in-app assistant for every portal.
  * - Page-aware guidance
  * - Role-specific live insights from Supabase
