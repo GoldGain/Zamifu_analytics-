@@ -28,6 +28,11 @@ import ResellerSchools from '@/pages/dashboard/reseller-admin/Schools';
 import ResellerSchoolAdmins from '@/pages/dashboard/reseller-admin/SchoolAdmins';
 import ResellerPayments from '@/pages/dashboard/reseller-admin/Payments';
 import ResellerChangePassword from '@/pages/dashboard/reseller-admin/ChangePassword';
+import ResellerAccessControl from '@/pages/dashboard/reseller-admin/AccessControl';
+import ResellerPricing from '@/pages/dashboard/reseller-admin/Pricing';
+import ResellerStudents from '@/pages/dashboard/reseller-admin/Students';
+import SchoolAdminAccessControl from '@/pages/dashboard/school-admin/AccessControl';
+import SchoolPortalLockGate from '@/components/SchoolPortalLockGate';
 // Dashboard pages
 import SuperAdminDashboard from '@/pages/dashboard/super-admin/Dashboard';
 import SuperAdminSchools from '@/pages/dashboard/super-admin/Schools';
@@ -103,20 +108,34 @@ function LoadingSpinner() {
   );
 }
 
-function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode; allowedRoles: string[] }) {
+function ProtectedRoute({
+  children,
+  allowedRoles,
+  lockTarget,
+}: {
+  children: React.ReactNode;
+  allowedRoles: string[];
+  lockTarget?: 'school_admin' | 'dean_of_studies';
+}) {
   const { user, loading } = useAuth();
-  
+
   if (loading) {
     return <LoadingSpinner />;
   }
-  
+
   if (!user) return <Navigate to="/auth/login" replace />;
   if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
-  
+
+  const body = lockTarget ? (
+    <SchoolPortalLockGate target={lockTarget}>{children}</SchoolPortalLockGate>
+  ) : (
+    children
+  );
+
   return (
     <ErrorBoundary>
       <Suspense fallback={<LoadingSpinner />}>
-        <DashboardLayout>{children}</DashboardLayout>
+        <DashboardLayout>{body}</DashboardLayout>
       </Suspense>
     </ErrorBoundary>
   );
@@ -155,6 +174,9 @@ function AppRoutes() {
       <Route path="/reseller-admin/schools" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSchools /></ProtectedRoute>} />
       <Route path="/reseller-admin/school-admins" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSchoolAdmins /></ProtectedRoute>} />
       <Route path="/reseller-admin/payments" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerPayments /></ProtectedRoute>} />
+      <Route path="/reseller-admin/pricing" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerPricing /></ProtectedRoute>} />
+      <Route path="/reseller-admin/access-control" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerAccessControl /></ProtectedRoute>} />
+      <Route path="/reseller-admin/students" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerStudents /></ProtectedRoute>} />
       <Route path="/reseller-admin/change-password" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerChangePassword /></ProtectedRoute>} />
       {/* Super Admin routes */}
       <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminDashboard /></ProtectedRoute>} />
@@ -163,29 +185,30 @@ function AppRoutes() {
       <Route path="/super-admin/settings" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminSettings /></ProtectedRoute>} />
 
       {/* School Admin routes */}
-      <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminDashboard /></ProtectedRoute>} />
-      <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']}><StreamDashboard /></ProtectedRoute>} />
-      <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminStudents /></ProtectedRoute>} />
-      <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
-      <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminTeachers /></ProtectedRoute>} />
-      <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminClasses /></ProtectedRoute>} />
-      <Route path="/school-admin/fees" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminFees /></ProtectedRoute>} />
-      <Route path="/school-admin/results" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminResults /></ProtectedRoute>} />
-      <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAnnouncements /></ProtectedRoute>} />
-      <Route path="/school-admin/subjects" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminSubjects /></ProtectedRoute>} />
-      <Route path="/school-admin/branding" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminBranding /></ProtectedRoute>} />
-      <Route path="/school-admin/timetable/setup" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminTimetableSetup /></ProtectedRoute>} />
-      <Route path="/school-admin/timetable/generate" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminTimetableGenerate /></ProtectedRoute>} />
-      <Route path="/school-admin/timetable/assign" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssignTeachers /></ProtectedRoute>} />
-      <Route path="/school-admin/teacher-assignments" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssignTeachers /></ProtectedRoute>} />
-      <Route path="/school-admin/change-password" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminChangePassword /></ProtectedRoute>} />
-      <Route path="/school-admin/profile" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminProfile /></ProtectedRoute>} />
-      <Route path="/school-admin/assessments" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssessments /></ProtectedRoute>} />
-      <Route path="/school-admin/assign-roles" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminAssignRoles /></ProtectedRoute>} />
-      <Route path="/school-admin/marks-overview" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminMarksOverview /></ProtectedRoute>} />
-      <Route path="/school-admin/communicate" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminCommunicate /></ProtectedRoute>} />
-      <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']}><SchoolAdminPromoteClass /></ProtectedRoute>} />
-      <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']}><TimetableView /></ProtectedRoute>} />
+      <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminDashboard /></ProtectedRoute>} />
+      <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><StreamDashboard /></ProtectedRoute>} />
+      <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminStudents /></ProtectedRoute>} />
+      <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
+      <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTeachers /></ProtectedRoute>} />
+      <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClasses /></ProtectedRoute>} />
+      <Route path="/school-admin/fees" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminFees /></ProtectedRoute>} />
+      <Route path="/school-admin/results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminResults /></ProtectedRoute>} />
+      <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAnnouncements /></ProtectedRoute>} />
+      <Route path="/school-admin/subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjects /></ProtectedRoute>} />
+      <Route path="/school-admin/branding" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBranding /></ProtectedRoute>} />
+      <Route path="/school-admin/timetable/setup" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTimetableSetup /></ProtectedRoute>} />
+      <Route path="/school-admin/timetable/generate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTimetableGenerate /></ProtectedRoute>} />
+      <Route path="/school-admin/timetable/assign" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssignTeachers /></ProtectedRoute>} />
+      <Route path="/school-admin/teacher-assignments" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssignTeachers /></ProtectedRoute>} />
+      <Route path="/school-admin/access-control" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAccessControl /></ProtectedRoute>} />
+      <Route path="/school-admin/change-password" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminChangePassword /></ProtectedRoute>} />
+      <Route path="/school-admin/profile" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminProfile /></ProtectedRoute>} />
+      <Route path="/school-admin/assessments" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssessments /></ProtectedRoute>} />
+      <Route path="/school-admin/assign-roles" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssignRoles /></ProtectedRoute>} />
+      <Route path="/school-admin/marks-overview" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminMarksOverview /></ProtectedRoute>} />
+      <Route path="/school-admin/communicate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminCommunicate /></ProtectedRoute>} />
+      <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
+      <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><TimetableView /></ProtectedRoute>} />
 
       {/* Teacher routes */}
       <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />
@@ -212,7 +235,7 @@ function AppRoutes() {
       <Route path="/teacher/assessments" element={<ProtectedRoute allowedRoles={['teacher']}><SchoolAdminAssessments /></ProtectedRoute>} />
 
       {/* Dean of Studies routes - accessible to teachers who are DoS */}
-      <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']}><DeanOfStudiesDashboard /></ProtectedRoute>} />
+      <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><DeanOfStudiesDashboard /></ProtectedRoute>} />
 
       {/* Student routes */}
       <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />

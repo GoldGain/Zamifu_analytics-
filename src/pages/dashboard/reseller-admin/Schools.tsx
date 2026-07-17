@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Edit, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Edit, RefreshCw, Trash2, Lock, Unlock, Shield } from 'lucide-react';
 import { toast } from 'sonner';
+import { DEFAULT_FEE_PER_LEARNER, feeOrDefault, getResellerForUser } from '@/lib/reseller';
 
 interface SchoolForm {
   name: string;
@@ -12,11 +13,18 @@ interface SchoolForm {
   principal_name: string;
   phone: string;
   email: string;
+  fee_per_learner_per_term: number;
 }
 
 const defaultForm: SchoolForm = {
-  name: '', code: '', county: '', curriculum: 'CBE',
-  principal_name: '', phone: '', email: '',
+  name: '',
+  code: '',
+  county: '',
+  curriculum: 'CBE',
+  principal_name: '',
+  phone: '',
+  email: '',
+  fee_per_learner_per_term: DEFAULT_FEE_PER_LEARNER,
 };
 
 export default function ResellerSchools() {
@@ -28,10 +36,14 @@ export default function ResellerSchools() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<SchoolForm>(defaultForm);
   const [saving, setSaving] = useState(false);
-  // Issue 1: Delete state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteName, setConfirmDeleteName] = useState('');
+  const [lockModal, setLockModal] = useState<any | null>(null);
+  const [lockReason, setLockReason] = useState('');
+  const [lockAdmin, setLockAdmin] = useState(false);
+  const [lockDos, setLockDos] = useState(false);
+  const [lockSaving, setLockSaving] = useState(false);
 
   useEffect(() => {
     if (user) fetchData();
@@ -39,13 +51,16 @@ export default function ResellerSchools() {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data: resellerData } = await supabase
-      .from('resellers').select('id, parent_pay_enabled').eq('user_id', user!.id).maybeSingle();
-    
-    if (resellerData) {
-      setResellerId(resellerData.id);
+    const reseller = await getResellerForUser(user!.id);
+    if (reseller) {
+      setResellerId(reseller.id);
+      const defaultFee = feeOrDefault(reseller.default_fee_per_learner);
+      setForm((f) => ({ ...f, fee_per_learner_per_term: f.fee_per_learner_per_term || defaultFee }));
       const { data: schoolsData } = await supabase
-        .from('schools').select('*').eq('reseller_id', resellerData.id).order('created_at', { ascending: false });
+        .from('schools')
+        .select('*')
+        .eq('reseller_id', reseller.id)
+        .order('created_at', { ascending: false });
       setSchools(schoolsData || []);
     }
     setLoading(false);
@@ -56,7 +71,7 @@ export default function ResellerSchools() {
     if (!resellerId) return;
     setSaving(true);
     try {
-      const payload = {
+      const payload: any = {
         name: form.name,
         code: form.code,
         county: form.county,
@@ -67,17 +82,24 @@ export default function ResellerSchools() {
         reseller_id: resellerId,
         status: 'active',
         subscription_plan: 'basic',
+        fee_per_learner_per_term: feeOrDefault(form.fee_per_learner_per_term),
       };
       if (editingId) {
         const { error } = await supabase.from('schools').update(payload).eq('id', editingId);
         if (error) throw error;
         toast.success('School updated');
       } else {
-        const { error } = await supabase.from('schools').insert(payload);
+        const { error } = await supabase.from('schools').insert({
+          ...payload,
+          admin_portal_locked: false,
+          dos_portal_locked: false,
+        });
         if (error) throw error;
         toast.success('School created');
       }
-      setShowForm(false); setEditingId(null); setForm(defaultForm);
+      setShowForm(false);
+      setEditingId(null);
+      setForm(defaultForm);
       fetchData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to save school');
@@ -88,17 +110,50 @@ export default function ResellerSchools() {
 
   const handleEdit = (s: any) => {
     setForm({
-      name: s.name, code: s.code, county: s.county || '', curriculum: (Array.isArray(s.curriculum) ? s.curriculum[0] : s.curriculum) || 'CBE',
-      principal_name: s.principal_name || '', phone: s.phone || '', email: s.email || '',
+      name: s.name,
+      code: s.code,
+      county: s.county || '',
+      curriculum: (Array.isArray(s.curriculum) ? s.curriculum[0] : s.curriculum) || 'CBE',
+      principal_name: s.principal_name || '',
+      phone: s.phone || '',
+      email: s.email || '',
+      fee_per_learner_per_term: feeOrDefault(s.fee_per_learner_per_term),
     });
     setEditingId(s.id);
     setShowForm(true);
   };
 
-  // Issue 1: Handle delete with confirmation
-  const handleDeleteClick = (s: any) => {
-    setConfirmDeleteId(s.id);
-    setConfirmDeleteName(s.name);
+  const openLockModal = (s: any) => {
+    setLockModal(s);
+    setLockAdmin(!!s.admin_portal_locked);
+    setLockDos(!!s.dos_portal_locked);
+    setLockReason(s.lock_reason || '');
+  };
+
+  const saveLocks = async () => {
+    if (!lockModal) return;
+    setLockSaving(true);
+    try {
+      const anyLocked = lockAdmin || lockDos;
+      const { error } = await (supabase as any)
+        .from('schools')
+        .update({
+          admin_portal_locked: lockAdmin,
+          dos_portal_locked: lockDos,
+          lock_reason: anyLocked ? lockReason || null : null,
+          locked_at: anyLocked ? new Date().toISOString() : null,
+          locked_by_role: anyLocked ? 'reseller_super_admin' : null,
+        })
+        .eq('id', lockModal.id);
+      if (error) throw error;
+      toast.success('Portal access updated');
+      setLockModal(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update locks');
+    } finally {
+      setLockSaving(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -106,7 +161,6 @@ export default function ResellerSchools() {
     setDeletingId(confirmDeleteId);
     setConfirmDeleteId(null);
     try {
-      // Delete related data first to avoid FK constraint errors
       await supabase.from('students').delete().eq('school_id', confirmDeleteId);
       await supabase.from('teachers').delete().eq('school_id', confirmDeleteId);
       await supabase.from('classes').delete().eq('school_id', confirmDeleteId);
@@ -114,7 +168,6 @@ export default function ResellerSchools() {
       await supabase.from('terms').delete().eq('school_id', confirmDeleteId);
       await supabase.from('results').delete().eq('school_id', confirmDeleteId);
       await supabase.from('announcements').delete().eq('school_id', confirmDeleteId);
-      // Delete the school itself
       const { error } = await supabase.from('schools').delete().eq('id', confirmDeleteId);
       if (error) throw error;
       toast.success(`School "${confirmDeleteName}" deleted successfully`);
@@ -131,38 +184,39 @@ export default function ResellerSchools() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Schools</h1>
-          <p className="text-gray-500 text-sm mt-1">Manage schools under your reseller account</p>
+          <p className="text-gray-500 text-sm mt-1">
+            Create schools, set fee per learner per term, and lock School Admin or DoS portals
+          </p>
         </div>
         <div className="flex gap-2">
           <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
             <RefreshCw className="w-4 h-4" />
           </button>
-          <button onClick={() => { setShowForm(true); setEditingId(null); setForm(defaultForm); }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+          <button
+            onClick={() => {
+              setShowForm(true);
+              setEditingId(null);
+              setForm(defaultForm);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+          >
             <Plus className="w-4 h-4" /> Add School
           </button>
         </div>
       </div>
 
-      {/* Issue 1: Delete Confirmation Dialog */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Delete School</h3>
             <p className="text-gray-600 text-sm mb-4">
-              Are you sure you want to delete <strong>"{confirmDeleteName}"</strong>? This will permanently remove the school and all its associated data (students, teachers, classes, results). This action cannot be undone.
+              Delete <strong>"{confirmDeleteName}"</strong> and related data? This cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setConfirmDeleteId(null)}
-                className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
-              >
+              <button onClick={() => setConfirmDeleteId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
                 Cancel
               </button>
-              <button
-                onClick={handleDeleteConfirm}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"
-              >
+              <button onClick={handleDeleteConfirm} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">
                 Delete School
               </button>
             </div>
@@ -170,50 +224,105 @@ export default function ResellerSchools() {
         </div>
       )}
 
-      {/* Add/Edit Form */}
+      {lockModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="w-5 h-5 text-blue-600" />
+              <h3 className="text-lg font-bold text-gray-900">Portal access — {lockModal.name}</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Locks apply only to School Admin and Dean of Studies. Teachers, students, and parents stay open.
+            </p>
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 mb-2 cursor-pointer">
+              <input type="checkbox" checked={lockAdmin} onChange={(e) => setLockAdmin(e.target.checked)} className="rounded" />
+              <div>
+                <p className="text-sm font-medium">Lock School Admin portal</p>
+                <p className="text-xs text-gray-500">Blocks /school-admin for this school</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 mb-4 cursor-pointer">
+              <input type="checkbox" checked={lockDos} onChange={(e) => setLockDos(e.target.checked)} className="rounded" />
+              <div>
+                <p className="text-sm font-medium">Lock Dean of Studies portal</p>
+                <p className="text-xs text-gray-500">Blocks /dean-of-studies for this school</p>
+              </div>
+            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+            <textarea
+              value={lockReason}
+              onChange={(e) => setLockReason(e.target.value)}
+              rows={3}
+              placeholder="e.g. Subscription overdue — pay to unlock"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4"
+            />
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setLockModal(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                Cancel
+              </button>
+              <button
+                onClick={saveLocks}
+                disabled={lockSaving}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                {lockSaving ? 'Saving...' : 'Save access'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h2 className="text-lg font-semibold mb-4">{editingId ? 'Edit School' : 'Add New School'}</h2>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">School Name *</label>
-              <input required value={form.name} onChange={e => setForm({...form, name: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">School Code *</label>
-              <input required value={form.code} onChange={e => setForm({...form, code: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">County</label>
-              <input value={form.county} onChange={e => setForm({...form, county: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={form.county} onChange={(e) => setForm({ ...form, county: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Curriculum</label>
-              <select value={form.curriculum} onChange={e => setForm({...form, curriculum: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="CBE">CBE (Competency Based Education)</option>
+              <select value={form.curriculum} onChange={(e) => setForm({ ...form, curriculum: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="CBE">CBE</option>
+                <option value="8-4-4">8-4-4</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Principal Name</label>
-              <input value={form.principal_name} onChange={e => setForm({...form, principal_name: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">School Email</label>
-              <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-              <input value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fee per learner per term (KES) *</label>
+              <input
+                required
+                type="number"
+                min={1}
+                value={form.fee_per_learner_per_term}
+                onChange={(e) => setForm({ ...form, fee_per_learner_per_term: Number(e.target.value) || 0 })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">Used for platform subscription billing for this school</p>
             </div>
             <div className="md:col-span-2 flex gap-3 justify-end">
-              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cancel</button>
+              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                Cancel
+              </button>
               <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
                 {saving ? 'Saving...' : editingId ? 'Update' : 'Create'}
               </button>
@@ -222,7 +331,6 @@ export default function ResellerSchools() {
         </div>
       )}
 
-      {/* Schools Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-40">
@@ -235,10 +343,11 @@ export default function ResellerSchools() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr className="text-left text-gray-500">
-                  <th className="px-4 py-3">School Name</th>
+                  <th className="px-4 py-3">School</th>
                   <th className="px-4 py-3">Code</th>
-                  <th className="px-4 py-3">Curriculum</th>
-                  <th className="px-4 py-3">County</th>
+                  <th className="px-4 py-3">Fee / learner / term</th>
+                  <th className="px-4 py-3">Admin lock</th>
+                  <th className="px-4 py-3">DoS lock</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Actions</th>
                 </tr>
@@ -246,28 +355,59 @@ export default function ResellerSchools() {
               <tbody>
                 {schools.map((s) => (
                   <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{s.name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      <div>{s.name}</div>
+                      <div className="text-xs text-gray-500">{s.county || '—'}</div>
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{s.code}</td>
-                    <td className="px-4 py-3">{s.curriculum === 'CBE' ? 'CBE' : (s.curriculum || 'CBE')}</td>
-                    <td className="px-4 py-3">{s.county || '—'}</td>
+                    <td className="px-4 py-3 font-medium">KES {feeOrDefault(s.fee_per_learner_per_term).toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      {s.admin_portal_locked ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
+                          <Lock className="w-3 h-3" /> Locked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                          <Unlock className="w-3 h-3" /> Open
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.dos_portal_locked ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">
+                          <Lock className="w-3 h-3" /> Locked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                          <Unlock className="w-3 h-3" /> Open
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                         {s.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 flex items-center gap-1">
-                      <button onClick={() => handleEdit(s)} className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600" title="Edit school">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      {/* Issue 1: Delete button */}
-                      <button
-                        onClick={() => handleDeleteClick(s)}
-                        disabled={deletingId === s.id}
-                        className="p-1.5 hover:bg-red-50 rounded-lg text-red-500 disabled:opacity-50"
-                        title="Delete school"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openLockModal(s)} className="p-1.5 hover:bg-amber-50 rounded-lg text-amber-700" title="Portal locks">
+                          <Shield className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleEdit(s)} className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600" title="Edit">
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setConfirmDeleteId(s.id);
+                            setConfirmDeleteName(s.name);
+                          }}
+                          disabled={deletingId === s.id}
+                          className="p-1.5 hover:bg-red-50 rounded-lg text-red-500 disabled:opacity-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
