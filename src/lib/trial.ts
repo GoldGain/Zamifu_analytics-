@@ -4,7 +4,7 @@
 // ============================================================
 
 export const TRIAL_DAYS = 90;
-export const PRICE_PER_LEARNER = 50; // Ksh 50 per learner per term
+export const PRICE_PER_LEARNER = 50; // fallback default KES per learner per term
 
 export interface TrialData {
   trialStartDate: string;
@@ -54,13 +54,19 @@ export const updateTrialData = (schoolId: string, updates: Partial<TrialData>): 
   return updated;
 };
 
-export const markTrialAsPaid = (schoolId: string, learnersCount: number, reference: string): TrialData => {
+export const markTrialAsPaid = (
+  schoolId: string,
+  learnersCount: number,
+  reference: string,
+  feePerLearner: number = PRICE_PER_LEARNER
+): TrialData => {
+  const fee = feePerLearner > 0 ? feePerLearner : PRICE_PER_LEARNER;
   return updateTrialData(schoolId, {
     hasPaid: true,
     paymentDate: new Date().toISOString(),
     learnersCount,
     paymentReference: reference,
-    paidAmount: learnersCount * PRICE_PER_LEARNER,
+    paidAmount: learnersCount * fee,
   });
 };
 
@@ -125,6 +131,10 @@ export const resetTrial = (schoolId: string): TrialData => {
 };
 
 // Calculate payment amount
-export const calculatePaymentAmount = (learnersCount: number): number => {
-  return learnersCount * PRICE_PER_LEARNER;
+export const calculatePaymentAmount = (
+  learnersCount: number,
+  feePerLearner: number = PRICE_PER_LEARNER
+): number => {
+  const fee = feePerLearner > 0 ? feePerLearner : PRICE_PER_LEARNER;
+  return learnersCount * fee;
 };
