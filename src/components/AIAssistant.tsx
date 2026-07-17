@@ -38,10 +38,7 @@ function formatChatText(text: string): string {
   return String(text)
     .split('\n')
     .join("\n")
-    .replace(/
-{3,}/g, '
-
-')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
