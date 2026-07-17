@@ -37,8 +37,7 @@ function formatChatText(text: string): string {
   // Convert literal backslash-n sequences into real newlines
   return String(text)
     .split('\n')
-    .join('
-')
+    .join("\n")
     .replace(/
 {3,}/g, '
 
