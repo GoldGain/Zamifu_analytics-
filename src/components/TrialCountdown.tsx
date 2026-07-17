@@ -6,7 +6,7 @@ import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lu
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
-  const { trialStatus, isLoading } = useTrial();
+  const { trialStatus, isLoading, pricePerLearner } = useTrial();
   const { user } = useAuth();
   const [showPayment, setShowPayment] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -88,7 +88,7 @@ export const TrialCountdown: React.FC = () => {
               Subscribe to Zamifu Analytics
             </h4>
             <p className="text-sm text-gray-600 mb-4">
-              Ksh 50 per learner per term
+              KES {pricePerLearner.toLocaleString()} per learner per term
             </p>
 
             {/* Auto-calculated learner count summary */}
@@ -105,7 +105,7 @@ export const TrialCountdown: React.FC = () => {
               </div>
               <div className="flex justify-between py-1.5 border-b border-gray-200">
                 <span className="text-sm text-gray-600">Price per Learner</span>
-                <span className="text-sm font-semibold">Ksh 50</span>
+                <span className="text-sm font-semibold">KES {pricePerLearner.toLocaleString()}</span>
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="text-sm font-bold text-gray-800">Total Amount</span>
@@ -113,7 +113,7 @@ export const TrialCountdown: React.FC = () => {
                   {fetchingLearners ? (
                     <Loader2 className="w-4 h-4 animate-spin inline" />
                   ) : (
-                    `Ksh ${(learnersCount * 50).toLocaleString()}`
+                    `KES ${(learnersCount * pricePerLearner).toLocaleString()}`
                   )}
                 </span>
               </div>
@@ -132,7 +132,7 @@ export const TrialCountdown: React.FC = () => {
               ) : (
                 <>
                   <CreditCard className="w-4 h-4" />
-                  Subscribe Now — Ksh {(learnersCount * 50).toLocaleString()}
+                  Subscribe Now — KES {(learnersCount * pricePerLearner).toLocaleString()}
                 </>
               )}
             </button>
@@ -196,7 +196,7 @@ export const TrialCountdown: React.FC = () => {
                   <div className={`text-xs ${subTextColor} space-y-1`}>
                     <p>Trial started: {new Date(trialStatus.trialData.trialStartDate).toLocaleDateString()}</p>
                     <p>Trial ends: {new Date(trialStatus.trialData.trialEndDate).toLocaleDateString()}</p>
-                    <p>Price: Ksh 50 per learner per term</p>
+                    <p>Price: KES {pricePerLearner} per learner per term</p>
                     <button
                       onClick={() => setShowPayment(true)}
                       className="mt-2 text-xs font-medium underline"

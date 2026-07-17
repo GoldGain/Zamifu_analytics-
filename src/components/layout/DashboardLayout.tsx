@@ -62,8 +62,11 @@ const navConfig: Record<string, NavItem[]> = {
   'reseller-super-admin': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/reseller-admin' },
     { label: 'My Schools', icon: <School className="w-5 h-5" />, path: '/reseller-admin/schools' },
+    { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/reseller-admin/students' },
     { label: 'School Admins', icon: <UserCheck className="w-5 h-5" />, path: '/reseller-admin/school-admins' },
-    { label: 'My Payments', icon: <DollarSign className="w-5 h-5" />, path: '/reseller-admin/payments' },
+    { label: 'Payments', icon: <DollarSign className="w-5 h-5" />, path: '/reseller-admin/payments' },
+    { label: 'Pricing', icon: <CreditCard className="w-5 h-5" />, path: '/reseller-admin/pricing' },
+    { label: 'Access Control', icon: <Shield className="w-5 h-5" />, path: '/reseller-admin/access-control' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/reseller-admin/change-password' },
   ],
   'super-admin': [
@@ -93,6 +96,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Promote Grade', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/promote-class' },
     { label: 'Announcements', icon: <Bell className="w-5 h-5" />, path: '/school-admin/announcements' },
     { label: 'Branding & Notifications', icon: <Palette className="w-5 h-5" />, path: '/school-admin/branding' },
+    { label: 'Access Control', icon: <Shield className="w-5 h-5" />, path: '/school-admin/access-control' },
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
   ],
