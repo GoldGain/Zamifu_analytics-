@@ -41,6 +41,7 @@ import {
   User,
   RefreshCw,
   FileSpreadsheet,
+  Shield,
 } from 'lucide-react';
 
 interface NavItem {

@@ -33,10 +33,16 @@ function titleFromPath(path: string): string {
 }
 
 function formatChatText(text: string): string {
-  return String(text || '')
-    .split('\\n')
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
+  if (!text) return '';
+  // Convert literal backslash-n sequences into real newlines
+  return String(text)
+    .split('\n')
+    .join('
+')
+    .replace(/
+{3,}/g, '
+
+')
     .trim();
 }
 
