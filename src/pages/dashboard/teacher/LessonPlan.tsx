@@ -294,7 +294,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('LESSON PLAN', 105, 12, { align: 'center' });
+    doc.text('LESSON PLAN — KICD / CBE FORMAT', 105, 12, { align: 'center' });
     doc.setFontSize(11);
     doc.text(`${plan.topic} | Grade: ${plan.grade} | Duration: ${plan.duration}`, 105, 22, { align: 'center' });
 
@@ -383,7 +383,22 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-[#111111]">Lesson Plan Generator</h1>
-        <p className="text-sm text-[#666666]">Generate, edit, and save CBE lesson plans</p>
+        <p className="text-sm text-[#666666]">Generate, edit, and save CBE lesson plans in KICD format</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <a href="https://kicd.ac.ke/cbc-materials/curriculum-designs/" target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-blue-100 bg-blue-50/70 hover:bg-blue-50 text-sm">
+          <span className="font-semibold text-blue-900">KICD Curriculum Designs</span>
+          <p className="text-xs text-blue-700/80 mt-0.5">Official CBC/CBE designs for all grades</p>
+        </a>
+        <a href="https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/" target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/70 hover:bg-indigo-50 text-sm">
+          <span className="font-semibold text-indigo-900">Grade 9 Designs</span>
+          <p className="text-xs text-indigo-700/80 mt-0.5">Approved Grade 9 learning area designs</p>
+        </a>
+        <a href="https://schemesofwork.com/home" target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50 text-sm">
+          <span className="font-semibold text-emerald-900">schemesofwork.com</span>
+          <p className="text-xs text-emerald-700/80 mt-0.5">Login for downloadable scheme samples</p>
+        </a>
       </div>
 
       {/* Generator Form */}

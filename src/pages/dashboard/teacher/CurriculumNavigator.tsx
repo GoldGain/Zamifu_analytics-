@@ -9,6 +9,23 @@ import {
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import {
+  OFFICIAL_LINKS,
+  GRADE_NINE_SUBJECTS,
+  SCHEME_COLUMNS,
+  LESSON_PLAN_SECTIONS,
+  SAMPLE_PAPER_LIBRARY,
+  buildSchemeRow,
+  buildTermScheme,
+  buildFullLessonPlan,
+  buildExamBlueprint,
+  findStrandContext,
+  getStrandPacks,
+  gradeDesignUrl,
+  type SchemeRow,
+  type FullLessonPlan,
+  type ExamBlueprint,
+} from '@/lib/kicd-knowledge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Grade { id: string; grade_number: number; grade_name: string; }
@@ -26,10 +43,20 @@ interface Topic {
 interface SchemeOfWork {
   id?: string;
   week_number: number;
+  lesson_number?: number | string;
+  strand?: string;
+  sub_strand?: string;
+  /** Specific Learning Outcomes (KICD column) */
   learning_objective: string;
+  key_inquiry_questions?: string;
+  /** Learning Experiences / Activities */
   learning_activities: string;
   learning_resources: string;
   assessment_methods: string;
+  reflection?: string;
+  core_competencies?: string;
+  values?: string;
+  pci?: string;
 }
 interface LessonPlan {
   id?: string;
@@ -40,6 +67,21 @@ interface LessonPlan {
   teaching_aids: string[];
   competency_outcomes: string[];
   duration_minutes: number;
+  // Full KICD fields (optional for backward compatibility)
+  strand?: string;
+  sub_strand?: string;
+  key_inquiry_question?: string;
+  specific_learning_outcomes?: string[];
+  core_competencies?: string[];
+  values?: string[];
+  pci?: string[];
+  learning_resources?: string[];
+  organization_of_learning?: string;
+  assessment?: string;
+  extended_activities?: string;
+  homework?: string;
+  teacher_self_evaluation?: string;
+  reflection?: string;
 }
 interface Resource {
   id: string;
@@ -81,55 +123,268 @@ async function callAI(prompt: string): Promise<string> {
 
 // ─── PDF Helpers ──────────────────────────────────────────────────────────────
 function downloadSchemeAsPDF(scheme: SchemeOfWork, topic: Topic, subject: string, grade: string) {
-  const doc = new jsPDF();
-  doc.setFontSize(16);
+  // KICD 9-column Scheme of Work (landscape)
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('SCHEME OF WORK', 105, 20, { align: 'center' });
-  doc.setFontSize(12);
+  doc.text('SCHEME OF WORK — KICD / CBE FORMAT', 148.5, 12, { align: 'center' });
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Subject: ${subject}   Grade: ${grade}   Topic: ${topic.topic_name}`, 14, 35);
-  doc.text(`Week: ${scheme.week_number}`, 14, 45);
+  doc.text(`Subject: ${subject}    Grade: ${grade}    Topic: ${topic.topic_name}`, 14, 20);
+  doc.text(`Week: ${scheme.week_number}    Lesson: ${scheme.lesson_number || 1}`, 14, 26);
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  doc.text('Aligned to KICD curriculum design columns | Zamifu Analytics', 14, 32);
+  doc.setTextColor(0, 0, 0);
+
   autoTable(doc, {
-    startY: 55,
-    head: [['Field', 'Details']],
-    body: [
-      ['Learning Objective', scheme.learning_objective],
-      ['Learning Activities', scheme.learning_activities],
-      ['Learning Resources', scheme.learning_resources],
-      ['Assessment Methods', scheme.assessment_methods],
-    ],
-    styles: { fontSize: 10, cellPadding: 4 },
-    headStyles: { fillColor: [37, 99, 235] },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } },
+    startY: 36,
+    head: [[
+      'Week',
+      'Lesson',
+      'Strand',
+      'Sub-Strand',
+      'Specific Learning Outcomes',
+      'Key Inquiry Questions',
+      'Learning Experiences',
+      'Learning Resources',
+      'Assessment',
+      'Reflection',
+    ]],
+    body: [[
+      String(scheme.week_number || ''),
+      String(scheme.lesson_number || '1'),
+      scheme.strand || topic.topic_name,
+      scheme.sub_strand || '',
+      scheme.learning_objective || '',
+      scheme.key_inquiry_questions || '',
+      scheme.learning_activities || '',
+      scheme.learning_resources || '',
+      scheme.assessment_methods || '',
+      scheme.reflection || 'To be completed after lesson delivery',
+    ]],
+    styles: { fontSize: 7, cellPadding: 2, valign: 'top', overflow: 'linebreak' },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: 7, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 12 },
+      1: { cellWidth: 14 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: 28 },
+      4: { cellWidth: 40 },
+      5: { cellWidth: 30 },
+      6: { cellWidth: 40 },
+      7: { cellWidth: 30 },
+      8: { cellWidth: 28 },
+      9: { cellWidth: 28 },
+    },
   });
-  doc.save(`scheme_of_work_${topic.topic_name.replace(/\s+/g, '_')}.pdf`);
+
+  let y = (doc as any).lastAutoTable.finalY + 8;
+  if (scheme.core_competencies || scheme.values || scheme.pci) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CBE Alignment', 14, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    y += 5;
+    if (scheme.core_competencies) { doc.text(`Core Competencies: ${scheme.core_competencies}`, 14, y); y += 5; }
+    if (scheme.values) { doc.text(`Values: ${scheme.values}`, 14, y); y += 5; }
+    if (scheme.pci) { doc.text(`PCIs: ${scheme.pci}`, 14, y); y += 5; }
+  }
+  doc.setFontSize(7);
+  doc.setTextColor(120, 120, 120);
+  doc.text('Reference: KICD Curriculum Designs · schemesofwork.com samples · Generated by Zamifu Analytics', 148.5, 200, { align: 'center' });
+  doc.save(`scheme_of_work_KICD_${topic.topic_name.replace(/\s+/g, '_')}.pdf`);
+}
+
+
+
+function downloadTermSchemePDF(rows: SchemeRow[], subject: string, grade: string, term: string) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`SCHEME OF WORK — ${subject.toUpperCase()} · ${grade} · ${term}`, 148.5, 10, { align: 'center' });
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text('KICD 9-column format | Generated by Zamifu Analytics Curriculum Navigator', 148.5, 16, { align: 'center' });
+  autoTable(doc, {
+    startY: 20,
+    head: [SCHEME_COLUMNS as unknown as string[]],
+    body: rows.map((r) => [
+      String(r.week_number),
+      String(r.lesson_number),
+      r.strand,
+      r.sub_strand,
+      r.learning_objective,
+      r.key_inquiry_questions,
+      r.learning_activities,
+      r.learning_resources,
+      r.assessment_methods,
+      r.reflection,
+    ]),
+    styles: { fontSize: 6, cellPadding: 1.2, valign: 'top', overflow: 'linebreak' },
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: 6.5, fontStyle: 'bold' },
+    margin: { left: 8, right: 8 },
+  });
+  doc.save(`term_scheme_${subject.replace(/\s+/g, '_')}_${grade.replace(/\s+/g, '_')}.pdf`);
+}
+
+function downloadExamBlueprintPDF(exam: ExamBlueprint, schoolName: string, subject: string, grade: string, includeMarking: boolean) {
+  const doc = new jsPDF();
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text((schoolName || 'SCHOOL').toUpperCase(), 105, 14, { align: 'center' });
+  doc.setFontSize(12);
+  doc.text(exam.title.toUpperCase(), 105, 22, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Subject: ${subject}    Grade: ${grade}    Total: ${exam.totalMarks} marks`, 105, 30, { align: 'center' });
+  doc.line(14, 34, 196, 34);
+  let y = 40;
+  doc.setFont('helvetica', 'bold');
+  doc.text('INSTRUCTIONS', 14, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  exam.instructions.forEach((ins, i) => {
+    doc.text(`${i + 1}. ${ins}`, 14, y);
+    y += 5;
+  });
+  y += 4;
+
+  for (const section of exam.sections) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(section.name, 14, y);
+    y += 5;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.text(section.description, 14, y);
+    y += 7;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    for (const q of section.questions) {
+      if (y > 260) { doc.addPage(); y = 20; }
+      const stem = doc.splitTextToSize(`${q.number}. ${q.text} (${q.marks} mark${q.marks > 1 ? 's' : ''})`, 182);
+      doc.text(stem, 14, y);
+      y += stem.length * 5 + 2;
+      if (q.options) {
+        const labels = ['A', 'B', 'C', 'D'];
+        q.options.forEach((opt, i) => {
+          doc.text(`   ${labels[i]}) ${opt}`, 18, y);
+          y += 5;
+        });
+      }
+      y += 3;
+    }
+    y += 4;
+  }
+
+  if (includeMarking) {
+    doc.addPage();
+    y = 20;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('MARKING SCHEME', 105, y, { align: 'center' });
+    y += 10;
+    doc.setFontSize(10);
+    for (const section of exam.sections) {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFont('helvetica', 'bold');
+      doc.text(section.name, 14, y);
+      y += 6;
+      doc.setFont('helvetica', 'normal');
+      for (const q of section.questions) {
+        if (y > 270) { doc.addPage(); y = 20; }
+        const ans = doc.splitTextToSize(`Q${q.number}. ${q.answer}  [${q.marks} marks]`, 182);
+        doc.text(ans, 14, y);
+        y += ans.length * 5 + 3;
+      }
+      y += 4;
+    }
+  }
+
+  doc.setFontSize(7);
+  doc.setTextColor(120, 120, 120);
+  doc.text('Zamifu Analytics · KICD-aligned exam blueprint', 105, 290, { align: 'center' });
+  doc.save(`exam_${subject.replace(/\s+/g, '_')}_${grade.replace(/\s+/g, '_')}.pdf`);
 }
 
 function downloadLessonPlanAsPDF(plan: LessonPlan, topic: Topic, subject: string, grade: string) {
-  const doc = new jsPDF();
-  doc.setFontSize(16);
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  doc.setFillColor(37, 99, 235);
+  doc.rect(0, 0, 210, 28, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('LESSON PLAN', 105, 20, { align: 'center' });
-  doc.setFontSize(11);
+  doc.text('LESSON PLAN — KICD / CBE FORMAT', 105, 12, { align: 'center' });
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Subject: ${subject}   Grade: ${grade}   Topic: ${topic.topic_name}`, 14, 32);
-  doc.text(`Duration: ${plan.duration_minutes} minutes`, 14, 42);
-  autoTable(doc, {
-    startY: 50,
-    head: [['Section', 'Content']],
-    body: [
-      ['Lesson Objective', plan.lesson_objective],
-      ['Introduction (5 min)', plan.introduction],
-      ['Development (25 min)', plan.development],
-      ['Conclusion (10 min)', plan.conclusion],
-      ['Teaching Aids', plan.teaching_aids.join(', ')],
-      ['CBE Competency Outcomes', plan.competency_outcomes.join('\n')],
-    ],
-    styles: { fontSize: 10, cellPadding: 4 },
-    headStyles: { fillColor: [37, 99, 235] },
-    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } },
-  });
-  doc.save(`lesson_plan_${topic.topic_name.replace(/\s+/g, '_')}.pdf`);
+  doc.text('Aligned to KICD curriculum design · Zamifu Analytics', 105, 20, { align: 'center' });
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(10);
+  let y = 36;
+  const line = (label: string, value: string) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, 14, y);
+    doc.setFont('helvetica', 'normal');
+    const lines = doc.splitTextToSize(value || '—', 130);
+    doc.text(lines, 60, y);
+    y += Math.max(7, lines.length * 5 + 2);
+    if (y > 270) { doc.addPage(); y = 20; }
+  };
+
+  line('Subject:', subject);
+  line('Grade:', grade);
+  line('Topic:', topic.topic_name);
+  line('Strand:', plan.strand || '');
+  line('Sub-Strand:', plan.sub_strand || '');
+  line('Duration:', `${plan.duration_minutes || 40} minutes`);
+  line('Key Inquiry:', plan.key_inquiry_question || '');
+
+  doc.setDrawColor(37, 99, 235);
+  doc.line(14, y, 196, y);
+  y += 8;
+
+  const sections: [string, string][] = [
+    ['Specific Learning Outcomes', (plan.specific_learning_outcomes || []).join('\n') || plan.lesson_objective],
+    ['Core Competencies', (plan.core_competencies || plan.competency_outcomes || []).join('; ')],
+    ['Values', (plan.values || []).join('; ')],
+    ['PCIs', (plan.pci || []).join('; ')],
+    ['Learning Resources', (plan.learning_resources || plan.teaching_aids || []).join('; ')],
+    ['Organisation of Learning', plan.organization_of_learning || ''],
+    ['Introduction', plan.introduction],
+    ['Development / Learning Experiences', plan.development],
+    ['Conclusion', plan.conclusion],
+    ['Assessment', plan.assessment || 'Formative oral and written checks aligned to SLOs'],
+    ['Extended Activities', plan.extended_activities || ''],
+    ['Homework', plan.homework || ''],
+    ['Teacher Self-Evaluation', plan.teacher_self_evaluation || ''],
+    ['Reflection', plan.reflection || ''],
+  ];
+
+  for (const [title, body] of sections) {
+    if (!body) continue;
+    if (y > 255) { doc.addPage(); y = 20; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(37, 99, 235);
+    doc.text(title.toUpperCase(), 14, y);
+    y += 5;
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(body, 182);
+    doc.text(lines, 14, y);
+    y += lines.length * 4.5 + 6;
+  }
+
+  doc.setFontSize(7);
+  doc.setTextColor(120, 120, 120);
+  doc.text('Reference: KICD Curriculum Designs · schemesofwork.com format · Zamifu Analytics', 105, 290, { align: 'center' });
+  doc.save(`lesson_plan_KICD_${topic.topic_name.replace(/\s+/g, '_')}.pdf`);
 }
 
 function downloadExamAsPDF(
@@ -277,6 +532,8 @@ export default function CurriculumNavigator() {
   // Scheme of Work
   const [scheme, setScheme] = useState<SchemeOfWork | null>(null);
   const [generatingScheme, setGeneratingScheme] = useState(false);
+  const [termSchemeRows, setTermSchemeRows] = useState<SchemeRow[]>([]);
+  const [examBlueprint, setExamBlueprint] = useState<ExamBlueprint | null>(null);
 
   // Lesson Plan
   const [lessonPlan, setLessonPlan] = useState<LessonPlan | null>(null);
@@ -452,49 +709,100 @@ export default function CurriculumNavigator() {
     try {
       const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || '';
       const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
-      const prompt = `Generate a detailed Scheme of Work for a Kenyan CBE school.
+      let strandName = '';
+      let subStrandName = '';
+      for (const st of strands) {
+        for (const ss of st.sub_strands || []) {
+          if ((ss.topics || []).some((t) => t.id === selectedTopic.id)) {
+            strandName = st.strand_name;
+            subStrandName = ss.sub_strand_name;
+          }
+        }
+      }
+      const kb = findStrandContext(subjectName, selectedTopic.topic_name);
+      if (!strandName) strandName = kb.strand;
+      if (!subStrandName) subStrandName = kb.subStrand;
+
+      // Always build a strong KICD offline base first
+      const base = buildSchemeRow({
+        subject: subjectName,
+        grade: gradeName,
+        topic: selectedTopic.topic_name,
+        week: 1,
+        lesson: 1,
+        term: selectedTerm,
+        learningObjectives: selectedTopic.learning_objectives?.length
+          ? selectedTopic.learning_objectives
+          : kb.slos,
+        strand: strandName,
+        subStrand: subStrandName,
+      });
+
+      try {
+        const prompt = `You are a senior Kenyan CBE curriculum designer following KICD designs and schemesofwork.com 9-column format.
+Improve this scheme of work JSON for:
 Grade: ${gradeName}
 Subject: ${subjectName}
 Topic: ${selectedTopic.topic_name}
+Strand: ${strandName}
+Sub-strand: ${subStrandName}
 Term: ${selectedTerm}
-Learning Objectives: ${selectedTopic.learning_objectives?.join(', ')}
+Curriculum SLOs: ${(selectedTopic.learning_objectives || kb.slos).join('; ')}
 
-Respond ONLY with a valid JSON object (no markdown):
-{
-  "week_number": 3,
-  "learning_objective": "...",
-  "learning_activities": "...",
-  "learning_resources": "...",
-  "assessment_methods": "..."
-}`;
-      const raw = await callAI(prompt);
-      const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-      setScheme(parsed);
+Return ONLY valid JSON with keys:
+week_number, lesson_number, strand, sub_strand, learning_objective, key_inquiry_questions,
+learning_activities, learning_resources, assessment_methods, reflection, core_competencies, values, pci
 
-      // Save to DB
-      await supabaseUntyped.from('curriculum_schemes_of_work').insert({
-        topic_id: selectedTopic.id,
-        ...parsed,
-      });
-      toast.success('Scheme of Work generated!');
-    } catch (e) {
-      // Fallback: generate without AI
-      const fallback: SchemeOfWork = {
-        week_number: 3,
-        learning_objective: `By the end of the lesson, learners should be able to ${selectedTopic.learning_objectives?.[0] || 'understand ' + selectedTopic.topic_name}`,
-        learning_activities: `1. Introduction and review of prior knowledge\n2. Teacher demonstration of ${selectedTopic.topic_name}\n3. Guided practice with worked examples\n4. Group activities and peer learning\n5. Individual practice exercises`,
-        learning_resources: `Textbooks, Charts, Worksheets, Manipulatives, Digital resources, KICD curriculum materials`,
-        assessment_methods: `Oral questions, Written exercises, Group work observation, Portfolio assessment, Formative assessment`,
-      };
-      setScheme(fallback);
-      await supabaseUntyped.from('curriculum_schemes_of_work').insert({
-        topic_id: selectedTopic.id,
-        ...fallback,
-      });
-      toast.success('Scheme of Work generated (offline mode)!');
+Base draft to improve:
+${JSON.stringify(base)}`;
+        const raw = await callAI(prompt);
+        const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = { ...base, ...JSON.parse(cleaned) } as SchemeOfWork;
+        setScheme(parsed);
+        await supabaseUntyped.from('curriculum_schemes_of_work').insert({
+          topic_id: selectedTopic.id,
+          week_number: parsed.week_number,
+          learning_objective: parsed.learning_objective,
+          learning_activities: parsed.learning_activities,
+          learning_resources: parsed.learning_resources,
+          assessment_methods: parsed.assessment_methods,
+        });
+        toast.success('KICD Scheme of Work generated (AI + knowledge base)!');
+      } catch {
+        setScheme(base as SchemeOfWork);
+        await supabaseUntyped.from('curriculum_schemes_of_work').insert({
+          topic_id: selectedTopic.id,
+          week_number: base.week_number,
+          learning_objective: base.learning_objective,
+          learning_activities: base.learning_activities,
+          learning_resources: base.learning_resources,
+          assessment_methods: base.assessment_methods,
+        });
+        toast.success('KICD Scheme of Work generated from curriculum knowledge base!');
+      }
+    } catch (e: any) {
+      toast.error('Failed to generate scheme: ' + (e.message || 'Unknown error'));
     }
     setGeneratingScheme(false);
+  };
+
+  const generateTermScheme = async () => {
+    const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || 'Junior School';
+    const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || 'Subject';
+    const topicNames = allTopics.map(t => t.topic_name);
+    const rows = buildTermScheme({
+      subject: subjectName,
+      grade: gradeName,
+      term: selectedTerm,
+      weeks: 10,
+      lessonsPerWeek: 1,
+      topics: topicNames.length ? topicNames : undefined,
+    });
+    setTermSchemeRows(rows);
+    downloadTermSchemePDF(rows, subjectName, gradeName, selectedTerm);
+    toast.success(`Downloaded ${rows.length}-row term scheme (KICD 9-column)!`);
+    // keep last generated rows for UI summary
+    if (rows.length) {/* stored in termSchemeRows */}
   };
 
   // ── Generate Lesson Plan ───────────────────────────────────────────────────
@@ -504,54 +812,107 @@ Respond ONLY with a valid JSON object (no markdown):
     try {
       const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || '';
       const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
-      const prompt = `Generate a detailed CBE-aligned Lesson Plan for a Kenyan school.
-Grade: ${gradeName}
-Subject: ${subjectName}
-Topic: ${selectedTopic.topic_name}
-Duration: 40 minutes
-Learning Objectives: ${selectedTopic.learning_objectives?.join(', ')}
+      let strandName = '';
+      let subStrandName = '';
+      for (const st of strands) {
+        for (const ss of st.sub_strands || []) {
+          if ((ss.topics || []).some((t) => t.id === selectedTopic.id)) {
+            strandName = st.strand_name;
+            subStrandName = ss.sub_strand_name;
+          }
+        }
+      }
+      const full = buildFullLessonPlan({
+        subject: subjectName,
+        grade: gradeName,
+        topic: selectedTopic.topic_name,
+        learningObjectives: selectedTopic.learning_objectives,
+        strand: strandName || undefined,
+        subStrand: subStrandName || undefined,
+      });
 
-Respond ONLY with a valid JSON object (no markdown):
-{
-  "lesson_objective": "...",
-  "introduction": "5-minute introduction activity...",
-  "development": "25-minute main teaching activity...",
-  "conclusion": "10-minute conclusion and assessment...",
-  "teaching_aids": ["aid1", "aid2", "aid3"],
-  "competency_outcomes": ["outcome1", "outcome2", "outcome3"],
-  "duration_minutes": 40
-}`;
-      const raw = await callAI(prompt);
-      const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
-      setLessonPlan(parsed);
-      await supabaseUntyped.from('curriculum_lesson_plans').insert({
-        topic_id: selectedTopic.id,
-        ...parsed,
-      });
-      toast.success('Lesson Plan generated!');
-    } catch {
-      const fallback: LessonPlan = {
-        lesson_objective: `By the end of the lesson, learners should be able to ${selectedTopic.learning_objectives?.[0] || 'understand ' + selectedTopic.topic_name}`,
-        introduction: `Begin with a review of prior knowledge. Ask learners what they already know about ${selectedTopic.topic_name}. Use questioning techniques to activate prior knowledge and create interest. (5 minutes)`,
-        development: `Present the concept of ${selectedTopic.topic_name} using visual aids and real-life examples. Demonstrate key concepts step by step. Engage learners in guided practice. Have learners work in pairs to solve problems. Monitor and provide feedback. (25 minutes)`,
-        conclusion: `Summarize key learning points. Ask learners to explain what they have learned. Assign homework for further practice. Conduct a quick formative assessment using oral questions. (10 minutes)`,
-        teaching_aids: ['Textbooks', 'Charts and diagrams', 'Worksheets', 'Manipulatives', 'Whiteboard and markers'],
-        competency_outcomes: [
-          'Communication and collaboration',
-          'Critical thinking and problem solving',
-          'Self-efficacy',
-          'Digital literacy',
-          'Citizenship',
-        ],
-        duration_minutes: 40,
-      };
-      setLessonPlan(fallback);
-      await supabaseUntyped.from('curriculum_lesson_plans').insert({
-        topic_id: selectedTopic.id,
-        ...fallback,
-      });
-      toast.success('Lesson Plan generated (offline mode)!');
+      try {
+        const prompt = `You are a KICD master teacher. Improve this CBE lesson plan JSON for Kenyan schools.
+Grade ${gradeName}, Subject ${subjectName}, Topic ${selectedTopic.topic_name}.
+Keep all keys. Return ONLY JSON.
+Draft: ${JSON.stringify(full)}`;
+        const raw = await callAI(prompt);
+        const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = { ...full, ...JSON.parse(cleaned) } as FullLessonPlan;
+        const lp: LessonPlan = {
+          lesson_objective: parsed.lesson_objective,
+          introduction: parsed.introduction,
+          development: parsed.development,
+          conclusion: parsed.conclusion,
+          teaching_aids: parsed.teaching_aids || parsed.learning_resources || [],
+          competency_outcomes: parsed.competency_outcomes || parsed.core_competencies || [],
+          duration_minutes: parsed.duration_minutes || 40,
+          strand: parsed.strand,
+          sub_strand: parsed.sub_strand,
+          key_inquiry_question: parsed.key_inquiry_question,
+          specific_learning_outcomes: parsed.specific_learning_outcomes,
+          core_competencies: parsed.core_competencies,
+          values: parsed.values,
+          pci: parsed.pci,
+          learning_resources: parsed.learning_resources,
+          organization_of_learning: parsed.organization_of_learning,
+          assessment: parsed.assessment,
+          extended_activities: parsed.extended_activities,
+          homework: parsed.homework,
+          teacher_self_evaluation: parsed.teacher_self_evaluation,
+          reflection: parsed.reflection,
+        };
+        setLessonPlan(lp);
+        await supabaseUntyped.from('curriculum_lesson_plans').insert({
+          topic_id: selectedTopic.id,
+          lesson_objective: lp.lesson_objective,
+          introduction: lp.introduction,
+          development: lp.development,
+          conclusion: lp.conclusion,
+          teaching_aids: lp.teaching_aids,
+          competency_outcomes: lp.competency_outcomes,
+          duration_minutes: lp.duration_minutes,
+        });
+        toast.success('Full KICD Lesson Plan generated!');
+      } catch {
+        const lp: LessonPlan = {
+          lesson_objective: full.lesson_objective,
+          introduction: full.introduction,
+          development: full.development,
+          conclusion: full.conclusion,
+          teaching_aids: full.teaching_aids,
+          competency_outcomes: full.competency_outcomes,
+          duration_minutes: full.duration_minutes,
+          strand: full.strand,
+          sub_strand: full.sub_strand,
+          key_inquiry_question: full.key_inquiry_question,
+          specific_learning_outcomes: full.specific_learning_outcomes,
+          core_competencies: full.core_competencies,
+          values: full.values,
+          pci: full.pci,
+          learning_resources: full.learning_resources,
+          organization_of_learning: full.organization_of_learning,
+          assessment: full.assessment,
+          extended_activities: full.extended_activities,
+          homework: full.homework,
+          teacher_self_evaluation: full.teacher_self_evaluation,
+          reflection: full.reflection,
+        };
+        setLessonPlan(lp);
+        await supabaseUntyped.from('curriculum_lesson_plans').insert({
+          topic_id: selectedTopic.id,
+          lesson_objective: lp.lesson_objective,
+          introduction: lp.introduction,
+          development: lp.development,
+          conclusion: lp.conclusion,
+          teaching_aids: lp.teaching_aids,
+          competency_outcomes: lp.competency_outcomes,
+          duration_minutes: lp.duration_minutes,
+        });
+        toast.success('Full KICD Lesson Plan generated from knowledge base!');
+      }
+    } catch (e: any) {
+      toast.error('Lesson plan failed: ' + (e.message || 'error'));
     }
     setGeneratingLesson(false);
   };
@@ -612,77 +973,70 @@ Respond ONLY with a valid JSON object (no markdown):
 
   // ── Generate Exam ──────────────────────────────────────────────────────────
   const generateExam = async () => {
-    if (examTopics.size === 0) { toast.error('Select at least one topic'); return; }
+    const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || '';
+    const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
+    const selected = allTopics.filter(t => examTopics.has(t.id));
+    const topicNames = selected.length
+      ? selected.map(t => t.topic_name)
+      : (selectedTopic ? [selectedTopic.topic_name] : getStrandPacks(subjectName).flatMap(p => p.subStrands.flatMap(s => s.topics)).slice(0, 6));
+
+    if (!topicNames.length) {
+      toast.error('Select at least one topic or pick a subject with curriculum content');
+      return;
+    }
+
     setGeneratingExam(true);
     try {
-      const selectedTopicNames = allTopics.filter(t => examTopics.has(t.id)).map(t => t.topic_name);
-      const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || '';
-      const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
+      const blueprint = buildExamBlueprint({
+        subject: subjectName,
+        grade: gradeName,
+        topics: topicNames,
+        title: examTitle || `${subjectName} — ${gradeName} ${selectedTerm} Assessment`,
+        totalMarks: examTotalMarks,
+        difficulty: examDifficulty,
+      });
 
-      const mcqCount = Math.floor(examTotalMarks * 0.4 / 2);
-      const shortCount = Math.floor(examTotalMarks * 0.4 / 5);
-      const essayCount = Math.floor(examTotalMarks * 0.2 / 10);
-
-      const prompt = `Generate a CBE-aligned exam for a Kenyan school.
-Grade: ${gradeName}
-Subject: ${subjectName}
-Topics: ${selectedTopicNames.join(', ')}
-Difficulty: ${examDifficulty}
-Total Marks: ${examTotalMarks}
-
-Generate:
-- ${mcqCount} multiple choice questions (2 marks each)
-- ${shortCount} short answer questions (5 marks each)
-- ${essayCount} essay questions (10 marks each)
-
-Respond ONLY with a valid JSON array (no markdown):
-[
-  {
-    "question_text": "...",
-    "question_type": "multiple_choice",
-    "options": ["A) option1", "B) option2", "C) option3", "D) option4"],
-    "correct_answer": "B) option2",
-    "marks": 2,
-    "difficulty": "${examDifficulty}"
-  },
-  ...
-]`;
-      const raw = await callAI(prompt);
-      const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-      const parsed: ExamQuestion[] = JSON.parse(cleaned);
-      setGeneratedExam(parsed);
-      toast.success(`Exam generated with ${parsed.length} questions!`);
-    } catch {
-      // Fallback exam
-      const topicNames = allTopics.filter(t => examTopics.has(t.id)).map(t => t.topic_name);
-      const fallback: ExamQuestion[] = [
-        {
-          question_text: `Which of the following best describes ${topicNames[0]}?`,
-          question_type: 'multiple_choice',
-          options: ['A) Option A', 'B) Option B', 'C) Option C', 'D) Option D'],
-          correct_answer: 'B) Option B',
-          marks: 2,
-          difficulty: examDifficulty,
-        },
-        {
-          question_text: `Explain the concept of ${topicNames[0]} in your own words.`,
-          question_type: 'short_answer',
-          options: undefined,
-          correct_answer: `A clear explanation of ${topicNames[0]} with relevant examples.`,
-          marks: 5,
-          difficulty: examDifficulty,
-        },
-        {
-          question_text: `Discuss the importance of ${topicNames[0]} in real life, giving at least three examples.`,
-          question_type: 'essay',
-          options: undefined,
-          correct_answer: `A comprehensive essay discussing ${topicNames[0]} with real-life examples and clear reasoning.`,
-          marks: 10,
-          difficulty: examDifficulty,
-        },
-      ];
-      setGeneratedExam(fallback);
-      toast.success('Exam generated (offline mode)!');
+      // Try AI enrichment of questions
+      try {
+        const prompt = `You are a Kenyan junior school examiner. Improve this exam JSON for ${subjectName} ${gradeName}.
+Keep the same section structure and total marks near ${examTotalMarks}. Difficulty: ${examDifficulty}.
+Topics: ${topicNames.join(', ')}.
+Return ONLY valid JSON with the same shape (title, instructions, sections, totalMarks).
+Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
+        const raw = await callAI(prompt);
+        const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(cleaned) as ExamBlueprint;
+        if (parsed?.sections?.length) {
+          setExamBlueprint(parsed);
+          // Also map into legacy generatedExam format for existing UI
+          const flat = parsed.sections.flatMap(s => s.questions.map(q => ({
+            question_text: q.text,
+            question_type: q.type,
+            options: q.options,
+            correct_answer: q.answer,
+            marks: q.marks,
+            difficulty: q.difficulty || examDifficulty,
+          })));
+          setGeneratedExam(flat);
+          toast.success('Exam paper + marking scheme ready (AI + KICD blueprint)!');
+        } else {
+          throw new Error('bad shape');
+        }
+      } catch {
+        setExamBlueprint(blueprint);
+        const flat = blueprint.sections.flatMap(s => s.questions.map(q => ({
+          question_text: q.text,
+          question_type: q.type,
+          options: q.options,
+          correct_answer: q.answer,
+          marks: q.marks,
+          difficulty: q.difficulty || examDifficulty,
+        })));
+        setGeneratedExam(flat);
+        toast.success('Exam paper + marking scheme generated from KICD blueprint!');
+      }
+    } catch (e: any) {
+      toast.error('Exam generation failed: ' + (e.message || 'error'));
     }
     setGeneratingExam(false);
   };
@@ -715,6 +1069,62 @@ Respond ONLY with a valid JSON array (no markdown):
             <p className="text-xs text-gray-500 mt-0.5">{progressPct}% complete</p>
           </div>
         )}
+      </div>
+
+      {/* World-class resource hub */}
+      <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5 shadow-lg">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-300 mb-1">Zamifu Curriculum Intelligence</p>
+            <h2 className="text-lg font-bold">KICD designs · Schemes · Lesson plans · Exam blueprints</h2>
+            <p className="text-sm text-blue-100/80 mt-1">
+              Built on the official KICD 9-column scheme format and full CBE lesson structure. Open official designs, generate term schemes,
+              and download Section A/B/C papers with marking schemes — even offline via the embedded knowledge base.
+            </p>
+            <p className="text-[11px] text-blue-200/70 mt-2">
+              Tip: Use your personal login on schemesofwork.com for paid samples. Zamifu never stores third-party passwords.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={generateTermScheme}
+              disabled={!selectedSubject && !selectedGrade}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-semibold disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" /> Download Term Scheme PDF
+            </button>
+            <a
+              href={gradeDesignUrl(gradeName)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/20"
+            >
+              <BookOpen className="w-3.5 h-3.5" /> Open KICD Designs
+            </a>
+            <a
+              href={OFFICIAL_LINKS.schemesOfWorkHome}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/20"
+            >
+              <ClipboardList className="w-3.5 h-3.5" /> schemesofwork.com
+            </a>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
+          {[
+            { t: '9-column schemes', d: 'Week→Reflection KICD layout' },
+            { t: 'Full lesson plans', d: `${LESSON_PLAN_SECTIONS.length} CBE sections` },
+            { t: 'Exam generator', d: 'MCQ + Structured + Essay' },
+            { t: 'Grade 9 areas', d: `${GRADE_NINE_SUBJECTS.length} learning areas` },
+          ].map((c) => (
+            <div key={c.t} className="rounded-xl bg-white/5 border border-white/10 px-3 py-2">
+              <p className="text-xs font-semibold text-white">{c.t}</p>
+              <p className="text-[11px] text-blue-100/70">{c.d}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Filters */}
@@ -915,45 +1325,60 @@ Respond ONLY with a valid JSON array (no markdown):
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <ClipboardList className="w-5 h-5 text-blue-600" />
-                        Scheme of Work
+                        Scheme of Work (KICD 9-Column)
                       </h3>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {scheme && (
                           <button
                             onClick={() => downloadSchemeAsPDF(scheme, selectedTopic, subjectName, gradeName)}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-medium text-gray-700 transition-colors"
                           >
                             <Download className="w-3.5 h-3.5" />
-                            PDF
+                            Lesson PDF
                           </button>
                         )}
+                        <button
+                          onClick={generateTermScheme}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Full Term Scheme
+                        </button>
                         <button
                           onClick={generateScheme}
                           disabled={generatingScheme}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-60"
                         >
                           {generatingScheme ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                          {scheme ? 'Regenerate' : 'Generate with AI'}
+                          {scheme ? 'Regenerate' : 'Generate KICD Scheme'}
                         </button>
                       </div>
                     </div>
                     {!scheme ? (
                       <div className="text-center py-8 text-gray-400">
                         <ClipboardList className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">Click "Generate with AI" to create a scheme of work</p>
+                        <p className="text-sm">Click "Generate with AI" to create a KICD 9-column scheme of work</p>
+                        <p className="text-xs mt-2 text-gray-400">Week · Lesson · Strand · Sub-Strand · SLOs · KIQ · Experiences · Resources · Assessment · Reflection</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="font-medium text-gray-600 w-36">Week Number:</span>
-                          <span className="text-gray-800">Week {scheme.week_number}</span>
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">Week {scheme.week_number}</span>
+                          <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold">Lesson {scheme.lesson_number || 1}</span>
+                          {scheme.strand && <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">Strand: {scheme.strand}</span>}
+                          {scheme.sub_strand && <span className="px-2.5 py-1 bg-teal-50 text-teal-700 rounded-full text-xs font-medium">Sub-Strand: {scheme.sub_strand}</span>}
                         </div>
                         {[
-                          { label: 'Learning Objective', value: scheme.learning_objective },
-                          { label: 'Learning Activities', value: scheme.learning_activities },
+                          { label: 'Specific Learning Outcomes (SLOs)', value: scheme.learning_objective },
+                          { label: 'Key Inquiry Questions', value: scheme.key_inquiry_questions },
+                          { label: 'Learning Experiences', value: scheme.learning_activities },
                           { label: 'Learning Resources', value: scheme.learning_resources },
-                          { label: 'Assessment Methods', value: scheme.assessment_methods },
-                        ].map(row => (
+                          { label: 'Assessment', value: scheme.assessment_methods },
+                          { label: 'Reflection (after delivery)', value: scheme.reflection },
+                          { label: 'Core Competencies', value: scheme.core_competencies },
+                          { label: 'Values', value: scheme.values },
+                          { label: 'PCIs', value: scheme.pci },
+                        ].filter(row => !!row.value).map(row => (
                           <div key={row.label} className="border-t pt-3">
                             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{row.label}</p>
                             <p className="text-sm text-gray-700 whitespace-pre-line">{row.value}</p>
@@ -970,7 +1395,7 @@ Respond ONLY with a valid JSON array (no markdown):
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="font-bold text-gray-800 flex items-center gap-2">
                         <Sparkles className="w-5 h-5 text-purple-600" />
-                        Lesson Plan
+                        Lesson Plan (Full KICD / CBE)
                       </h3>
                       <div className="flex gap-2">
                         {lessonPlan && (
@@ -1004,30 +1429,53 @@ Respond ONLY with a valid JSON array (no markdown):
                     {!lessonPlan ? (
                       <div className="text-center py-8 text-gray-400">
                         <Sparkles className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">Click "Generate with AI" to create a lesson plan</p>
+                        <p className="text-sm">Generate a full KICD lesson plan (SLOs, KIQ, competencies, PCI, 3-part lesson, assessment, reflection)</p>
                       </div>
                     ) : (
                       <div className="space-y-4">
                         <div className="bg-purple-50 rounded-lg p-3">
                           <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide mb-1">Lesson Objective</p>
                           <p className="text-sm text-gray-800">{lessonPlan.lesson_objective}</p>
-                          <p className="text-xs text-gray-500 mt-1">Duration: {lessonPlan.duration_minutes} minutes</p>
+                          <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                            <span className="px-2 py-0.5 rounded-full bg-white text-purple-700 border border-purple-100">Duration: {lessonPlan.duration_minutes} min</span>
+                            {lessonPlan.strand && <span className="px-2 py-0.5 rounded-full bg-white text-emerald-700 border border-emerald-100">Strand: {lessonPlan.strand}</span>}
+                            {lessonPlan.sub_strand && <span className="px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-100">Sub-strand: {lessonPlan.sub_strand}</span>}
+                          </div>
+                          {lessonPlan.key_inquiry_question && (
+                            <p className="text-xs text-purple-900 mt-2"><span className="font-semibold">KIQ:</span> {lessonPlan.key_inquiry_question}</p>
+                          )}
                         </div>
+                        {lessonPlan.specific_learning_outcomes && lessonPlan.specific_learning_outcomes.length > 0 && (
+                          <div className="rounded-lg p-3 bg-indigo-50">
+                            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-1">Specific Learning Outcomes</p>
+                            <ul className="space-y-1">
+                              {lessonPlan.specific_learning_outcomes.map((s, i) => (
+                                <li key={i} className="text-sm text-gray-700">• {s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                         {[
-                          { label: 'Introduction (5 min)', value: lessonPlan.introduction, color: 'bg-blue-50 text-blue-600' },
-                          { label: 'Development (25 min)', value: lessonPlan.development, color: 'bg-green-50 text-green-600' },
-                          { label: 'Conclusion (10 min)', value: lessonPlan.conclusion, color: 'bg-orange-50 text-orange-600' },
-                        ].map(section => (
+                          { label: 'Organisation of Learning', value: lessonPlan.organization_of_learning, color: 'bg-slate-50 text-slate-600' },
+                          { label: 'Introduction', value: lessonPlan.introduction, color: 'bg-blue-50 text-blue-600' },
+                          { label: 'Development / Learning Experiences', value: lessonPlan.development, color: 'bg-green-50 text-green-600' },
+                          { label: 'Conclusion', value: lessonPlan.conclusion, color: 'bg-orange-50 text-orange-600' },
+                          { label: 'Assessment', value: lessonPlan.assessment, color: 'bg-amber-50 text-amber-700' },
+                          { label: 'Extended Activities', value: lessonPlan.extended_activities, color: 'bg-cyan-50 text-cyan-700' },
+                          { label: 'Homework', value: lessonPlan.homework, color: 'bg-rose-50 text-rose-700' },
+                          { label: 'Teacher Self-Evaluation', value: lessonPlan.teacher_self_evaluation, color: 'bg-gray-50 text-gray-600' },
+                          { label: 'Reflection', value: lessonPlan.reflection, color: 'bg-violet-50 text-violet-700' },
+                        ].filter(s => !!s.value).map(section => (
                           <div key={section.label} className={`rounded-lg p-3 ${section.color.split(' ')[0]}`}>
                             <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${section.color.split(' ')[1]}`}>{section.label}</p>
-                            <p className="text-sm text-gray-700">{section.value}</p>
+                            <p className="text-sm text-gray-700 whitespace-pre-line">{section.value}</p>
                           </div>
                         ))}
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Teaching Aids</p>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Teaching Aids / Resources</p>
                             <ul className="space-y-1">
-                              {lessonPlan.teaching_aids.map((aid, i) => (
+                              {(lessonPlan.learning_resources?.length ? lessonPlan.learning_resources : lessonPlan.teaching_aids || []).map((aid, i) => (
                                 <li key={i} className="text-xs text-gray-700 flex items-center gap-1.5">
                                   <span className="w-1.5 h-1.5 bg-blue-400 rounded-full" />{aid}
                                 </li>
@@ -1035,12 +1483,18 @@ Respond ONLY with a valid JSON array (no markdown):
                             </ul>
                           </div>
                           <div className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">CBE Competency Outcomes</p>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Competencies · Values · PCIs</p>
                             <ul className="space-y-1">
-                              {lessonPlan.competency_outcomes.map((outcome, i) => (
-                                <li key={i} className="text-xs text-gray-700 flex items-center gap-1.5">
+                              {(lessonPlan.core_competencies || lessonPlan.competency_outcomes || []).map((outcome, i) => (
+                                <li key={`c-${i}`} className="text-xs text-gray-700 flex items-center gap-1.5">
                                   <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />{outcome}
                                 </li>
+                              ))}
+                              {(lessonPlan.values || []).map((v, i) => (
+                                <li key={`v-${i}`} className="text-xs text-gray-700">♥ {v}</li>
+                              ))}
+                              {(lessonPlan.pci || []).map((p, i) => (
+                                <li key={`p-${i}`} className="text-xs text-gray-700">◆ {p}</li>
                               ))}
                             </ul>
                           </div>
@@ -1055,8 +1509,71 @@ Respond ONLY with a valid JSON array (no markdown):
                   <div className="bg-white rounded-xl border border-gray-200 p-5">
                     <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
                       <FolderOpen className="w-5 h-5 text-orange-500" />
-                      Teaching Resources
+                      Teaching Resources & Official Libraries
                     </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+                      <a href={OFFICIAL_LINKS.curriculumDesigns} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100/70">
+                        <p className="text-sm font-semibold text-blue-900">KICD Curriculum Designs</p>
+                        <p className="text-xs text-blue-700/80">All grades · Regular & SNE designs</p>
+                      </a>
+                      <a href={gradeDesignUrl(gradeName)} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-indigo-100 bg-indigo-50 hover:bg-indigo-100/70">
+                        <p className="text-sm font-semibold text-indigo-900">Designs for {gradeName || 'selected grade'}</p>
+                        <p className="text-xs text-indigo-700/80">Opens the matching KICD grade hub</p>
+                      </a>
+                      <a href={OFFICIAL_LINKS.schemesOfWorkHome} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-emerald-100 bg-emerald-50 hover:bg-emerald-100/70">
+                        <p className="text-sm font-semibold text-emerald-900">schemesofwork.com dashboard</p>
+                        <p className="text-xs text-emerald-700/80">Login for paid downloadable samples (your account)</p>
+                      </a>
+                      <a href={OFFICIAL_LINKS.kenyaEducationCloud} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-amber-100 bg-amber-50 hover:bg-amber-100/70">
+                        <p className="text-sm font-semibold text-amber-900">Kenya Education Cloud</p>
+                        <p className="text-xs text-amber-800/80">Curriculum-relevant digital content</p>
+                      </a>
+                    </div>
+
+                    <div className="mb-5">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Embedded sample paper formats</p>
+                      <div className="space-y-2">
+                        {SAMPLE_PAPER_LIBRARY.map((p) => (
+                          <div key={p.id} className="flex items-start justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{p.title}</p>
+                              <p className="text-xs text-gray-500">{p.description}</p>
+                              <p className="text-[11px] text-blue-600 mt-0.5">{p.format}</p>
+                            </div>
+                            <button
+                              type="button"
+                              className="shrink-0 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                              onClick={() => {
+                                const bp = buildExamBlueprint({
+                                  subject: p.subject,
+                                  grade: gradeName || 'Junior School',
+                                  topics: getStrandPacks(p.subject).flatMap(s => s.subStrands.flatMap(ss => ss.topics)).slice(0, 5),
+                                  title: p.title,
+                                  totalMarks: 50,
+                                  difficulty: examDifficulty,
+                                });
+                                setExamBlueprint(bp);
+                                downloadExamBlueprintPDF(bp, schoolName, p.subject, gradeName || 'Junior School', true);
+                                toast.success('Sample paper + marking scheme downloaded');
+                              }}
+                            >
+                              Download
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mb-4 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                      <p className="text-xs font-semibold text-slate-600 mb-1">Knowledge base strands for {subjectName || 'subject'}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {getStrandPacks(subjectName || 'Mathematics').map((s) => (
+                          <span key={s.strand} className="text-[11px] px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700">{s.strand}</span>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Upload form */}
                     <div className="bg-gray-50 rounded-lg p-4 mb-4">
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Upload New Resource</p>
@@ -1201,37 +1718,59 @@ Respond ONLY with a valid JSON array (no markdown):
                       </div>
                     </div>
 
+                    <p className="text-xs text-gray-500 mb-3">
+                      Generates a full paper: <strong>Section A</strong> MCQs, <strong>Section B</strong> structured, <strong>Section C</strong> extended response + optional marking scheme.
+                      If no topics are ticked, Zamifu uses the embedded KICD strand packs for this subject.
+                    </p>
                     <button
                       onClick={generateExam}
-                      disabled={generatingExam || examTopics.size === 0}
+                      disabled={generatingExam || !selectedSubject}
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-60 mb-4"
                     >
                       {generatingExam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      {generatingExam ? 'Generating Exam...' : 'Generate Exam with AI'}
+                      {generatingExam ? 'Generating Exam...' : 'Generate Full Paper + Marking Scheme'}
                     </button>
 
                     {/* Generated exam preview */}
                     {generatedExam && (
                       <div>
-                        <div className="flex items-center justify-between mb-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                           <p className="text-sm font-semibold text-gray-700">
                             Generated: {generatedExam.length} questions • {generatedExam.reduce((s, q) => s + q.marks, 0)} marks
+                            {examBlueprint ? ` · ${examBlueprint.sections.length} sections` : ''}
                           </p>
-                          <button
-                            onClick={() => downloadExamAsPDF(
-                              generatedExam,
-                              examTitle || `${subjectName} Exam - ${selectedTerm} 2025`,
-                              schoolName,
-                              subjectName,
-                              gradeName,
-                              examTotalMarks,
-                              includeMarkingScheme
+                          <div className="flex gap-2">
+                            {examBlueprint && (
+                              <button
+                                onClick={() => downloadExamBlueprintPDF(
+                                  examBlueprint,
+                                  schoolName,
+                                  subjectName,
+                                  gradeName,
+                                  includeMarkingScheme
+                                )}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition-colors"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                Paper + MS (KICD)
+                              </button>
                             )}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Download PDF
-                          </button>
+                            <button
+                              onClick={() => downloadExamAsPDF(
+                                generatedExam,
+                                examTitle || `${subjectName} Exam - ${selectedTerm} 2026`,
+                                schoolName,
+                                subjectName,
+                                gradeName,
+                                examTotalMarks,
+                                includeMarkingScheme
+                              )}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Classic PDF
+                            </button>
+                          </div>
                         </div>
                         <div className="border border-gray-200 rounded-lg divide-y max-h-64 overflow-y-auto">
                           {generatedExam.map((q, i) => (
@@ -1275,7 +1814,13 @@ Respond ONLY with a valid JSON array (no markdown):
               Select a Grade and Subject above to explore the CBE curriculum tree, generate lesson plans, schemes of work, and AI-powered exams.
             </p>
           </div>
-          {/* Issue 20: KICD Curriculum Design Upload */}
+          <KICDDesignUploadPanel schoolId={user?.schoolId || ''} />
+        </div>
+      )}
+
+      {/* Always available official resources + school uploads */}
+      {selectedTopic && (
+        <div className="mt-6">
           <KICDDesignUploadPanel schoolId={user?.schoolId || ''} />
         </div>
       )}
@@ -1354,13 +1899,65 @@ function KICDDesignUploadPanel({ schoolId }: { schoolId: string }) {
             <FileText className="w-5 h-5 text-green-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">KICD Curriculum Designs</h3>
-            <p className="text-xs text-gray-500">Upload and view KICD curriculum design documents</p>
+            <h3 className="font-semibold text-gray-900">KICD Curriculum Designs & Official Resources</h3>
+            <p className="text-xs text-gray-500">Upload school copies or open official KICD designs and scheme samples</p>
           </div>
         </div>
         <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
           <Upload className="w-4 h-4" /> Upload Design
         </button>
+      </div>
+
+      {/* Official external resources */}
+      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <a
+          href="https://kicd.ac.ke/cbc-materials/curriculum-designs/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-start gap-3 p-3 rounded-xl border border-blue-100 bg-blue-50/60 hover:bg-blue-50 transition-colors"
+        >
+          <BookOpen className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-blue-900">KICD Curriculum Designs</p>
+            <p className="text-xs text-blue-700/80">Official CBC/CBE designs for all grades (PP1–Grade 12), including Grade 9 learning areas.</p>
+          </div>
+        </a>
+        <a
+          href="https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-start gap-3 p-3 rounded-xl border border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50 transition-colors"
+        >
+          <Layers className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-indigo-900">Grade 9 Designs</p>
+            <p className="text-xs text-indigo-700/80">Agriculture, English, Mathematics, Integrated Science, Pre-Technical, Social Studies, and more.</p>
+          </div>
+        </a>
+        <a
+          href="https://schemesofwork.com/home"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-start gap-3 p-3 rounded-xl border border-emerald-100 bg-emerald-50/60 hover:bg-emerald-50 transition-colors"
+        >
+          <ClipboardList className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-emerald-900">schemesofwork.com</p>
+            <p className="text-xs text-emerald-700/80">Login for downloadable scheme samples and term schemes (use your schemesofwork.com account).</p>
+          </div>
+        </a>
+        <a
+          href="https://schemesofwork.com/schemes-of-work-2026"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-start gap-3 p-3 rounded-xl border border-teal-100 bg-teal-50/60 hover:bg-teal-50 transition-colors"
+        >
+          <Download className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-teal-900">2026 Schemes Catalogue</p>
+            <p className="text-xs text-teal-700/80">Browse grade/subject/term schemes to compare against Zamifu KICD-format exports.</p>
+          </div>
+        </a>
       </div>
 
       {showAdd && (
