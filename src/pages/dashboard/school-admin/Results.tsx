@@ -318,9 +318,37 @@ export default function SchoolAdminResults() {
 
   const fetchClassResults = async () => {
     if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term first'); return null; }
-    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, gender, photo_url), subjects(name), school_exams(name)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    let query = supabaseUntyped
+      .from('results')
+      .select('*, students(id, first_name, last_name, admission_number, gender, photo_url), subjects(name), school_exams(name, type)')
+      .eq('class_id', selectedClass)
+      .eq('term_id', selectedTerm)
+      .eq('school_id', user?.schoolId);
+    // When an assessment is selected, only include marks for that exam
+    if (selectedExam) {
+      query = query.eq('exam_id', selectedExam);
+    }
+    const { data, error } = await query;
     if (error) { toast.error('Failed to fetch results: ' + error.message); return null; }
     return data || [];
+  };
+
+  /** Resolve assessment label for PDF headers / report cards */
+  const resolveAssessmentLabel = (rawResults?: any[] | null): string => {
+    if (selectedExam) {
+      const ex = exams.find((e) => e.id === selectedExam);
+      if (ex?.name) return ex.type ? `${ex.name} (${ex.type})` : ex.name;
+    }
+    const names = Array.from(
+      new Set(
+        (rawResults || [])
+          .map((r: any) => r.school_exams?.name || r.exams?.name)
+          .filter(Boolean)
+      )
+    ) as string[];
+    if (names.length === 1) return names[0];
+    if (names.length > 1) return names.join(' / ');
+    return '';
   };
 
   const fetchPreviousTermAvg = async (studentId: string, currentTermId: string) => {
@@ -402,6 +430,7 @@ export default function SchoolAdminResults() {
       if (!rawResults || rawResults.length === 0) { toast.error('No results found'); setGeneratingPDF(false); return; }
       const classObj = classes.find(c => c.id === selectedClass);
       const termObj = terms.find(t => t.id === selectedTerm);
+      const assessmentLabel = resolveAssessmentLabel(rawResults);
       const band = getSchoolLevelBand(classObj);
       const isPrimary = band === 'primary';
       const summaries = buildStudentSummary(rawResults, classObj);
@@ -465,7 +494,10 @@ export default function SchoolAdminResults() {
         doc.setFontSize(11);
         doc.text('CLASS RESULTS SUMMARY', logoAdded ? 40 : 105, 22, { align: logoAdded ? 'left' : 'center' });
         doc.setFontSize(9);
-        doc.text(`${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`, logoAdded ? 40 : 105, 30, { align: logoAdded ? 'left' : 'center' });
+        const summarySubtitle = assessmentLabel
+          ? `${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''} — ${assessmentLabel}`
+          : `${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`;
+        doc.text(summarySubtitle, logoAdded ? 40 : 105, 30, { align: logoAdded ? 'left' : 'center' });
 
         const classGrade = overallGradeWithBand(classMean, band);
         const statsY = 42;
@@ -476,6 +508,13 @@ export default function SchoolAdminResults() {
         doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} points)` : ''}`, 130, statsY + 8);
         doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 20, statsY + 18);
         doc.text(`Learning Areas: ${allSubjects.length}`, 130, statsY + 18);
+        if (assessmentLabel) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(37, 99, 235);
+          doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 26);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+        }
 
         const gradeDistY = statsY + 38;
         doc.setFontSize(11); doc.setFont('helvetica', 'bold');
@@ -556,7 +595,14 @@ export default function SchoolAdminResults() {
         doc.setFillColor(37, 99, 235); doc.rect(0, 0, 210, 20, 'F');
         doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
         doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(10);
-        doc.text('LEARNING AREA PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
+        doc.text(
+          assessmentLabel
+            ? `LEARNING AREA PERFORMANCE ANALYSIS — ${assessmentLabel}`
+            : 'LEARNING AREA PERFORMANCE ANALYSIS',
+          105,
+          16,
+          { align: 'center' }
+        );
 
         const subRows = subjectStats.map((s, i) => {
           const gr = s.grade.subLevel;
@@ -590,7 +636,10 @@ export default function SchoolAdminResults() {
         doc.setFillColor(37, 99, 235); doc.rect(0, 0, 210, 20, 'F');
         doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
         doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(10);
-        doc.text(`LEARNER RESULTS TABLE \u2014 ${classObj?.name || ''} \u2014 ${termObj?.name || ''} ${termObj?.academic_year || ''}`, 105, 16, { align: 'center' });
+        const tableSubtitle = assessmentLabel
+          ? `LEARNER RESULTS TABLE — ${classObj?.name || ''} — ${termObj?.name || ''} ${termObj?.academic_year || ''} — ${assessmentLabel}`
+          : `LEARNER RESULTS TABLE — ${classObj?.name || ''} — ${termObj?.name || ''} ${termObj?.academic_year || ''}`;
+        doc.text(tableSubtitle, 105, 16, { align: 'center' });
 
         const subjectShorts = allSubjects.map(s => shortName(s));
         const tableHeaders = isPrimary ? ['POS', 'Learner', ...subjectShorts, 'Total', 'Avg%', 'Grade'] : ['POS', 'Learner', ...subjectShorts, 'Total', 'Avg%', 'Pts', 'Grade'];
@@ -744,8 +793,19 @@ export default function SchoolAdminResults() {
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
-      doc.save(`class_results_${classObj?.name}_${termObj?.name}_${termObj?.academic_year}.pdf`);
-      toast.success('Class Results Summary PDF downloaded!');
+      const classPdfName = [
+        'class_results',
+        classObj?.name,
+        termObj?.name,
+        termObj?.academic_year,
+        assessmentLabel || null,
+      ].filter(Boolean).join('_').replace(/\s+/g, '_');
+      doc.save(`${classPdfName}.pdf`);
+      toast.success(
+        assessmentLabel
+          ? `Class Results PDF downloaded (${assessmentLabel})!`
+          : 'Class Results Summary PDF downloaded!'
+      );
     } catch (err: any) { toast.error('Failed to generate PDF: ' + err.message); console.error(err); }
     setGeneratingPDF(false);
   };
@@ -765,6 +825,7 @@ export default function SchoolAdminResults() {
       const allSubjects = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
       const summaries = buildStudentSummary(rawResults, classObj);
       const termObj = terms.find(t => t.id === selectedTerm);
+      const assessmentLabel = resolveAssessmentLabel(rawResults);
       const totalStudents = summaries.length;
 
       // Fetch teacher signatures for this class
@@ -826,16 +887,29 @@ export default function SchoolAdminResults() {
           try { await addStudentPhotoToPDF(doc, s.student.photo_url, 168, 33, 30); } catch {}
         }
 
-        // Learner info
+        // Learner info — include assessment name when available
+        const cardAssessment = s.examName || assessmentLabel || '';
         doc.setTextColor(0, 0, 0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
         const y = 38;
         doc.text(`Learner: ${studentFullName}`, 14, y);
         doc.text(`Adm No: ${s.student?.admission_number || 'N/A'}`, 14, y + 7);
         doc.text(`Class: ${classObj?.name || 'N/A'}`, 14, y + 14);
         doc.text(`Term: ${termObj?.name || ''} ${termObj?.academic_year || ''}`, 120, y);
-        doc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 7);
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 14);
-        doc.setDrawColor(37, 99, 235); doc.line(14, y + 20, 196, y + 20);
+        if (cardAssessment) {
+          doc.setTextColor(37, 99, 235);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`Assessment: ${cardAssessment}`, 120, y + 7);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(0, 0, 0);
+          doc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 14);
+          doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 21);
+          doc.setDrawColor(37, 99, 235); doc.line(14, y + 26, 196, y + 26);
+        } else {
+          doc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 7);
+          doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 14);
+          doc.setDrawColor(37, 99, 235); doc.line(14, y + 20, 196, y + 20);
+        }
+        const tableStartY = cardAssessment ? y + 31 : y + 25;
 
         // Subject rows
         const subjectRows = subjectEntries.map(([subName, pct]) => {
@@ -847,7 +921,7 @@ export default function SchoolAdminResults() {
           return isPrimary ? [subName, `${pct.toFixed(0)}%`, gradeLabel, descriptor] : [subName, `${pct.toFixed(0)}%`, gradeLabel, pointsVal, descriptor];
         });
 
-        autoTable(doc, { startY: y + 25, head: [isPrimary ? ['Learning Area', 'Percentage', 'CBE Grade', 'Descriptor'] : ['Learning Area', 'Percentage', 'CBE Grade', 'Points', 'Descriptor']], body: subjectRows, styles: { fontSize: 9 }, headStyles: { fillColor: [37, 99, 235], textColor: 255 }, alternateRowStyles: { fillColor: [245, 247, 255] } });
+        autoTable(doc, { startY: tableStartY, head: [isPrimary ? ['Learning Area', 'Percentage', 'CBE Grade', 'Descriptor'] : ['Learning Area', 'Percentage', 'CBE Grade', 'Points', 'Descriptor']], body: subjectRows, styles: { fontSize: 9 }, headStyles: { fillColor: [37, 99, 235], textColor: 255 }, alternateRowStyles: { fillColor: [245, 247, 255] } });
 
         const tableEnd = (doc as any).lastAutoTable.finalY + 8;
 
@@ -903,8 +977,19 @@ export default function SchoolAdminResults() {
         doc.text(`Page ${idx + 1} of ${totalStudents} | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
       }
 
-      doc.save(`bulk_report_cards_${classObj?.name}_${termObj?.name}_${termObj?.academic_year}.pdf`);
-      toast.success(`Bulk report cards generated for ${totalStudents} learners!`);
+      const bulkPdfName = [
+        'bulk_report_cards',
+        classObj?.name,
+        termObj?.name,
+        termObj?.academic_year,
+        assessmentLabel || null,
+      ].filter(Boolean).join('_').replace(/\s+/g, '_');
+      doc.save(`${bulkPdfName}.pdf`);
+      toast.success(
+        assessmentLabel
+          ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!`
+          : `Bulk report cards generated for ${totalStudents} learners!`
+      );
     } catch (err: any) { toast.error('Failed to generate bulk report cards: ' + err.message); console.error(err); }
     setGeneratingBulk(false);
   };
