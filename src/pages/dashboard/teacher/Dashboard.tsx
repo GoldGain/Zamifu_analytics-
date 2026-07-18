@@ -136,7 +136,7 @@ export default function TeacherDashboard() {
   };
 
   const quickActions = [
-    { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, link: '/teacher/results/upload', color: 'bg-blue-50 text-blue-600' },
+    { label: 'Assigned Uploads', icon: <Upload className="w-5 h-5" />, link: '/teacher/results/assigned', color: 'bg-blue-50 text-blue-600' },
     { label: 'Mark Attendance', icon: <ClipboardList className="w-5 h-5" />, link: '/teacher/attendance', color: 'bg-green-50 text-green-600' },
     { label: 'Add Homework', icon: <BookOpen className="w-5 h-5" />, link: '/teacher/homework', color: 'bg-purple-50 text-purple-600' },
     { label: 'My Students', icon: <Users className="w-5 h-5" />, link: '/teacher/students', color: 'bg-orange-50 text-orange-600' },

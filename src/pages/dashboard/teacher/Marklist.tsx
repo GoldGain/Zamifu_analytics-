@@ -7,6 +7,7 @@ import {
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 interface Student {
   id: string;
@@ -315,6 +316,36 @@ export default function Marklist() {
     setDownloading(false);
   };
 
+  const handleDownloadExcel = () => {
+    if (students.length === 0) {
+      toast.error('No students to export');
+      return;
+    }
+    setDownloading(true);
+    try {
+      const className = classes.find(c => c.id === selectedClass)?.name || 'Unknown Class';
+      const rows = students.map((student, index) => {
+        const row: Record<string, string | number> = {
+          '#': index + 1,
+          'Student Name': `${student.first_name} ${student.last_name}`,
+          'Admission No.': student.admission_number || '-',
+        };
+        columns.forEach((col) => {
+          row[col.column_name] = cellData[student.id]?.[col.id] || '';
+        });
+        return row;
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Marklist');
+      XLSX.writeFile(wb, `marklist-${className.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Excel downloaded');
+    } catch (err: any) {
+      toast.error('Failed to generate Excel: ' + err.message);
+    }
+    setDownloading(false);
+  };
+
   const getCellValue = (studentId: string, columnId: string): string => {
     return cellData[studentId]?.[columnId] || '';
   };
@@ -333,14 +364,24 @@ export default function Marklist() {
           </p>
         </div>
         {selectedClass && students.length > 0 && (
-          <button
-            onClick={handleDownloadPDF}
-            disabled={downloading}
-            className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
-          >
-            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            Export PDF
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleDownloadPDF}
+              disabled={downloading}
+              className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Download PDF
+            </button>
+            <button
+              onClick={handleDownloadExcel}
+              disabled={downloading}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+              Download Excel
+            </button>
+          </div>
         )}
       </div>
 

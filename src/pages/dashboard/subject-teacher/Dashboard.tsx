@@ -212,7 +212,7 @@ export default function SubjectTeacherDashboard() {
             <TrendingUp className="w-5 h-5 text-green-600" />
             <span className="text-sm text-gray-600">Upload Marks</span>
           </div>
-          <Link to="/teacher/results/upload" className="text-sm font-semibold text-blue-600 hover:underline">Go to Upload →</Link>
+          <Link to="/teacher/results/assigned" className="text-sm font-semibold text-blue-600 hover:underline">Upload Assigned →</Link>
         </div>
       </div>
 
@@ -256,7 +256,7 @@ export default function SubjectTeacherDashboard() {
                       </div>
                     )}
                     <Link
-                      to="/teacher/results/upload"
+                      to="/teacher/results/assigned"
                       onClick={e => e.stopPropagation()}
                       className="flex items-center gap-1.5 px-3 py-2 bg-[#2563EB] text-white rounded-xl text-xs font-medium hover:bg-blue-700 transition-colors"
                     >

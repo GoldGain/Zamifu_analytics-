@@ -58,7 +58,7 @@ export default function StudentResults() {
     try {
       const { data } = await supabaseUntyped
         .from('results')
-        .select('*, subjects(name), terms(name)')
+        .select('*, subjects(name), terms(name), school_exams(name, type)')
         .eq('student_id', student.id)
         .eq('term_id', selectedTerm)
         .order('created_at', { ascending: false });
@@ -179,7 +179,7 @@ export default function StudentResults() {
   const deviation = previousAvg !== null ? currentAvg - previousAvg : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/50 min-h-full">
       <div>
         <h1 className="text-2xl font-bold text-[#111111]">My Results</h1>
         <p className="text-sm text-[#666666]">View your academic performance and progress</p>
@@ -192,7 +192,7 @@ export default function StudentResults() {
       )}
 
       {/* Term Selector */}
-      <div className="bg-white rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+      <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
         <label className="block text-sm font-medium text-[#666666] mb-2">Select Term</label>
         <select
           value={selectedTerm}
@@ -205,7 +205,7 @@ export default function StudentResults() {
       </div>
 
       {/* Overall Summary */}
-      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+      <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
         <h3 className="font-semibold text-[#111111] mb-4">Performance Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-xl">
@@ -270,7 +270,7 @@ export default function StudentResults() {
       )}
 
       {/* CBE Summary */}
-      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+      <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
         <div className="flex items-center gap-3 mb-4">
           <TrendingUp className="w-5 h-5 text-[#2563EB]" />
           <h3 className="font-semibold text-[#111111]">CBE Summary</h3>
@@ -304,12 +304,13 @@ export default function StudentResults() {
       </div>
 
       {/* Results Table */}
-      <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden">
+      <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] overflow-hidden border border-white/80">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Learning Area</th> {/* Issue 26 */}
+                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Assessment</th>
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Marks</th>
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">%</th>
                 <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Grade</th>
@@ -320,19 +321,25 @@ export default function StudentResults() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-8 text-sm text-[#666666]">Loading...</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-sm text-[#666666]">Loading...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8 text-sm text-[#666666]">No results found for this term</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-sm text-[#666666]">No results found for this term</td></tr>
               ) : (
                 filtered.map(r => (
                   <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 text-xs font-bold">
+                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">
                           <Award className="w-4 h-4" />
                         </div>
                         <span className="text-sm font-medium">{r.subjects?.name}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-[#444]">
+                      {r.school_exams?.name || r.exams?.name || '—'}
+                      {r.school_exams?.type ? (
+                        <span className="ml-1 text-xs text-blue-600">({r.school_exams.type})</span>
+                      ) : null}
                     </td>
                     <td className="px-6 py-4 text-sm font-medium">{r.marks}</td>
                     <td className="px-6 py-4 text-sm font-medium">{r.percentage !== undefined && r.percentage !== null ? r.percentage : Math.round((r.marks / (r.out_of || 100)) * 100)}%</td>

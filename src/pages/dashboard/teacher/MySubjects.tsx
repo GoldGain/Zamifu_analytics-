@@ -49,15 +49,37 @@ export default function TeacherMySubjects() {
         return;
       }
 
-      // Fetch teacher's assignments (assigned by school admin)
-      const { data: assignmentsData } = await supabaseUntyped
-        .from('teacher_subject_assignments')
-        .select(`
-          *,
-          classes(name),
-          subjects(name)
-        `)
-        .eq('teacher_id', user?.id);
+      // Resolve teachers.id then fetch assignments (assignments store teachers.id, not profile id)
+      const { data: teacherRec } = await supabaseUntyped
+        .from('teachers')
+        .select('id')
+        .eq('profile_id', user?.id)
+        .maybeSingle();
+
+      let assignmentsData: any[] | null = null;
+      if (teacherRec?.id) {
+        const res = await supabaseUntyped
+          .from('teacher_subject_assignments')
+          .select(`
+            *,
+            classes(name),
+            subjects(name)
+          `)
+          .eq('teacher_id', teacherRec.id);
+        assignmentsData = res.data;
+      }
+      // Legacy fallback: some rows may have used profile_id
+      if (!assignmentsData || assignmentsData.length === 0) {
+        const res = await supabaseUntyped
+          .from('teacher_subject_assignments')
+          .select(`
+            *,
+            classes(name),
+            subjects(name)
+          `)
+          .eq('teacher_id', user?.id);
+        assignmentsData = res.data;
+      }
 
       const enrichedAssignments = (assignmentsData || []).map((a: any) => ({
         ...a,

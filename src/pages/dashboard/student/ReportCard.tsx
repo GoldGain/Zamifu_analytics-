@@ -170,7 +170,7 @@ export default function StudentReportCard() {
     if (!student || !selectedTerm) return;
     const { data } = await supabaseUntyped
       .from('results')
-      .select('*, subjects(name), terms(name, academic_year), exams(name)')
+      .select('*, subjects(name), terms(name, academic_year), school_exams(name, type)')
       .eq('student_id', student.id)
       .eq('term_id', selectedTerm)
       .order('subjects(name)');
@@ -307,7 +307,7 @@ export default function StudentReportCard() {
       );
 
       // Show assessment name if available
-      const assessmentName = results[0]?.exams?.name || '';
+      const assessmentName = results[0]?.school_exams?.name || '';
       if (assessmentName) {
         doc.setFontSize(9);
         doc.setTextColor(37, 99, 235);
@@ -343,7 +343,7 @@ export default function StudentReportCard() {
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-sky-50/50 to-emerald-50/40 min-h-full">
       <div>
         <h1 className="text-2xl font-bold text-[#111111]">Learner Report Card</h1>
         <p className="text-sm text-[#666666]">Download your official academic report card</p>
@@ -402,9 +402,9 @@ export default function StudentReportCard() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-[#111111]">
               Results Preview ({results.length} subjects)
-              {results[0]?.exams?.name && (
+              {results[0]?.school_exams?.name && (
                 <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                  {results[0]?.exams?.name}
+                  {results[0]?.school_exams?.name}
                 </span>
               )}
             </h3>

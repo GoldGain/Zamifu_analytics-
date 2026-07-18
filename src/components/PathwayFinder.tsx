@@ -79,6 +79,19 @@ const interestOptions: InterestOption[] = [
   // Research & Innovation
   { id: 'research', label: 'Research', description: 'Discovery, inquiry', icon: <Microscope className="w-6 h-6" />, category: 'Research' },
   { id: 'innovation', label: 'Innovation', description: 'New ideas, creativity', icon: <FlaskConical className="w-6 h-6" />, category: 'Research' },
+  // Extra CBE / pathway interests
+  { id: 'biology', label: 'Biology', description: 'Living systems, health', icon: <Leaf className="w-6 h-6" />, category: 'Core Academic' },
+  { id: 'chemistry', label: 'Chemistry', description: 'Matter, reactions, lab work', icon: <Beaker className="w-6 h-6" />, category: 'Core Academic' },
+  { id: 'physics', label: 'Physics', description: 'Energy, motion, forces', icon: <Atom className="w-6 h-6" />, category: 'Core Academic' },
+  { id: 'geography', label: 'Geography', description: 'Earth systems, maps', icon: <Globe className="w-6 h-6" />, category: 'Core Academic' },
+  { id: 'history', label: 'History & Government', description: 'Past events, civics', icon: <Landmark className="w-6 h-6" />, category: 'Core Academic' },
+  { id: 'home_science', label: 'Home Science', description: 'Nutrition, textiles, family', icon: <UtensilsCrossed className="w-6 h-6" />, category: 'Hospitality' },
+  { id: 'pre_technical', label: 'Pre-Technical Studies', description: 'Making, tools, design', icon: <Wrench className="w-6 h-6" />, category: 'STEM' },
+  { id: 'languages', label: 'Foreign Languages', description: 'French, German, Arabic, etc.', icon: <MessageSquare className="w-6 h-6" />, category: 'Arts' },
+  { id: 'psychology', label: 'Psychology', description: 'Mind, behaviour, counselling', icon: <Heart className="w-6 h-6" />, category: 'Health' },
+  { id: 'performance', label: 'Performing Arts', description: 'Stage, dance, theatre', icon: <Theater className="w-6 h-6" />, category: 'Arts' },
+  { id: 'aviation', label: 'Aviation', description: 'Flying, aircraft systems', icon: <Plane className="w-6 h-6" />, category: 'STEM' },
+  { id: 'construction', label: 'Building & Construction', description: 'Masonry, carpentry, sites', icon: <HardHat className="w-6 h-6" />, category: 'STEM' },
 ];
 
 const careerPaths: CareerPath[] = [
@@ -208,6 +221,286 @@ const careerPaths: CareerPath[] = [
     requirements: ['Social Studies', 'English', 'Kiswahili'],
     interests: ['social_studies', 'religious_ed', 'public_health', 'psychology'],
   },
+  {
+    id: 'dentist',
+    title: 'Dentist',
+    description: 'Oral health care, dental surgery and hygiene',
+    requirements: ['Biology', 'Chemistry', 'Physics', 'Mathematics'],
+    interests: ['medicine', 'sciences', 'biology', 'chemistry'],
+  },
+  {
+    id: 'clinical_officer',
+    title: 'Clinical Officer',
+    description: 'Diagnose and treat common illnesses in clinics',
+    requirements: ['Biology', 'Chemistry', 'English'],
+    interests: ['medicine', 'nursing', 'public_health', 'sciences'],
+  },
+  {
+    id: 'lab_technologist',
+    title: 'Laboratory Technologist',
+    description: 'Run medical and scientific laboratory tests',
+    requirements: ['Biology', 'Chemistry', 'Mathematics'],
+    interests: ['research', 'sciences', 'pharmacy', 'medicine'],
+  },
+  {
+    id: 'physiotherapist',
+    title: 'Physiotherapist',
+    description: 'Help patients recover movement and manage pain',
+    requirements: ['Biology', 'Chemistry', 'Physical Education'],
+    interests: ['medicine', 'pe', 'nursing', 'public_health'],
+  },
+  {
+    id: 'veterinarian',
+    title: 'Veterinarian',
+    description: 'Animal health, livestock and wildlife care',
+    requirements: ['Biology', 'Chemistry', 'Agriculture'],
+    interests: ['veterinary', 'agriculture', 'sciences', 'biology'],
+  },
+  {
+    id: 'agribusiness',
+    title: 'Agribusiness Manager',
+    description: 'Run profitable farms and agro-enterprises',
+    requirements: ['Agriculture', 'Business Studies', 'Mathematics'],
+    interests: ['agriculture', 'business', 'entrepreneurship', 'economics'],
+  },
+  {
+    id: 'environmental_scientist',
+    title: 'Environmental Scientist',
+    description: 'Protect ecosystems and manage natural resources',
+    requirements: ['Biology', 'Geography', 'Chemistry'],
+    interests: ['environment', 'agriculture', 'sciences', 'research'],
+  },
+  {
+    id: 'civil_engineer',
+    title: 'Civil Engineer',
+    description: 'Design roads, bridges, water and buildings',
+    requirements: ['Mathematics', 'Physics', 'Geography'],
+    interests: ['engineering', 'mathematics', 'sciences', 'design'],
+  },
+  {
+    id: 'electrical_engineer',
+    title: 'Electrical / Electronics Engineer',
+    description: 'Power systems, electronics and automation',
+    requirements: ['Mathematics', 'Physics', 'Computer Science'],
+    interests: ['engineering', 'robotics', 'programming', 'mathematics'],
+  },
+  {
+    id: 'cybersecurity_analyst',
+    title: 'Cybersecurity Analyst',
+    description: 'Protect systems, networks and data from threats',
+    requirements: ['Computer Science', 'Mathematics', 'English'],
+    interests: ['cybersecurity', 'networking', 'programming', 'it'],
+  },
+  {
+    id: 'ai_engineer',
+    title: 'AI / Machine Learning Engineer',
+    description: 'Build intelligent systems and models',
+    requirements: ['Mathematics', 'Computer Science', 'Physics'],
+    interests: ['ai', 'data_science', 'programming', 'computer_science'],
+  },
+  {
+    id: 'actuary',
+    title: 'Actuary',
+    description: 'Assess risk using statistics and finance',
+    requirements: ['Mathematics', 'Economics', 'Business Studies'],
+    interests: ['mathematics', 'finance', 'economics', 'data_science'],
+  },
+  {
+    id: 'economist',
+    title: 'Economist',
+    description: 'Analyze markets, policy and economic trends',
+    requirements: ['Mathematics', 'Economics', 'English'],
+    interests: ['economics', 'finance', 'business', 'political_science'],
+  },
+  {
+    id: 'banker',
+    title: 'Banker / Financial Analyst',
+    description: 'Banking services, investments and credit',
+    requirements: ['Mathematics', 'Business Studies', 'Economics'],
+    interests: ['finance', 'accounting', 'business', 'economics'],
+  },
+  {
+    id: 'marketer',
+    title: 'Marketing Specialist',
+    description: 'Brand strategy, digital marketing and sales',
+    requirements: ['English', 'Business Studies', 'Creative Arts'],
+    interests: ['marketing', 'business', 'writing', 'film'],
+  },
+  {
+    id: 'hr_manager',
+    title: 'Human Resource Manager',
+    description: 'Recruit, develop and support people at work',
+    requirements: ['English', 'Business Studies', 'Social Studies'],
+    interests: ['hr', 'business', 'teaching', 'psychology'],
+  },
+  {
+    id: 'lawyer_corporate',
+    title: 'Corporate / Human Rights Lawyer',
+    description: 'Advise on business law or defend rights',
+    requirements: ['English', 'History', 'Kiswahili'],
+    interests: ['law', 'political_science', 'international_relations', 'writing'],
+  },
+  {
+    id: 'diplomat',
+    title: 'Diplomat / Foreign Service Officer',
+    description: 'Represent Kenya in international affairs',
+    requirements: ['English', 'History', 'Geography', 'Kiswahili'],
+    interests: ['international_relations', 'political_science', 'law', 'languages'],
+  },
+  {
+    id: 'psychologist',
+    title: 'Psychologist / Counselor',
+    description: 'Support mental health and human behaviour',
+    requirements: ['Biology', 'English', 'Social Studies'],
+    interests: ['public_health', 'teaching', 'social_studies', 'research'],
+  },
+  {
+    id: 'journalist_broadcast',
+    title: 'Broadcast Journalist / Media Producer',
+    description: 'TV, radio and digital storytelling',
+    requirements: ['English', 'Kiswahili', 'Creative Arts'],
+    interests: ['film', 'writing', 'english', 'music'],
+  },
+  {
+    id: 'graphic_designer',
+    title: 'Graphic / UI Designer',
+    description: 'Visual design for brands, apps and media',
+    requirements: ['Art/Design', 'Computer Studies', 'English'],
+    interests: ['design', 'creative_arts', 'film', 'it'],
+  },
+  {
+    id: 'musician',
+    title: 'Musician / Sound Producer',
+    description: 'Perform, compose or produce music',
+    requirements: ['Music', 'Creative Arts', 'English'],
+    interests: ['music', 'creative_arts', 'film', 'performance'],
+  },
+  {
+    id: 'fashion_designer',
+    title: 'Fashion Designer',
+    description: 'Design clothing and textile products',
+    requirements: ['Art/Design', 'Home Science', 'Business Studies'],
+    interests: ['design', 'creative_arts', 'entrepreneurship', 'fine_arts'],
+  },
+  {
+    id: 'hotel_manager',
+    title: 'Hotel / Hospitality Manager',
+    description: 'Run hotels, lodges and guest experiences',
+    requirements: ['Business Studies', 'English', 'Home Science'],
+    interests: ['hospitality', 'tourism', 'business', 'culinary'],
+  },
+  {
+    id: 'tour_guide',
+    title: 'Tour Guide / Travel Consultant',
+    description: 'Lead tours and plan travel experiences',
+    requirements: ['Geography', 'English', 'History', 'Kiswahili'],
+    interests: ['tourism', 'hospitality', 'social_studies', 'languages'],
+  },
+  {
+    id: 'pilot_atc',
+    title: 'Air Traffic Controller',
+    description: 'Direct aircraft safely in airspace',
+    requirements: ['Mathematics', 'Physics', 'English', 'Geography'],
+    interests: ['tourism', 'mathematics', 'sciences', 'networking'],
+  },
+  {
+    id: 'quantity_surveyor',
+    title: 'Quantity Surveyor',
+    description: 'Cost construction projects and contracts',
+    requirements: ['Mathematics', 'Physics', 'Business Studies'],
+    interests: ['engineering', 'mathematics', 'business', 'design'],
+  },
+  {
+    id: 'surveyor',
+    title: 'Land Surveyor / Geospatial Expert',
+    description: 'Map land and manage spatial data',
+    requirements: ['Mathematics', 'Geography', 'Physics'],
+    interests: ['environment', 'engineering', 'mathematics', 'it'],
+  },
+  {
+    id: 'pharmacist_tech',
+    title: 'Pharmaceutical Technologist',
+    description: 'Support pharmacy services and drug supply',
+    requirements: ['Chemistry', 'Biology', 'Mathematics'],
+    interests: ['pharmacy', 'chemistry', 'medicine', 'sciences'],
+  },
+  {
+    id: 'nutritionist',
+    title: 'Nutritionist / Dietitian',
+    description: 'Plan healthy diets and community nutrition',
+    requirements: ['Biology', 'Chemistry', 'Home Science'],
+    interests: ['nutrition', 'public_health', 'sciences', 'culinary'],
+  },
+  {
+    id: 'sports_coach',
+    title: 'Sports Coach / PE Teacher',
+    description: 'Train athletes and teach physical education',
+    requirements: ['Physical Education', 'Biology', 'English'],
+    interests: ['pe', 'sports_mgmt', 'teaching', 'public_health'],
+  },
+  {
+    id: 'early_childhood',
+    title: 'Early Childhood Educator',
+    description: 'Teach and care for young learners (PP1–Grade 3)',
+    requirements: ['English', 'Kiswahili', 'Creative Arts'],
+    interests: ['teaching', 'special_ed', 'creative_arts', 'edtech'],
+  },
+  {
+    id: 'special_needs_teacher',
+    title: 'Special Needs Teacher',
+    description: 'Support learners with diverse learning needs',
+    requirements: ['English', 'Any subject specialization'],
+    interests: ['special_ed', 'teaching', 'public_health', 'psychology'],
+  },
+  {
+    id: 'tv_et_path',
+    title: 'TVET Artisan / Technician',
+    description: 'Hands-on technical and vocational careers',
+    requirements: ['Mathematics', 'Pre-Technical Studies', 'English'],
+    interests: ['engineering', 'programming', 'agriculture', 'design'],
+  },
+  {
+    id: 'entrepreneur_tech',
+    title: 'Tech Entrepreneur',
+    description: 'Build startups solving local problems with tech',
+    requirements: ['Mathematics', 'Computer Science', 'Business Studies'],
+    interests: ['entrepreneurship', 'programming', 'innovation', 'business'],
+  },
+  {
+    id: 'data_analyst',
+    title: 'Data Analyst',
+    description: 'Turn data into decisions for organizations',
+    requirements: ['Mathematics', 'Computer Science', 'English'],
+    interests: ['data_science', 'mathematics', 'it', 'business'],
+  },
+  {
+    id: 'network_engineer',
+    title: 'Network Engineer',
+    description: 'Design and maintain computer networks',
+    requirements: ['Mathematics', 'Computer Science', 'Physics'],
+    interests: ['networking', 'it', 'cybersecurity', 'programming'],
+  },
+  {
+    id: 'content_creator',
+    title: 'Digital Content Creator',
+    description: 'Create online video, audio and written content',
+    requirements: ['English', 'Creative Arts', 'Computer Studies'],
+    interests: ['film', 'writing', 'music', 'marketing'],
+  },
+  {
+    id: 'urban_planner',
+    title: 'Urban / Regional Planner',
+    description: 'Plan towns, housing and sustainable cities',
+    requirements: ['Geography', 'Mathematics', 'English'],
+    interests: ['environment', 'engineering', 'political_science', 'design'],
+  },
+  {
+    id: 'marine_biologist',
+    title: 'Marine Biologist / Fisheries Officer',
+    description: 'Study aquatic life and manage fisheries',
+    requirements: ['Biology', 'Chemistry', 'Geography'],
+    interests: ['environment', 'sciences', 'agriculture', 'research'],
+  },
 ];
 
 type Step = 1 | 2 | 3;
@@ -217,6 +510,7 @@ export default function PathwayFinder() {
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [selectedCareer, setSelectedCareer] = useState<string>('');
   const [averageGrade, setAverageGrade] = useState('');
+  const [subjectGrades, setSubjectGrades] = useState<Record<string, string>>({});
   const [showResults, setShowResults] = useState(false);
 
   const toggleInterest = (id: string) => {
@@ -228,23 +522,59 @@ export default function PathwayFinder() {
   };
 
   const getRecommendedCareers = (): CareerPath[] => {
-    return careerPaths
+    const scored = careerPaths
       .map(career => {
         const matchCount = career.interests.filter(i => selectedInterests.includes(i)).length;
         return { ...career, matchScore: matchCount };
       })
-      .filter(c => c.matchScore > 0)
-      .sort((a: any, b: any) => b.matchScore - a.matchScore)
-      .slice(0, 5);
+      .sort((a: any, b: any) => b.matchScore - a.matchScore);
+    const matched = scored.filter((c: any) => c.matchScore > 0);
+    // Always surface a broad set of pathways so none are "missing"
+    const top = (matched.length >= 8 ? matched : scored).slice(0, 24);
+    return top as CareerPath[];
+  };
+
+  const selectedCareerObj = () => careerPaths.find(c => c.id === selectedCareer);
+
+  const requiredSubjects = selectedCareerObj()?.requirements || [];
+
+  const computedAverageFromSubjects = () => {
+    const vals = requiredSubjects
+      .map((s) => parseFloat(subjectGrades[s] || ''))
+      .filter((n) => !isNaN(n));
+    if (vals.length === 0) return NaN;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  };
+
+  const effectiveAverage = () => {
+    const fromSubjects = computedAverageFromSubjects();
+    if (!isNaN(fromSubjects)) return fromSubjects;
+    return parseFloat(averageGrade);
   };
 
   const getGradeRecommendation = () => {
-    const grade = parseFloat(averageGrade);
-    if (isNaN(grade)) return 'Please enter a valid average grade.';
-    if (grade >= 80) return 'Excellent! With your strong academic performance, you are well-positioned for competitive courses like Medicine, Engineering, Law, or Data Science.';
-    if (grade >= 65) return 'Good performance! You have many options including Business, IT, Education, Nursing, and Social Sciences.';
-    if (grade >= 50) return 'Fair performance. Consider vocational courses, certificate programs, or diploma courses that align with your interests.';
-    return 'Consider bridging courses, vocational training, or craft certificate programs. Your skills and interests matter more than grades!';
+    const grade = effectiveAverage();
+    if (isNaN(grade)) return 'Please enter grades for your selected pathway subjects (or an overall average).';
+    const weak = requiredSubjects.filter((s) => {
+      const g = parseFloat(subjectGrades[s] || '');
+      return !isNaN(g) && g < 50;
+    });
+    let base = '';
+    if (grade >= 80) base = 'Excellent! With your strong academic performance, you are well-positioned for competitive courses like Medicine, Engineering, Law, or Data Science.';
+    else if (grade >= 65) base = 'Good performance! You have many options including Business, IT, Education, Nursing, and Social Sciences.';
+    else if (grade >= 50) base = 'Fair performance. Consider vocational courses, certificate programs, or diploma courses that align with your interests.';
+    else base = 'Consider bridging courses, vocational training, or craft certificate programs. Your skills and interests matter more than grades!';
+    if (weak.length) {
+      base += ` Focus on improving: ${weak.join(', ')} — these are key for your chosen pathway.`;
+    }
+    const strong = requiredSubjects.filter((s) => {
+      const g = parseFloat(subjectGrades[s] || '');
+      return !isNaN(g) && g >= 75;
+    });
+    if (strong.length) {
+      base += ` Your strengths in ${strong.join(', ')} support this pathway.`;
+    }
+    return base;
   };
 
   const handleReset = () => {
@@ -252,7 +582,17 @@ export default function PathwayFinder() {
     setSelectedInterests([]);
     setSelectedCareer('');
     setAverageGrade('');
+    setSubjectGrades({});
     setShowResults(false);
+  };
+
+  const setSubjectGrade = (subject: string, value: string) => {
+    setSubjectGrades((prev) => ({ ...prev, [subject]: value }));
+  };
+
+  const canSeeResults = () => {
+    const hasSubjectGrades = requiredSubjects.some((s) => subjectGrades[s] !== undefined && subjectGrades[s] !== '');
+    return hasSubjectGrades || !!averageGrade;
   };
 
   const getCareerById = (id: string) => careerPaths.find(c => c.id === id);
@@ -311,7 +651,7 @@ export default function PathwayFinder() {
             </div>
 
             {/* Group by category */}
-            {['Core Academic', 'STEM', 'Business', 'Arts', 'Sports', 'Health', 'Agriculture', 'Hospitality', 'Law', 'Education', 'Research'].map(category => {
+            {Array.from(new Set(interestOptions.map(i => i.category))).map(category => {
               const categoryInterests = interestOptions.filter(i => i.category === category);
               if (categoryInterests.length === 0) return null;
               return (
@@ -362,7 +702,7 @@ export default function PathwayFinder() {
             <div className="text-center mb-6">
               <h3 className="text-xl font-semibold mb-2">Choose Your Career Path</h3>
               <p className="text-gray-400 text-sm">
-                Based on your interests, here are recommended career paths for you.
+                Based on your interests, explore matching pathways — scroll to see the full list of careers.
               </p>
             </div>
 
@@ -413,19 +753,47 @@ export default function PathwayFinder() {
           </div>
         )}
 
-        {/* Step 3: Grades */}
+        {/* Step 3: Grades — per required subject + overall fallback */}
         {step === 3 && !showResults && (
-          <div className="max-w-md mx-auto">
+          <div className="max-w-2xl mx-auto">
             <div className="text-center mb-8">
-              <h3 className="text-xl font-semibold mb-2">Your Academic Performance</h3>
+              <h3 className="text-xl font-semibold mb-2">Configure Grades for Pathway Subjects</h3>
               <p className="text-gray-400 text-sm">
-                Enter your average grade percentage to get personalized recommendations.
+                Enter a grade (%) for each required subject of <span className="text-[#60a5fa] font-medium">{selectedCareerObj()?.title}</span>.
+                You can also set an overall average as a fallback.
               </p>
             </div>
 
-            <div className="bg-gray-800/50 rounded-2xl p-8 border border-gray-700 mb-8">
+            <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700 mb-6 space-y-4">
+              <h4 className="text-sm font-medium text-[#60a5fa]">Required subjects</h4>
+              {requiredSubjects.length === 0 ? (
+                <p className="text-sm text-gray-400">Select a career path first.</p>
+              ) : (
+                requiredSubjects.map((subject) => (
+                  <div key={subject} className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-2 items-center">
+                    <label className="text-sm text-gray-200">{subject}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={subjectGrades[subject] || ''}
+                      onChange={(e) => setSubjectGrade(subject, e.target.value)}
+                      placeholder="e.g. 72"
+                      className="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white text-center font-semibold focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                    />
+                  </div>
+                ))
+              )}
+              {!isNaN(computedAverageFromSubjects()) && (
+                <p className="text-xs text-emerald-400 pt-1">
+                  Subject average: {computedAverageFromSubjects().toFixed(1)}%
+                </p>
+              )}
+            </div>
+
+            <div className="bg-gray-800/40 rounded-2xl p-6 border border-gray-700 mb-8">
               <label className="block text-sm font-medium text-gray-300 mb-3">
-                Average Grade (%)
+                Overall average (%) — optional fallback
               </label>
               <input
                 type="number"
@@ -434,13 +802,8 @@ export default function PathwayFinder() {
                 value={averageGrade}
                 onChange={(e) => setAverageGrade(e.target.value)}
                 placeholder="e.g., 75"
-                className="w-full px-4 py-4 bg-gray-900 border border-gray-600 rounded-xl text-white text-center text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+                className="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-xl text-white text-center text-xl font-bold focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
               />
-              <div className="flex justify-between text-xs text-gray-500 mt-2 px-1">
-                <span>0%</span>
-                <span>50%</span>
-                <span>100%</span>
-              </div>
               <input
                 type="range"
                 min="0"
@@ -459,8 +822,8 @@ export default function PathwayFinder() {
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
               <button
-                onClick={() => averageGrade && setShowResults(true)}
-                disabled={!averageGrade}
+                onClick={() => canSeeResults() && setShowResults(true)}
+                disabled={!canSeeResults()}
                 className="flex items-center gap-2 px-6 py-3 bg-[#2563EB] text-white rounded-xl hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
               >
                 See Results <Target className="w-4 h-4" />
@@ -512,14 +875,19 @@ export default function PathwayFinder() {
                 </div>
 
                 <div className="bg-gray-900/50 rounded-xl p-4">
-                  <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Required Subjects</h4>
+                  <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Required Subjects & Grades</h4>
                   <div className="flex flex-wrap gap-2">
                     {getCareerById(selectedCareer)?.requirements.map((req, i) => (
                       <span key={i} className="text-xs bg-green-900/50 text-green-300 px-3 py-1 rounded-full">
-                        {req}
+                        {req}{subjectGrades[req] ? ` — ${subjectGrades[req]}%` : ''}
                       </span>
                     ))}
                   </div>
+                  {!isNaN(effectiveAverage()) && (
+                    <p className="text-xs text-gray-400 mt-3">
+                      Effective average used: {effectiveAverage().toFixed(1)}%
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

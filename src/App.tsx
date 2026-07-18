@@ -59,6 +59,7 @@ import SchoolAdminPromoteClass from '@/pages/dashboard/school-admin/PromoteClass
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 import TeacherResultsUpload from '@/pages/dashboard/teacher/ResultsUpload';
+import AssignedSubjectsUpload from '@/pages/dashboard/teacher/AssignedSubjectsUpload';
 import TeacherAttendance from '@/pages/dashboard/teacher/Attendance';
 import TeacherHomework from '@/pages/dashboard/teacher/Homework';
 import TeacherUploadPapers from '@/pages/dashboard/teacher/UploadPapers';
@@ -75,6 +76,7 @@ import SubjectTeacherDashboard from '@/pages/dashboard/subject-teacher/Dashboard
 import StreamDashboard from '@/pages/dashboard/stream/Dashboard';
 import StudentDashboard from '@/pages/dashboard/student/Dashboard';
 import StudentResults from '@/pages/dashboard/student/Results';
+import StudentPapers from '@/pages/dashboard/student/Papers';
 import StudentFees from '@/pages/dashboard/student/Fees';
 import StudentAttendance from '@/pages/dashboard/student/Attendance';
 import StudentHomework from '@/pages/dashboard/student/Homework';
@@ -214,6 +216,7 @@ function AppRoutes() {
       <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />
       <Route path="/teacher/class-dashboard" element={<ProtectedRoute allowedRoles={['teacher']}><ClassTeacherDashboard /></ProtectedRoute>} />
       <Route path="/teacher/subject-dashboard" element={<ProtectedRoute allowedRoles={['teacher']}><SubjectTeacherDashboard /></ProtectedRoute>} />
+      <Route path="/teacher/results/assigned" element={<ProtectedRoute allowedRoles={['teacher']}><AssignedSubjectsUpload /></ProtectedRoute>} />
       <Route path="/teacher/results/upload" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherResultsUpload /></ProtectedRoute>} />
       <Route path="/teacher/view-marks" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherViewMarks /></ProtectedRoute>} />
       <Route path="/teacher/assessment-progress" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherAssessmentProgress /></ProtectedRoute>} />
@@ -240,6 +243,7 @@ function AppRoutes() {
       {/* Student routes */}
       <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />
       <Route path="/student/results" element={<ProtectedRoute allowedRoles={['student']}><StudentResults /></ProtectedRoute>} />
+      <Route path="/student/papers" element={<ProtectedRoute allowedRoles={['student']}><StudentPapers /></ProtectedRoute>} />
       <Route path="/student/fees" element={<ProtectedRoute allowedRoles={['student']}><StudentFees /></ProtectedRoute>} />
       <Route path="/student/attendance" element={<ProtectedRoute allowedRoles={['student']}><StudentAttendance /></ProtectedRoute>} />
       <Route path="/student/timetable" element={<ProtectedRoute allowedRoles={['student']}><TimetableView /></ProtectedRoute>} />
