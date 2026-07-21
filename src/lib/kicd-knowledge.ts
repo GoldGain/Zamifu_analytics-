@@ -44,13 +44,42 @@ export const PCIS = [
   'Disaster Risk Reduction',
 ] as const;
 
+/** Official Junior School learning areas (Grade 7-9) — 9 core + optional languages */
+export const JUNIOR_SCHOOL_SUBJECTS = [
+  'Mathematics',
+  'English',
+  'Kiswahili',
+  'Integrated Science',
+  'Pre-Technical Studies',
+  'Social Studies',
+  'Agriculture and Nutrition',
+  'Creative Arts and Sports',
+  'Religious Education',
+] as const;
+
 /** Official KICD Grade 9 learning areas (from kicd.ac.ke grade-nine-designs) */
 export const GRADE_NINE_SUBJECTS = [
-  'Agriculture', 'Arabic', 'Creative Arts and Sports', 'Christian Religious Education',
-  'English', 'French', 'German', 'Hindu Religious Education', 'Indigenous Language',
-  'Integrated Science', 'Islamic Religious Education', 'Kiswahili', 'Mandarin',
-  'Mathematics', 'Pre-Technical Studies', 'Social Studies',
+  'Mathematics',
+  'English',
+  'Kiswahili',
+  'Integrated Science',
+  'Pre-Technical Studies',
+  'Social Studies',
+  'Agriculture and Nutrition',
+  'Creative Arts and Sports',
+  'Religious Education',
+  'Agriculture',
+  'Arabic',
+  'Christian Religious Education',
+  'French',
+  'German',
+  'Hindu Religious Education',
+  'Indigenous Language',
+  'Islamic Religious Education',
+  'Mandarin',
 ] as const;
+
+export const JUNIOR_GRADES = ['Grade 7', 'Grade 8', 'Grade 9'] as const;
 
 export interface KicdStrandPack {
   strand: string;
@@ -421,7 +450,35 @@ export const JUNIOR_STRAND_PACKS: Record<string, KicdStrandPack[]> = {
         },
       ],
     },
+  ],,
+
+  'Agriculture and Nutrition': [
+    {
+      strand: 'Crop and Animal Production',
+      subStrands: [
+        { name: 'Soil and Cropping', topics: ['Soil types', 'Planting', 'Weeding'], slos: ['prepare soil and plant a simple crop'] },
+        { name: 'Livestock Basics', topics: ['Poultry', 'Feeding', 'Housing'], slos: ['describe basic livestock care'] },
+      ],
+    },
+    {
+      strand: 'Nutrition and Home Care',
+      subStrands: [
+        { name: 'Food and Nutrition', topics: ['Nutrients', 'Meal planning', 'Food safety'], slos: ['plan nutritious meals for a family'] },
+        { name: 'Home Management', topics: ['Hygiene', 'Resource use'], slos: ['apply hygiene in food preparation'] },
+      ],
+    },
   ],
+
+  'Religious Education': [
+    {
+      strand: 'Faith and Values',
+      subStrands: [
+        { name: 'Beliefs and Worship', topics: ['Scripture', 'Prayer', 'Community'], slos: ['explain key beliefs of the selected faith tradition'] },
+        { name: 'Moral Living', topics: ['Honesty', 'Respect', 'Service'], slos: ['apply moral values in daily life'] },
+      ],
+    },
+  ],
+
 };
 
 export function normalizeSubjectKey(subject: string): string {
@@ -431,9 +488,11 @@ export function normalizeSubjectKey(subject: string): string {
   if (s.includes('kiswahili') || s.includes('swahili')) return 'Kiswahili';
   if (s.includes('integrated') || s.includes('science')) return 'Integrated Science';
   if (s.includes('social')) return 'Social Studies';
+  if (s.includes('agric') && s.includes('nutrition')) return 'Agriculture and Nutrition';
   if (s.includes('agric')) return 'Agriculture';
   if (s.includes('pre-tech') || s.includes('pre tech') || s.includes('technical')) return 'Pre-Technical Studies';
   if (s.includes('creative') || s.includes('sport') || s.includes('art')) return 'Creative Arts and Sports';
+  if (s.includes('religious education') || s === 're' || s.includes('cre/ire') || s.includes('hre')) return 'Religious Education';
   if (s.includes('cre') || s.includes('christian')) return 'Christian Religious Education';
   if (s.includes('ire') || s.includes('islamic')) return 'Islamic Religious Education';
   return subject || 'General';
@@ -441,6 +500,19 @@ export function normalizeSubjectKey(subject: string): string {
 
 export function getStrandPacks(subject: string): KicdStrandPack[] {
   const key = normalizeSubjectKey(subject);
+  const alias: Record<string, string> = {
+    'Agriculture and Nutrition': 'Agriculture and Nutrition',
+    Agriculture: 'Agriculture',
+    'Religious Education': 'Religious Education',
+    'Christian Religious Education': 'Religious Education',
+    'Islamic Religious Education': 'Religious Education',
+    'Hindu Religious Education': 'Religious Education',
+  };
+  const resolved = (JUNIOR_STRAND_PACKS[key]
+    || JUNIOR_STRAND_PACKS[alias[key] || '']
+    || (key === 'Agriculture and Nutrition' ? JUNIOR_STRAND_PACKS.Agriculture : undefined)
+    || (key.includes('Religious') ? JUNIOR_STRAND_PACKS['Religious Education'] : undefined));
+  if (resolved) return resolved;
   return JUNIOR_STRAND_PACKS[key] || [
     {
       strand: `${subject || 'Learning Area'} Concepts`,
@@ -868,6 +940,24 @@ function makeEssayStem(subject: string, topic: string, grade: string): string {
 
 function makeEssayAnswer(subject: string, topic: string): string {
   return `Introduction defining ${topic}; body with 3–4 well-explained points and examples; conclusion linking to values/competencies. Award for content, organisation, language and relevance.`;
+}
+
+
+
+/** Subjects available in the Grade 7-9 exam generator */
+export function juniorExamSubjects(_grade?: string): string[] {
+  return [...JUNIOR_SCHOOL_SUBJECTS];
+}
+
+/** Get strands/sub-strands for a junior subject, with Agriculture alias */
+export function getJuniorStrandPacks(subject: string): KicdStrandPack[] {
+  if (subject === 'Agriculture and Nutrition') {
+    return JUNIOR_STRAND_PACKS['Agriculture and Nutrition'] || JUNIOR_STRAND_PACKS.Agriculture || [];
+  }
+  if (subject === 'Religious Education') {
+    return JUNIOR_STRAND_PACKS['Religious Education'] || [];
+  }
+  return JUNIOR_STRAND_PACKS[subject] || [];
 }
 
 export const SCHEME_COLUMNS = [

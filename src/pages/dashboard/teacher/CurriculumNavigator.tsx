@@ -12,6 +12,8 @@ import autoTable from 'jspdf-autotable';
 import {
   OFFICIAL_LINKS,
   GRADE_NINE_SUBJECTS,
+  JUNIOR_SCHOOL_SUBJECTS,
+  juniorExamSubjects,
   SCHEME_COLUMNS,
   LESSON_PLAN_SECTIONS,
   SAMPLE_PAPER_LIBRARY,
@@ -575,7 +577,17 @@ export default function CurriculumNavigator() {
       .from('curriculum_grades')
       .select('*')
       .order('grade_number');
-    setGrades(data || []);
+    // Initial exam-generator focus: Grade 7-9 (Junior School)
+    const junior = (data || []).filter((g: Grade) => g.grade_number >= 7 && g.grade_number <= 9);
+    if (junior.length) {
+      setGrades(junior);
+    } else {
+      setGrades([
+        { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
+        { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
+        { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
+      ]);
+    }
   };
 
   const loadTeacherInfo = async () => {
@@ -603,7 +615,20 @@ export default function CurriculumNavigator() {
       .select('*')
       .eq('grade_id', selectedGrade)
       .order('subject_name')
-      .then(({ data }) => setSubjects(data || []));
+      .then(({ data }) => {
+        if (data && data.length) {
+          setSubjects(data);
+          return;
+        }
+        // Offline/embedded fallback: 9 Junior School learning areas
+        setSubjects(
+          juniorExamSubjects().map((name, idx) => ({
+            id: `local-${selectedGrade}-${idx}`,
+            subject_name: name,
+            subject_code: name.slice(0, 4).toUpperCase(),
+          }))
+        );
+      });
     setSelectedSubject('');
     setStrands([]);
     setSelectedTopic(null);
@@ -619,7 +644,31 @@ export default function CurriculumNavigator() {
       .eq('subject_id', selectedSubject)
       .order('strand_order');
 
-    if (!strandsData) { setLoadingTree(false); return; }
+    if (!strandsData || strandsData.length === 0) {
+      const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
+      const packs = getStrandPacks(subjectName);
+      const local: Strand[] = packs.map((pack, si) => ({
+        id: `local-strand-${si}`,
+        strand_name: pack.strand,
+        strand_order: si + 1,
+        sub_strands: pack.subStrands.map((ss, ssi) => ({
+          id: `local-ss-${si}-${ssi}`,
+          sub_strand_name: ss.name,
+          sub_strand_order: ssi + 1,
+          topics: ss.topics.map((topicName, ti) => ({
+            id: `local-topic-${si}-${ssi}-${ti}`,
+            topic_name: topicName,
+            topic_description: ss.slos.join(' '),
+            learning_objectives: ss.slos,
+            topic_order: ti + 1,
+          })),
+        })),
+      }));
+      setStrands(local);
+      setAllTopics(local.flatMap(s => (s.sub_strands || []).flatMap(ss => ss.topics || [])));
+      setLoadingTree(false);
+      return;
+    }
 
     const enriched: Strand[] = await Promise.all(
       strandsData.map(async (strand) => {
@@ -644,6 +693,34 @@ export default function CurriculumNavigator() {
     );
 
     setStrands(enriched);
+
+    // If Supabase has no strands, embed KICD junior packs (Grade 7-9)
+    if (!enriched.length) {
+      const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
+      const packs = getStrandPacks(subjectName);
+      const local: Strand[] = packs.map((pack, si) => ({
+        id: `local-strand-${si}`,
+        strand_name: pack.strand,
+        strand_order: si + 1,
+        sub_strands: pack.subStrands.map((ss, ssi) => ({
+          id: `local-ss-${si}-${ssi}`,
+          sub_strand_name: ss.name,
+          sub_strand_order: ssi + 1,
+          topics: ss.topics.map((topicName, ti) => ({
+            id: `local-topic-${si}-${ssi}-${ti}`,
+            topic_name: topicName,
+            topic_description: ss.slos.join(' '),
+            learning_objectives: ss.slos,
+            topic_order: ti + 1,
+          })),
+        })),
+      }));
+      setStrands(local);
+      const localTopics: Topic[] = local.flatMap(s => (s.sub_strands || []).flatMap(ss => ss.topics || []));
+      setAllTopics(localTopics);
+      setLoadingTree(false);
+      return;
+    }
 
     // Collect all topics for exam generator
     const topics: Topic[] = enriched.flatMap(s =>
@@ -1117,7 +1194,7 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
             { t: '9-column schemes', d: 'Week→Reflection KICD layout' },
             { t: 'Full lesson plans', d: `${LESSON_PLAN_SECTIONS.length} CBE sections` },
             { t: 'Exam generator', d: 'MCQ + Structured + Essay' },
-            { t: 'Grade 9 areas', d: `${GRADE_NINE_SUBJECTS.length} learning areas` },
+            { t: 'Junior G7-9', d: `${JUNIOR_SCHOOL_SUBJECTS.length} core learning areas` },
           ].map((c) => (
             <div key={c.t} className="rounded-xl bg-white/5 border border-white/10 px-3 py-2">
               <p className="text-xs font-semibold text-white">{c.t}</p>

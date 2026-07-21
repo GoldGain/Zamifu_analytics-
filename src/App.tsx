@@ -31,7 +31,6 @@ import ResellerChangePassword from '@/pages/dashboard/reseller-admin/ChangePassw
 import ResellerAccessControl from '@/pages/dashboard/reseller-admin/AccessControl';
 import ResellerPricing from '@/pages/dashboard/reseller-admin/Pricing';
 import ResellerStudents from '@/pages/dashboard/reseller-admin/Students';
-import SchoolAdminAccessControl from '@/pages/dashboard/school-admin/AccessControl';
 import SchoolPortalLockGate from '@/components/SchoolPortalLockGate';
 // Dashboard pages
 import SuperAdminDashboard from '@/pages/dashboard/super-admin/Dashboard';
@@ -202,7 +201,6 @@ function AppRoutes() {
       <Route path="/school-admin/timetable/generate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTimetableGenerate /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/assign" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssignTeachers /></ProtectedRoute>} />
       <Route path="/school-admin/teacher-assignments" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssignTeachers /></ProtectedRoute>} />
-      <Route path="/school-admin/access-control" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAccessControl /></ProtectedRoute>} />
       <Route path="/school-admin/change-password" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminChangePassword /></ProtectedRoute>} />
       <Route path="/school-admin/profile" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminProfile /></ProtectedRoute>} />
       <Route path="/school-admin/assessments" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssessments /></ProtectedRoute>} />

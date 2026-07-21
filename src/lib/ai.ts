@@ -41,13 +41,13 @@ export interface AiInsight {
 
 const PAGE_GUIDES: Record<string, string> = {
   '/':
-    'Welcome to Zamifu Analytics, a modern school management system. Here you can learn about our services, explore educational pathways, and join our community. Click Login to access your dashboard, or use Pathway Finder to discover CBE senior school pathways based on interests and grades.',
+    'Welcome to Zamifu Analytics - Your Intelligent School Management System. This is the main landing page where you can learn about our services, explore educational pathways, and access your account. Use the navigation menu to explore different sections. Click Login to access your dashboard or Get Started to begin your journey.',
   '/pathway-finder':
-    'Pathway Finder helps learners map interests and grades to recommended CBE senior pathways. Complete each step carefully, review the recommendations, and share results with teachers or parents when ready.',
+    'Welcome to the Pathway Finder. This career guidance tool helps you discover the right educational and career path based on your interests and performance. Here you can: 1. Explore 6 pathways: Core Academic, STEM, Creative Arts and Sports, Social Sciences, Research and Innovation, and Education. 2. Complete interest assessments. 3. Enter Junior School results for the 9 core learning areas with automatic grade descriptions and points. 4. Compare required versus current performance. 5. Unlock full academic guidance and download after paying KSH 20.',
   '/auth/login':
     'Sign in with your school email and password to open the dashboard for your role. Use Forgot Password if you cannot access your account, then contact your school admin if you still need help.',
   '/school-admin':
-    'Welcome to the School Admin Dashboard. Here you can view school statistics, manage students and teachers, create and review timetables, manage exams and results, work with financial reports and fees, and send messages or announcements to parents.',
+    'Welcome to the School Admin Dashboard. This is your central command center where you can manage your entire school. Here you can: 1. View real-time school statistics and performance metrics. 2. Manage students, teachers, and staff. 3. Create and manage timetables. 4. Oversee examinations and results. 5. Handle fee management and financial reports. 6. Send communications to parents and teachers. 7. Manage the curriculum and learning resources. 8. View and manage the Pathway Finder for students.',
   '/school-admin/students':
     'Manage active learners: add, edit, search, and review class placement. Use Graduated Students for alumni after Grade 9 or Grade 12 / Form 4 graduation.',
   '/school-admin/graduated-students':
@@ -73,9 +73,9 @@ const PAGE_GUIDES: Record<string, string> = {
   '/school-admin/classes':
     'Manage grades and streams. Keep grade levels accurate so timetable generation and promotion routes map to the right learner groups.',
   '/teacher':
-    'Welcome Teacher. Here you can view your timetable, upload student grades for assigned learning areas, open class lists, communicate with parents, and review student reports.',
+    'Welcome to your Teacher Dashboard. This is your workspace where you can: 1. View your daily timetable and class schedule. 2. Upload and manage student marks and grades. 3. Access your class lists and student information. 4. Create lesson plans and schemes of work. 5. Communicate with parents and administrators. 6. Track student progress and performance. 7. Access teaching resources and materials.',
   '/teacher/results/upload':
-    'Upload marks only for learning areas assigned to you for the selected class. Double-check the assessment and term before saving.',
+    'To upload marks: 1. Open Results Upload. 2. Select the learning area assigned to you. 3. Select the term and assessment type. 4. Enter marks for each student. 5. Click Save or Publish. 6. Download the mark list as PDF or Excel when needed.',
   '/teacher/class-list':
     'Open the class list with name and admission number, add custom columns, save cell values, and download a PDF for meetings or records.',
   '/teacher/marklist':
@@ -86,8 +86,10 @@ const PAGE_GUIDES: Record<string, string> = {
     'Mark daily attendance for your classes. Keep records current so parents and admins can trust attendance reports.',
   '/teacher/homework':
     'Assign homework, set due dates, and review submissions. Use clear titles so learners and parents understand the task.',
+  '/teacher/curriculum-navigator':
+    'Welcome to the Curriculum Navigator - Your complete educational resource center. Explore curriculum levels with a Grade 7-9 exam generator focus, create lesson plans and schemes of work, and access embedded resources. Select level, subject, strands, sub-strands, then generate and download exams with marking schemes and image support.',
   '/student':
-    'Welcome Student. Here you can view your timetable, check published results, open your portfolio, and follow communications from teachers.',
+    'Welcome Student! This is your personal dashboard where you can: 1. View your daily timetable. 2. Check your results and academic performance. 3. Access your learner portfolio. 4. Explore career pathways and interests. 5. Communicate with your teachers. 6. View your attendance records. 7. Access learning resources and materials.',
   '/student/portfolio':
     'Review historical results across years, including records that remain after graduation. Use this page for long-term progress tracking.',
   '/student/results':
@@ -95,15 +97,15 @@ const PAGE_GUIDES: Record<string, string> = {
   '/student/fees':
     'View your fee balance and payment history. Contact the school office if a payment is missing or a balance looks incorrect.',
   '/parent':
-    'Welcome Parent. Here you can view your child progress, check results, communicate with teachers, and review attendance or fee information linked to your children.',
+    'Welcome Parent! This is your portal to monitor your child education. Here you can: 1. View your child academic progress and results. 2. Check attendance records. 3. Communicate with teachers. 4. View fee statements and payment history. 5. Monitor homework and assignments. 6. Receive notifications and announcements.',
   '/parent/chatbot':
     'Use the parent assistant for guided help on fees, results, homework, and meetings. Ask one clear question at a time for the best answer.',
   '/parent/fees':
     'Review fee balances and payments for linked children. Follow up with the school if a recent payment has not appeared yet.',
   '/parent/children':
-    'Open linked children profiles, confirm class placement, and jump into results or fee details for each child.',
+    'Open linked children profiles, confirm class placement, and jump into results or fee details for each child. To view your child results: open Student Results, select the term and subject, then download PDF if available.',
   '/dean-of-studies':
-    'Welcome Dean of Studies. Here you can view academic statistics, manage examinations, review student performance trends, and support curriculum decisions across classes.',
+    'Welcome Dean of Studies! This is your academic management center where you can: 1. View overall academic performance statistics. 2. Manage examinations and assessments. 3. Track student performance trends. 4. Monitor curriculum implementation. 5. Generate academic reports. 6. Manage subject offerings and teacher assignments.',
 };
 
 function guideForPath(path: string): string {
@@ -502,7 +504,7 @@ async function offlineAnswer(question: string, ctx: AiContext): Promise<string> 
     return 'Assessments\n\nSchool Admin or DoS → Assessments → Create → name + type + term → Save. Names show on report cards and Results.';
   }
   if (q.includes('pathway') || q.includes('interest')) {
-    return 'Open Pathway Finder on the landing page or nav. Complete interests → grades → recommended pathways.';
+    return 'The Pathway Finder helps you discover the right educational path:\n1. Complete the interest assessment\n2. Review your results in the 9 core Junior School learning areas\n3. Explore the 6 pathways: Core Academic, STEM, Creative Arts and Sports, Social Sciences, Research and Innovation, and Education\n4. See which pathways match your interests and performance\n5. Receive academic guidance and recommendations\n6. Pay KSH 20 to unlock full guidance and download';
   }
   if (q.includes('portfolio')) {
     return 'Students → Portfolio for all historical results (even after graduation). Only your own records.';
