@@ -23,7 +23,7 @@ export default function CTA() {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link
-                to="/auth/register"
+                to="/register-school"
                 className="inline-flex items-center gap-2 bg-white text-[#2563EB] px-8 py-3.5 rounded-full text-sm font-bold hover:bg-gray-100 transition-colors"
               >
                 Register Your School <ArrowRight className="w-4 h-4" />

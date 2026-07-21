@@ -12,6 +12,7 @@ import AIAssistant from '@/components/AIAssistant';
 import Home from '@/pages/Home';
 import Login from '@/pages/auth/Login';
 import Register from '@/pages/auth/Register';
+import SchoolRegister from '@/pages/auth/SchoolRegister';
 import ForgotPassword from '@/pages/auth/ForgotPassword';
 import ResetPassword from '@/pages/auth/ResetPassword';
 
@@ -159,7 +160,9 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/" element={<PublicRoute><Home /></PublicRoute>} />
       <Route path="/auth/login" element={<Login />} />
-      <Route path="/auth/register" element={<Register />} />
+      <Route path="/auth/register" element={<SchoolRegister />} />
+      <Route path="/auth/register/account" element={<Register />} />
+      <Route path="/register-school" element={<SchoolRegister />} />
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
       <Route path="/auth/reset-password" element={<ResetPassword />} />
 

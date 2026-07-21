@@ -344,6 +344,8 @@ export default function ResellerSchools() {
               <thead className="bg-gray-50 border-b">
                 <tr className="text-left text-gray-500">
                   <th className="px-4 py-3">School</th>
+                    <th className="px-4 py-3">Level</th>
+                    <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3">Code</th>
                   <th className="px-4 py-3">Fee / learner / term</th>
                   <th className="px-4 py-3">Admin lock</th>
@@ -357,7 +359,14 @@ export default function ResellerSchools() {
                   <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">
                       <div>{s.name}</div>
-                      <div className="text-xs text-gray-500">{s.county || '—'}</div>
+                      <div className="text-xs text-gray-500">{s.county || '—'}{s.sub_county ? ` · ${s.sub_county}` : ''}</div>
+                      {s.knec_centre_code && <div className="text-[11px] text-blue-600">KNEC: {s.knec_centre_code}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 text-sm capitalize">{(s.school_level || '—').toString().replaceAll('_', ' ')}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-1 rounded-full ${s.registration_source === 'self_register' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {s.registration_source === 'self_register' ? 'Self-registered' : (s.registration_source || 'Manual')}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{s.code}</td>
                     <td className="px-4 py-3 font-medium">KES {feeOrDefault(s.fee_per_learner_per_term).toLocaleString()}</td>

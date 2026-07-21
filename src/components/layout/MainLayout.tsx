@@ -50,7 +50,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               ) : (
                 <div className="flex items-center gap-3">
                   <Link to="/auth/login" className="text-sm text-[#666666] hover:text-[#111111] transition-colors">Login</Link>
-                  <Link to="/auth/register" className="text-sm font-medium bg-[#2563EB] text-white px-4 py-2 rounded-full hover:bg-[#1d4ed8] transition-colors">
+                  <Link to="/register-school" className="text-sm font-medium bg-[#2563EB] text-white px-4 py-2 rounded-full hover:bg-[#1d4ed8] transition-colors">
                     Get Started
                   </Link>
                 </div>
@@ -84,7 +84,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 ) : (
                   <>
                     <Link to="/auth/login" className="text-sm text-[#666666] py-2" onClick={() => setMobileMenuOpen(false)}>Login</Link>
-                    <Link to="/auth/register" className="text-sm font-medium bg-[#2563EB] text-white px-4 py-2 rounded-full text-center" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
+                    <Link to="/register-school" className="text-sm font-medium bg-[#2563EB] text-white px-4 py-2 rounded-full text-center" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
                   </>
                 )}
               </div>
