@@ -409,7 +409,7 @@ export default function PathwayFinder() {
       setPaying(true);
       await loadPaystackScript();
       const reference = `pathway_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      // @ts-expect-error Paystack global
+      // @ts-ignore Paystack global
       const handler = window.PaystackPop?.setup({
         key: 'pk_live_c15b4c6c95f06f7408326b14395eb727147a8935',
         email: 'pathway@zamifu.company',
@@ -672,7 +672,7 @@ export default function PathwayFinder() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-xs text-gray-500">Description and points populate automatically when you select a grade. Overall average is not used.</p>
+              <p className="text-xs text-gray-500">Description and points populate automatically when you select a grade.</p>
             </div>
 
             {/* PART B preview */}

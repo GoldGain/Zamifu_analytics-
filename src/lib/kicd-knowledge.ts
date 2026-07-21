@@ -450,7 +450,7 @@ export const JUNIOR_STRAND_PACKS: Record<string, KicdStrandPack[]> = {
         },
       ],
     },
-  ],,
+  ],
 
   'Agriculture and Nutrition': [
     {

@@ -11,7 +11,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
   OFFICIAL_LINKS,
-  GRADE_NINE_SUBJECTS,
   JUNIOR_SCHOOL_SUBJECTS,
   juniorExamSubjects,
   SCHEME_COLUMNS,

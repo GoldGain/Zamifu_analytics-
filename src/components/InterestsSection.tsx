@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Calculator, BookOpen, MessageSquare, Atom, Globe, Landmark,
-  Monitor, Code, HardHat, Cpu, Database, TrendingUp, Wifi, ShieldCheck,
+  Monitor, Code, HardHat, Cpu, Database, TrendingUp, Wifi,
   Briefcase, DollarSign, UsersRound,
   Palette, Music, Theater, Pen, PenTool, Camera,
   Volleyball, Users,
