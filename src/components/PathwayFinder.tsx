@@ -10,14 +10,14 @@ import {
 
 /* ── Junior School grading (8-point CBC scale) ─────────────────────────── */
 export const JUNIOR_GRADES = [
-  { code: 'EE2', description: 'Exceeding Expectations (2)', points: 12 },
-  { code: 'EE1', description: 'Exceeding Expectations (1)', points: 11 },
-  { code: 'ME2', description: 'Meeting Expectations (2)', points: 10 },
-  { code: 'ME1', description: 'Meeting Expectations (1)', points: 9 },
-  { code: 'AE2', description: 'Approaching Expectations (2)', points: 8 },
-  { code: 'AE1', description: 'Approaching Expectations (1)', points: 7 },
-  { code: 'BE2', description: 'Below Expectations (2)', points: 5 },
-  { code: 'BE1', description: 'Below Expectations (1)', points: 4 },
+  { code: 'EE1', description: 'Exceeding Expectations (1)', points: 8 },
+  { code: 'EE2', description: 'Exceeding Expectations (2)', points: 7 },
+  { code: 'ME1', description: 'Meeting Expectations (1)', points: 6 },
+  { code: 'ME2', description: 'Meeting Expectations (2)', points: 5 },
+  { code: 'AE1', description: 'Approaching Expectations (1)', points: 4 },
+  { code: 'AE2', description: 'Approaching Expectations (2)', points: 3 },
+  { code: 'BE1', description: 'Below Expectations (1)', points: 2 },
+  { code: 'BE2', description: 'Below Expectations (2)', points: 1 },
 ] as const;
 
 export type JuniorGradeCode = (typeof JUNIOR_GRADES)[number]['code'];
@@ -267,16 +267,81 @@ function pointsRank(code?: string) {
   return gradeMeta(code)?.points ?? 0;
 }
 
-function isStrong(code?: string) {
-  return !!code && (code.startsWith('EE') || code.startsWith('ME'));
+/** Recommendation labels by performance level (CBC 8-point scale) */
+export const PATHWAY_RECOMMENDATION: Record<
+  JuniorGradeCode,
+  { label: string; status: string; detail: string }
+> = {
+  EE1: {
+    label: 'Highly Recommended',
+    status: 'Exceeded Pathway Requirement',
+    detail:
+      'Strongly recommend placement in the pathway. Encourage enrollment in advanced or enrichment programs and leadership opportunities.',
+  },
+  EE2: {
+    label: 'Recommended',
+    status: 'Exceeded Pathway Requirement',
+    detail:
+      'Recommend placement in the pathway. The learner demonstrates high readiness and is likely to succeed with minimal support.',
+  },
+  ME1: {
+    label: 'Recommended with Support',
+    status: 'Almost Meeting Requirement',
+    detail:
+      'Recommend the pathway with targeted academic support, mentoring, or bridging programs to strengthen areas of weakness.',
+  },
+  ME2: {
+    label: 'Conditionally Recommended',
+    status: 'Almost Meeting Requirement',
+    detail:
+      'Recommend conditional placement. Advise remedial learning, career guidance, and close progress monitoring before or during enrollment.',
+  },
+  AE1: {
+    label: 'Strong Alternative Pathway Recommended',
+    status: 'Well Below Requirement',
+    detail:
+      "Strongly recommend an alternative pathway better suited to the learner's current competencies. Develop an individualized improvement plan.",
+  },
+  AE2: {
+    label: 'Not Recommended for the Pathway at Present',
+    status: 'Significantly Below Requirement',
+    detail:
+      "Do not recommend the pathway. Provide comprehensive career guidance, foundational learning support, and recommend a more appropriate pathway based on interests and abilities.",
+  },
+  BE1: {
+    label: 'Consider Alternative Pathway',
+    status: 'Below Requirement',
+    detail:
+      "Do not recommend the pathway at this stage. Suggest an alternative pathway aligned with the learner's strengths and provide opportunities for improvement.",
+  },
+  BE2: {
+    label: 'Alternative Pathway Recommended',
+    status: 'Below Requirement',
+    detail:
+      'Recommend an alternative pathway and intensive academic support before reconsideration for the preferred pathway.',
+  },
+};
+
+function overallPerformanceCode(codes: string[]): JuniorGradeCode | '' {
+  const pts = codes.map((c) => pointsRank(c)).filter((p) => p > 0);
+  if (!pts.length) return '';
+  const avg = pts.reduce((a, b) => a + b, 0) / pts.length;
+  // Closest grade on the 1–8 CBC point scale
+  let best: JuniorGradeCode = 'BE2';
+  let bestDist = Infinity;
+  for (const g of JUNIOR_GRADES) {
+    const d = Math.abs(g.points - avg);
+    if (d < bestDist) {
+      bestDist = d;
+      best = g.code;
+    }
+  }
+  return best;
 }
 
-function isWeak(code?: string) {
-  return !!code && (code.startsWith('AE') || code.startsWith('BE'));
-}
-
-function isCritical(code?: string) {
-  return !!code && code.startsWith('BE');
+function alternativePathways(preferred: string): string[] {
+  const all = ['STEM', 'Social Sciences', 'Creative Arts and Sports', 'Research and Innovation', 'Education', 'Core Academic'];
+  return all.filter((p) => p !== preferred).slice(0, 3);
 }
 
 function loadPaystackScript(): Promise<void> {
@@ -334,58 +399,139 @@ export default function PathwayFinder() {
     ];
   }, []);
 
-  const buildGuidance = () => {
+  const evaluatePathway = () => {
     const career = selectedCareerObj();
-    if (!career) return '';
+    if (!career) return null;
 
-    const entered = JUNIOR_LEARNING_AREAS.map((s) => ({
-      name: s.name,
-      code: subjectGrades[s.name] || '',
-    })).filter((s) => s.code);
-
-    const strong = entered.filter((s) => isStrong(s.code)).map((s) => s.name);
-    const improve = entered.filter((s) => isWeak(s.code)).map((s) => s.name);
-    const critical = entered.filter((s) => isCritical(s.code)).map((s) => s.name);
-
-    const reqStatus = career.requirements.map((subj) => {
-      const current = subjectGrades[subj] || '';
-      const required = career.requiredGrade || 'ME1';
+    const reqs = career.requirements.map((subj) => {
+      const current = (subjectGrades[subj] || '') as JuniorGradeCode | '';
+      const required = (career.requiredGrade || 'ME1') as JuniorGradeCode;
       const met = current ? pointsRank(current) >= pointsRank(required) : false;
-      return { subj, current, required, met };
+      const gap = current ? pointsRank(required) - pointsRank(current) : null;
+      return { subj, current, required, met, gap };
     });
-    const below = reqStatus.filter((r) => r.current && !r.met).map((r) => r.subj);
-    const aligned = reqStatus.filter((r) => r.met).map((r) => r.subj);
+
+    const enteredCodes = JUNIOR_LEARNING_AREAS
+      .map((s) => subjectGrades[s.name] || '')
+      .filter(Boolean) as string[];
+
+    // Overall recommendation driven by required subjects first, else all entered grades
+    const driveCodes = reqs.filter((r) => r.current).map((r) => r.current as string);
+    const codesForOverall = driveCodes.length ? driveCodes : enteredCodes;
+    const overallCode = overallPerformanceCode(codesForOverall) as JuniorGradeCode | '';
+    const rec = overallCode ? PATHWAY_RECOMMENDATION[overallCode] : null;
+
+    // Weakest required subject drives caution
+    const weakestReq = [...reqs]
+      .filter((r) => r.current)
+      .sort((a, b) => pointsRank(a.current) - pointsRank(b.current))[0];
+    const weakestRec = weakestReq?.current
+      ? PATHWAY_RECOMMENDATION[weakestReq.current as JuniorGradeCode]
+      : null;
+
+    // Final label: if any required subject is BE/AE, use the weakest required grade label
+    let finalCode = overallCode;
+    if (weakestReq?.current) {
+      const wpts = pointsRank(weakestReq.current);
+      const opts = pointsRank(overallCode);
+      // If weakest is below ME2 (5 pts), lean on weakest
+      if (wpts < 5 && wpts < opts) finalCode = weakestReq.current as JuniorGradeCode;
+    }
+    const finalRec = finalCode ? PATHWAY_RECOMMENDATION[finalCode] : null;
+
+    const recommendPreferred = finalCode
+      ? ['EE1', 'EE2', 'ME1', 'ME2'].includes(finalCode)
+      : false;
+
+    const alts = alternativePathways(career.pathway);
+    // Prefer alternatives matching strong subjects
+    const strongSubjects = JUNIOR_LEARNING_AREAS.filter((s) => {
+      const c = subjectGrades[s.name];
+      return c && pointsRank(c) >= 6; // ME1+
+    });
+    const strengthPathways = Array.from(new Set(strongSubjects.map((s) => s.pathway))).filter(
+      (p) => p !== career.pathway,
+    );
+    const suggestedAlts = (strengthPathways.length ? strengthPathways : alts).slice(0, 3);
+
+    return {
+      career,
+      reqs,
+      overallCode,
+      finalCode,
+      finalRec,
+      weakestReq,
+      weakestRec,
+      recommendPreferred,
+      suggestedAlts,
+      strongSubjects: strongSubjects.map((s) => s.name),
+    };
+  };
+
+  const buildGuidance = () => {
+    const ev = evaluatePathway();
+    if (!ev || !ev.finalRec) {
+      return 'Enter grades for the required subjects to receive a pathway recommendation.';
+    }
+
+    const { career, reqs, finalCode, finalRec, recommendPreferred, suggestedAlts, strongSubjects } = ev;
+    const met = reqs.filter((r) => r.met).map((r) => r.subj);
+    const below = reqs.filter((r) => r.current && !r.met).map((r) => `${r.subj} (${r.current}, need ${r.required})`);
+    const missing = reqs.filter((r) => !r.current).map((r) => r.subj);
 
     const lines = [
-      'Based on your current performance, here is your academic guidance:',
+      `PATHWAY RECOMMENDATION: ${career.title}`,
+      `Track: ${career.pathway}`,
       '',
-      '1. Your current grades show that you are:',
-      `   · Strong in: ${strong.length ? strong.join(', ') : 'none selected yet'}`,
-      `   · Need improvement in: ${improve.length ? improve.join(', ') : 'none flagged'}`,
-      `   · Critical areas: ${critical.length ? critical.join(', ') : 'none'}`,
-      '2. Academic Recommendations:',
-      ...entered.slice(0, 5).map((s) => {
-        if (isCritical(s.code)) {
-          return `   · For ${s.name}: Schedule focused revision twice a week and practise past CBC tasks until you reach at least AE2.`;
-        }
-        if (isWeak(s.code)) {
-          return `   · For ${s.name}: Review strand notes weekly and complete short quizzes to move toward ME1.`;
-        }
-        return `   · For ${s.name}: Maintain your strength with spaced practice and peer teaching.`;
+      `Decision: ${finalRec.label}`,
+      `Performance level: ${finalCode} — ${finalRec.status}`,
+      '',
+      recommendPreferred
+        ? `Recommended pathway: ${career.title} (${career.pathway})`
+        : `Not recommended at this stage: ${career.title} (${career.pathway})`,
+      '',
+      'Why this decision:',
+      finalRec.detail,
+      '',
+      'Required subjects vs current performance:',
+      ...reqs.map((r) => {
+        if (!r.current) return `  · ${r.subj}: not entered (required ${r.required})`;
+        return `  · ${r.subj}: ${r.current} (${pointsRank(r.current)} pts) vs required ${r.required} (${pointsRank(r.required)} pts) — ${r.met ? 'Met' : 'Below'}`;
       }),
-      '3. Pathway Alignment:',
-      `   · Your performance in ${aligned.length ? aligned.join(', ') : 'selected strengths'} aligns well with ${career.title}`,
-      `   · However, you need to improve in ${below.length ? below.join(', ') : 'any remaining required subjects'} for ${career.pathway}`,
-      '4. Action Plan:',
-      `   · Week 1-2: Focus on ${critical[0] || improve[0] || 'Mathematics'} by rewriting notes and solving 10 practice items daily`,
-      `   · Week 3-4: Focus on ${improve[1] || aligned[0] || 'English'} by timed practice and teacher feedback`,
-      '   · Week 5-6: Review all junior learning areas and practise with Zamifu Curriculum Navigator exams',
-      '5. Additional Support:',
-      `   · Tutoring available for: ${critical.concat(improve).slice(0, 3).join(', ') || 'subjects below ME'}`,
-      '   · Recommended resources: KICD designs, Curriculum Navigator schemes, junior school past papers',
-      '   · Study groups: form a small group for Integrated Science and Mathematics problem sets',
+      '',
+      met.length ? `Subjects meeting requirement: ${met.join(', ')}` : 'Subjects meeting requirement: none yet',
+      below.length ? `Subjects below requirement: ${below.join('; ')}` : 'Subjects below requirement: none',
+      missing.length ? `Subjects not entered: ${missing.join(', ')}` : '',
+      '',
     ];
-    return lines.join('\n');
+
+    if (recommendPreferred) {
+      lines.push('Next steps for this pathway:');
+      if (finalCode === 'EE1' || finalCode === 'EE2') {
+        lines.push('  · Proceed with placement in the recommended pathway.');
+        lines.push('  · Consider advanced or enrichment options and leadership roles.');
+      } else if (finalCode === 'ME1') {
+        lines.push('  · Proceed with placement and arrange targeted support in weaker subjects.');
+        lines.push('  · Use mentoring or bridging sessions before senior pathway specialization.');
+      } else {
+        lines.push('  · Conditional placement only after short remedial work.');
+        lines.push('  · Monitor progress closely in the first term of the pathway.');
+      }
+    } else {
+      lines.push('Recommended alternative pathway(s):');
+      for (const alt of suggestedAlts) {
+        lines.push(`  · ${alt}`);
+      }
+      if (strongSubjects.length) {
+        lines.push(`  · Based on current strengths in: ${strongSubjects.join(', ')}`);
+      }
+      lines.push('');
+      lines.push('Improvement plan before reconsidering the preferred pathway:');
+      lines.push('  · Focus revision on subjects marked Below requirement.');
+      lines.push('  · Retake pathway readiness check after the next assessment cycle.');
+    }
+
+    return lines.filter((l) => l !== undefined).join('\n');
   };
 
   const handleReset = () => {
@@ -441,30 +587,78 @@ export default function PathwayFinder() {
     }
   };
 
-  const downloadGuidance = () => {
+  const downloadGuidance = async () => {
     const career = selectedCareerObj();
-    const body = [
-      'Zamifu Pathway Finder Results',
-      `Pathway: ${career?.title || ''}`,
-      `Track: ${career?.pathway || ''}`,
-      '',
-      'Current Performance:',
-      ...JUNIOR_LEARNING_AREAS.map((s) => {
-        const g = subjectGrades[s.name];
-        const m = gradeMeta(g || undefined);
-        return g ? `${s.name}: ${g} — ${m?.description} (${m?.points} pts)` : `${s.name}: not entered`;
-      }),
-      '',
-      buildGuidance(),
-    ].join('\n');
-    const blob = new Blob([body], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'zamifu-pathway-results.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+    const ev = evaluatePathway();
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 48;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const maxWidth = pageWidth - margin * 2;
+    let y = margin;
+
+    const ensureSpace = (need = 18) => {
+      if (y + need > doc.internal.pageSize.getHeight() - margin) {
+        doc.addPage();
+        y = margin;
+      }
+    };
+
+    const write = (line: string, opts?: { bold?: boolean; size?: number; color?: [number, number, number] }) => {
+      const size = opts?.size ?? 11;
+      doc.setFont('helvetica', opts?.bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      if (opts?.color) doc.setTextColor(...opts.color);
+      else doc.setTextColor(30, 30, 30);
+      const parts = doc.splitTextToSize(line || ' ', maxWidth);
+      for (const part of parts) {
+        ensureSpace(size + 6);
+        doc.text(part, margin, y);
+        y += size + 5;
+      }
+    };
+
+    write('Zamifu Pathway Finder Results', { bold: true, size: 16, color: [37, 99, 235] });
+    write(`Generated: ${new Date().toLocaleString()}`, { size: 9, color: [100, 100, 100] });
+    y += 8;
+    write(`Selected pathway: ${career?.title || '—'}`, { bold: true, size: 12 });
+    write(`Track: ${career?.pathway || '—'}`, { size: 11 });
+    if (ev?.finalRec && ev.finalCode) {
+      write(`Decision: ${ev.finalRec.label}`, { bold: true, size: 12, color: [16, 185, 129] });
+      write(`Performance level: ${ev.finalCode} — ${ev.finalRec.status}`, { size: 11 });
+    }
+    y += 10;
+    write('Part A — Current Performance (Junior School)', { bold: true, size: 12 });
+    for (const s of JUNIOR_LEARNING_AREAS) {
+      const g = subjectGrades[s.name];
+      const m = gradeMeta(g || undefined);
+      write(
+        g
+          ? `${s.name}: ${g} — ${m?.description} (${m?.points} pts) · links to ${s.pathway}`
+          : `${s.name}: not entered`,
+        { size: 10 },
+      );
+    }
+    y += 8;
+    write('Part B — Required Performance', { bold: true, size: 12 });
+    for (const r of ev?.reqs || []) {
+      write(
+        r.current
+          ? `${r.subj}: current ${r.current} / required ${r.required} — ${r.met ? 'Met Requirement' : 'Below Requirement'}`
+          : `${r.subj}: required ${r.required} — not entered`,
+        { size: 10 },
+      );
+    }
+    y += 8;
+    write('Part C — Pathway Recommendation', { bold: true, size: 12 });
+    for (const line of buildGuidance().split('\n')) {
+      write(line, { size: 10 });
+    }
+    y += 12;
+    write('Zamifu Analytics · https://zamifu.company', { size: 9, color: [120, 120, 120] });
+    doc.save(`zamifu-pathway-${(career?.id || 'results').replace(/\s+/g, '-')}.pdf`);
   };
+
 
   return (
     <section className="py-16 bg-gradient-to-br from-[#1a1a2e] to-[#16213e] text-white" id="pathway-finder">
@@ -740,9 +934,23 @@ export default function PathwayFinder() {
                 </div>
 
                 <div className="bg-gray-900/50 rounded-xl p-4">
-                  <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Recommended Pathway</h4>
+                  <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Pathway Decision</h4>
                   <p className="text-white font-semibold text-lg">{selectedCareerObj()?.title}</p>
                   <p className="text-gray-400 text-sm mt-1">{selectedCareerObj()?.description}</p>
+                  {(() => {
+                    const ev = evaluatePathway();
+                    if (!ev?.finalRec) return null;
+                    const positive = ev.recommendPreferred;
+                    return (
+                      <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${positive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-200 border border-amber-500/30'}`}>
+                        <div className="font-semibold">{ev.finalRec.label}</div>
+                        <div className="text-xs opacity-90 mt-0.5">{ev.finalCode} — {ev.finalRec.status}</div>
+                        {!positive && ev.suggestedAlts.length > 0 && (
+                          <div className="text-xs mt-2">Suggested alternative(s): {ev.suggestedAlts.join(', ')}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* PART A summary */}
@@ -823,7 +1031,7 @@ export default function PathwayFinder() {
                         onClick={downloadGuidance}
                         className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-medium"
                       >
-                        <Download className="w-4 h-4" /> Download Results
+                        <Download className="w-4 h-4" /> Download PDF Results
                       </button>
                     </div>
                   )}

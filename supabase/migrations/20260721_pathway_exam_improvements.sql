@@ -65,14 +65,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS grading_system_code_level_uidx
   ON grading_system (grade_code, level);
 
 INSERT INTO grading_system (grade_code, description, points, level) VALUES
-  ('EE2', 'Exceeding Expectations (2)', 12, 'junior'),
-  ('EE1', 'Exceeding Expectations (1)', 11, 'junior'),
-  ('ME2', 'Meeting Expectations (2)', 10, 'junior'),
-  ('ME1', 'Meeting Expectations (1)', 9, 'junior'),
-  ('AE2', 'Approaching Expectations (2)', 8, 'junior'),
-  ('AE1', 'Approaching Expectations (1)', 7, 'junior'),
-  ('BE2', 'Below Expectations (2)', 5, 'junior'),
-  ('BE1', 'Below Expectations (1)', 4, 'junior')
+  ('EE1', 'Exceeding Expectations (1)', 8, 'junior'),
+  ('EE2', 'Exceeding Expectations (2)', 7, 'junior'),
+  ('ME1', 'Meeting Expectations (1)', 6, 'junior'),
+  ('ME2', 'Meeting Expectations (2)', 5, 'junior'),
+  ('AE1', 'Approaching Expectations (1)', 4, 'junior'),
+  ('AE2', 'Approaching Expectations (2)', 3, 'junior'),
+  ('BE1', 'Below Expectations (1)', 2, 'junior'),
+  ('BE2', 'Below Expectations (2)', 1, 'junior')
 ON CONFLICT (grade_code, level) DO UPDATE
 SET description = EXCLUDED.description,
     points = EXCLUDED.points;
