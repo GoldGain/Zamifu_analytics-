@@ -26,7 +26,7 @@ export default function Register() {
   const [userData, setUserData] = useState<any>(null);
   const [generatedOtp, setGeneratedOtp] = useState('');
 
-  // Generate a 6-digit OTP
+  // Generate a 6-digit OTP - EXACTLY like ForgotPassword
   const generateOTP = () => {
     return Math.floor(100000 + Math.random() * 900000).toString();
   };
@@ -62,7 +62,6 @@ export default function Register() {
         if (profile.phone) setPhone(profile.phone);
         setStep('phone');
         toast.success(`Welcome ${profile.first_name}! Please verify your phone number.`);
-        setLoading(false);
         return;
       }
 
@@ -84,7 +83,6 @@ export default function Register() {
         if (teacher.phone) setPhone(teacher.phone);
         setStep('phone');
         toast.success(`Welcome ${teacher.first_name}! Please verify your phone number.`);
-        setLoading(false);
         return;
       }
 
@@ -106,7 +104,6 @@ export default function Register() {
         if (student.parent_phone) setPhone(student.parent_phone);
         setStep('phone');
         toast.success(`Welcome! Please verify your phone number.`);
-        setLoading(false);
         return;
       }
 
@@ -192,6 +189,7 @@ export default function Register() {
       return;
     }
 
+    // STRICT COMPARISON - NO DEMO CODES
     if (otp !== generatedOtp) {
       setError('Invalid OTP code. Please check and try again.');
       return;
@@ -200,7 +198,7 @@ export default function Register() {
     setLoading(true);
     try {
       // Mark phone as verified in database
-      await supabaseUntyped
+      const { error: verifyError } = await supabaseUntyped
         .from('profiles')
         .update({
           phone_verified: true,
@@ -208,6 +206,11 @@ export default function Register() {
           otp_expires_at: null,
         })
         .eq('email', userData.email);
+
+      if (verifyError) {
+        setError('Verification failed. Please try again.');
+        return;
+      }
 
       setStep('register');
       toast.success('Phone verified! Now create your password.');
@@ -399,9 +402,7 @@ export default function Register() {
               <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
             </Link>
             <h1 className="text-2xl font-bold text-[#111111]">Verify OTP</h1>
-            <p className="text-sm text-[#666666] mt-1">
-              Enter the 6-digit code sent to your phone
-            </p>
+            <p className="text-sm text-[#666666] mt-1">Enter the 6-digit code sent to your phone</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
@@ -422,13 +423,12 @@ export default function Register() {
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent text-center text-2xl tracking-widest"
                   required
                   maxLength={6}
-                  autoFocus
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={loading || otp.length !== 6}
+                disabled={loading}
                 className="w-full bg-[#2563EB] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify OTP'}
@@ -436,10 +436,11 @@ export default function Register() {
             </form>
 
             <button
-              onClick={() => { setStep('phone'); setOtp(''); setGeneratedOtp(''); }}
+              onClick={sendOTP}
+              disabled={loading}
               className="w-full mt-4 text-sm text-[#2563EB] hover:underline disabled:opacity-50"
             >
-              Didn&apos;t receive OTP? Try again
+              Didn&apos;t receive OTP? Resend SMS
             </button>
           </div>
         </div>
@@ -447,14 +448,14 @@ export default function Register() {
     );
   }
 
-  // ─── Render: Step 2 — Phone number entry ─────────────────────────────────
+  // ─── Render: Step 2 — Phone entry ─────────────────────────────────────────
   if (step === 'phone') {
     return (
       <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="mb-6">
             <button
-              onClick={() => { setStep('email'); setError(''); }}
+              onClick={() => { setStep('email'); setPhone(''); setError(''); }}
               className="inline-flex items-center gap-1 text-sm text-[#666666] hover:text-[#111111] transition-colors"
             >
               <ArrowLeft className="w-4 h-4" /> Back
@@ -466,10 +467,8 @@ export default function Register() {
               <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
               <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
             </Link>
-            <h1 className="text-2xl font-bold text-[#111111]">Verify Your Phone</h1>
-            <p className="text-sm text-[#666666] mt-1">
-              We&apos;ll send a verification code to your phone number
-            </p>
+            <h1 className="text-2xl font-bold text-[#111111]">Verify Phone Number</h1>
+            <p className="text-sm text-[#666666] mt-1">We'll send a 6-digit code via SMS</p>
           </div>
 
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
@@ -482,15 +481,20 @@ export default function Register() {
             <form onSubmit={sendOTP} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-[#111111] mb-1.5">Phone Number</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. 0712345678"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
-                  required
-                  autoFocus
-                />
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. 0712345678"
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+                    required
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1.5 px-1">
+                  Format: 07XXXXXXXX or 254XXXXXXXXX
+                </p>
               </div>
 
               <button
@@ -498,7 +502,7 @@ export default function Register() {
                 disabled={loading}
                 className="w-full bg-[#2563EB] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send OTP'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send Verification Code'}
               </button>
             </form>
           </div>
@@ -507,13 +511,13 @@ export default function Register() {
     );
   }
 
-  // ─── Render: Step 1 — Email lookup ───────────────────────────────────────
+  // ─── Render: Step 1 — Email entry ─────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="mb-6">
-          <Link to="/" className="inline-flex items-center gap-1 text-sm text-[#666666] hover:text-[#111111] transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to Home
+          <Link to="/auth/login" className="inline-flex items-center gap-1 text-sm text-[#666666] hover:text-[#111111] transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to Login
           </Link>
         </div>
 
@@ -523,9 +527,7 @@ export default function Register() {
             <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
           <h1 className="text-2xl font-bold text-[#111111]">Create Account</h1>
-          <p className="text-sm text-[#666666] mt-1">
-            Registration is by invitation only. Enter the email address provided by your school or administrator.
-          </p>
+          <p className="text-sm text-[#666666] mt-1">Enter your registered email to continue</p>
         </div>
 
         <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
@@ -542,14 +544,10 @@ export default function Register() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g., teacher@school.ac.ke"
+                placeholder="Enter your registered email"
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
                 required
-                autoFocus
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Only emails pre-registered by your school administrator will be accepted.
-              </p>
             </div>
 
             <button
@@ -561,9 +559,13 @@ export default function Register() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-[#666666]">
-            Already have an account?{' '}
-            <Link to="/auth/login" className="text-[#2563EB] font-medium hover:underline">Sign In</Link>
+          <div className="mt-6 text-center">
+            <p className="text-sm text-[#666666]">
+              Already have an account?{' '}
+              <Link to="/auth/login" className="text-[#2563EB] font-semibold hover:underline">
+                Sign In
+              </Link>
+            </p>
           </div>
         </div>
       </div>
