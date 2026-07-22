@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Edit, RefreshCw, Trash2, Lock, Unlock, Shield } from 'lucide-react';
+import { Plus, Edit, RefreshCw, Trash2, Lock, Unlock, Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DEFAULT_FEE_PER_LEARNER, feeOrDefault, getResellerForUser } from '@/lib/reseller';
 
@@ -161,19 +161,26 @@ export default function ResellerSchools() {
     setDeletingId(confirmDeleteId);
     setConfirmDeleteId(null);
     try {
+      // Delete all child records in dependency order before deleting the school.
+      // Most tables already have ON DELETE CASCADE at DB level, but we explicitly
+      // clean up the ones that previously had NO ACTION to be safe.
+      await supabase.from('school_admins').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('school_announcements').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('parent_payments').delete().eq('school_id', confirmDeleteId);
+      await supabase.from('results').delete().eq('school_id', confirmDeleteId);
       await supabase.from('students').delete().eq('school_id', confirmDeleteId);
       await supabase.from('teachers').delete().eq('school_id', confirmDeleteId);
       await supabase.from('classes').delete().eq('school_id', confirmDeleteId);
       await supabase.from('subjects').delete().eq('school_id', confirmDeleteId);
       await supabase.from('terms').delete().eq('school_id', confirmDeleteId);
-      await supabase.from('results').delete().eq('school_id', confirmDeleteId);
       await supabase.from('announcements').delete().eq('school_id', confirmDeleteId);
+      // Finally delete the school — remaining child tables cascade automatically
       const { error } = await supabase.from('schools').delete().eq('id', confirmDeleteId);
       if (error) throw error;
       toast.success(`School "${confirmDeleteName}" deleted successfully`);
       fetchData();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to delete school');
+      toast.error(err.message || 'Failed to delete school. Please try again or contact support.');
     } finally {
       setDeletingId(null);
     }
@@ -206,18 +213,43 @@ export default function ResellerSchools() {
       </div>
 
       {confirmDeleteId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete School</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              Delete <strong>"{confirmDeleteName}"</strong> and related data? This cannot be undone.
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Delete School</h3>
+            </div>
+            <p className="text-gray-700 text-sm font-medium mb-3">
+              Are you sure you want to delete <strong>&quot;{confirmDeleteName}&quot;</strong>?
             </p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <p className="text-red-700 text-xs font-semibold mb-2">This will permanently delete:</p>
+              <ul className="text-red-600 text-xs space-y-1 list-disc list-inside">
+                <li>All students and their records</li>
+                <li>All teachers and assignments</li>
+                <li>All classes, subjects and timetables</li>
+                <li>All exams, results and report cards</li>
+                <li>All school admins and access</li>
+                <li>All fees, payments and invoices</li>
+                <li>All announcements and messages</li>
+              </ul>
+              <p className="text-red-700 text-xs font-bold mt-2">This action CANNOT be undone.</p>
+            </div>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirmDeleteId(null)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+              <button
+                onClick={() => setConfirmDeleteId(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              >
                 Cancel
               </button>
-              <button onClick={handleDeleteConfirm} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700">
-                Delete School
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={!!deletingId}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {deletingId ? <><Loader2 className="w-4 h-4 animate-spin" /> Deleting...</> : 'Yes, Delete School'}
               </button>
             </div>
           </div>

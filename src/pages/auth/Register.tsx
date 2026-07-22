@@ -1,22 +1,46 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase/client';
-import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
+import { supabaseUntyped } from '@/lib/supabase/client';
+import { sendSMS } from '@/lib/sms';
+import { Eye, EyeOff, Loader2, ArrowLeft, Phone, Check } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Generate a 6-digit OTP
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+// Normalize phone to 254XXXXXXXXX
+function normalizePhone(phone: string): string {
+  let p = phone.trim().replace(/\s/g, '');
+  if (p.startsWith('0')) p = '254' + p.slice(1);
+  if (p.startsWith('+')) p = p.slice(1);
+  return p;
+}
 
 export default function Register() {
   const navigate = useNavigate();
+
+  // Step state: 'email' → 'phone' → 'otp' → 'register'
+  const [step, setStep] = useState<'email' | 'phone' | 'otp' | 'register'>('email');
+
+  // Form values
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Internal state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [step, setStep] = useState<'email' | 'register'>('email');
   const [userData, setUserData] = useState<any>(null);
+  const [generatedOtp, setGeneratedOtp] = useState('');
 
-  // Step 1: Validate email exists in database
+  // ─── Step 1: Validate email exists in database ───────────────────────────
   const validateEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -29,10 +53,10 @@ export default function Register() {
     }
 
     try {
-      // Check in profiles table (covers school_admin, reseller_super_admin, master_super_admin, student, parent)
+      // Check profiles table
       const { data: profile } = await supabase
         .from('profiles')
-        .select('email, first_name, last_name, school_id, role')
+        .select('email, first_name, last_name, school_id, role, phone')
         .eq('email', email.toLowerCase())
         .maybeSingle() as any;
 
@@ -43,17 +67,20 @@ export default function Register() {
           first_name: profile.first_name,
           last_name: profile.last_name,
           school_id: profile.school_id,
+          existingPhone: profile.phone || '',
         });
-        setStep('register');
-        toast.success(`Welcome ${profile.first_name}! Please create your password.`);
+        // Pre-fill phone if already on record
+        if (profile.phone) setPhone(profile.phone);
+        setStep('phone');
+        toast.success(`Welcome ${profile.first_name}! Please verify your phone number.`);
         setLoading(false);
         return;
       }
 
-      // Check in teachers table
+      // Check teachers table
       const { data: teacher } = await supabase
         .from('teachers')
-        .select('email, first_name, last_name, school_id')
+        .select('email, first_name, last_name, school_id, phone')
         .eq('email', email.toLowerCase())
         .maybeSingle() as any;
 
@@ -64,17 +91,19 @@ export default function Register() {
           first_name: teacher.first_name,
           last_name: teacher.last_name,
           school_id: teacher.school_id,
+          existingPhone: teacher.phone || '',
         });
-        setStep('register');
-        toast.success(`Welcome ${teacher.first_name}! Please create your password.`);
+        if (teacher.phone) setPhone(teacher.phone);
+        setStep('phone');
+        toast.success(`Welcome ${teacher.first_name}! Please verify your phone number.`);
         setLoading(false);
         return;
       }
 
-      // Check in students table for parent email
+      // Check students table for parent email
       const { data: student } = await supabase
         .from('students')
-        .select('parent_email, parent_name, school_id')
+        .select('parent_email, parent_name, school_id, parent_phone')
         .eq('parent_email', email.toLowerCase())
         .maybeSingle() as any;
 
@@ -85,27 +114,115 @@ export default function Register() {
           first_name: student.parent_name?.split(' ')[0] || 'Parent',
           last_name: student.parent_name?.split(' ')[1] || '',
           school_id: student.school_id,
+          existingPhone: student.parent_phone || '',
         });
-        setStep('register');
-        toast.success(`Welcome! Please create your password.`);
+        if (student.parent_phone) setPhone(student.parent_phone);
+        setStep('phone');
+        toast.success(`Welcome! Please verify your phone number.`);
         setLoading(false);
         return;
       }
 
-      // Email not found in any table
       setError(
         'Your email is not registered in the system. Please contact your school administrator or reseller to be added first.'
       );
-      setLoading(false);
-
     } catch (err) {
       console.error(err);
       setError('An error occurred. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: Create account with validated email
+  // ─── Step 2: Send OTP to phone ────────────────────────────────────────────
+  const sendOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!phone) {
+      setError('Please enter your phone number');
+      return;
+    }
+
+    const normalized = normalizePhone(phone);
+    if (!/^254\d{9}$/.test(normalized)) {
+      setError('Please enter a valid Kenyan phone number (e.g. 0712345678 or 254712345678)');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const newOtp = generateOTP();
+      setGeneratedOtp(newOtp);
+
+      const message = `Your Zamifu Analytics registration code is: ${newOtp}. Valid for 5 minutes. Do not share this code.`;
+      const result = await sendSMS(normalized, message);
+
+      if (result.success) {
+        // Store OTP in database with expiry
+        await supabaseUntyped
+          .from('profiles')
+          .update({
+            phone: normalized,
+            otp_code: newOtp,
+            otp_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+            phone_verified: false,
+          })
+          .eq('email', userData.email);
+
+        setStep('otp');
+        toast.success('OTP sent to your phone via SMS!');
+      } else {
+        setError('Failed to send SMS. Please check your phone number and try again.');
+        toast.error('SMS delivery failed');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Step 3: Verify OTP ───────────────────────────────────────────────────
+  const verifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (!otp || otp.length !== 6) {
+      setError('Please enter the 6-digit OTP code');
+      return;
+    }
+
+    if (otp !== generatedOtp) {
+      setError('Invalid OTP code. Please check and try again.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Mark phone as verified in database
+      const normalized = normalizePhone(phone);
+      await supabaseUntyped
+        .from('profiles')
+        .update({
+          phone_verified: true,
+          otp_code: null,
+          otp_expires_at: null,
+        })
+        .eq('email', userData.email);
+
+      // Update userData with verified phone
+      setUserData((prev: any) => ({ ...prev, phone: normalized }));
+      setStep('register');
+      toast.success('Phone verified! Now create your password.');
+    } catch (err: any) {
+      setError(err.message || 'Verification failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Step 4: Create account ───────────────────────────────────────────────
   const createAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -166,14 +283,46 @@ export default function Register() {
     }
   };
 
-  // Step 2: Password creation form
+  // ─── Resend OTP ───────────────────────────────────────────────────────────
+  const resendOTP = async () => {
+    setOtp('');
+    setError('');
+    setLoading(true);
+    try {
+      const normalized = normalizePhone(phone);
+      const newOtp = generateOTP();
+      setGeneratedOtp(newOtp);
+
+      const message = `Your Zamifu Analytics registration code is: ${newOtp}. Valid for 5 minutes. Do not share this code.`;
+      const result = await sendSMS(normalized, message);
+
+      if (result.success) {
+        await supabaseUntyped
+          .from('profiles')
+          .update({
+            otp_code: newOtp,
+            otp_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+          })
+          .eq('email', userData.email);
+        toast.success('New OTP sent to your phone!');
+      } else {
+        setError('Failed to resend OTP. Please try again.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend OTP.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Render: Step 4 — Password creation ──────────────────────────────────
   if (step === 'register') {
     return (
       <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="mb-6">
             <button
-              onClick={() => { setStep('email'); setError(''); }}
+              onClick={() => { setStep('otp'); setError(''); }}
               className="inline-flex items-center gap-1 text-sm text-[#666666] hover:text-[#111111] transition-colors"
             >
               <ArrowLeft className="w-4 h-4" /> Back
@@ -200,6 +349,12 @@ export default function Register() {
               <p className="text-sm"><strong>Role:</strong> {userData?.role?.replace(/_/g, ' ')}</p>
               <p className="text-sm mt-1"><strong>Name:</strong> {userData?.first_name} {userData?.last_name}</p>
               <p className="text-sm mt-1"><strong>Email:</strong> {userData?.email}</p>
+              <p className="text-sm mt-1 flex items-center gap-1">
+                <strong>Phone:</strong> {normalizePhone(phone)}
+                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium ml-1">
+                  <Check className="w-3 h-3" /> Verified
+                </span>
+              </p>
             </div>
 
             <form onSubmit={createAccount} className="space-y-4">
@@ -265,7 +420,147 @@ export default function Register() {
     );
   }
 
-  // Step 1: Email lookup
+  // ─── Render: Step 3 — OTP verification ───────────────────────────────────
+  if (step === 'otp') {
+    return (
+      <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="mb-6">
+            <button
+              onClick={() => { setStep('phone'); setOtp(''); setError(''); }}
+              className="inline-flex items-center gap-1 text-sm text-[#666666] hover:text-[#111111] transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+          </div>
+
+          <div className="text-center mb-8">
+            <Link to="/" className="inline-flex items-center gap-2 mb-6">
+              <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
+              <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
+            </Link>
+            <h1 className="text-2xl font-bold text-[#111111]">Verify Phone Number</h1>
+            <p className="text-sm text-[#666666] mt-1">
+              Enter the 6-digit code sent via SMS to <strong>{normalizePhone(phone)}</strong>
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={verifyOTP} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#111111] mb-1.5">OTP Code</label>
+                <input
+                  type="text"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter 6-digit OTP"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent text-center text-2xl tracking-widest"
+                  required
+                  maxLength={6}
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 mt-1 text-center">Code expires in 5 minutes</p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full bg-[#2563EB] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & Continue'}
+              </button>
+            </form>
+
+            <button
+              onClick={resendOTP}
+              disabled={loading}
+              className="w-full mt-4 text-sm text-[#2563EB] hover:underline disabled:opacity-50"
+            >
+              Didn&apos;t receive OTP? Resend
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Render: Step 2 — Phone number entry ─────────────────────────────────
+  if (step === 'phone') {
+    return (
+      <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="mb-6">
+            <button
+              onClick={() => { setStep('email'); setError(''); }}
+              className="inline-flex items-center gap-1 text-sm text-[#666666] hover:text-[#111111] transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+          </div>
+
+          <div className="text-center mb-8">
+            <Link to="/" className="inline-flex items-center gap-2 mb-6">
+              <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
+              <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
+            </Link>
+            <h1 className="text-2xl font-bold text-[#111111]">Verify Your Phone</h1>
+            <p className="text-sm text-[#666666] mt-1">
+              We&apos;ll send a verification code to your phone number
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
+            <div className="bg-blue-50 p-3 rounded-xl mb-4 flex items-start gap-2">
+              <Phone className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-blue-700">
+                Hello <strong>{userData?.first_name}</strong>! Enter your phone number to receive a verification code via SMS.
+              </p>
+            </div>
+
+            <form onSubmit={sendOTP} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#111111] mb-1.5">Phone Number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. 0712345678 or 254712345678"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+                  required
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Kenyan format: 0712345678 or 254712345678 or +254712345678
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-[#2563EB] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Send OTP via SMS'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Render: Step 1 — Email lookup ───────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
