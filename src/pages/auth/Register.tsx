@@ -131,7 +131,7 @@ export default function Register() {
       return;
     }
 
-    // Normalize phone number exactly like ForgotPassword
+    // Normalize phone number EXACTLY like ForgotPassword
     let normalizedPhone = phone.trim();
     if (normalizedPhone.startsWith('0')) {
       normalizedPhone = '254' + normalizedPhone.slice(1);
@@ -145,13 +145,14 @@ export default function Register() {
       const newOtp = generateOTP();
       setGeneratedOtp(newOtp);
 
+      // EXACT SAME MESSAGE FORMAT AS FORGOT PASSWORD
       const message = `Your Zamifu Analytics registration code is: ${newOtp}. This code will expire in 15 minutes. Do not share this code with anyone.`;
       
       const result = await sendSMS(normalizedPhone, message);
 
       if (result.success) {
-        // Store OTP and phone in database
-        await supabaseUntyped
+        // Store OTP and phone in database - use supabaseUntyped for flexibility
+        const { error: updateError } = await supabaseUntyped
           .from('profiles')
           .update({
             phone: normalizedPhone,
@@ -161,10 +162,17 @@ export default function Register() {
           })
           .eq('email', userData.email);
 
+        if (updateError) {
+          console.error('Update error:', updateError);
+          setError('Failed to initialize verification. Please try again.');
+          return;
+        }
+
         setStep('otp');
         toast.success('OTP sent to your phone via SMS!');
       } else {
-        setError('Failed to send SMS. Please check your phone number and try again.');
+        console.error('SMS Error:', result.error);
+        setError(`Failed to send SMS: ${result.error || 'Unknown error'}. Please try again.`);
         toast.error('SMS delivery failed');
       }
     } catch (err: any) {

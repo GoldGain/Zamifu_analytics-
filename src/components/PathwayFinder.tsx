@@ -345,20 +345,24 @@ export default function PathwayFinder() {
   }, []);
 
   const toggleInterest = (id: string) => {
-    setSelectedInterests((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
-    );
+    setSelectedInterests((prev) => {
+      const current = prev || [];
+      return current.includes(id) 
+        ? current.filter((i) => i !== id) 
+        : [...current, id];
+    });
   };
 
   const getRecommendedCareers = useMemo(() => {
+    if (!careerPaths) return [];
     return careerPaths
       .map((career) => {
-        const matchScore = career.interests.filter((interest) =>
-          selectedInterests.includes(interest),
+        const matchScore = (career?.interests || []).filter((interest) =>
+          (selectedInterests || []).includes(interest),
         ).length;
         return { ...career, matchScore };
       })
-      .sort((a, b) => b.matchScore - a.matchScore);
+      .sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
   }, [selectedInterests]);
 
   const selectedCareerObj = () => {
