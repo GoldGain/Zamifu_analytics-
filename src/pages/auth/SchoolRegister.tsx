@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase/client';
+import { sendSMS } from '@/lib/sms';
 import {
   KENYA_COUNTIES,
   SCHOOL_LEVELS,
