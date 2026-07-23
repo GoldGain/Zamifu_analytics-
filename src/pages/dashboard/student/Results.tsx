@@ -27,7 +27,6 @@ export default function StudentResults() {
         .maybeSingle();
       if (studentData) {
         setStudent(studentData);
-        // Fetch terms
         const { data: termsData } = await supabaseUntyped
           .from('terms')
           .select('*')
@@ -35,7 +34,6 @@ export default function StudentResults() {
           .order('academic_year', { ascending: false });
         const allTerms = termsData || [];
         setTerms(allTerms);
-        // Default to most recent term
         if (allTerms.length > 0) {
           setSelectedTerm(allTerms[0].id);
         }
@@ -65,13 +63,11 @@ export default function StudentResults() {
       const currentResults = data || [];
       setResults(currentResults);
 
-      // Calculate current average
       if (currentResults.length > 0) {
         const totalPct = currentResults.reduce((s: number, r: any) => s + (r.percentage || r.marks || 0), 0);
         const avg = totalPct / currentResults.length;
         setCurrentAvg(avg);
 
-        // Get class position
         const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position;
         if (storedPosition) {
           setClassPosition(storedPosition);
@@ -100,8 +96,6 @@ export default function StudentResults() {
         setCurrentAvg(0);
         setClassPosition(null);
       }
-
-      // Fetch previous term average for deviation
       await fetchPreviousTermAvg();
     } catch (err) {
       console.error('Error fetching results:', err);
@@ -136,26 +130,10 @@ export default function StudentResults() {
     return 'bg-red-100 text-red-700';
   };
 
-  const gradeDescriptor = (grade: string) => {
-    if (grade?.startsWith('EE')) return 'Exceeding Expectation';
-    if (grade?.startsWith('ME')) return 'Meeting Expectation';
-    if (grade?.startsWith('AE')) return 'Approaching Expectation';
-    return 'Below Expectation';
-  };
-
-  // Determine the display grade for a result row, respecting primary vs junior/senior
   const getDisplayGrade = (r: any): string => {
     const is = String(r.curriculum || '').toUpperCase() === '';
     if (is) return r.grade_ || '';
-    // For CBE: primary uses cbc_grade (EE/ME/AE/BE), junior/senior uses cbc_sublevel (EE1/ME1/etc.)
     return r.cbc_sublevel || r.cbc_grade || '';
-  };
-
-  const getDisplayPoints = (r: any): number | null => {
-    const is = String(r.curriculum || '').toUpperCase() === '';
-    if (is) return r.points_ != null ? Number(r.points_) : null;
-    const pts = r.cbc_points != null ? Number(r.cbc_points) : null;
-    return pts && pts > 0 ? pts : null;
   };
 
   const filtered = filter === 'all' ? results : results.filter(r => {
@@ -175,29 +153,28 @@ export default function StudentResults() {
     return 'BE';
   };
 
-  // Deviation calculation
   const deviation = previousAvg !== null ? currentAvg - previousAvg : null;
 
   return (
-    <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/50 min-h-full">
+    <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-amber-50/40 to-purple-50/50 min-h-full">
       <div>
-        <h1 className="text-2xl font-bold text-[#111111]">My Results</h1>
+        <h1 className="text-2xl font-black text-[#1A237E]">My Results</h1>
         <p className="text-sm text-[#666666]">View your academic performance and progress</p>
       </div>
 
       {student?.status === 'graduated' && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Graduated learner record{student?.graduation_year ? ` (${student.graduation_year})` : ''}. Published results remain available here.
         </div>
       )}
 
       {/* Term Selector */}
       <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
-        <label className="block text-sm font-medium text-[#666666] mb-2">Select Term</label>
+        <label className="block text-sm font-bold text-[#666666] mb-2">Select Term</label>
         <select
           value={selectedTerm}
           onChange={e => setSelectedTerm(e.target.value)}
-          className="w-full md:w-64 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
+          className="w-full md:w-64 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#F5A623] bg-white"
         >
           <option value="">Select Term</option>
           {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
@@ -206,25 +183,25 @@ export default function StudentResults() {
 
       {/* Overall Summary */}
       <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
-        <h3 className="font-semibold text-[#111111] mb-4">Performance Summary</h3>
+        <h3 className="font-black text-[#1A237E] mb-4">Performance Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center p-4 bg-blue-50 rounded-xl">
-            <div className="text-2xl font-bold text-blue-600">{overallAvg}%</div>
-            <div className="text-xs text-blue-400 mt-1">Overall Average</div>
+          <div className="text-center p-4 bg-amber-50 rounded-xl border border-amber-100">
+            <div className="text-2xl font-black text-[#F5A623]">{overallAvg}%</div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-amber-600 mt-1">Average</div>
           </div>
-          <div className="text-center p-4 bg-green-50 rounded-xl">
-            <div className="text-2xl font-bold text-green-600">{totalPoints}</div>
-            <div className="text-xs text-green-400 mt-1">Total Points</div>
+          <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+            <div className="text-2xl font-black text-emerald-600">{totalPoints}</div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-600 mt-1">Total Points</div>
           </div>
-          <div className="text-center p-4 bg-purple-50 rounded-xl">
-            <div className="text-2xl font-bold text-purple-600">{getOverallGrade()}</div>
-            <div className="text-xs text-purple-400 mt-1">Overall Grade</div>
+          <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-100">
+            <div className="text-2xl font-black text-purple-600">{getOverallGrade()}</div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-purple-600 mt-1">Grade</div>
           </div>
-          <div className="text-center p-4 bg-orange-50 rounded-xl">
-            <div className="text-2xl font-bold text-orange-600">
+          <div className="text-center p-4 bg-teal-50 rounded-xl border border-teal-100">
+            <div className="text-2xl font-black text-teal-600">
               {classPosition ? `${classPosition}${classPosition === 1 ? 'st' : classPosition === 2 ? 'nd' : classPosition === 3 ? 'rd' : 'th'}` : 'N/A'}
             </div>
-            <div className="text-xs text-orange-400 mt-1">Class Position</div>
+            <div className="text-[10px] uppercase tracking-wider font-bold text-teal-600 mt-1">Position</div>
           </div>
         </div>
       </div>
@@ -233,21 +210,21 @@ export default function StudentResults() {
       {selectedTerm && (
         <div className={`rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] ${
           deviation === null ? 'bg-gray-50 border border-gray-200' :
-          deviation >= 0 ? 'bg-green-50 border border-green-200' :
-          'bg-red-50 border border-red-200'
+          deviation >= 0 ? 'bg-emerald-50 border border-emerald-200' :
+          'bg-rose-50 border border-rose-200'
         }`}>
           <div className="flex items-center gap-3">
             {deviation === null ? (
               <Minus className="w-8 h-8 text-gray-400" />
             ) : deviation >= 0 ? (
-              <TrendingUp className="w-8 h-8 text-green-600" />
+              <TrendingUp className="w-8 h-8 text-emerald-600" />
             ) : (
-              <TrendingDown className="w-8 h-8 text-red-600" />
+              <TrendingDown className="w-8 h-8 text-rose-600" />
             )}
             <div>
-              <div className={`text-lg font-bold ${
+              <div className={`text-lg font-black ${
                 deviation === null ? 'text-gray-600' :
-                deviation >= 0 ? 'text-green-700' : 'text-red-700'
+                deviation >= 0 ? 'text-emerald-700' : 'text-rose-700'
               }`}>
                 {deviation === null
                   ? 'First Term — No previous data to compare'
@@ -257,7 +234,7 @@ export default function StudentResults() {
                 }
               </div>
               {deviation !== null && previousAvg !== null && (
-                <div className="text-sm text-gray-500 mt-0.5">
+                <div className="text-sm font-medium text-gray-500 mt-0.5">
                   Previous term average: {previousAvg.toFixed(1)}% → Current: {currentAvg.toFixed(1)}%
                   {deviation >= 0
                     ? ' — Keep up the great work!'
@@ -269,36 +246,12 @@ export default function StudentResults() {
         </div>
       )}
 
-      {/* CBE Summary */}
-      <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
-        <div className="flex items-center gap-3 mb-4">
-          <TrendingUp className="w-5 h-5 text-[#2563EB]" />
-          <h3 className="font-semibold text-[#111111]">CBE Summary</h3>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div>
-            <p className="text-xs text-[#666666] mb-1">Total Points</p>
-            <p className="text-2xl font-bold text-[#111111]">{totalPoints}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[#666666] mb-1">Average Points</p>
-            <p className="text-2xl font-bold text-[#111111]">{results.length ? (totalPoints / results.length).toFixed(1) : 0}</p>
-          </div>
-          <div>
-            <p className="text-xs text-[#666666] mb-1">Overall Grade</p>
-            <span className={`text-lg font-bold px-3 py-1 rounded-full inline-block ${gradeColor(getOverallGrade())}`}>
-              {getOverallGrade()}
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Filter */}
       <div className="flex items-center gap-2">
         <Filter className="w-4 h-4 text-[#666666]" />
         {['all', 'EE', 'ME', 'AE', 'BE'].map(g => (
-          <button key={g} onClick={() => setFilter(g)} className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${filter === g ? 'bg-[#2563EB] text-white' : 'bg-white text-[#666666] hover:bg-gray-100'}`}>
-            {g === 'all' ? 'All' : g}
+          <button key={g} onClick={() => setFilter(g)} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${filter === g ? 'bg-[#6A1B9A] text-white' : 'bg-white text-[#666666] hover:bg-gray-100 border border-gray-200'}`}>
+            {g === 'all' ? 'All Results' : `${g} Grade`}
           </button>
         ))}
       </div>
@@ -309,60 +262,43 @@ export default function StudentResults() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Learning Area</th> {/* Issue 26 */}
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Assessment</th>
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Marks</th>
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">%</th>
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Grade</th>
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Points</th>
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Descriptor</th>
-                <th className="text-left text-xs font-medium text-[#666666] uppercase px-6 py-4">Term</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Learning Area</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Assessment</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Marks</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">%</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Grade</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Points</th>
+                <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Term</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-8 text-sm text-[#666666]">Loading...</td></tr>
+                <tr><td colSpan={7} className="text-center py-8 text-sm text-[#666666]">Loading results...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-sm text-[#666666]">No results found for this term</td></tr>
-              ) : (
-                filtered.map(r => (
-                  <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">
-                          <Award className="w-4 h-4" />
-                        </div>
-                        <span className="text-sm font-medium">{r.subjects?.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#444]">
-                      {r.school_exams?.name || r.exams?.name || '—'}
-                      {r.school_exams?.type ? (
-                        <span className="ml-1 text-xs text-blue-600">({r.school_exams.type})</span>
-                      ) : null}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium">{r.marks}</td>
-                    <td className="px-6 py-4 text-sm font-medium">{r.percentage !== undefined && r.percentage !== null ? r.percentage : Math.round((r.marks / (r.out_of || 100)) * 100)}%</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getDisplayGrade(r))}`}>
-                        {getDisplayGrade(r)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#666666]">{getDisplayPoints(r) ?? '—'}</td>
-                    <td className="px-6 py-4 text-sm text-[#666666]">{gradeDescriptor(getDisplayGrade(r))}</td>
-                    <td className="px-6 py-4 text-sm text-[#666666]">{r.terms?.name}</td>
-                  </tr>
-                ))
-              )}
+                <tr><td colSpan={7} className="text-center py-8 text-sm text-[#666666]">No results found for the selected term</td></tr>
+              ) : filtered.map((r, i) => (
+                <tr key={r.id} className={`hover:bg-gray-50/50 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-[#E8EAF6]/30'}`}>
+                  <td className="px-6 py-4">
+                    <div className="text-sm font-bold text-[#111111]">{r.subjects?.name}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-xs text-[#666666]">{r.school_exams?.name || r.exams?.name || 'End Term'}</div>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-medium">{r.marks}/{r.out_of}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{r.percentage}%</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(getDisplayGrade(r))}`}>
+                      {getDisplayGrade(r)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-medium">{r.cbc_points || r.points_ || '-'}</td>
+                  <td className="px-6 py-4 text-xs text-[#666666]">{r.terms?.name} {r.terms?.academic_year}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
-
-      {/* Download Report Card Button */}
-      <a href="/student/report-card" className="w-full bg-[#E6F24B] text-[#111111] py-3 rounded-xl text-sm font-semibold hover:bg-[#d4e044] flex items-center justify-center gap-2 no-underline">
-        <Download className="w-4 h-4" /> Download Report Card (PDF)
-      </a>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { Download, FileText, Loader2, Users, Share2, Lock, CreditCard, CheckCircle } from 'lucide-react';
+import { Download, FileText, Loader2, Users, Share2, Lock, CreditCard, CheckCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   generateUniqueAIComment,
@@ -17,6 +17,7 @@ import {
   getPercentage,
   formatPosition,
   addStudentPhotoToPDF,
+  drawPathwayPerformance,
   type SchoolInfo,
   type SignatureInfo,
 } from '@/lib/reportCardPdf';
@@ -123,7 +124,6 @@ export default function ParentChildReportCard() {
           phone: data.phone || '',
           email: data.email || '',
         });
-        // Also set principal signature from school data
         setSignatures(prev => ({
           ...prev,
           principal_signature_url: data.principal_signature_url || null,
@@ -132,7 +132,6 @@ export default function ParentChildReportCard() {
         setSchoolInfo({ name: 'School' });
       }
     } catch (err: any) {
-      // Fallback without optional columns
       try {
         const { data } = await supabaseUntyped
           .from('schools')
@@ -167,9 +166,7 @@ export default function ParentChildReportCard() {
         .eq('id', schoolId)
         .maybeSingle();
       principalSigUrl = schoolSig?.principal_signature_url || null;
-    } catch {
-      // Ignore if column doesn't exist
-    }
+    } catch {}
     let teacherSigUrl: string | null = null;
     if (classTeacherId) {
       try {
@@ -179,9 +176,7 @@ export default function ParentChildReportCard() {
           .eq('id', classTeacherId)
           .maybeSingle();
         teacherSigUrl = teacherSig?.signature_url || null;
-      } catch {
-        // Ignore errors
-      }
+      } catch {}
     }
     setSignatures(prev => ({
       ...prev,
@@ -313,11 +308,6 @@ export default function ParentChildReportCard() {
     setPreviousAvg(totalPct / prevResults.length);
   };
 
-  const isPrimaryLevel = (classData: any): boolean => {
-    const gl = classData?.grade_level ?? classData?.level;
-    return Number(gl || 0) <= 6;
-  };
-
   const classDataForGrading = selectedChild?.classes || {};
   const is = (classDataForGrading?.curriculum || 'CBE') === '';
   const band = getSchoolLevelBand(classDataForGrading);
@@ -367,279 +357,235 @@ export default function ParentChildReportCard() {
         await addStudentPhotoToPDF(doc, photoUrl, 163, 30, 35);
       }
       drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr);
-      const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
-      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
-      const devEndY = drawDeviation(doc, deviation, previousAvg, summaryEndY);
-      let trendEndY = devEndY;
+      let currentY = drawResultsTable(doc, results, classDataForGrading, 70) + 8;
+      
+      // NEW: Pathway Performance
+      currentY = drawPathwayPerformance(doc, results, currentY) + 8;
+      
+      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
+      currentY = drawDeviation(doc, deviation, previousAvg, currentY + 8);
       if (trendData.length >= 2) {
-        drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band, is);
-        trendEndY = devEndY + 55;
+        drawTrendGraph(doc, trendData, 14, currentY + 5, 182, 45, band);
+        currentY += 55;
       }
-      const myBestSubjects = classBestList.filter(b => b.studentId === selectedChild.id);
-      const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
-      const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
-      addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('Zamifu Analytics | Support: tutorsultimate@gmail.com', 105, 285, { align: 'center' });
-      doc.save(`report_card_${selectedChild.first_name}_${term?.name}.pdf`);
-      toast.success('Report card downloaded!');
+      const studentBest = classBestList.filter(b => b.studentId === selectedChild.id);
+      currentY = drawAchievements(doc, studentBest, currentY + 5);
+      currentY = drawAIComment(doc, aiComment, currentY + 5);
+      addSignaturesToPDF(doc, signatures, currentY + 10, schoolInfo);
+      
+      doc.save(`${studentFullName}_Report_Card.pdf`);
     } catch (err: any) {
-      toast.error('Failed: ' + err.message);
-      console.error(err);
+      toast.error('Failed to generate PDF: ' + err.message);
     }
     setGenerating(false);
   };
 
-  const handleDownloadPDF = useCallback(async () => {
-    if (!selectedChild || !results.length) { toast.error('No results found'); return; }
+  const handleDownload = async () => {
+    if (!selectedChild) return;
     if (schoolPayConfig?.parent_pay_enabled) {
       const paid = await checkPdfPaid(selectedChild.id);
-      if (paid) { await doGeneratePDF(); return; }
-      setPaying(true);
-      try {
-        await loadPaystackScript();
-        if (!window.PaystackPop) throw new Error('Paystack not loaded');
-        const amount = schoolPayConfig.pdf_report_fee;
-        const reference = `pdf_${selectedChild.id}_${Date.now()}`;
-        const handler = window.PaystackPop.setup({
-          key: schoolPayConfig.reseller_paystack_public_key!,
-          email: user!.email,
-          amount: amount * 100,
-          currency: 'KES',
-          ref: reference,
-          metadata: {
-            custom_fields: [
-              { display_name: 'Student', variable_name: 'student', value: `${selectedChild.first_name} ${selectedChild.last_name}` },
-              { display_name: 'Payment Type', variable_name: 'type', value: 'PDF Report Card' },
-            ],
-          },
-          callback: async (response: any) => {
-            const { error } = await supabaseUntyped.from('parent_payments').insert({
-              parent_id: user!.id,
-              parent_name: `${user!.firstName} ${user!.lastName}`,
+      if (!paid) {
+        toast.info('Payment required to download report card.');
+        return;
+      }
+    }
+    doGeneratePDF();
+  };
+
+  const handlePay = async () => {
+    if (!selectedChild || !schoolPayConfig) return;
+    setPaying(true);
+    try {
+      await loadPaystackScript();
+      const amount = (schoolPayConfig.pdf_report_fee || 50) * 100;
+      const handler = window.PaystackPop?.setup({
+        key: schoolPayConfig.reseller_paystack_public_key,
+        email: user?.email,
+        amount,
+        currency: 'KES',
+        ref: `PDF_${selectedChild.id}_${Date.now()}`,
+        callback: async (response: any) => {
+          if (response.status === 'success') {
+            const { error } = await supabaseUntyped.from('parent_payments').insert([{
+              parent_id: user?.id,
               student_id: selectedChild.id,
-              student_name: `${selectedChild.first_name} ${selectedChild.last_name}`,
               school_id: schoolPayConfig.school_id,
-              reseller_id: schoolPayConfig.reseller_id,
-              amount: amount,
               payment_type: 'pdf_report',
+              amount: schoolPayConfig.pdf_report_fee,
+              transaction_ref: response.reference,
               status: 'success',
-              paystack_reference: response.reference || reference,
-            });
-            if (error) { toast.error('Payment saved but failed to record: ' + error.message); }
-            else {
-              toast.success(`Payment of KES ${amount} successful! Generating PDF...`);
+            }]);
+            if (!error) {
               setPdfPaid(prev => ({ ...prev, [selectedChild.id]: true }));
-              await doGeneratePDF();
+              toast.success('Payment successful! You can now download the report card.');
             }
-            setPaying(false);
-          },
-          onClose: () => { toast.info('Payment cancelled'); setPaying(false); },
-        });
-        handler.openIframe();
-      } catch (err: any) { toast.error(err.message || 'Payment failed'); setPaying(false); }
-    } else { await doGeneratePDF(); }
-  }, [selectedChild, results, schoolPayConfig, user, pdfPaid, selectedTerm, terms, schoolInfo, signatures, classBestList, previousAvg, trendData, totalStudents]);
+          }
+          setPaying(false);
+        },
+        onClose: () => setPaying(false),
+      });
+      handler?.openIframe();
+    } catch (err: any) {
+      toast.error(err.message);
+      setPaying(false);
+    }
+  };
 
-  const isPdfPaid = selectedChild ? !!pdfPaid[selectedChild.id] : false;
-  const requiresPayment = !!(schoolPayConfig?.parent_pay_enabled && !isPdfPaid);
-
-  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
+  const currentAvg = results.length ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length : 0;
+  const deviation = previousAvg !== null ? currentAvg - previousAvg : null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[#111111]">Child Report Card</h1>
-        <p className="text-sm text-[#666666]">Download your child's academic report card</p>
+    <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-amber-50/40 to-purple-50/50 min-h-full">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-[#1A237E]">Child Report Card</h1>
+          <p className="text-sm text-[#666666]">View and download official academic reports</p>
+        </div>
+        {children.length > 1 && (
+          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm p-1.5 rounded-2xl border border-white/80 shadow-sm">
+            {children.map(child => (
+              <button
+                key={child.id}
+                onClick={() => setSelectedChild(child)}
+                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${selectedChild?.id === child.id ? 'bg-[#1A237E] text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'}`}
+              >
+                {child.first_name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {schoolInfo.logo_url && (
-        <div className="bg-white rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] flex items-center gap-4">
-          <img src={schoolInfo.logo_url} alt="School Logo" className="h-12 w-auto object-contain" />
-          <div>
-            <p className="font-semibold text-[#111111]">{schoolInfo.name}</p>
-            {schoolInfo.motto && <p className="text-xs text-[#666666] italic">"{schoolInfo.motto}"</p>}
-          </div>
-        </div>
-      )}
-
-      {children.length === 0 ? (
-        <div className="bg-white rounded-2xl p-8 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
-          <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-[#666666]">No children linked to your account. Please contact the school administrator.</p>
-        </div>
-      ) : (
-        <>
-          <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
-            <h3 className="font-semibold text-[#111111] mb-4">Select Child &amp; Term</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Child</label>
-                <select
-                  value={selectedChild?.id || ''}
-                  onChange={e => {
-                    const child = children.find(c => c.id === e.target.value);
-                    setSelectedChild(child);
-                    if (child) {
-                      fetchTerms(child.school_id);
-                      fetchSchoolPayConfig(child.school_id);
-                      fetchSchoolInfo(child.school_id);
-                      fetchSignatures(child.school_id, child.classes?.class_teacher_id);
-                      fetchTotalStudents(child.class_id, child.school_id);
-                    }
-                  }}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
-                >
-                  {children.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name} - {c.classes?.name}</option>)}
-                </select>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center border-2 border-amber-200 overflow-hidden">
+                {selectedChild?.photo_url ? (
+                  <img src={selectedChild.photo_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <Users className="w-8 h-8 text-amber-600" />
+                )}
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Term</label>
-                <select value={selectedTerm} onChange={e => setSelectedTerm(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white">
+                <h3 className="font-black text-[#1A237E]">{selectedChild?.first_name} {selectedChild?.last_name}</h3>
+                <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">{selectedChild?.classes?.name}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Select Assessment Term</label>
+                <select
+                  value={selectedTerm}
+                  onChange={e => setSelectedTerm(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#F5A623] bg-gray-50/50"
+                >
                   {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
                 </select>
               </div>
+
+              <div className="pt-2">
+                {schoolPayConfig?.parent_pay_enabled && !pdfPaid[selectedChild?.id] ? (
+                  <button
+                    onClick={handlePay}
+                    disabled={paying}
+                    className="w-full flex items-center justify-center gap-2 bg-[#F5A623] text-white px-6 py-3.5 rounded-2xl text-sm font-black hover:bg-[#e69512] transition-all shadow-lg shadow-amber-200 disabled:opacity-50"
+                  >
+                    {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                    Unlock Report (KES {schoolPayConfig.pdf_report_fee})
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleDownload}
+                    disabled={generating || !results.length}
+                    className="w-full flex items-center justify-center gap-2 bg-[#6A1B9A] text-white px-6 py-3.5 rounded-2xl text-sm font-black hover:bg-[#5a1682] transition-all shadow-lg shadow-purple-200 disabled:opacity-50"
+                  >
+                    {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                    Download Official PDF
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-          {results.length > 0 ? (
-            <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-[#111111]">{selectedChild?.first_name}&apos;s Results ({results.length} subjects)</h3>
-                <div className="flex gap-2 items-center">
-                  {isPdfPaid && <span className="flex items-center gap-1 text-xs text-green-600 font-medium"><CheckCircle className="w-3.5 h-3.5" /> Paid</span>}
-                  <button onClick={handleDownloadPDF} disabled={generating || paying}
-                    className="flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50">
-                    {generating || paying ? <Loader2 className="w-4 h-4 animate-spin" /> : requiresPayment ? <Lock className="w-4 h-4" /> : <Download className="w-4 h-4" />}
-                    {generating ? 'Generating...' : paying ? 'Processing...' : requiresPayment ? `Pay KES ${schoolPayConfig?.pdf_report_fee || 50} & Download PDF` : 'Download PDF'}
-                  </button>
-                  <button onClick={() => {
-                    const term = terms.find((t: any) => t.id === selectedTerm);
-                    const avg = results.length ? Math.round(results.reduce((s: number, r: any) => s + (r.percentage || r.marks || 0), 0) / results.length) : 0;
-                    const text = encodeURIComponent(`${selectedChild?.first_name}'s Zamifu Analytics Report Card\nTerm: ${term?.name || ''} ${term?.academic_year || ''}\nAverage: ${avg}%\nView at: ${window.location.origin}`);
-                    window.open(`https://wa.me/?text=${text}`, '_blank');
-                  }} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700">
-                    <Share2 className="w-4 h-4" /> WhatsApp
-                  </button>
+
+          {results.length > 0 && (
+            <div className={`rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] ${
+              deviation === null ? 'bg-gray-50 border border-gray-200' :
+              deviation >= 0 ? 'bg-emerald-50 border border-emerald-200' :
+              'bg-rose-50 border border-rose-200'
+            }`}>
+              <div className="flex items-center gap-3">
+                {deviation === null ? (
+                  <Minus className="w-8 h-8 text-gray-400" />
+                ) : deviation >= 0 ? (
+                  <TrendingUp className="w-8 h-8 text-emerald-600" />
+                ) : (
+                  <TrendingDown className="w-8 h-8 text-rose-600" />
+                )}
+                <div>
+                  <div className={`text-lg font-black ${
+                    deviation === null ? 'text-gray-600' :
+                    deviation >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                  }`}>
+                    {deviation === null ? 'First Term' : deviation >= 0 ? `+${deviation.toFixed(1)}% Progress` : `${deviation.toFixed(1)}% Drop`}
+                  </div>
+                  <p className="text-xs font-medium text-gray-500">Compared to previous term</p>
                 </div>
               </div>
-              {requiresPayment && (
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2 text-blue-700 text-sm">
-                  <CreditCard className="w-4 h-4 flex-shrink-0" />
-                  <span>A one-time payment of <strong>KES {schoolPayConfig?.pdf_report_fee || 50}</strong> is required to download the PDF report card.</span>
-                </div>
-              )}
-
-              {trendData.length >= 2 && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-xl">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Performance Trend</p>
-                  <div className="flex items-end gap-3 h-24">
-                    {trendData.map((t, i) => {
-                      const height = Math.max(10, (t.avg / 100) * 80);
-                      return (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                          <span className="text-xs font-bold text-blue-600">{t.avg.toFixed(0)}%</span>
-                          <div className="w-full bg-blue-200 rounded-t" style={{ height: `${height}px` }} />
-                          <span className="text-xs text-gray-500 truncate max-w-full">{t.term}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learning Area</th> {/* Issue 26 */}
-                      <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks</th>
-                      <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>
-                      <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{is ? ' Grade' : 'CBE Grade'}</th>
-                      {!isPrimary && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Points</th>}
-                      <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Descriptor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.map((r, i) => {
-                      const pct = r.percentage !== undefined && r.percentage !== null ? r.percentage : Math.round((r.marks / (r.out_of || 100)) * 100);
-                      const grading = (() => {
-                        if (is) {
-                          if (pct >= 80) return { grade: 'A', points: 12, descriptor: 'Excellent' };
-                          if (pct >= 75) return { grade: 'A-', points: 11, descriptor: 'Very Good' };
-                          if (pct >= 70) return { grade: 'B+', points: 10, descriptor: 'Good' };
-                          if (pct >= 65) return { grade: 'B', points: 9, descriptor: 'Good' };
-                          if (pct >= 60) return { grade: 'B-', points: 8, descriptor: 'Good' };
-                          if (pct >= 55) return { grade: 'C+', points: 7, descriptor: 'Average' };
-                          if (pct >= 50) return { grade: 'C', points: 6, descriptor: 'Average' };
-                          if (pct >= 45) return { grade: 'C-', points: 5, descriptor: 'Average' };
-                          if (pct >= 40) return { grade: 'D+', points: 4, descriptor: 'Below Average' };
-                          if (pct >= 35) return { grade: 'D', points: 3, descriptor: 'Below Average' };
-                          if (pct >= 30) return { grade: 'D-', points: 2, descriptor: 'Below Average' };
-                          return { grade: 'E', points: 1, descriptor: 'Poor' };
-                        }
-                        const b = getSchoolLevelBand(classDataForGrading);
-                        const g = (() => {
-                          if (b === 'junior' || b === 'senior') {
-                            if (pct >= 90) return { subLevel: 'EE1', grade: 'EE', points: 8 };
-                            if (pct >= 75) return { subLevel: 'EE2', grade: 'EE', points: 7 };
-                            if (pct >= 58) return { subLevel: 'ME1', grade: 'ME', points: 6 };
-                            if (pct >= 41) return { subLevel: 'ME2', grade: 'ME', points: 5 };
-                            if (pct >= 31) return { subLevel: 'AE1', grade: 'AE', points: 4 };
-                            if (pct >= 21) return { subLevel: 'AE2', grade: 'AE', points: 3 };
-                            if (pct >= 11) return { subLevel: 'BE1', grade: 'BE', points: 2 };
-                            return { subLevel: 'BE2', grade: 'BE', points: 1 };
-                          }
-                          if (pct >= 75) return { subLevel: 'EE', grade: 'EE', points: 0 };
-                          if (pct >= 41) return { subLevel: 'ME', grade: 'ME', points: 0 };
-                          if (pct >= 21) return { subLevel: 'AE', grade: 'AE', points: 0 };
-                          return { subLevel: 'BE', grade: 'BE', points: 0 };
-                        })();
-                        return { grade: g.subLevel, points: g.points, descriptor: g.grade === 'EE' ? 'Exceeding Expectation' : g.grade === 'ME' ? 'Meeting Expectation' : g.grade === 'AE' ? 'Approaching Expectation' : 'Below Expectation' };
-                      })();
-                      return (
-                        <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                          <td className="py-2 px-3 font-medium">{r.subjects?.name}</td>
-                          <td className="py-2 px-3">{r.marks}</td>
-                          <td className="py-2 px-3">{pct}%</td>
-                          <td className="py-2 px-3">
-                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                              grading.grade.startsWith('EE') || grading.grade.startsWith('A') ? 'bg-green-100 text-green-700' :
-                              grading.grade.startsWith('ME') || grading.grade.startsWith('B') || grading.grade.startsWith('C') ? 'bg-blue-100 text-blue-700' :
-                              grading.grade.startsWith('AE') || grading.grade.startsWith('D') ? 'bg-orange-100 text-orange-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{grading.grade}</span>
-                          </td>
-                          {!isPrimary && <td className="py-2 px-3">{grading.points ?? '—'}</td>}
-                          <td className="py-2 px-3 text-xs text-gray-600">{grading.descriptor}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              {classBestList.filter(b => b.studentId === selectedChild?.id).length > 0 && (
-                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">🏆</span>
-                    <span className="text-sm font-bold text-yellow-800">{selectedChild?.first_name}&apos;s Achievements This Term</span>
-                  </div>
-                  {classBestList.filter(b => b.studentId === selectedChild?.id).map((b, i) => (
-                    <div key={i} className="text-sm text-yellow-900">
-                      Your child scored highest in <strong>{b.subjectName}</strong>: {b.percentage}% — {b.gradeLabel}{b.points !== null ? ` (${b.points} pts)` : ''}
-                    </div>
-                  ))}
-                </div>
-              )}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-[#666666]">No results found for this term.</p>
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        <div className="lg:col-span-2">
+          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] overflow-hidden border border-white/80">
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="font-black text-[#1A237E] flex items-center gap-2">
+                <FileText className="w-5 h-5 text-[#F5A623]" /> Term Results Preview
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Average:</span>
+                <span className="text-lg font-black text-[#6A1B9A]">{currentAvg.toFixed(1)}%</span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50/50">
+                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Learning Area</th>
+                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Marks</th>
+                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Grade</th>
+                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Points</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {loading ? (
+                    <tr><td colSpan={4} className="text-center py-12"><Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" /></td></tr>
+                  ) : results.length === 0 ? (
+                    <tr><td colSpan={4} className="text-center py-12 text-sm text-gray-500 font-bold">No results published for this term yet.</td></tr>
+                  ) : results.map((r, i) => (
+                    <tr key={r.id} className={`hover:bg-gray-50/50 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-[#E8EAF6]/30'}`}>
+                      <td className="px-6 py-4 text-sm font-bold text-[#111111]">{r.subjects?.name}</td>
+                      <td className="px-6 py-4 text-sm font-medium">{r.marks}/{r.out_of} ({getPercentage(r)}%)</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
+                          getPercentage(r) >= 75 ? 'bg-emerald-100 text-emerald-700' :
+                          getPercentage(r) >= 41 ? 'bg-blue-100 text-blue-700' :
+                          getPercentage(r) >= 21 ? 'bg-amber-100 text-amber-700' :
+                          'bg-rose-100 text-rose-700'
+                        }`}>
+                          {getPercentage(r) >= 75 ? 'EE' : getPercentage(r) >= 41 ? 'ME' : getPercentage(r) >= 21 ? 'AE' : 'BE'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{r.cbc_points || r.points_ || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

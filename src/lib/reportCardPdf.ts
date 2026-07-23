@@ -28,6 +28,28 @@ export interface StudentResult {
   [key: string]: any;
 }
 
+// Pathway Mapping based on Junior School Learning Areas
+export const PATHWAY_MAPPING: Record<string, string> = {
+  'Mathematics': 'STEM',
+  'Integrated Science': 'STEM',
+  'Pre-Technical Studies': 'STEM',
+  'Agriculture and Nutrition': 'STEM',
+  'Agriculture': 'STEM',
+  'Science and Technology': 'STEM',
+  'English': 'Social Sciences',
+  'Kiswahili': 'Social Sciences',
+  'Social Studies': 'Social Sciences',
+  'Religious Education': 'Social Sciences',
+  'CRE': 'Social Sciences',
+  'IRE': 'Social Sciences',
+  'HRE': 'Social Sciences',
+  'Creative Arts and Sports': 'Arts & Sports',
+  'Creative Arts': 'Arts & Sports',
+  'Physical and Health Education': 'Arts & Sports',
+  'Music': 'Arts & Sports',
+  'Art and Craft': 'Arts & Sports',
+};
+
 export function getPercentage(result: any): number {
   if (result.percentage !== undefined && result.percentage !== null) return Number(result.percentage);
   const outOf = Number(result.out_of || 100);
@@ -245,8 +267,8 @@ export function drawTrendGraph(
     term: d.term,
   }));
 
-  // Draw connecting line
-  doc.setDrawColor(37, 99, 235);
+  // Draw connecting line - Use Purple instead of Blue
+  doc.setDrawColor(106, 27, 154); // Deep Purple
   doc.setLineWidth(1.5);
   for (let i = 0; i < points.length - 1; i++) {
     doc.line(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
@@ -254,7 +276,7 @@ export function drawTrendGraph(
 
   // Draw points
   points.forEach((p) => {
-    doc.setFillColor(37, 99, 235);
+    doc.setFillColor(106, 27, 154); // Deep Purple
     doc.circle(p.x, p.y, 2.5, 'F');
     doc.setFillColor(255, 255, 255);
     doc.circle(p.x, p.y, 1.2, 'F');
@@ -267,7 +289,7 @@ export function drawTrendGraph(
 
     doc.setFontSize(5.5);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(37, 99, 235);
+    doc.setTextColor(106, 27, 154); // Deep Purple
     doc.text(`${p.avg.toFixed(0)}%`, p.x, p.y - 5, { align: 'center' });
   });
 
@@ -449,8 +471,8 @@ export async function addStudentPhotoToPDF(
     ctx.clip();
     ctx.drawImage(img, 0, 0, px, px);
     const circularDataUrl = canvas.toDataURL('image/png');
-    // Blue border circle
-    doc.setDrawColor(37, 99, 235);
+    // Gold border circle
+    doc.setDrawColor(245, 166, 35); // Gold
     doc.setLineWidth(0.8);
     doc.circle(x + size / 2, y + size / 2, size / 2, 'S');
     doc.addImage(circularDataUrl, 'PNG', x, y, size, size);
@@ -540,8 +562,8 @@ export async function drawReportHeader(
   schoolInfo: SchoolInfo,
   subtitle: string = 'STUDENT REPORT CARD'
 ) {
-  // Blue header background
-  doc.setFillColor(37, 99, 235);
+  // Vibrant Gold header background
+  doc.setFillColor(245, 166, 35); // Gold/Yellow (#F5A623)
   doc.rect(0, 0, 210, 32, 'F');
 
   // Try to add logo (left side, bigger)
@@ -549,8 +571,10 @@ export async function drawReportHeader(
     ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26)
     : false;
 
-  doc.setTextColor(255, 255, 255);
-  // School name — always prominent, never fall back to generic 'School'
+  // Dark Navy text for better contrast on Gold
+  doc.setTextColor(26, 35, 126); // Dark Navy (#1A237E)
+  
+  // School name — always prominent
   const displayName = schoolInfo.name?.trim() || 'School';
   doc.setFontSize(logoAdded ? 14 : 16);
   doc.setFont('helvetica', 'bold');
@@ -577,7 +601,6 @@ export function drawStudentInfo(
   academicYear: string,
   position: string,
   y: number = 38,
-  // Issue 10: Added assessmentName parameter to show on report card
   assessmentName?: string
 ) {
   doc.setTextColor(0, 0, 0);
@@ -586,7 +609,7 @@ export function drawStudentInfo(
   doc.text(`Learner: ${studentName}`, 14, y);
   doc.text(`Adm No: ${admissionNo}`, 14, y + 6);
   doc.text(`Class: ${className}`, 14, y + 12);
-  // Issue 10: Show assessment name if provided, otherwise show term name
+  
   doc.text(`Term: ${termName} ${academicYear}`, 120, y);
   if (assessmentName) {
     doc.text(`Assessment: ${assessmentName}`, 120, y + 6);
@@ -596,7 +619,7 @@ export function drawStudentInfo(
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 12);
   }
 
-  doc.setDrawColor(37, 99, 235);
+  doc.setDrawColor(106, 27, 154); // Deep Purple
   doc.line(14, y + 17, 196, y + 17);
 }
 
@@ -633,8 +656,52 @@ export function drawResultsTable(
     head: [tableHead],
     body: tableBody,
     styles: { fontSize: 8, cellPadding: 1.5 },
-    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: 8 },
-    alternateRowStyles: { fillColor: [245, 247, 255] },
+    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 8 }, // Deep Purple
+    alternateRowStyles: { fillColor: [232, 234, 246] }, // Light Lavender
+    margin: { left: 14, right: 14 },
+  });
+
+  return (doc as any).lastAutoTable.finalY;
+}
+
+// ── Draw Pathway Performance ──────────────────────────────────────────────────
+export function drawPathwayPerformance(
+  doc: jsPDF,
+  results: any[],
+  startY: number
+): number {
+  const pathways = ['STEM', 'Arts & Sports', 'Social Sciences'];
+  const pathwayData = pathways.map(pathway => {
+    const relevantResults = results.filter(r => {
+      const subjectName = r.subjects?.name || '';
+      return PATHWAY_MAPPING[subjectName] === pathway;
+    });
+
+    const areasUsed = relevantResults.map(r => r.subjects?.name).join(', ');
+    const score = relevantResults.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
+    const outOf = relevantResults.reduce((sum, r) => sum + (Number(r.out_of) || 100), 0);
+    const percentage = outOf > 0 ? (score / outOf) * 100 : 0;
+
+    return [
+      pathway,
+      areasUsed || 'None',
+      `${score}/${outOf}`,
+      `${percentage.toFixed(1)}%`
+    ];
+  });
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(26, 35, 126); // Dark Navy
+  doc.text('Pathway Performance Profile', 14, startY + 6);
+
+  autoTable(doc, {
+    startY: startY + 8,
+    head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']],
+    body: pathwayData,
+    styles: { fontSize: 8, cellPadding: 2 },
+    headStyles: { fillColor: [106, 27, 154], textColor: 255 }, // Deep Purple
+    alternateRowStyles: { fillColor: [255, 248, 225] }, // Gold Background for section
     margin: { left: 14, right: 14 },
   });
 
@@ -655,11 +722,11 @@ export function drawSummaryBox(
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const overallGrading = gradeFromPercentage(avgPercentage, classData);
 
-  doc.setFillColor(245, 247, 255);
+  doc.setFillColor(0, 137, 123); // Teal (#00897B)
   doc.rect(14, startY, 182, 22, 'F');
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(255, 255, 255); // White text on Teal
   doc.text(`Learning Areas: ${results.length}`, 20, startY + 7);
   doc.text(`Total Marks: ${totalMarks}`, 65, startY + 7);
   doc.text(`Average: ${avgPercentage.toFixed(1)}%`, 130, startY + 7);
@@ -682,8 +749,8 @@ export function drawDeviation(
   if (deviation !== null) {
     const arrow = deviation >= 0 ? '\u25B2' : '\u25BC';
     const sign = deviation >= 0 ? '+' : '';
-    if (deviation >= 0) doc.setTextColor(22, 163, 74);
-    else doc.setTextColor(220, 38, 38);
+    if (deviation >= 0) doc.setTextColor(76, 175, 80); // Green
+    else doc.setTextColor(244, 67, 54); // Red
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous term (Prev: ${previousAvg?.toFixed(1)}%)`, 14, startY);
@@ -706,11 +773,11 @@ export function drawAchievements(
 ): number {
   if (bestSubjects.length === 0) return startY;
 
-  doc.setFillColor(254, 249, 195);
+  doc.setFillColor(255, 248, 225); // Light Gold
   doc.rect(14, startY, 182, 5 + bestSubjects.length * 5, 'F');
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(202, 138, 4);
+  doc.setTextColor(245, 166, 35); // Gold
   doc.text('ACHIEVEMENT:', 18, startY + 4);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0, 0, 0);
@@ -731,7 +798,7 @@ export function drawAIComment(
   const commentLines = doc.splitTextToSize(comment, 168);
   const boxHeight = Math.max(20, commentLines.length * 4.5 + 10);
 
-  doc.setFillColor(254, 252, 232);
+  doc.setFillColor(232, 234, 246); // Light Lavender
   doc.rect(14, startY, 182, boxHeight, 'F');
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
