@@ -23,19 +23,6 @@ import {
   type SignatureInfo,
 } from '@/lib/reportCardPdf';
 
-function calculateCBEGrade(pct: number, classData?: { curriculum?: string | null; grade_level?: number | string | null; level?: number | string | null; name?: string | null }) {
-  const band = getSchoolLevelBand(classData);
-  const g = calculateCompetencyGrade(pct, band);
-  return { subLevel: g.subLevel, grade: g.grade, points: g.points };
-}
-
-function overallGradeLabelCBE(avgPct: number): string {
-  if (avgPct >= 75) return 'EE';
-  if (avgPct >= 41) return 'ME';
-  if (avgPct >= 21) return 'AE';
-  return 'BE';
-}
-
 function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
   const g = calculateCompetencyGrade(avgPct, band);
   return { subLevel: g.subLevel, grade: g.grade, points: g.points, descriptor: g.descriptor };
@@ -130,20 +117,7 @@ export default function SchoolAdminResults() {
       sch = results[3].data;
       setExams((results[4].data as any[]) || []);
     } catch (err: any) {
-      if (err.message?.includes('motto')) {
-        const results = await Promise.all([
-          supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
-          supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
-          supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
-          supabaseUntyped.from('schools').select('name, logo_url, principal_name, principal_signature_url, address, phone, email').eq('id', schoolId).maybeSingle(),
-          supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
-        ]);
-        setResults((results[0].data as any[]) || []);
-        setClasses((results[1].data as any[]) || []);
-        setTerms((results[2].data as any[]) || []);
-        sch = results[3].data;
-        setExams((results[4].data as any[]) || []);
-      }
+      console.error('Fetch error:', err);
     }
     if (sch) {
       setSchoolName(sch.name?.trim() || 'School');
@@ -170,10 +144,12 @@ export default function SchoolAdminResults() {
       if (examId !== selectedExam && examName !== selectedExam) return false;
     }
     if (!search) return true;
+    const searchLower = search.toLowerCase();
     return (
-      r.students?.first_name?.toLowerCase().includes(search.toLowerCase()) ||
-      r.students?.last_name?.toLowerCase().includes(search.toLowerCase()) ||
-      r.subjects?.name?.toLowerCase().includes(search.toLowerCase())
+      r.students?.first_name?.toLowerCase().includes(searchLower) ||
+      r.students?.last_name?.toLowerCase().includes(searchLower) ||
+      r.students?.admission_number?.toLowerCase().includes(searchLower) ||
+      r.subjects?.name?.toLowerCase().includes(searchLower)
     );
   });
 
@@ -354,17 +330,6 @@ export default function SchoolAdminResults() {
     return names.length === 1 ? (names[0] as string) : '';
   };
 
-  const getPreviousTerm = (currentTermId: string) => {
-    const currentTerm = terms.find(t => t.id === currentTermId);
-    if (!currentTerm) return null;
-    return terms.find(t => t.academic_year === currentTerm.academic_year && t.name !== currentTerm.name);
-  };
-
-  const drawBar = (doc: jsPDF, x: number, y: number, w: number, pct: number, color: [number, number, number]) => {
-    doc.setFillColor(240, 240, 245); doc.rect(x, y, w, 4, 'F');
-    doc.setFillColor(color[0], color[1], color[2]); doc.rect(x, y, w * pct, 4, 'F');
-  };
-
   const downloadClassResultsPDF = async () => {
     if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingPDF(true);
@@ -380,8 +345,6 @@ export default function SchoolAdminResults() {
       const allSubjects = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
       const totalStudents = summaries.length;
       const classMean = totalStudents > 0 ? summaries.reduce((sum, s) => sum + s.avgPct, 0) / totalStudents : 0;
-      const prevAvgMap: Record<string, number | null> = {};
-      for (const s of summaries) { prevAvgMap[s.studentId] = await fetchPreviousTermAvg(s.studentId, selectedTerm); }
       
       const subjectStats = allSubjects.map(sub => {
         const vals = summaries.map(s => s.subjects[sub]).filter(v => v !== undefined);
@@ -395,7 +358,6 @@ export default function SchoolAdminResults() {
 
       // ── PAGE 1: CLASS SUMMARY ────────────────────────────────────────────────────
       {
-        // Vibrant Gold header background
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 35, 'F');
         const logoAdded = schoolInfo.logo_url ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26) : false;
         doc.setTextColor(26, 35, 126); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -418,17 +380,13 @@ export default function SchoolAdminResults() {
         doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 20, statsY + 18);
         doc.text(`Learning Areas: ${allSubjects.length}`, 130, statsY + 18);
         if (assessmentLabel) {
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(106, 27, 154); // Deep Purple
-          doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 26);
-          doc.setFont('helvetica', 'normal');
-          doc.setTextColor(0, 0, 0);
+          doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154); doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 26);
+          doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         }
 
         const gradeDistY = statsY + 38;
         doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
-        doc.text('GRADE DISTRIBUTION', 14, gradeDistY);
-        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.text('GRADE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
 
         const grades = isPrimary ? [
           { label: 'EE (Exceeding)', min: 75, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 41, color: [33, 150, 243] },
@@ -454,6 +412,10 @@ export default function SchoolAdminResults() {
           const pct = totalStudents > 0 ? count / totalStudents : 0;
           const y = gradeDistY + 10 + row * (isPrimary ? 10 : 8);
           doc.text(`${g.label}: ${count} learner${count !== 1 ? 's' : ''} (${(pct * 100).toFixed(1)}%)`, 20, y);
+          const drawBar = (doc: jsPDF, x: number, y: number, w: number, pct: number, color: [number, number, number]) => {
+            doc.setFillColor(240, 240, 245); doc.rect(x, y, w, 4, 'F');
+            doc.setFillColor(color[0], color[1], color[2]); doc.rect(x, y, w * pct, 4, 'F');
+          };
           drawBar(doc, 90, y - 3, 80, pct, g.color as [number, number, number]);
           row++;
         }
@@ -493,7 +455,6 @@ export default function SchoolAdminResults() {
         });
 
         autoTable(doc, { startY: 26, head: [['Rank', 'Learning Area', 'Average', 'Grade', 'Status']], body: subRows, styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 9, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] } });
-
         doc.setFontSize(7); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
@@ -601,8 +562,7 @@ export default function SchoolAdminResults() {
         doc.text(`Class: ${classObj?.name || 'N/A'}`, 14, y + 14);
         doc.text(`Term: ${termObj?.name || ''} ${termObj?.academic_year || ''}`, 120, y);
         if (cardAssessment) {
-          doc.setTextColor(106, 27, 154); doc.setFont('helvetica', 'bold');
-          doc.text(`Assessment: ${cardAssessment}`, 120, y + 7);
+          doc.setTextColor(106, 27, 154); doc.setFont('helvetica', 'bold'); doc.text(`Assessment: ${cardAssessment}`, 120, y + 7);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
           doc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 14);
           doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 21);
@@ -622,10 +582,11 @@ export default function SchoolAdminResults() {
         autoTable(doc, { startY: tableStartY, head: [isPrimary ? ['Learning Area', 'Percentage', 'CBE Grade', 'Descriptor'] : ['Learning Area', 'Percentage', 'CBE Grade', 'Points', 'Descriptor']], body: subjectRows, styles: { fontSize: 9 }, headStyles: { fillColor: [106, 27, 154], textColor: 255 }, alternateRowStyles: { fillColor: [232, 234, 246] } });
 
         let currentY = (doc as any).lastAutoTable.finalY + 8;
-
-        // NEW: Pathway Performance Profile
-        const studentResultsForPathways = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
-        currentY = drawPathwayPerformance(doc, studentResultsForPathways, currentY) + 8;
+        const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
+        if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
+          const studentResultsForPathways = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
+          currentY = drawPathwayPerformance(doc, studentResultsForPathways, currentY) + 8;
+        }
 
         const gr = overallGradeWithBand(s.avgPct, band);
         doc.setFillColor(0, 137, 123); doc.rect(14, currentY, 182, 25, 'F'); // Teal
@@ -730,8 +691,123 @@ export default function SchoolAdminResults() {
           </button>
         </div>
       </div>
-      
-      {/* Rest of the component (Results table, etc.) can remain as is or be improved further */}
+
+      <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
+        <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-[#111111] flex items-center gap-2">
+            <Trophy className="w-5 h-5 text-amber-500" /> Results Records
+          </h2>
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input type="text" placeholder="Search learner or subject..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider">Learner</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider">Learning Area</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Marks</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">%</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Grade</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Points</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider">Assessment</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Status</th>
+                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr><td colSpan={9} className="px-6 py-12 text-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" /><p className="text-sm text-gray-500 mt-2">Loading results...</p></td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500 italic">No results found matching your criteria.</td></tr>
+              ) : filtered.map(r => (
+                <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-[#111111]">{r.students?.first_name} {r.students?.last_name}</div>
+                    <div className="text-xs text-[#666666]">{r.students?.admission_number}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111]">{r.subjects?.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-medium">{r.marks} / {r.out_of}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-blue-600">{getPercentage(r)}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${gradeColor(r.cbc_sublevel || r.cbc_grade || '')}`}>
+                      {r.cbc_sublevel || r.cbc_grade || '-'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-medium">{r.cbc_points || r.points_ || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs text-[#666666]">{r.school_exams?.name || r.exams?.name || 'N/A'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${r.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {r.status === 'published' ? 'Published' : 'Draft'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => openEditResult(r)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
+                      <button onClick={() => setDeletingResult(r)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Edit Modal */}
+      {editingResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-[#111111]">Edit Marks</h3>
+              <button onClick={() => setEditingResult(null)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-5 h-5 text-gray-400" /></button>
+            </div>
+            <form onSubmit={handleSaveResult} className="p-6 space-y-4">
+              <div className="p-4 bg-blue-50 rounded-xl mb-2">
+                <p className="text-sm font-bold text-blue-900">{editingResult.students?.first_name} {editingResult.students?.last_name}</p>
+                <p className="text-xs text-blue-700">{editingResult.subjects?.name}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#666666] uppercase mb-1.5">Marks Obtained</label>
+                  <input type="number" step="0.1" value={editMarks} onChange={e => setEditMarks(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#666666] uppercase mb-1.5">Out Of</label>
+                  <input type="number" step="0.1" value={editOutOf} onChange={e => setEditOutOf(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" required />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setEditingResult(null)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-[#666666] hover:bg-gray-50 transition-colors">Cancel</button>
+                <button type="submit" disabled={savingResult} className="flex-1 px-4 py-2.5 bg-[#2563EB] text-white rounded-xl text-sm font-bold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50">
+                  {savingResult ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 className="w-6 h-6" /></div>
+              <h3 className="text-lg font-bold text-[#111111] mb-2">Delete Result?</h3>
+              <p className="text-sm text-[#666666] mb-6">Are you sure you want to delete this result for <b>{deletingResult.students?.first_name}</b>? This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeletingResult(null)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-[#666666] hover:bg-gray-50 transition-colors">No, Keep</button>
+                <button onClick={handleDeleteResult} disabled={deletingResultLoading} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50">
+                  {deletingResultLoading ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

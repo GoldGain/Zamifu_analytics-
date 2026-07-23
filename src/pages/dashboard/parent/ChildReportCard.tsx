@@ -309,9 +309,7 @@ export default function ParentChildReportCard() {
   };
 
   const classDataForGrading = selectedChild?.classes || {};
-  const is = (classDataForGrading?.curriculum || 'CBE') === '';
-  const band = getSchoolLevelBand(classDataForGrading);
-  const isPrimary = band === 'primary';
+  const isPrimary = getSchoolLevelBand(classDataForGrading) === 'primary';
 
   const doGeneratePDF = async () => {
     if (!results.length) { toast.error('No results found for this term'); return; }
@@ -323,15 +321,7 @@ export default function ParentChildReportCard() {
       const avgPercentage = results.length
         ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length
         : 0;
-      const totalPoints = is
-        ? results.reduce((s, r) => {
-            const pct = getPercentage(r);
-            if (pct >= 80) return s + 12; if (pct >= 75) return s + 11; if (pct >= 70) return s + 10;
-            if (pct >= 65) return s + 9; if (pct >= 60) return s + 8; if (pct >= 55) return s + 7;
-            if (pct >= 50) return s + 6; if (pct >= 45) return s + 5; if (pct >= 40) return s + 4;
-            if (pct >= 35) return s + 3; if (pct >= 30) return s + 2; return s + 1;
-          }, 0)
-        : isPrimary ? null : results.reduce((s, r) => {
+      const totalPoints = isPrimary ? null : results.reduce((s, r) => {
             const pct = getPercentage(r);
             if (pct >= 90) return s + 8; if (pct >= 75) return s + 7; if (pct >= 58) return s + 6;
             if (pct >= 41) return s + 5; if (pct >= 31) return s + 4; if (pct >= 21) return s + 3;
@@ -359,231 +349,249 @@ export default function ParentChildReportCard() {
       drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr);
       let currentY = drawResultsTable(doc, results, classDataForGrading, 70) + 8;
       
-      // NEW: Pathway Performance
-      currentY = drawPathwayPerformance(doc, results, currentY) + 8;
+      // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
+      const gradeLevelNum = Number(classDataForGrading?.grade_level || classDataForGrading?.level || 0);
+      if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
+        currentY = drawPathwayPerformance(doc, results, currentY) + 8;
+      }
       
       currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
       currentY = drawDeviation(doc, deviation, previousAvg, currentY + 8);
       if (trendData.length >= 2) {
-        drawTrendGraph(doc, trendData, 14, currentY + 5, 182, 45, band);
-        currentY += 55;
+        drawTrendGraph(doc, trendData, 14, currentY, 182, 45, getSchoolLevelBand(classDataForGrading));
+        currentY += 50;
       }
-      const studentBest = classBestList.filter(b => b.studentId === selectedChild.id);
-      currentY = drawAchievements(doc, studentBest, currentY + 5);
-      currentY = drawAIComment(doc, aiComment, currentY + 5);
-      addSignaturesToPDF(doc, signatures, currentY + 10, schoolInfo);
-      
-      doc.save(`${studentFullName}_Report_Card.pdf`);
+      const studentBests = classBestList.filter(b => b.studentId === selectedChild.id);
+      if (studentBests.length > 0) {
+        currentY = drawAchievements(doc, studentBests, currentY);
+      }
+      currentY = drawAIComment(doc, aiComment, currentY);
+      addSignaturesToPDF(doc, signatures, currentY, schoolInfo);
+      doc.save(`Report_Card_${selectedChild.first_name}_${selectedChild.last_name}.pdf`);
     } catch (err: any) {
-      toast.error('Failed to generate PDF: ' + err.message);
+      toast.error('PDF Error: ' + err.message);
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
   const handleDownload = async () => {
     if (!selectedChild) return;
     if (schoolPayConfig?.parent_pay_enabled) {
-      const paid = await checkPdfPaid(selectedChild.id);
-      if (!paid) {
-        toast.info('Payment required to download report card.');
+      const isPaid = await checkPdfPaid(selectedChild.id);
+      if (!isPaid) {
+        toast.error(`Please pay the report card fee (KSH ${schoolPayConfig.pdf_report_fee}) to download.`);
         return;
       }
     }
     doGeneratePDF();
   };
 
-  const handlePay = async () => {
-    if (!selectedChild || !schoolPayConfig) return;
+  const handlePayment = async (type: 'pdf_report' | 'view_results') => {
+    if (!selectedChild || !schoolPayConfig?.reseller_paystack_public_key) return;
     setPaying(true);
     try {
       await loadPaystackScript();
-      const amount = (schoolPayConfig.pdf_report_fee || 50) * 100;
+      const amount = type === 'pdf_report' ? schoolPayConfig.pdf_report_fee : schoolPayConfig.view_results_fee;
       const handler = window.PaystackPop?.setup({
         key: schoolPayConfig.reseller_paystack_public_key,
-        email: user?.email,
-        amount,
+        email: user?.email || 'parent@zamifu.com',
+        amount: amount * 100,
         currency: 'KES',
-        ref: `PDF_${selectedChild.id}_${Date.now()}`,
+        ref: `PAY_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
         callback: async (response: any) => {
-          if (response.status === 'success') {
-            const { error } = await supabaseUntyped.from('parent_payments').insert([{
-              parent_id: user?.id,
-              student_id: selectedChild.id,
-              school_id: schoolPayConfig.school_id,
-              payment_type: 'pdf_report',
-              amount: schoolPayConfig.pdf_report_fee,
-              transaction_ref: response.reference,
-              status: 'success',
-            }]);
-            if (!error) {
-              setPdfPaid(prev => ({ ...prev, [selectedChild.id]: true }));
-              toast.success('Payment successful! You can now download the report card.');
-            }
+          const { error } = await supabaseUntyped.from('parent_payments').insert({
+            parent_id: user?.id,
+            student_id: selectedChild.id,
+            school_id: schoolPayConfig.school_id,
+            amount,
+            payment_type: type,
+            status: 'success',
+            transaction_ref: response.reference,
+          });
+          if (error) toast.error('Payment recorded with error: ' + error.message);
+          else {
+            toast.success('Payment successful!');
+            if (type === 'pdf_report') setPdfPaid(prev => ({ ...prev, [selectedChild.id]: true }));
+            fetchResults();
           }
           setPaying(false);
         },
-        onClose: () => setPaying(false),
+        onClose: () => { setPaying(false); toast.info('Payment cancelled'); },
       });
       handler?.openIframe();
     } catch (err: any) {
-      toast.error(err.message);
+      toast.error('Payment Error: ' + err.message);
       setPaying(false);
     }
   };
 
-  const currentAvg = results.length ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length : 0;
-  const deviation = previousAvg !== null ? currentAvg - previousAvg : null;
+  if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
 
   return (
-    <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-amber-50/40 to-purple-50/50 min-h-full">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-[#1A237E]">Child Report Card</h1>
-          <p className="text-sm text-[#666666]">View and download official academic reports</p>
+          <h1 className="text-2xl font-bold text-[#111111]">Child Report Card</h1>
+          <p className="text-sm text-[#666666]">View and download your child's academic performance</p>
         </div>
-        {children.length > 1 && (
-          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm p-1.5 rounded-2xl border border-white/80 shadow-sm">
-            {children.map(child => (
-              <button
-                key={child.id}
-                onClick={() => setSelectedChild(child)}
-                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${selectedChild?.id === child.id ? 'bg-[#1A237E] text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'}`}
-              >
-                {child.first_name}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {children.length > 1 && (
+            <select
+              value={selectedChild?.id}
+              onChange={(e) => {
+                const child = children.find(c => c.id === e.target.value);
+                setSelectedChild(child);
+                fetchTerms(child.school_id);
+                fetchSchoolPayConfig(child.school_id);
+                fetchSchoolInfo(child.school_id);
+                fetchSignatures(child.school_id, child.classes?.class_teacher_id);
+                fetchTotalStudents(child.class_id, child.school_id);
+              }}
+              className="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            >
+              {children.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
+            </select>
+          )}
+          <button
+            onClick={handleDownload}
+            disabled={generating || !results.length}
+            className="flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors"
+          >
+            {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {generating ? 'Generating...' : 'Download PDF'}
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] border border-white/80">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-amber-100 flex items-center justify-center border-2 border-amber-200 overflow-hidden">
-                {selectedChild?.photo_url ? (
-                  <img src={selectedChild.photo_url} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <Users className="w-8 h-8 text-amber-600" />
-                )}
-              </div>
-              <div>
-                <h3 className="font-black text-[#1A237E]">{selectedChild?.first_name} {selectedChild?.last_name}</h3>
-                <p className="text-xs font-bold text-amber-600 uppercase tracking-wider">{selectedChild?.classes?.name}</p>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="md:col-span-1 space-y-6">
+          <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] text-center">
+            <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden border-4 border-white shadow-sm">
+              {selectedChild?.photo_url ? (
+                <img src={selectedChild.photo_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <Users className="w-10 h-10 text-blue-600" />
+              )}
             </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Select Assessment Term</label>
-                <select
-                  value={selectedTerm}
-                  onChange={e => setSelectedTerm(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-100 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#F5A623] bg-gray-50/50"
-                >
-                  {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
-                </select>
-              </div>
-
-              <div className="pt-2">
-                {schoolPayConfig?.parent_pay_enabled && !pdfPaid[selectedChild?.id] ? (
-                  <button
-                    onClick={handlePay}
-                    disabled={paying}
-                    className="w-full flex items-center justify-center gap-2 bg-[#F5A623] text-white px-6 py-3.5 rounded-2xl text-sm font-black hover:bg-[#e69512] transition-all shadow-lg shadow-amber-200 disabled:opacity-50"
-                  >
-                    {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                    Unlock Report (KES {schoolPayConfig.pdf_report_fee})
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleDownload}
-                    disabled={generating || !results.length}
-                    className="w-full flex items-center justify-center gap-2 bg-[#6A1B9A] text-white px-6 py-3.5 rounded-2xl text-sm font-black hover:bg-[#5a1682] transition-all shadow-lg shadow-purple-200 disabled:opacity-50"
-                  >
-                    {generating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                    Download Official PDF
-                  </button>
-                )}
-              </div>
+            <h2 className="text-lg font-bold text-[#111111]">{selectedChild?.first_name} {selectedChild?.last_name}</h2>
+            <p className="text-sm text-[#666666] mb-4">{selectedChild?.admission_number || 'No Admission No.'}</p>
+            <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium">
+              <Users className="w-3.5 h-3.5" /> {selectedChild?.classes?.name || 'No Class'}
             </div>
           </div>
 
-          {results.length > 0 && (
-            <div className={`rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] ${
-              deviation === null ? 'bg-gray-50 border border-gray-200' :
-              deviation >= 0 ? 'bg-emerald-50 border border-emerald-200' :
-              'bg-rose-50 border border-rose-200'
-            }`}>
-              <div className="flex items-center gap-3">
-                {deviation === null ? (
-                  <Minus className="w-8 h-8 text-gray-400" />
-                ) : deviation >= 0 ? (
-                  <TrendingUp className="w-8 h-8 text-emerald-600" />
-                ) : (
-                  <TrendingDown className="w-8 h-8 text-rose-600" />
-                )}
-                <div>
-                  <div className={`text-lg font-black ${
-                    deviation === null ? 'text-gray-600' :
-                    deviation >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                  }`}>
-                    {deviation === null ? 'First Term' : deviation >= 0 ? `+${deviation.toFixed(1)}% Progress` : `${deviation.toFixed(1)}% Drop`}
-                  </div>
-                  <p className="text-xs font-medium text-gray-500">Compared to previous term</p>
-                </div>
-              </div>
+          <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+            <h3 className="text-sm font-bold text-[#111111] uppercase tracking-wider mb-4">Select Term</h3>
+            <div className="space-y-2">
+              {terms.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTerm(t.id)}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-colors ${
+                    selectedTerm === t.id ? 'bg-blue-600 text-white font-medium' : 'hover:bg-gray-50 text-[#666666]'
+                  }`}
+                >
+                  {t.name} {t.academic_year}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
-        <div className="lg:col-span-2">
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.06)] overflow-hidden border border-white/80">
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-black text-[#1A237E] flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#F5A623]" /> Term Results Preview
-              </h3>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Average:</span>
-                <span className="text-lg font-black text-[#6A1B9A]">{currentAvg.toFixed(1)}%</span>
+        <div className="md:col-span-3 space-y-6">
+          {results.length > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
+                  <p className="text-xs font-bold text-[#666666] uppercase mb-1">Average Score</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-[#111111]">
+                      {(results.reduce((s, r) => s + getPercentage(r), 0) / results.length).toFixed(1)}%
+                    </span>
+                    {previousAvg !== null && (
+                      <span className={`text-xs font-bold flex items-center ${
+                        (results.reduce((s, r) => s + getPercentage(r), 0) / results.length) >= previousAvg ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {(results.reduce((s, r) => s + getPercentage(r), 0) / results.length) >= previousAvg ? <TrendingUp className="w-3 h-3 mr-0.5" /> : <TrendingDown className="w-3 h-3 mr-0.5" />}
+                        {Math.abs((results.reduce((s, r) => s + getPercentage(r), 0) / results.length) - previousAvg).toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-white p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
+                  <p className="text-xs font-bold text-[#666666] uppercase mb-1">Overall Grade</p>
+                  <span className="text-2xl font-black text-purple-600 uppercase">
+                    {(() => {
+                      const avg = results.reduce((s, r) => s + getPercentage(r), 0) / results.length;
+                      if (avg >= 75) return 'EE'; if (avg >= 41) return 'ME'; if (avg >= 21) return 'AE'; return 'BE';
+                    })()}
+                  </span>
+                </div>
+                <div className="bg-white p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
+                  <p className="text-xs font-bold text-[#666666] uppercase mb-1">Class Position</p>
+                  <span className="text-2xl font-black text-blue-600">
+                    {results[0]?.class_position || results[0]?.position || 'N/A'}
+                    <span className="text-sm font-normal text-gray-400 ml-1">/ {totalStudents}</span>
+                  </span>
+                </div>
               </div>
+
+              <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
+                <div className="p-6 border-b border-gray-100">
+                  <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-blue-600" /> Learning Area Performance
+                  </h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50/50">
+                        <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">Learning Area</th>
+                        <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Score</th>
+                        <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Grade</th>
+                        <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {results.map(r => {
+                        const pct = getPercentage(r);
+                        let g = 'BE'; if (pct >= 75) g = 'EE'; else if (pct >= 41) g = 'ME'; else if (pct >= 21) g = 'AE';
+                        return (
+                          <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#111111]">{r.subjects?.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <div className="text-sm font-bold text-[#111111]">{pct}%</div>
+                              <div className="w-24 bg-gray-100 h-1.5 rounded-full mx-auto mt-1.5 overflow-hidden">
+                                <div className={`h-full rounded-full ${pct >= 75 ? 'bg-green-500' : pct >= 41 ? 'bg-blue-500' : pct >= 21 ? 'bg-orange-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} />
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                                g === 'EE' ? 'bg-green-100 text-green-700' : g === 'ME' ? 'bg-blue-100 text-blue-700' : g === 'AE' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
+                              }`}>{g}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-[#666666]">
+                                {pct >= 75 ? <TrendingUp className="w-3.5 h-3.5 text-green-500" /> : pct >= 41 ? <Minus className="w-3.5 h-3.5 text-blue-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />}
+                                {pct >= 75 ? 'Exceeding' : pct >= 41 ? 'Meeting' : pct >= 21 ? 'Approaching' : 'Below'}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="bg-white rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4"><FileText className="w-8 h-8 text-gray-300" /></div>
+              <h3 className="text-lg font-bold text-[#111111] mb-2">No Results Available</h3>
+              <p className="text-sm text-[#666666] max-w-xs mx-auto">Results for this term haven't been published yet. Please check back later or contact the school.</p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50/50">
-                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Learning Area</th>
-                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Marks</th>
-                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Grade</th>
-                    <th className="text-left text-[10px] font-black text-[#1A237E] uppercase tracking-wider px-6 py-4">Points</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {loading ? (
-                    <tr><td colSpan={4} className="text-center py-12"><Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" /></td></tr>
-                  ) : results.length === 0 ? (
-                    <tr><td colSpan={4} className="text-center py-12 text-sm text-gray-500 font-bold">No results published for this term yet.</td></tr>
-                  ) : results.map((r, i) => (
-                    <tr key={r.id} className={`hover:bg-gray-50/50 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-[#E8EAF6]/30'}`}>
-                      <td className="px-6 py-4 text-sm font-bold text-[#111111]">{r.subjects?.name}</td>
-                      <td className="px-6 py-4 text-sm font-medium">{r.marks}/{r.out_of} ({getPercentage(r)}%)</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
-                          getPercentage(r) >= 75 ? 'bg-emerald-100 text-emerald-700' :
-                          getPercentage(r) >= 41 ? 'bg-blue-100 text-blue-700' :
-                          getPercentage(r) >= 21 ? 'bg-amber-100 text-amber-700' :
-                          'bg-rose-100 text-rose-700'
-                        }`}>
-                          {getPercentage(r) >= 75 ? 'EE' : getPercentage(r) >= 41 ? 'ME' : getPercentage(r) >= 21 ? 'AE' : 'BE'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{r.cbc_points || r.points_ || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

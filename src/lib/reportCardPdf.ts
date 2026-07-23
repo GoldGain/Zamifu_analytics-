@@ -307,47 +307,39 @@ export async function addLogoToPDF(
   maxHeight: number
 ): Promise<boolean> {
   if (!logoUrl) return false;
-
-  // Helper: render any image (including SVG/WebP) to PNG data URL via canvas
-  const renderToCanvas = (src: string, timeoutMs = 8000): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Image load timeout')), timeoutMs);
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        clearTimeout(timer);
-        const canvas = document.createElement('canvas');
-        // Use 2× resolution for sharpness
-        const scale = 2;
-        canvas.width = (img.naturalWidth || maxWidth * 3.78) * scale;
-        canvas.height = (img.naturalHeight || maxHeight * 3.78) * scale;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/png'));
-      };
-      img.onerror = (e) => { clearTimeout(timer); reject(e); };
-      img.src = src;
-    });
-
   try {
-    let dataUrl: string;
-
-    const getSafeUrl = (url: string) => {
-      if (url.startsWith('data:')) return url;
-      const separator = url.includes('?') ? '&' : '?';
-      return `${url}${separator}t=${Date.now()}`;
+    const renderToCanvas = async (src: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = reject;
+        img.src = src;
+      });
     };
 
-    if (logoUrl.startsWith('data:')) {
-      dataUrl = await renderToCanvas(logoUrl);
-    } else {
-      // Strip existing query params for a clean fetch URL
-      const fetchUrl = logoUrl.split('?')[0];
+    let dataUrl = logoUrl;
+    if (!logoUrl.startsWith('data:')) {
+      const getSafeUrl = (url: string) => {
+        if (url.includes('naihzzlszvrkxrxogsuz.supabase.co')) {
+          return `${url}?t=${Date.now()}`;
+        }
+        return url;
+      };
+
+      const fetchUrl = getSafeUrl(logoUrl);
       let blob: Blob | null = null;
 
-      // Attempt 1: fetch with explicit CORS headers and cache-control
+      // Attempt 1: fetch with CORS mode and cache-busting
       try {
-        const resp = await fetch(getSafeUrl(fetchUrl), {
+        const resp = await fetch(fetchUrl, {
           mode: 'cors',
           headers: {
             'Cache-Control': 'no-cache',
@@ -355,9 +347,9 @@ export async function addLogoToPDF(
           },
         });
         if (resp.ok) blob = await resp.blob();
-      } catch { /* fall through to next attempt */ }
+      } catch { /* fall through */ }
 
-      // Attempt 2: fetch without custom headers (some CDNs reject extra headers)
+      // Attempt 2: fetch without custom headers
       if (!blob) {
         try {
           const resp = await fetch(fetchUrl, { mode: 'cors' });
@@ -365,28 +357,19 @@ export async function addLogoToPDF(
         } catch { /* fall through */ }
       }
 
-      // Attempt 3: fetch without mode restriction (default browser behavior)
+      // Attempt 3: direct img src
       if (!blob) {
         try {
-          const resp = await fetch(fetchUrl);
-          if (resp.ok) blob = await resp.blob();
-        } catch { /* fall through */ }
-      }
-
-      if (blob) {
+          dataUrl = await renderToCanvas(fetchUrl);
+        } catch {
+          dataUrl = await renderToCanvas(logoUrl);
+        }
+      } else {
         const blobUrl = URL.createObjectURL(blob);
         try {
           dataUrl = await renderToCanvas(blobUrl);
         } finally {
           URL.revokeObjectURL(blobUrl);
-        }
-      } else {
-        // Fallback: direct img src (works if CORS headers are set on bucket)
-        console.warn('All fetch attempts failed for logo, trying direct img src:', logoUrl);
-        try {
-          dataUrl = await renderToCanvas(getSafeUrl(logoUrl));
-        } catch {
-          dataUrl = await renderToCanvas(logoUrl);
         }
       }
     }
@@ -413,32 +396,16 @@ export async function addStudentPhotoToPDF(
     if (!photoUrl.startsWith('data:')) {
       const fetchUrl = photoUrl.split('?')[0];
       let blob: Blob | null = null;
-
-      // Attempt 1: fetch with CORS mode and cache-busting
       try {
-        const resp = await fetch(`${fetchUrl}?t=${Date.now()}`, {
-          mode: 'cors',
-          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
-        });
+        const resp = await fetch(`${fetchUrl}?t=${Date.now()}`, { mode: 'cors' });
         if (resp.ok) blob = await resp.blob();
       } catch { /* fall through */ }
-
-      // Attempt 2: fetch without custom headers
-      if (!blob) {
-        try {
-          const resp = await fetch(fetchUrl, { mode: 'cors' });
-          if (resp.ok) blob = await resp.blob();
-        } catch { /* fall through */ }
-      }
-
-      // Attempt 3: no-cors mode as last resort
       if (!blob) {
         try {
           const resp = await fetch(fetchUrl);
           if (resp.ok) blob = await resp.blob();
         } catch { /* fall through */ }
       }
-
       if (blob) {
         dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
@@ -447,13 +414,11 @@ export async function addStudentPhotoToPDF(
           reader.readAsDataURL(blob!);
         });
       } else {
-        console.warn('Student photo fetch failed, skipping photo');
         return false;
       }
     }
-    // Render to canvas for circular crop at high resolution
     const canvas = document.createElement('canvas');
-    const px = Math.round(size * 3.78 * 2); // ~2x resolution for clarity
+    const px = Math.round(size * 3.78 * 2);
     canvas.width = px;
     canvas.height = px;
     const ctx = canvas.getContext('2d')!;
@@ -464,15 +429,13 @@ export async function addStudentPhotoToPDF(
       img.onerror = reject;
       img.src = dataUrl;
     });
-    // Circular clip
     ctx.beginPath();
     ctx.arc(px / 2, px / 2, px / 2, 0, Math.PI * 2);
     ctx.closePath();
     ctx.clip();
     ctx.drawImage(img, 0, 0, px, px);
     const circularDataUrl = canvas.toDataURL('image/png');
-    // Gold border circle
-    doc.setDrawColor(245, 166, 35); // Gold
+    doc.setDrawColor(245, 166, 35);
     doc.setLineWidth(0.8);
     doc.circle(x + size / 2, y + size / 2, size / 2, 'S');
     doc.addImage(circularDataUrl, 'PNG', x, y, size, size);
@@ -498,62 +461,25 @@ export function addSignaturesToPDF(
 
   if (hasTeacherSig || hasPrincipalSig) {
     doc.text('DIGITAL SIGNATURES', 14, y);
-
     if (hasTeacherSig) {
-      try {
-        doc.addImage(signatures.teacher_signature_url!, 'PNG', 14, y + 3, 45, 16);
-      } catch {
-        doc.setDrawColor(150, 150, 155);
-        doc.line(14, y + 16, 60, y + 16);
-      }
-    } else {
-      doc.setDrawColor(150, 150, 155);
-      doc.line(14, y + 16, 60, y + 16);
-    }
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 110);
+      try { doc.addImage(signatures.teacher_signature_url!, 'PNG', 14, y + 3, 45, 16); } catch { doc.line(14, y + 16, 60, y + 16); }
+    } else { doc.line(14, y + 16, 60, y + 16); }
+    doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 110);
     doc.text('Class Teacher Signature', 14, y + 22);
 
     if (hasPrincipalSig) {
-      try {
-        doc.addImage(signatures.principal_signature_url!, 'PNG', 120, y + 3, 45, 16);
-      } catch {
-        doc.setDrawColor(150, 150, 155);
-        doc.line(120, y + 16, 165, y + 16);
-      }
-    } else {
-      doc.setDrawColor(150, 150, 155);
-      doc.line(120, y + 16, 165, y + 16);
-    }
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 110);
+      try { doc.addImage(signatures.principal_signature_url!, 'PNG', 120, y + 3, 45, 16); } catch { doc.line(120, y + 16, 165, y + 16); }
+    } else { doc.line(120, y + 16, 165, y + 16); }
     doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 120, y + 22);
   } else {
-    doc.setDrawColor(150, 150, 155);
-    doc.line(14, y + 12, 75, y + 12);
-    doc.line(120, y + 12, 181, y + 12);
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(80, 80, 85);
-    doc.text('Class Teacher Signature', 14, y + 18);
+    doc.line(14, y + 12, 75, y + 12); doc.line(120, y + 12, 181, y + 12);
+    doc.setFontSize(7); doc.text('Class Teacher Signature', 14, y + 18);
     doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 120, y + 18);
   }
-
-  // Date
-  doc.setFontSize(7);
-  doc.setTextColor(80, 80, 85);
   doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 27);
-
-  // School stamp area
   doc.setDrawColor(180, 180, 185);
-  doc.setLineDashPattern([2, 2], 0);
   doc.rect(120, y + 3, 35, 22);
-  doc.setLineDashPattern([], 0);
-  doc.setFontSize(5.5);
-  doc.setTextColor(150, 150, 155);
-  doc.text('OFFICIAL STAMP', 137.5, y + 15, { align: 'center' });
+  doc.setFontSize(5.5); doc.text('OFFICIAL STAMP', 137.5, y + 15, { align: 'center' });
 }
 
 // ── Draw Header with Logo ────────────────────────────────────────────────────
@@ -562,31 +488,16 @@ export async function drawReportHeader(
   schoolInfo: SchoolInfo,
   subtitle: string = 'STUDENT REPORT CARD'
 ) {
-  // Vibrant Gold header background
-  doc.setFillColor(245, 166, 35); // Gold/Yellow (#F5A623)
-  doc.rect(0, 0, 210, 32, 'F');
-
-  // Try to add logo (left side, bigger)
-  const logoAdded = schoolInfo.logo_url
-    ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26)
-    : false;
-
-  // Dark Navy text for better contrast on Gold
-  doc.setTextColor(26, 35, 126); // Dark Navy (#1A237E)
-  
-  // School name — always prominent
+  doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 32, 'F');
+  const logoAdded = schoolInfo.logo_url ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26) : false;
+  doc.setTextColor(26, 35, 126);
   const displayName = schoolInfo.name?.trim() || 'School';
-  doc.setFontSize(logoAdded ? 14 : 16);
-  doc.setFont('helvetica', 'bold');
-  doc.text(displayName, logoAdded ? 40 : 105, logoAdded ? 11 : 11, { align: logoAdded ? 'left' : 'center' });
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(subtitle, logoAdded ? 40 : 105, logoAdded ? 20 : 20, { align: logoAdded ? 'left' : 'center' });
-
+  doc.setFontSize(logoAdded ? 14 : 16); doc.setFont('helvetica', 'bold');
+  doc.text(displayName, logoAdded ? 40 : 105, 11, { align: logoAdded ? 'left' : 'center' });
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(subtitle, logoAdded ? 40 : 105, 20, { align: logoAdded ? 'left' : 'center' });
   if (schoolInfo.motto) {
-    doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(6.5); doc.setFont('helvetica', 'italic');
     doc.text(`"${schoolInfo.motto}"`, logoAdded ? 40 : 105, 27, { align: logoAdded ? 'left' : 'center' });
   }
 }
@@ -603,13 +514,10 @@ export function drawStudentInfo(
   y: number = 38,
   assessmentName?: string
 ) {
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
   doc.text(`Learner: ${studentName}`, 14, y);
   doc.text(`Adm No: ${admissionNo}`, 14, y + 6);
   doc.text(`Class: ${className}`, 14, y + 12);
-  
   doc.text(`Term: ${termName} ${academicYear}`, 120, y);
   if (assessmentName) {
     doc.text(`Assessment: ${assessmentName}`, 120, y + 6);
@@ -618,9 +526,7 @@ export function drawStudentInfo(
     doc.text(`Position: ${position}`, 120, y + 6);
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 12);
   }
-
-  doc.setDrawColor(106, 27, 154); // Deep Purple
-  doc.line(14, y + 17, 196, y + 17);
+  doc.setDrawColor(106, 27, 154); doc.line(14, y + 17, 196, y + 17);
 }
 
 // ── Draw Results Table ───────────────────────────────────────────────────────
@@ -631,36 +537,19 @@ export function drawResultsTable(
   startY: number
 ): number {
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
-
-  const tableHead = isPrimary
-    ? ['#', 'Learning Area', 'Marks', 'Out Of', '%', 'CBE Grade']
-    : ['#', 'Learning Area', 'Marks', 'Out Of', '%', 'CBE Grade', 'Points'];
-
+  const tableHead = isPrimary ? ['#', 'Learning Area', 'Marks', 'Out Of', '%', 'CBE Grade'] : ['#', 'Learning Area', 'Marks', 'Out Of', '%', 'CBE Grade', 'Points'];
   const tableBody = results.map((r, i) => {
     const pct = getPercentage(r);
     const grading = gradeFromPercentage(pct, classData);
-    const row: any[] = [
-      i + 1,
-      r.subjects?.name || 'N/A',
-      String(r.marks || '0'),
-      String(r.out_of || 100),
-      `${pct}%`,
-      grading.grade,
-    ];
+    const row: any[] = [i + 1, r.subjects?.name || 'N/A', String(r.marks || '0'), String(r.out_of || 100), `${pct}%`, grading.grade];
     if (!isPrimary) row.push(grading.points ?? '—');
     return row;
   });
-
   autoTable(doc, {
-    startY,
-    head: [tableHead],
-    body: tableBody,
-    styles: { fontSize: 8, cellPadding: 1.5 },
-    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 8 }, // Deep Purple
-    alternateRowStyles: { fillColor: [232, 234, 246] }, // Light Lavender
-    margin: { left: 14, right: 14 },
+    startY, head: [tableHead], body: tableBody, styles: { fontSize: 8, cellPadding: 1.5 },
+    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 8 },
+    alternateRowStyles: { fillColor: [232, 234, 246] }, margin: { left: 14, right: 14 },
   });
-
   return (doc as any).lastAutoTable.finalY;
 }
 
@@ -676,35 +565,19 @@ export function drawPathwayPerformance(
       const subjectName = r.subjects?.name || '';
       return PATHWAY_MAPPING[subjectName] === pathway;
     });
-
     const areasUsed = relevantResults.map(r => r.subjects?.name).join(', ');
     const score = relevantResults.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
     const outOf = relevantResults.reduce((sum, r) => sum + (Number(r.out_of) || 100), 0);
     const percentage = outOf > 0 ? (score / outOf) * 100 : 0;
-
-    return [
-      pathway,
-      areasUsed || 'None',
-      `${score}/${outOf}`,
-      `${percentage.toFixed(1)}%`
-    ];
+    return [pathway, areasUsed || 'None', `${score}/${outOf}`, `${percentage.toFixed(1)}%`];
   });
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(26, 35, 126); // Dark Navy
+  doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
   doc.text('Pathway Performance Profile', 14, startY + 6);
-
   autoTable(doc, {
-    startY: startY + 8,
-    head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']],
-    body: pathwayData,
-    styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [106, 27, 154], textColor: 255 }, // Deep Purple
-    alternateRowStyles: { fillColor: [255, 248, 225] }, // Gold Background for section
-    margin: { left: 14, right: 14 },
+    startY: startY + 8, head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']], body: pathwayData,
+    styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255 },
+    alternateRowStyles: { fillColor: [255, 248, 225] }, margin: { left: 14, right: 14 },
   });
-
   return (doc as any).lastAutoTable.finalY;
 }
 
@@ -721,21 +594,14 @@ export function drawSummaryBox(
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const overallGrading = gradeFromPercentage(avgPercentage, classData);
-
-  doc.setFillColor(0, 137, 123); // Teal (#00897B)
-  doc.rect(14, startY, 182, 22, 'F');
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(255, 255, 255); // White text on Teal
+  doc.setFillColor(0, 137, 123); doc.rect(14, startY, 182, 22, 'F');
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
   doc.text(`Learning Areas: ${results.length}`, 20, startY + 7);
   doc.text(`Total Marks: ${totalMarks}`, 65, startY + 7);
   doc.text(`Average: ${avgPercentage.toFixed(1)}%`, 130, startY + 7);
   doc.text(`Position: ${position}`, 20, startY + 15);
   doc.text(`Grade: ${overallGrading.grade}`, 65, startY + 15);
-  if (!isPrimary && totalPoints !== null) {
-    doc.text(`Total Points: ${totalPoints}`, 130, startY + 15);
-  }
-
+  if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + 15);
   return startY + 26;
 }
 
@@ -749,16 +615,12 @@ export function drawDeviation(
   if (deviation !== null) {
     const arrow = deviation >= 0 ? '\u25B2' : '\u25BC';
     const sign = deviation >= 0 ? '+' : '';
-    if (deviation >= 0) doc.setTextColor(76, 175, 80); // Green
-    else doc.setTextColor(244, 67, 54); // Red
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
+    if (deviation >= 0) doc.setTextColor(76, 175, 80); else doc.setTextColor(244, 67, 54);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
     doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous term (Prev: ${previousAvg?.toFixed(1)}%)`, 14, startY);
     doc.setTextColor(0, 0, 0);
   } else {
-    doc.setTextColor(100, 100, 100);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
     doc.text('First Term — No previous data for comparison', 14, startY);
     doc.setTextColor(0, 0, 0);
   }
@@ -772,18 +634,11 @@ export function drawAchievements(
   startY: number
 ): number {
   if (bestSubjects.length === 0) return startY;
-
-  doc.setFillColor(255, 248, 225); // Light Gold
-  doc.rect(14, startY, 182, 5 + bestSubjects.length * 5, 'F');
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(245, 166, 35); // Gold
-  doc.text('ACHIEVEMENT:', 18, startY + 4);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(0, 0, 0);
+  doc.setFillColor(255, 248, 225); doc.rect(14, startY, 182, 5 + bestSubjects.length * 5, 'F');
+  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
+  doc.text('ACHIEVEMENT:', 18, startY + 4); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
   bestSubjects.forEach((b, bi) => {
     const pts = b.points !== null ? ` (${b.points} pts)` : '';
-    doc.setFontSize(7);
     doc.text(`Best in ${b.subjectName}: ${b.percentage}% — ${b.gradeLabel}${pts}`, 18, startY + 9 + bi * 5);
   });
   return startY + 5 + bestSubjects.length * 5 + 5;
@@ -797,15 +652,10 @@ export function drawAIComment(
 ): number {
   const commentLines = doc.splitTextToSize(comment, 168);
   const boxHeight = Math.max(20, commentLines.length * 4.5 + 10);
-
-  doc.setFillColor(232, 234, 246); // Light Lavender
-  doc.rect(14, startY, 182, boxHeight, 'F');
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 0, 0);
+  doc.setFillColor(232, 234, 246); doc.rect(14, startY, 182, boxHeight, 'F');
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
   doc.text("Class Teacher's Comment:", 18, startY + 6);
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
   doc.text(commentLines, 18, startY + 12);
   return startY + boxHeight + 4;
 }
