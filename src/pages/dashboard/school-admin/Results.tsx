@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter } from 'lucide-react';
+import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
@@ -18,10 +18,36 @@ import {
   addStudentPhotoToPDF,
   addLogoToPDF,
   drawPathwayPerformance,
-  PATHWAY_MAPPING,
   type SchoolInfo,
   type SignatureInfo,
 } from '@/lib/reportCardPdf';
+
+const SUBJECT_ORDER = [
+  'English',
+  'Kiswahili',
+  'Mathematics',
+  'Integrated Science',
+  'Pre-Technical Studies',
+  'Agriculture',
+  'Social Studies',
+  'CRE',
+  'Creative Arts',
+  'Science and Technology',
+  'Physical and Health Education',
+  'IRE',
+  'HRE'
+];
+
+function sortSubjects(subjects: string[]) {
+  return [...subjects].sort((a, b) => {
+    const indexA = SUBJECT_ORDER.findIndex(s => a.toLowerCase().includes(s.toLowerCase()));
+    const indexB = SUBJECT_ORDER.findIndex(s => b.toLowerCase().includes(s.toLowerCase()));
+    if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
+}
 
 function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
   const g = calculateCompetencyGrade(avgPct, band);
@@ -104,18 +130,18 @@ export default function SchoolAdminResults() {
     const schoolId = user?.schoolId ?? '';
     let sch: any = null;
     try {
-      const results = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+      const resultsData = await Promise.all([
+        supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email').eq('id', schoolId).maybeSingle(),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
       ]);
-      setResults((results[0].data as any[]) || []);
-      setClasses((results[1].data as any[]) || []);
-      setTerms((results[2].data as any[]) || []);
-      sch = results[3].data;
-      setExams((results[4].data as any[]) || []);
+      setResults((resultsData[0].data as any[]) || []);
+      setClasses((resultsData[1].data as any[]) || []);
+      setTerms((resultsData[2].data as any[]) || []);
+      sch = resultsData[3].data;
+      setExams((resultsData[4].data as any[]) || []);
     } catch (err: any) {
       console.error('Fetch error:', err);
     }
@@ -292,7 +318,7 @@ export default function SchoolAdminResults() {
   };
 
   const fetchClassResults = async () => {
-    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url), subjects(name), classes(name, curriculum, grade_level, level), school_exams(name, type)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level), school_exams(name, type)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
     if (error) throw error;
     return data;
   };
@@ -342,7 +368,8 @@ export default function SchoolAdminResults() {
       const band = getSchoolLevelBand(classObj);
       const isPrimary = band === 'primary';
       const summaries = buildStudentSummary(rawResults, classObj);
-      const allSubjects = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
+      const allSubjectsRaw = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
+      const allSubjects = sortSubjects(allSubjectsRaw);
       const totalStudents = summaries.length;
       const classMean = totalStudents > 0 ? summaries.reduce((sum, s) => sum + s.avgPct, 0) / totalStudents : 0;
       
@@ -351,7 +378,7 @@ export default function SchoolAdminResults() {
         const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
         const grade = overallGradeWithBand(mean, band);
         return { name: sub, mean, grade, vals };
-      }).sort((a, b) => b.mean - a.mean);
+      });
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const displaySchoolName = schoolInfo.name || schoolName || 'School';
@@ -372,21 +399,27 @@ export default function SchoolAdminResults() {
 
         const classGrade = overallGradeWithBand(classMean, band);
         const statsY = 42;
-        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 30, 'F'); // Light Lavender
+        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 35, 'F');
         doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
         doc.text(`Class Average: ${classMean.toFixed(1)}%`, 75, statsY + 8);
         doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} points)` : ''}`, 130, statsY + 8);
         doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 20, statsY + 18);
         doc.text(`Learning Areas: ${allSubjects.length}`, 130, statsY + 18);
+        
+        // RESTORE GENDER DISTRIBUTION
+        const boys = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('m')).length;
+        const girls = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('f')).length;
+        doc.text(`Boys: ${boys}`, 20, statsY + 28);
+        doc.text(`Girls: ${girls}`, 75, statsY + 28);
         if (assessmentLabel) {
-          doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154); doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 26);
+          doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154); doc.text(`Assessment: ${assessmentLabel}`, 130, statsY + 28);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         }
 
-        const gradeDistY = statsY + 38;
+        const gradeDistY = statsY + 42;
         doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
-        doc.text('GRADE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.text('PERFORMANCE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
 
         const grades = isPrimary ? [
           { label: 'EE (Exceeding)', min: 75, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 41, color: [33, 150, 243] },
@@ -503,7 +536,8 @@ export default function SchoolAdminResults() {
       const classObj = classes.find(c => c.id === selectedClass);
       const band = getSchoolLevelBand(classObj);
       const isPrimary = band === 'primary';
-      const allSubjects = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
+      const allSubjectsRaw = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
+      const allSubjects = sortSubjects(allSubjectsRaw);
       const summaries = buildStudentSummary(rawResults, classObj);
       const termObj = terms.find(t => t.id === selectedTerm);
       const assessmentLabel = resolveAssessmentLabel(rawResults);
@@ -544,7 +578,16 @@ export default function SchoolAdminResults() {
         const prevAvg = prevAvgMap[s.studentId];
         const deviation = prevAvg !== null && prevAvg !== undefined ? s.avgPct - prevAvg : null;
         const isNew = deviation === null;
-        const subjectEntries = Object.entries(s.subjects).filter(([k]) => !k.endsWith('_grade') && !k.endsWith('_points')) as [string, number][];
+        const subjectEntriesRaw = Object.entries(s.subjects).filter(([k]) => !k.endsWith('_grade') && !k.endsWith('_points')) as [string, number][];
+        const subjectEntries = subjectEntriesRaw.sort((a, b) => {
+          const indexA = SUBJECT_ORDER.findIndex(s => a[0].toLowerCase().includes(s.toLowerCase()));
+          const indexB = SUBJECT_ORDER.findIndex(s => b[0].toLowerCase().includes(s.toLowerCase()));
+          if (indexA === -1 && indexB === -1) return a[0].localeCompare(b[0]);
+          if (indexA === -1) return 1;
+          if (indexB === -1) return -1;
+          return indexA - indexB;
+        });
+        
         const sortedBest = [...subjectEntries].sort((a, b) => b[1] - a[1]);
         const bestSubject = sortedBest[0]?.[0] || 'all learning areas';
         const weakestSubject = sortedBest[sortedBest.length - 1]?.[0] || 'some learning areas';
@@ -589,7 +632,7 @@ export default function SchoolAdminResults() {
         }
 
         const gr = overallGradeWithBand(s.avgPct, band);
-        doc.setFillColor(0, 137, 123); doc.rect(14, currentY, 182, 25, 'F'); // Teal
+        doc.setFillColor(0, 137, 123); doc.rect(14, currentY, 182, 25, 'F');
         doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
         doc.text(`Average: ${s.avgPct.toFixed(1)}%`, 20, currentY + 8);
         doc.text(`Grade: ${gr.subLevel}`, 70, currentY + 8);
@@ -618,7 +661,7 @@ export default function SchoolAdminResults() {
         }
 
         const commentY = trendY + 2;
-        doc.setFillColor(232, 234, 246); doc.rect(14, commentY, 182, 28, 'F'); // Light Lavender
+        doc.setFillColor(232, 234, 246); doc.rect(14, commentY, 182, 28, 'F');
         doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text("Class Teacher's Comment:", 18, commentY + 7); doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
         const commentLines = doc.splitTextToSize(aiComment, 170); doc.text(commentLines, 18, commentY + 14);
 
@@ -637,14 +680,31 @@ export default function SchoolAdminResults() {
 
   const filteredExams = exams.filter(e => !selectedTerm || e.term_id === selectedTerm);
 
+  // SUMMARY CARDS DATA
+  const totalLearners = new Set(results.map(r => r.student_id)).size;
+  const publishedCount = results.filter(r => r.status === 'published').length;
+  const totalSubjects = new Set(results.map(r => r.subject_id)).size;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[#111111]">Results</h1>
-        <p className="text-sm text-[#666666]">View and download class results with analysis</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[#111111]">Results Dashboard</h1>
+          <p className="text-sm text-[#666666]">Comprehensive academic analysis and reporting</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-bold text-blue-700">{totalLearners} Learners</span>
+          </div>
+          <div className="bg-purple-50 px-4 py-2 rounded-xl border border-purple-100 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-purple-600" />
+            <span className="text-sm font-bold text-purple-700">{totalSubjects} Subjects</span>
+          </div>
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
         <h2 className="text-lg font-semibold text-[#111111] mb-4 flex items-center gap-2">
           <FileText className="w-5 h-5 text-blue-600" /> Generate Reports
         </h2>
@@ -665,27 +725,27 @@ export default function SchoolAdminResults() {
           </div>
           <div>
             <label className="block text-sm font-medium text-[#666666] mb-1 flex items-center gap-1">
-              <Filter className="w-3.5 h-3.5" /> Select Assessment (optional)
+              <Filter className="w-3.5 h-3.5" /> Assessment Filter
             </label>
             <select value={selectedExam} onChange={e => setSelectedExam(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white">
               <option value="">-- All Assessments --</option>
-              {filteredExams.map(e => <option key={e.id} value={e.id}>{e.name} {e.type ? `(${e.type})` : ''} {e.is_active ? '' : '[Inactive]'}</option>)}
+              {filteredExams.map(e => <option key={e.id} value={e.id}>{e.name} {e.type ? `(${e.type})` : ''}</option>)}
             </select>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <button onClick={downloadClassResultsPDF} disabled={generatingPDF || !selectedClass || !selectedTerm}
-            className="flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors">
+            className="flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors shadow-sm">
             {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {generatingPDF ? 'Generating...' : 'Download Class Results PDF'}
+            {generatingPDF ? 'Generating...' : 'Class Summary PDF'}
           </button>
           <button onClick={downloadBulkReportCards} disabled={generatingBulk || !selectedClass || !selectedTerm}
-            className="flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors">
+            className="flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm">
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            {generatingBulk ? 'Generating...' : 'Bulk Report Cards (All Learners)'}
+            {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
           </button>
           <button onClick={publishResults} disabled={publishing || !selectedClass || !selectedTerm}
-            className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors">
+            className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
             {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             {publishing ? 'Publishing...' : 'Publish & Notify'}
           </button>
@@ -695,7 +755,7 @@ export default function SchoolAdminResults() {
       <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
         <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-[#111111] flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-500" /> Results Records
+            <Trophy className="w-5 h-5 text-amber-500" /> Performance Records
           </h2>
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -706,51 +766,53 @@ export default function SchoolAdminResults() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50">
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider">Learner</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider">Learning Area</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Marks</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">%</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Grade</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Points</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider">Assessment</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-center">Status</th>
-                <th className="px-6 py-4 text-xs font-semibold text-[#666666] uppercase tracking-wider text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">Learner</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">Learning Area</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Marks</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">%</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Grade</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Points</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={9} className="px-6 py-12 text-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" /><p className="text-sm text-gray-500 mt-2">Loading results...</p></td></tr>
+                <tr><td colSpan={8} className="px-6 py-12 text-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" /><p className="text-sm text-gray-500 mt-2">Loading records...</p></td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500 italic">No results found matching your criteria.</td></tr>
-              ) : filtered.map(r => (
-                <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-[#111111]">{r.students?.first_name} {r.students?.last_name}</div>
-                    <div className="text-xs text-[#666666]">{r.students?.admission_number}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111]">{r.subjects?.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-medium">{r.marks} / {r.out_of}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-blue-600">{getPercentage(r)}%</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${gradeColor(r.cbc_sublevel || r.cbc_grade || '')}`}>
-                      {r.cbc_sublevel || r.cbc_grade || '-'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-medium">{r.cbc_points || r.points_ || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-xs text-[#666666]">{r.school_exams?.name || r.exams?.name || 'N/A'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${r.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {r.status === 'published' ? 'Published' : 'Draft'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openEditResult(r)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => setDeletingResult(r)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500 italic">No records found matching your criteria.</td></tr>
+              ) : filtered.map(r => {
+                const band = getSchoolLevelBand(r.classes);
+                const g = calculateCompetencyGrade(getPercentage(r), band);
+                return (
+                  <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-bold text-[#111111]">{r.students?.first_name} {r.students?.last_name}</div>
+                      <div className="text-[10px] text-[#666666] uppercase font-bold tracking-tight">{r.students?.admission_number} • {r.students?.gender || 'N/A'}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#111111]">{r.subjects?.name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-bold">{r.marks} / {r.out_of}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-black text-blue-600">{getPercentage(r)}%</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(g.subLevel)}`}>
+                        {g.subLevel}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-bold">{band === 'primary' ? '-' : g.points}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${r.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {r.status === 'published' ? 'Published' : 'Draft'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => openEditResult(r)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
+                        <button onClick={() => setDeletingResult(r)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -761,13 +823,13 @@ export default function SchoolAdminResults() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-[#111111]">Edit Marks</h3>
+              <h3 className="text-lg font-bold text-[#111111]">Edit Record</h3>
               <button onClick={() => setEditingResult(null)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><X className="w-5 h-5 text-gray-400" /></button>
             </div>
             <form onSubmit={handleSaveResult} className="p-6 space-y-4">
               <div className="p-4 bg-blue-50 rounded-xl mb-2">
                 <p className="text-sm font-bold text-blue-900">{editingResult.students?.first_name} {editingResult.students?.last_name}</p>
-                <p className="text-xs text-blue-700">{editingResult.subjects?.name}</p>
+                <p className="text-xs text-blue-700 font-medium">{editingResult.subjects?.name}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -796,8 +858,8 @@ export default function SchoolAdminResults() {
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="p-6 text-center">
               <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 className="w-6 h-6" /></div>
-              <h3 className="text-lg font-bold text-[#111111] mb-2">Delete Result?</h3>
-              <p className="text-sm text-[#666666] mb-6">Are you sure you want to delete this result for <b>{deletingResult.students?.first_name}</b>? This action cannot be undone.</p>
+              <h3 className="text-lg font-bold text-[#111111] mb-2">Delete Record?</h3>
+              <p className="text-sm text-[#666666] mb-6">Are you sure you want to delete this record for <b>{deletingResult.students?.first_name}</b>? This action cannot be undone.</p>
               <div className="flex gap-3">
                 <button onClick={() => setDeletingResult(null)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold text-[#666666] hover:bg-gray-50 transition-colors">No, Keep</button>
                 <button onClick={handleDeleteResult} disabled={deletingResultLoading} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50">
