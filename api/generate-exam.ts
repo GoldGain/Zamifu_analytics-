@@ -167,11 +167,6 @@ export default async function handler(request: RequestLike, response: ResponseLi
     jsonError(response, 403, 'Only authorised teachers and school administrators can generate exams.');
     return;
   }
-  const isAuthorised = ['teacher', 'school_admin', 'super_admin'].includes(profile.role || '');
-  if (!isAuthorised) {
-    jsonError(response, 403, 'Only authorised teachers and school administrators can generate exams.');
-    return;
-  }
 
   const rateKey = `${user.id}:${request.socket?.remoteAddress || 'unknown'}`;
   if (!checkRateLimit(rateKey)) {
