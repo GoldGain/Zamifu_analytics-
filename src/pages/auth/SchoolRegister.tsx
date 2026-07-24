@@ -57,24 +57,29 @@ const initial: FormState = {
 };
 
 async function callRegister(body: Record<string, unknown>) {
-  const { data, error } = await supabase.functions.invoke('register-school', { body });
-  if (error) {
-    let msg = error.message || 'Request failed';
+  // Use fetch directly with the anon key to avoid Supabase client auto-attaching
+  // a JWT token, which causes "unrecognized JWT kid" errors in the edge function.
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/register-school`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
     try {
-      const ctx = (error as any)?.context;
-      if (ctx?.json) {
-        const j = await ctx.json();
-        msg = j.error || msg;
-      } else if (data && (data as any).error) {
-        msg = (data as any).error;
-      }
-    } catch {
-      if (data && (data as any).error) msg = (data as any).error;
+      const errorData = await res.json();
+      throw new Error(errorData.error || `Request failed with status ${res.status}`);
+    } catch (e: any) {
+      if (e.message?.startsWith('Request failed')) throw e;
+      throw new Error(`Request failed with status ${res.status}`);
     }
-    throw new Error(msg);
   }
-  if (data && (data as any).error) throw new Error((data as any).error);
-  return data as any;
+  const data = await res.json();
+  if (data && data.error) throw new Error(data.error);
+  return data;
 }
 
 export default function SchoolRegister() {
