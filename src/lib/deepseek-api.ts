@@ -5,7 +5,7 @@ import {
   type ExamPaper,
   type GeneratedExamQuestion,
   type QuestionType,
-} from './exam-schema';
+} from './exam-schema.js';
 
 const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 

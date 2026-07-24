@@ -3,12 +3,12 @@ import {
   generateExamWithDeepSeek,
   DeepSeekConfigurationError,
   DeepSeekResponseError,
-} from '../src/lib/deepseek-api';
+} from '../src/lib/deepseek-api.js';
 import {
   validateExamRequest,
   type ExamGenerationRequest,
   type QuestionType,
-} from '../src/lib/exam-schema';
+} from '../src/lib/exam-schema.js';
 
 const allowedQuestionTypes = new Set<QuestionType>([
   'multiple_choice', 'multiple_response', 'modified_true_false', 'completion',

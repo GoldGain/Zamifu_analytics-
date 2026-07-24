@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { retrieveReviewDraft, type CurriculumSourceRecord } from '../src/lib/resource-fetcher';
+import { retrieveReviewDraft, type CurriculumSourceRecord } from '../src/lib/resource-fetcher.js';
 
 type RequestLike = {
   method?: string;
