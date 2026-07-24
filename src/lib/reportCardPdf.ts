@@ -50,6 +50,35 @@ export const PATHWAY_MAPPING: Record<string, string> = {
   'Art and Craft': 'Arts & Sports',
 };
 
+export const SUBJECT_ORDER = [
+  'English',
+  'Kiswahili',
+  'Mathematics',
+  'Integrated Science',
+  'Pre-Technical Studies',
+  'Agriculture',
+  'Social Studies',
+  'CRE',
+  'Creative Arts',
+  'Science and Technology',
+  'Physical and Health Education',
+  'IRE',
+  'HRE'
+];
+
+export function sortResultsBySubject(results: any[]) {
+  return [...results].sort((a, b) => {
+    const nameA = a.subjects?.name || '';
+    const nameB = b.subjects?.name || '';
+    const indexA = SUBJECT_ORDER.findIndex(s => nameA.toLowerCase().includes(s.toLowerCase()));
+    const indexB = SUBJECT_ORDER.findIndex(s => nameB.toLowerCase().includes(s.toLowerCase()));
+    if (indexA === -1 && indexB === -1) return nameA.localeCompare(nameB);
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
+}
+
 export function getPercentage(result: any): number {
   if (result.percentage !== undefined && result.percentage !== null) return Number(result.percentage);
   const outOf = Number(result.out_of || 100);
@@ -327,62 +356,17 @@ export async function addLogoToPDF(
 
     let dataUrl = logoUrl;
     if (!logoUrl.startsWith('data:')) {
-      const getSafeUrl = (url: string) => {
-        if (url.includes('naihzzlszvrkxrxogsuz.supabase.co')) {
-          return `${url}?t=${Date.now()}`;
-        }
-        return url;
-      };
-
-      const fetchUrl = getSafeUrl(logoUrl);
-      let blob: Blob | null = null;
-
-      // Attempt 1: fetch with CORS mode and cache-busting
-      try {
-        const resp = await fetch(fetchUrl, {
-          mode: 'cors',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache',
-          },
-        });
-        if (resp.ok) blob = await resp.blob();
-      } catch { /* fall through */ }
-
-      // Attempt 2: fetch without custom headers
-      if (!blob) {
-        try {
-          const resp = await fetch(fetchUrl, { mode: 'cors' });
-          if (resp.ok) blob = await resp.blob();
-        } catch { /* fall through */ }
-      }
-
-      // Attempt 3: direct img src
-      if (!blob) {
-        try {
-          dataUrl = await renderToCanvas(fetchUrl);
-        } catch {
-          dataUrl = await renderToCanvas(logoUrl);
-        }
-      } else {
-        const blobUrl = URL.createObjectURL(blob);
-        try {
-          dataUrl = await renderToCanvas(blobUrl);
-        } finally {
-          URL.revokeObjectURL(blobUrl);
-        }
-      }
+      dataUrl = await renderToCanvas(logoUrl);
     }
-
     doc.addImage(dataUrl, 'PNG', x, y, maxWidth, maxHeight);
     return true;
   } catch (err) {
-    console.error('Logo rendering failed:', err);
+    console.error('Logo add error:', err);
     return false;
   }
 }
 
-// ── Add Student Photo to PDF ─────────────────────────────────────────────────
+// ── Add Student Photo to PDF ──────────────────────────────────────────────────
 export async function addStudentPhotoToPDF(
   doc: jsPDF,
   photoUrl: string | null | undefined,
@@ -392,114 +376,53 @@ export async function addStudentPhotoToPDF(
 ): Promise<boolean> {
   if (!photoUrl) return false;
   try {
+    const renderToCanvas = async (src: string): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = reject;
+        img.src = src;
+      });
+    };
+
     let dataUrl = photoUrl;
     if (!photoUrl.startsWith('data:')) {
-      const fetchUrl = photoUrl.split('?')[0];
-      let blob: Blob | null = null;
-      try {
-        const resp = await fetch(`${fetchUrl}?t=${Date.now()}`, { mode: 'cors' });
-        if (resp.ok) blob = await resp.blob();
-      } catch { /* fall through */ }
-      if (!blob) {
-        try {
-          const resp = await fetch(fetchUrl);
-          if (resp.ok) blob = await resp.blob();
-        } catch { /* fall through */ }
-      }
-      if (blob) {
-        dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob!);
-        });
-      } else {
-        return false;
-      }
+      dataUrl = await renderToCanvas(photoUrl);
     }
-    const canvas = document.createElement('canvas');
-    const px = Math.round(size * 3.78 * 2);
-    canvas.width = px;
-    canvas.height = px;
-    const ctx = canvas.getContext('2d')!;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = reject;
-      img.src = dataUrl;
-    });
-    ctx.beginPath();
-    ctx.arc(px / 2, px / 2, px / 2, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(img, 0, 0, px, px);
-    const circularDataUrl = canvas.toDataURL('image/png');
-    doc.setDrawColor(245, 166, 35);
-    doc.setLineWidth(0.8);
-    doc.circle(x + size / 2, y + size / 2, size / 2, 'S');
-    doc.addImage(circularDataUrl, 'PNG', x, y, size, size);
+    doc.addImage(dataUrl, 'PNG', x, y, size, size);
     return true;
-  } catch {
+  } catch (err) {
+    console.error('Photo add error:', err);
     return false;
   }
 }
 
-// ── Add Signatures to PDF ────────────────────────────────────────────────────
-export function addSignaturesToPDF(
-  doc: jsPDF,
-  signatures: SignatureInfo,
-  y: number,
-  schoolInfo?: SchoolInfo
-) {
-  const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
-  const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
-
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(60, 60, 70);
-
-  if (hasTeacherSig || hasPrincipalSig) {
-    doc.text('DIGITAL SIGNATURES', 14, y);
-    if (hasTeacherSig) {
-      try { doc.addImage(signatures.teacher_signature_url!, 'PNG', 14, y + 3, 45, 16); } catch { doc.line(14, y + 16, 60, y + 16); }
-    } else { doc.line(14, y + 16, 60, y + 16); }
-    doc.setFontSize(6); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 110);
-    doc.text('Class Teacher Signature', 14, y + 22);
-
-    if (hasPrincipalSig) {
-      try { doc.addImage(signatures.principal_signature_url!, 'PNG', 120, y + 3, 45, 16); } catch { doc.line(120, y + 16, 165, y + 16); }
-    } else { doc.line(120, y + 16, 165, y + 16); }
-    doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 120, y + 22);
-  } else {
-    doc.line(14, y + 12, 75, y + 12); doc.line(120, y + 12, 181, y + 12);
-    doc.setFontSize(7); doc.text('Class Teacher Signature', 14, y + 18);
-    doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 120, y + 18);
-  }
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 27);
-  doc.setDrawColor(180, 180, 185);
-  doc.rect(120, y + 3, 35, 22);
-  doc.setFontSize(5.5); doc.text('OFFICIAL STAMP', 137.5, y + 15, { align: 'center' });
+// ── Draw Report Header ───────────────────────────────────────────────────────
+export async function drawReportHeader(doc: jsPDF, school: SchoolInfo) {
+  doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 32, 'F');
+  const logoAdded = school.logo_url ? await addLogoToPDF(doc, school.logo_url, 14, 4, 24, 24) : false;
+  doc.setTextColor(26, 35, 126); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+  doc.text(school.name || 'School Name', logoAdded ? 42 : 105, 12, { align: logoAdded ? 'left' : 'center' });
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+  doc.text(school.motto || '', logoAdded ? 42 : 105, 18, { align: logoAdded ? 'left' : 'center' });
+  doc.text(`${school.address || ''} | ${school.phone || ''} | ${school.email || ''}`, logoAdded ? 42 : 105, 24, { align: logoAdded ? 'left' : 'center' });
 }
 
-// ── Draw Header with Logo ────────────────────────────────────────────────────
-export async function drawReportHeader(
-  doc: jsPDF,
-  schoolInfo: SchoolInfo,
-  subtitle: string = 'STUDENT REPORT CARD'
-) {
-  doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 32, 'F');
-  const logoAdded = schoolInfo.logo_url ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26) : false;
-  doc.setTextColor(26, 35, 126);
-  const displayName = schoolInfo.name?.trim() || 'School';
-  doc.setFontSize(logoAdded ? 14 : 16); doc.setFont('helvetica', 'bold');
-  doc.text(displayName, logoAdded ? 40 : 105, 11, { align: logoAdded ? 'left' : 'center' });
-  doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-  doc.text(subtitle, logoAdded ? 40 : 105, 20, { align: logoAdded ? 'left' : 'center' });
-  if (schoolInfo.motto) {
-    doc.setFontSize(6.5); doc.setFont('helvetica', 'italic');
-    doc.text(`"${schoolInfo.motto}"`, logoAdded ? 40 : 105, 27, { align: logoAdded ? 'left' : 'center' });
-  }
+// ── Add Signatures to PDF ────────────────────────────────────────────────────
+export async function addSignaturesToPDF(doc: jsPDF, signatures: SignatureInfo, y: number, school: SchoolInfo) {
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+  doc.text('Class Teacher:', 14, y); doc.text('Principal:', 120, y);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Sign: _________________', 14, y + 10); doc.text('Sign: _________________', 120, y + 10);
+  doc.text(`Motto: ${school.motto || 'Strive for Excellence'}`, 105, y + 20, { align: 'center' });
 }
 
 // ── Draw Student Info ────────────────────────────────────────────────────────
@@ -536,12 +459,13 @@ export function drawResultsTable(
   classData: any,
   startY: number
 ): number {
+  const sorted = sortResultsBySubject(results);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
-  const tableHead = isPrimary ? ['#', 'Learning Area', 'Marks', 'Out Of', '%', 'CBE Grade'] : ['#', 'Learning Area', 'Marks', 'Out Of', '%', 'CBE Grade', 'Points'];
-  const tableBody = results.map((r, i) => {
+  const tableHead = isPrimary ? ['#', 'Learning Area', 'Marks', 'Out Of', 'Score & Grade'] : ['#', 'Learning Area', 'Marks', 'Out Of', 'Score & Grade', 'Points'];
+  const tableBody = sorted.map((r, i) => {
     const pct = getPercentage(r);
     const grading = gradeFromPercentage(pct, classData);
-    const row: any[] = [i + 1, r.subjects?.name || 'N/A', String(r.marks || '0'), String(r.out_of || 100), `${pct}%`, grading.grade];
+    const row: any[] = [i + 1, r.subjects?.name || 'N/A', String(r.marks || '0'), String(r.out_of || 100), `${pct}% ${grading.grade}`];
     if (!isPrimary) row.push(grading.points ?? '—');
     return row;
   });
