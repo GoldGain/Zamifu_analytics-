@@ -4,13 +4,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   BookOpen, ChevronDown, ChevronRight, FileText, Layers, BookMarked,
   Sparkles, ClipboardList, FolderOpen, Download, Printer, CheckCircle2,
-  Circle, Loader2, Brain, Upload, X, Plus, AlertCircle
+  Circle, Loader2, Brain, Upload, X, Plus, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ExamGenerator from '@/components/curriculum/ExamGenerator';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
-  OFFICIAL_LINKS,
   JUNIOR_SCHOOL_SUBJECTS,
   juniorExamSubjects,
   SCHEME_COLUMNS,
@@ -22,7 +22,6 @@ import {
   buildExamBlueprint,
   findStrandContext,
   getStrandPacks,
-  gradeDesignUrl,
   type SchemeRow,
   type FullLessonPlan,
   type ExamBlueprint,
@@ -100,26 +99,25 @@ interface ExamQuestion {
   difficulty: string;
 }
 
-// ─── AI Helper ───────────────────────────────────────────────────────────────
+// ─── Secure server-side AI helper ────────────────────────────────────────────
 async function callAI(prompt: string): Promise<string> {
-  const OPENAI_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
-  const OPENAI_BASE = import.meta.env.VITE_OPENAI_API_BASE || 'https://api.openai.com/v1';
-  const res = await fetch(`${OPENAI_BASE}/chat/completions`, {
+  const { data: sessionData } = await supabaseUntyped.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error('Your session has expired. Please sign in again.');
+
+  const response = await fetch('/api/curriculum-ai', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${OPENAI_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 2000,
-    }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ prompt }),
   });
-  if (!res.ok) throw new Error('AI request failed');
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload && typeof payload === 'object' && typeof payload.error === 'string'
+      ? payload.error : 'The curriculum AI request failed.';
+    throw new Error(message);
+  }
+  if (!payload?.content || typeof payload.content !== 'string') throw new Error('The curriculum AI service returned an empty response.');
+  return payload.content;
 }
 
 // ─── PDF Helpers ──────────────────────────────────────────────────────────────
@@ -1154,11 +1152,10 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
             <p className="text-xs font-semibold uppercase tracking-wider text-blue-300 mb-1">Zamifu Curriculum Intelligence</p>
             <h2 className="text-lg font-bold">KICD designs · Schemes · Lesson plans · Exam blueprints</h2>
             <p className="text-sm text-blue-100/80 mt-1">
-              Built on the official KICD 9-column scheme format and full CBE lesson structure. Open official designs, generate term schemes,
-              and download Section A/B/C papers with marking schemes — even offline via the embedded knowledge base.
+              Generate term schemes, structured lesson plans, and Section A/B/C assessment papers with marking schemes from the protected Zamifu curriculum workspace.
             </p>
             <p className="text-[11px] text-blue-200/70 mt-2">
-              Tip: Use your personal login on schemesofwork.com for paid samples. Zamifu never stores third-party passwords.
+              Curriculum designs and school-owned learning resources are managed internally by authorised staff.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1170,22 +1167,13 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
             >
               <Download className="w-3.5 h-3.5" /> Download Term Scheme PDF
             </button>
-            <a
-              href={gradeDesignUrl(gradeName)}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setActiveSection('resources')}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/20"
             >
-              <BookOpen className="w-3.5 h-3.5" /> Open KICD Designs
-            </a>
-            <a
-              href={OFFICIAL_LINKS.schemesOfWorkHome}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-semibold border border-white/20"
-            >
-              <ClipboardList className="w-3.5 h-3.5" /> schemesofwork.com
-            </a>
+              <FolderOpen className="w-3.5 h-3.5" /> Open internal resource library
+            </button>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1588,23 +1576,9 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
                       Teaching Resources & Official Libraries
                     </h3>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
-                      <a href={OFFICIAL_LINKS.curriculumDesigns} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-blue-100 bg-blue-50 hover:bg-blue-100/70">
-                        <p className="text-sm font-semibold text-blue-900">KICD Curriculum Designs</p>
-                        <p className="text-xs text-blue-700/80">All grades · Regular & SNE designs</p>
-                      </a>
-                      <a href={gradeDesignUrl(gradeName)} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-indigo-100 bg-indigo-50 hover:bg-indigo-100/70">
-                        <p className="text-sm font-semibold text-indigo-900">Designs for {gradeName || 'selected grade'}</p>
-                        <p className="text-xs text-indigo-700/80">Opens the matching KICD grade hub</p>
-                      </a>
-                      <a href={OFFICIAL_LINKS.schemesOfWorkHome} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-emerald-100 bg-emerald-50 hover:bg-emerald-100/70">
-                        <p className="text-sm font-semibold text-emerald-900">schemesofwork.com dashboard</p>
-                        <p className="text-xs text-emerald-700/80">Login for paid downloadable samples (your account)</p>
-                      </a>
-                      <a href={OFFICIAL_LINKS.kenyaEducationCloud} target="_blank" rel="noopener noreferrer" className="p-3 rounded-xl border border-amber-100 bg-amber-50 hover:bg-amber-100/70">
-                        <p className="text-sm font-semibold text-amber-900">Kenya Education Cloud</p>
-                        <p className="text-xs text-amber-800/80">Curriculum-relevant digital content</p>
-                      </a>
+                    <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                      <p className="text-sm font-semibold text-blue-900">Zamifu internal resource library</p>
+                      <p className="mt-1 text-xs leading-5 text-blue-800/80">Use school-uploaded curriculum designs, teacher-created worksheets, diagrams, and reviewed assessment materials without leaving the platform.</p>
                     </div>
 
                     <div className="mb-5">
@@ -1717,163 +1691,15 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
 
                 {/* ── SECTION 4: Exam Generator ── */}
                 {activeSection === 'exam' && (
-                  <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 className="font-bold text-gray-800 flex items-center gap-2 mb-4">
-                      <FileText className="w-5 h-5 text-red-500" />
-                      Exam Generator
-                    </h3>
-
-                    {/* Topic selection */}
-                    <div className="mb-4">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Topics (multi-select)</p>
-                      <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
-                        {allTopics.map(t => (
-                          <label key={t.id} className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={examTopics.has(t.id)}
-                              onChange={e => {
-                                setExamTopics(prev => {
-                                  const next = new Set(prev);
-                                  e.target.checked ? next.add(t.id) : next.delete(t.id);
-                                  return next;
-                                });
-                              }}
-                              className="rounded text-blue-600"
-                            />
-                            <span className="text-xs text-gray-700">{t.topic_name}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">{examTopics.size} topic(s) selected</p>
-                    </div>
-
-                    {/* Exam settings */}
-                    <div className="grid grid-cols-2 gap-3 mb-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Exam Title</label>
-                        <input
-                          value={examTitle}
-                          onChange={e => setExamTitle(e.target.value)}
-                          placeholder={`${subjectName} Exam - ${selectedTerm} 2025`}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Difficulty</label>
-                        <select
-                          value={examDifficulty}
-                          onChange={e => setExamDifficulty(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-                        >
-                          <option>Easy</option>
-                          <option>Medium</option>
-                          <option>Hard</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Total Marks</label>
-                        <select
-                          value={examTotalMarks}
-                          onChange={e => setExamTotalMarks(Number(e.target.value))}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-                        >
-                          {[10, 20, 30, 50, 100].map(m => <option key={m}>{m}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex items-end">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={includeMarkingScheme}
-                            onChange={e => setIncludeMarkingScheme(e.target.checked)}
-                            className="rounded text-blue-600"
-                          />
-                          <span className="text-xs text-gray-600">Include Marking Scheme</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-gray-500 mb-3">
-                      Generates a full paper: <strong>Section A</strong> MCQs, <strong>Section B</strong> structured, <strong>Section C</strong> extended response + optional marking scheme.
-                      If no topics are ticked, Zamifu uses the embedded KICD strand packs for this subject.
-                    </p>
-                    <button
-                      onClick={generateExam}
-                      disabled={generatingExam || !selectedSubject}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-60 mb-4"
-                    >
-                      {generatingExam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                      {generatingExam ? 'Generating Exam...' : 'Generate Full Paper + Marking Scheme'}
-                    </button>
-
-                    {/* Generated exam preview */}
-                    {generatedExam && (
-                      <div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                          <p className="text-sm font-semibold text-gray-700">
-                            Generated: {generatedExam.length} questions • {generatedExam.reduce((s, q) => s + q.marks, 0)} marks
-                            {examBlueprint ? ` · ${examBlueprint.sections.length} sections` : ''}
-                          </p>
-                          <div className="flex gap-2">
-                            {examBlueprint && (
-                              <button
-                                onClick={() => downloadExamBlueprintPDF(
-                                  examBlueprint,
-                                  schoolName,
-                                  subjectName,
-                                  gradeName,
-                                  includeMarkingScheme
-                                )}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition-colors"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                Paper + MS (KICD)
-                              </button>
-                            )}
-                            <button
-                              onClick={() => downloadExamAsPDF(
-                                generatedExam,
-                                examTitle || `${subjectName} Exam - ${selectedTerm} 2026`,
-                                schoolName,
-                                subjectName,
-                                gradeName,
-                                examTotalMarks,
-                                includeMarkingScheme
-                              )}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              Classic PDF
-                            </button>
-                          </div>
-                        </div>
-                        <div className="border border-gray-200 rounded-lg divide-y max-h-64 overflow-y-auto">
-                          {generatedExam.map((q, i) => (
-                            <div key={i} className="p-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-xs text-gray-700 flex-1">
-                                  <span className="font-semibold text-gray-900">{i + 1}.</span> {q.question_text}
-                                </p>
-                                <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-xs font-medium ${
-                                  q.question_type === 'multiple_choice' ? 'bg-blue-100 text-blue-700' :
-                                  q.question_type === 'short_answer' ? 'bg-green-100 text-green-700' :
-                                  'bg-purple-100 text-purple-700'
-                                }`}>{q.marks}m</span>
-                              </div>
-                              {q.options && (
-                                <div className="mt-1 grid grid-cols-2 gap-0.5">
-                                  {q.options.map((opt, j) => (
-                                    <p key={j} className="text-xs text-gray-500">{opt}</p>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  <ExamGenerator
+                    gradeLevel={gradeName}
+                    subject={subjectName}
+                    schoolName={schoolName}
+                    schoolId={user?.schoolId || ''}
+                    strands={strands}
+                    topics={allTopics}
+                    onGenerated={() => setExamBlueprint(null)}
+                  />
                 )}
               </>
             )}
@@ -1975,8 +1801,8 @@ function KICDDesignUploadPanel({ schoolId }: { schoolId: string }) {
             <FileText className="w-5 h-5 text-green-600" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">KICD Curriculum Designs & Official Resources</h3>
-            <p className="text-xs text-gray-500">Upload school copies or open official KICD designs and scheme samples</p>
+            <h3 className="font-semibold text-gray-900">Curriculum Designs & School Resources</h3>
+            <p className="text-xs text-gray-500">Upload, organise, and access school-authorised curriculum resources in one place</p>
           </div>
         </div>
         <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700">
@@ -1984,56 +1810,14 @@ function KICDDesignUploadPanel({ schoolId }: { schoolId: string }) {
         </button>
       </div>
 
-      {/* Official external resources */}
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-        <a
-          href="https://kicd.ac.ke/cbc-materials/curriculum-designs/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-start gap-3 p-3 rounded-xl border border-blue-100 bg-blue-50/60 hover:bg-blue-50 transition-colors"
-        >
-          <BookOpen className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+      <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
           <div>
-            <p className="text-sm font-semibold text-blue-900">KICD Curriculum Designs</p>
-            <p className="text-xs text-blue-700/80">Official CBC/CBE designs for all grades (PP1–Grade 12), including Grade 9 learning areas.</p>
+            <p className="text-sm font-semibold text-blue-900">Internal curriculum library</p>
+            <p className="mt-1 text-xs leading-5 text-blue-800/80">Teachers access only school-uploaded, administrator-reviewed curriculum designs and assessment resources within Zamifu. This area does not redirect staff to third-party resource sites.</p>
           </div>
-        </a>
-        <a
-          href="https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-start gap-3 p-3 rounded-xl border border-indigo-100 bg-indigo-50/60 hover:bg-indigo-50 transition-colors"
-        >
-          <Layers className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-indigo-900">Grade 9 Designs</p>
-            <p className="text-xs text-indigo-700/80">Agriculture, English, Mathematics, Integrated Science, Pre-Technical, Social Studies, and more.</p>
-          </div>
-        </a>
-        <a
-          href="https://schemesofwork.com/home"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-start gap-3 p-3 rounded-xl border border-emerald-100 bg-emerald-50/60 hover:bg-emerald-50 transition-colors"
-        >
-          <ClipboardList className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-emerald-900">schemesofwork.com</p>
-            <p className="text-xs text-emerald-700/80">Login for downloadable scheme samples and term schemes (use your schemesofwork.com account).</p>
-          </div>
-        </a>
-        <a
-          href="https://schemesofwork.com/schemes-of-work-2026"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-start gap-3 p-3 rounded-xl border border-teal-100 bg-teal-50/60 hover:bg-teal-50 transition-colors"
-        >
-          <Download className="w-5 h-5 text-teal-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-teal-900">2026 Schemes Catalogue</p>
-            <p className="text-xs text-teal-700/80">Browse grade/subject/term schemes to compare against Zamifu KICD-format exports.</p>
-          </div>
-        </a>
+        </div>
       </div>
 
       {showAdd && (
@@ -2058,7 +1842,7 @@ function KICDDesignUploadPanel({ schoolId }: { schoolId: string }) {
       {loading ? (
         <div className="text-center py-6"><Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" /></div>
       ) : designs.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">No KICD curriculum designs uploaded yet. Upload PDF or document files to share with teachers.</p>
+        <p className="text-sm text-gray-400 text-center py-6">No curriculum designs have been uploaded yet. Add school-authorised PDF or document files to share with teachers.</p>
       ) : (
         <div className="grid gap-3">
           {designs.map((d) => (
@@ -2074,9 +1858,9 @@ function KICDDesignUploadPanel({ schoolId }: { schoolId: string }) {
               </div>
               <div className="flex items-center gap-2">
                 {d.file_url && (
-                  <a href={d.file_url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600">
+                  <button type="button" onClick={() => window.open(d.file_url, '_blank', 'noopener,noreferrer')} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600" aria-label={`Open ${d.title}`}>
                     <Download className="w-4 h-4" />
-                  </a>
+                  </button>
                 )}
                 <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-500">
                   <X className="w-4 h-4" />
