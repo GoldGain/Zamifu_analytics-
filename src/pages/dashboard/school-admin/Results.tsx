@@ -672,6 +672,13 @@ export default function SchoolAdminResults() {
   const totalLearners = new Set(results.map(r => r.student_id)).size;
   const totalSubjects = new Set(results.map(r => r.subject_id)).size;
 
+  const classObj = classes.find(c => c.id === selectedClass);
+  const summaries = buildStudentSummary(filtered, classObj);
+  const allSubjectsRaw = Array.from(new Set(filtered.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
+  const allSubjects = sortSubjects(allSubjectsRaw);
+  const band = getSchoolLevelBand(classObj);
+  const isPrimary = band === 'primary';
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -739,10 +746,70 @@ export default function SchoolAdminResults() {
         </div>
       </div>
 
+      {/* LEARNER RESULTS TABLE GRID */}
+      {selectedClass && selectedTerm && (
+        <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
+              <Users className="w-5 h-5 text-blue-600" /> Learner Performance Results
+            </h2>
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Grid View</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50/50">
+                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-0 bg-gray-50 z-10 border-r border-gray-100">POS</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-[52px] bg-gray-50 z-10 border-r border-gray-100">Learner</th>
+                  {allSubjects.map(sub => (
+                    <th key={sub} className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100 min-w-[100px]">{shortName(sub)}</th>
+                  ))}
+                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100">Avg%</th>
+                  {!isPrimary && <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100">Pts</th>}
+                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center">Grade</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {summaries.map((s: any) => {
+                  const gr = overallGradeWithBand(s.avgPct, band);
+                  return (
+                    <tr key={s.studentId} className="hover:bg-blue-50/30 transition-colors">
+                      <td className="px-4 py-3 text-xs font-bold text-gray-500 sticky left-0 bg-white z-10 border-r border-gray-100">{s.position}</td>
+                      <td className="px-4 py-3 sticky left-[52px] bg-white z-10 border-r border-gray-100">
+                        <div className="text-xs font-bold text-[#111111] truncate max-w-[120px]">{s.student?.first_name} {s.student?.last_name}</div>
+                        <div className="text-[9px] text-gray-400 font-bold uppercase">{s.student?.admission_number}</div>
+                      </td>
+                      {allSubjects.map(sub => {
+                        const pct = s.subjects[sub];
+                        if (pct === undefined) return <td key={sub} className="px-4 py-3 text-center text-gray-300 text-xs border-r border-gray-100">—</td>;
+                        const subGrade = overallGradeWithBand(pct, band).subLevel;
+                        return (
+                          <td key={sub} className="px-4 py-3 text-center border-r border-gray-100">
+                            <div className="text-xs font-bold text-gray-700">{pct.toFixed(0)}%</div>
+                            <div className={`text-[9px] font-black uppercase ${gradeColor(subGrade)} px-1 rounded inline-block`}>{subGrade}</div>
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-3 text-center border-r border-gray-100 font-black text-blue-600 text-xs">{s.avgPct.toFixed(1)}%</td>
+                      {!isPrimary && <td className="px-4 py-3 text-center border-r border-gray-100 font-bold text-purple-600 text-xs">{s.totalPoints}</td>}
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${gradeColor(isPrimary ? gr.grade : gr.subLevel)}`}>
+                          {isPrimary ? gr.grade : gr.subLevel}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
         <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
           <h2 className="text-lg font-semibold text-[#111111] flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-500" /> Performance Records
+            <Trophy className="w-5 h-5 text-amber-500" /> Individual Records
           </h2>
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
