@@ -200,8 +200,8 @@ export default function ExamGenerator({
 
   async function attachImage(question: GeneratedExamQuestion, file: File | undefined) {
     if (!file || !question.id || !schoolId) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Choose an image file.');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error('Choose a PNG, JPEG, or WebP image.');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -212,10 +212,12 @@ export default function ExamGenerator({
     try {
       const extension = file.name.split('.').pop()?.replace(/[^a-z0-9]/gi, '') || 'jpg';
       const path = `exam_images/${schoolId}/${question.id}/${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabaseUntyped.storage.from('school-files').upload(path, file, { upsert: false });
+      const storage = supabaseUntyped.storage.from('exam-assets');
+      const { error: uploadError } = await storage.upload(path, file, { upsert: false });
       if (uploadError) throw uploadError;
-      const { data: publicData } = supabaseUntyped.storage.from('school-files').getPublicUrl(path);
-      const imageUrl = publicData.publicUrl;
+      const { data: signedData, error: signedUrlError } = await storage.createSignedUrl(path, 60 * 60 * 24);
+      if (signedUrlError || !signedData?.signedUrl) throw signedUrlError || new Error('Could not create a secure image preview.');
+      const imageUrl = signedData.signedUrl;
       const database = supabaseUntyped as any;
       const { error: questionError } = await database.from('exam_questions').update({ image_url: imageUrl }).eq('id', question.id);
       if (questionError) throw questionError;
