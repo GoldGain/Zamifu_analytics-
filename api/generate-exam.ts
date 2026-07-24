@@ -157,7 +157,12 @@ export default async function handler(request: RequestLike, response: ResponseLi
     .eq('id', user.id)
     .maybeSingle();
 
-  if (profileError || !profile?.school_id || !['teacher', 'school_admin'].includes(profile.role)) {
+  if (profileError || !profile?.school_id) {
+    jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
+    return;
+  }
+  const isAuthorised = ['teacher', 'school_admin', 'super_admin'].includes(profile.role || '');
+  if (!isAuthorised) {
     jsonError(response, 403, 'Only authorised teachers and school administrators can generate exams.');
     return;
   }
