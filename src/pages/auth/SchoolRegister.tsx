@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@supabase/supabase-js';
 import { sendSMS } from '@/lib/sms';
 import {
   KENYA_COUNTIES,
@@ -57,29 +58,34 @@ const initial: FormState = {
 };
 
 async function callRegister(body: Record<string, unknown>) {
-  // Use fetch directly with the anon key to avoid Supabase client auto-attaching
-  // a JWT token, which causes "unrecognized JWT kid" errors in the edge function.
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/register-school`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(body),
+  // Use a dedicated anonymous Supabase client (no persisted session) to avoid
+  // auto-attaching a stale JWT that causes "unrecognized JWT kid" errors.
+  const anonClient = createClient(
+    import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co',
+    import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5haWh6emxzenZya3hyeG9nc3V6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXqAJ1hkCiE9NldaoqNO3oid8CV7xUgTM'
+  );
+  const { data, error } = await anonClient.functions.invoke('register-school', {
+    body,
+    // Do NOT send any Authorization header — the edge function has verify_jwt:false
+    headers: { Authorization: '' },
   });
-  if (!res.ok) {
+  if (error) {
+    let msg = error.message || 'Request failed';
     try {
-      const errorData = await res.json();
-      throw new Error(errorData.error || `Request failed with status ${res.status}`);
-    } catch (e: any) {
-      if (e.message?.startsWith('Request failed')) throw e;
-      throw new Error(`Request failed with status ${res.status}`);
+      const ctx = (error as any)?.context;
+      if (ctx?.json) {
+        const j = await ctx.json();
+        msg = j.error || msg;
+      } else if (data && (data as any).error) {
+        msg = (data as any).error;
+      }
+    } catch {
+      if (data && (data as any).error) msg = (data as any).error;
     }
+    throw new Error(msg);
   }
-  const data = await res.json();
-  if (data && data.error) throw new Error(data.error);
-  return data;
+  if (data && (data as any).error) throw new Error((data as any).error);
+  return data as any;
 }
 
 export default function SchoolRegister() {
