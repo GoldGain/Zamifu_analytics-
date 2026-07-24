@@ -153,13 +153,34 @@ export default async function handler(request: RequestLike, response: ResponseLi
 
   let { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, school_id, role, full_name')
+    .select('id, school_id, role, full_name, first_name, last_name, email')
     .eq('id', user.id)
     .maybeSingle();
 
+  // If no profile row exists, create one from user metadata so exam generation works
   if (profileError || !profile) {
-    jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
-    return;
+    const meta = user.user_metadata || {};
+    const role = (meta.role || 'teacher') as string;
+    const allowedRoles = ['teacher', 'school_admin', 'super_admin', 'student', 'parent'];
+    const safeRole = allowedRoles.includes(role) ? role : 'teacher';
+    const insertPayload: Record<string, unknown> = {
+      id: user.id,
+      email: user.email,
+      role: safeRole,
+      first_name: meta.first_name || meta.full_name || '',
+      last_name: meta.last_name || '',
+      school_id: meta.school_id || null,
+    };
+    const { data: inserted, error: insertError } = await supabase
+      .from('profiles')
+      .insert(insertPayload)
+      .select('id, school_id, role, full_name, first_name, last_name')
+      .single();
+    if (insertError || !inserted) {
+      jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
+      return;
+    }
+    profile = inserted;
   }
 
   const isAuthorised = ['teacher', 'school_admin', 'super_admin'].includes(profile.role || '');

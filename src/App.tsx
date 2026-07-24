@@ -94,6 +94,7 @@ import TeacherChangePassword from '@/pages/dashboard/teacher/ChangePassword';
 import ParentChangePassword from '@/pages/dashboard/parent/ChangePassword';
 import TimetableView from '@/pages/dashboard/TimetableView';
 import TeacherCurriculumNavigator from '@/pages/dashboard/teacher/CurriculumNavigator';
+import ExamGenerator from '@/components/curriculum/ExamGenerator';
 import TeacherProfile from '@/pages/dashboard/teacher/Profile';
 import TeacherMarklist from '@/pages/dashboard/teacher/Marklist';
 import TeacherClassList from '@/pages/dashboard/teacher/ClassList';
@@ -233,6 +234,7 @@ function AppRoutes() {
       <Route path="/teacher/change-password" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherChangePassword /></ProtectedRoute>} />
       <Route path="/teacher/profile" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherProfile /></ProtectedRoute>} />
       <Route path="/teacher/curriculum" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherCurriculumNavigator /></ProtectedRoute>} />
+      <Route path="/teacher/exam-generator" element={<ProtectedRoute allowedRoles={['teacher']}><ExamGenerator /></ProtectedRoute>} />
       <Route path="/teacher/marklist" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMarklist /></ProtectedRoute>} />
       <Route path="/teacher/class-list" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherClassList /></ProtectedRoute>} />
       {/* Issue 5: DoS can manage assessments - shared Assessments component for teachers */}

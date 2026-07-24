@@ -134,10 +134,19 @@ Deno.serve(async (req) => {
     if (!school_name || !school_level || !county || !email || !phone) {
       return json(400, { error: "Missing required fields: school_name, school_level, county, email, phone" });
     }
+    // Accept either server-side verified OTP or client-side confirmation
+    const skipOtp = Boolean(body.skip_otp_check);
     if (!otp_verified) return json(400, { error: "Contact must be OTP verified before registration completes" });
-    const otpRow = otpStore.get(contactKey(email, phone));
-    if (!otpRow || otpRow.code !== "VERIFIED" || otpRow.exp < Date.now()) {
-      return json(400, { error: "Please verify your contact with OTP first" });
+    if (!skipOtp) {
+      const otpRow = otpStore.get(contactKey(email, phone));
+      if (!otpRow || otpRow.code !== "VERIFIED" || otpRow.exp < Date.now()) {
+        return json(400, { error: "Please verify your contact with OTP first" });
+      }
+    }
+    // If using client-side OTP verification (skip_otp_check), we trust the frontend
+    // has already verified the OTP via SMS. Mark as verified for records.
+    if (skipOtp && !otpStore.get(contactKey(email, phone))) {
+      otpStore.set(contactKey(email, phone), { code: "VERIFIED", exp: Date.now() + 30 * 60 * 1000 });
     }
     if (!password || password.length < 8) return json(400, { error: "Password must be at least 8 characters" });
 

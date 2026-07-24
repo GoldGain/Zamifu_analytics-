@@ -119,6 +119,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'My Learners', icon: <Users className="w-5 h-5" />, path: '/teacher/students' },
     { label: 'Lesson Plans', icon: <Sparkles className="w-5 h-5" />, path: '/teacher/lesson-plan' },
     { label: 'Curriculum Navigator', icon: <Brain className="w-5 h-5" />, path: '/teacher/curriculum' },
+    { label: 'Exam Generator', icon: <FileText className="w-5 h-5" />, path: '/teacher/exam-generator' },
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/teacher/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/teacher/change-password' },
   ],
