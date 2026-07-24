@@ -151,7 +151,6 @@ export default async function handler(request: RequestLike, response: ResponseLi
     return;
   }
 
-  let schoolId = null;
   let { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id, school_id, role, full_name')
@@ -163,25 +162,10 @@ export default async function handler(request: RequestLike, response: ResponseLi
     return;
   }
 
-  if (!profile.school_id) {
-    const { data: teacherData, error: teacherError } = await supabase
-      .from('teachers')
-      .select('school_id')
-      .eq('id', user.id)
-      .maybeSingle();
-      
-    if (!teacherError && teacherData?.school_id) {
-      schoolId = teacherData.school_id;
-      await supabase
-        .from('profiles')
-        .update({ school_id: schoolId })
-        .eq('id', user.id);
-        
-      profile.school_id = schoolId;
-    } else {
-      jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
-      return;
-    }
+  const isAuthorised = ['teacher', 'school_admin', 'super_admin'].includes(profile.role || '');
+  if (!isAuthorised) {
+    jsonError(response, 403, 'Only authorised teachers and school administrators can generate exams.');
+    return;
   }
   const isAuthorised = ['teacher', 'school_admin', 'super_admin'].includes(profile.role || '');
   if (!isAuthorised) {
