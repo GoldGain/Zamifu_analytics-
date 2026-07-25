@@ -417,12 +417,71 @@ export async function drawReportHeader(doc: jsPDF, school: SchoolInfo) {
 }
 
 // ── Add Signatures to PDF ────────────────────────────────────────────────────
-export async function addSignaturesToPDF(doc: jsPDF, signatures: SignatureInfo, y: number, school: SchoolInfo) {
-  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
-  doc.text('Class Teacher:', 14, y); doc.text('Principal:', 120, y);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Sign: _________________', 14, y + 10); doc.text('Sign: _________________', 120, y + 10);
-  doc.text(`Motto: ${school.motto || 'Strive for Excellence'}`, 105, y + 20, { align: 'center' });
+export function addSignaturesToPDF(
+  doc: jsPDF,
+  signatures: SignatureInfo,
+  y: number,
+  schoolInfo?: SchoolInfo
+) {
+  const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
+  const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(60, 60, 70);
+  if (hasTeacherSig || hasPrincipalSig) {
+    doc.text('DIGITAL SIGNATURES', 14, y);
+    if (hasTeacherSig) {
+      try {
+        doc.addImage(signatures.teacher_signature_url!, 'PNG', 14, y + 3, 45, 16);
+      } catch {
+        doc.setDrawColor(150, 150, 155);
+        doc.line(14, y + 16, 60, y + 16);
+      }
+    } else {
+      doc.setDrawColor(150, 150, 155);
+      doc.line(14, y + 16, 60, y + 16);
+    }
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 110);
+    doc.text('Class Teacher Signature', 14, y + 22);
+    if (hasPrincipalSig) {
+      try {
+        doc.addImage(signatures.principal_signature_url!, 'PNG', 120, y + 3, 45, 16);
+      } catch {
+        doc.setDrawColor(150, 150, 155);
+        doc.line(120, y + 16, 165, y + 16);
+      }
+    } else {
+      doc.setDrawColor(150, 150, 155);
+      doc.line(120, y + 16, 165, y + 16);
+    }
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 110);
+    doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 120, y + 22);
+  } else {
+    doc.setDrawColor(150, 150, 155);
+    doc.line(14, y + 12, 75, y + 12);
+    doc.line(120, y + 12, 181, y + 12);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 85);
+    doc.text('Class Teacher Signature', 14, y + 18);
+    doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 120, y + 18);
+  }
+  // Date
+  doc.setFontSize(7);
+  doc.setTextColor(80, 80, 85);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 27);
+  // School stamp area
+  doc.setDrawColor(180, 180, 185);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.rect(120, y + 3, 35, 22);
+  doc.setLineDashPattern([], 0);
+  doc.setFontSize(5.5);
+  doc.setTextColor(150, 150, 155);
+  doc.text('OFFICIAL STAMP', 137.5, y + 15, { align: 'center' });
 }
 
 // ── Draw Student Info ────────────────────────────────────────────────────────
