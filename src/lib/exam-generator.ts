@@ -1,10 +1,9 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
-  CBC_QUESTION_TYPES,
+  questionTypeLabel,
   type ExamPaper,
   type GeneratedExamQuestion,
-  type QuestionType,
 } from './exam-schema';
 
 const sectionTitles: Record<string, string> = {
@@ -55,7 +54,7 @@ function addPageHeader(doc: jsPDF, paper: ExamPaper, continuation = false): numb
   return 42;
 }
 
-function addFooter(doc: jsPDF, paper: ExamPaper): void {
+function addFooter(doc: jsPDF): void {
   const pageCount = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     doc.setPage(pageNumber);
@@ -162,7 +161,7 @@ export async function downloadExamPdf(paper: ExamPaper, includeMarkingScheme: bo
             y = addPageHeader(doc, paper, true);
           }
           try {
-            (doc as any).addImage(image, 'JPEG', 19, y, 82, 54, undefined, 'FAST');
+            doc.addImage(image, 'JPEG', 19, y, 82, 54, undefined, 'FAST');
             y += 58;
           } catch {
             // Image data that jsPDF cannot decode is ignored without blocking the paper download.
@@ -197,7 +196,7 @@ export async function downloadExamPdf(paper: ExamPaper, includeMarkingScheme: bo
     });
   }
 
-  addFooter(doc, paper);
+  addFooter(doc);
   const safeName = paper.title.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'cbc_exam';
   doc.save(`${safeName}.pdf`);
 }

@@ -1,6 +1,7 @@
-import { supabase } from '@/lib/supabase/client';
+import { supabaseUntyped } from '@/lib/supabase/client';
 
 export const DEFAULT_FEE_PER_LEARNER = 50;
+export const DEFAULT_CURRENCY = 'KES';
 
 export interface ResellerRecord {
   id: string;
@@ -13,7 +14,7 @@ export interface ResellerRecord {
 }
 
 export async function getResellerForUser(userId: string): Promise<ResellerRecord | null> {
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabaseUntyped
     .from('resellers')
     .select('*')
     .eq('user_id', userId)
@@ -25,8 +26,16 @@ export async function getResellerForUser(userId: string): Promise<ResellerRecord
   return data as ResellerRecord | null;
 }
 
-export function money(n: number | null | undefined): string {
-  return `KES ${Number(n || 0).toLocaleString()}`;
+export function currencyCode(value: string | null | undefined): string {
+  const normalized = String(value || DEFAULT_CURRENCY).trim().toUpperCase();
+  return /^[A-Z]{3,10}$/.test(normalized) ? normalized : DEFAULT_CURRENCY;
+}
+
+export function money(n: number | null | undefined, currency: string | null | undefined = DEFAULT_CURRENCY): string {
+  const amount = Number(n || 0);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  const label = currencyCode(currency) === 'KES' ? 'KSh' : currencyCode(currency);
+  return `${label} ${safeAmount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`;
 }
 
 export function feeOrDefault(value: number | null | undefined, fallback = DEFAULT_FEE_PER_LEARNER): number {
