@@ -7,6 +7,18 @@ import {
   type QuestionType,
 } from './exam-schema';
 
+const sectionTitles: Record<string, string> = {
+  multiple_choice: 'SECTION A: MULTIPLE CHOICE QUESTIONS',
+  multiple_response: 'SECTION B: MULTIPLE RESPONSE QUESTIONS',
+  modified_true_false: 'SECTION C: MODIFIED TRUE / FALSE',
+  completion: 'SECTION D: COMPLETION QUESTIONS',
+  matching: 'SECTION E: MATCHING QUESTIONS',
+  short_answer: 'SECTION F: SHORT ANSWER QUESTIONS',
+  numeric_response: 'SECTION G: NUMERIC RESPONSE QUESTIONS',
+  case_study: 'SECTION H: CASE STUDY QUESTIONS',
+  essay: 'SECTION I: EXTENDED RESPONSE QUESTIONS',
+};
+
 export {
   CBC_QUESTION_TYPES,
   cleanText,
