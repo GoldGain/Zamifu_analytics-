@@ -236,8 +236,7 @@ export default async function handler(request: RequestLike, response: ResponseLi
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
-  const user = userData.user;
+  const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
   if (userError || !user) {
     jsonError(response, 401, 'Your session could not be verified. Please sign in again.');
     return;
@@ -274,13 +273,13 @@ export default async function handler(request: RequestLike, response: ResponseLi
         role: meta.role || 'teacher',
         email: user.email,
       };
-      await handleExamGeneration(response, supabase, fallbackProfile as any, user, request);
-      return;
-    }
-    await handleExamGeneration(response, supabase, inserted, user, request);
+    await handleExamGeneration(response, supabase as any, fallbackProfile as any, user, request);
     return;
   }
+  await handleExamGeneration(response, supabase as any, inserted as any, user, request);
+  return;
+}
 
-  // No role restriction — any authenticated user can generate exams
-  await handleExamGeneration(response, supabase, profile, user, request);
+// No role restriction — any authenticated user can generate exams
+await handleExamGeneration(response, supabase as any, profile as any, user, request);
 }

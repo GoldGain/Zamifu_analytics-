@@ -64,15 +64,15 @@ export default async function handler(request: RequestLike, response: ResponseLi
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: userData, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !userData.user) {
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
     jsonError(response, 401, 'Your session could not be verified.');
     return;
   }
   const { data: profile } = await supabase
     .from('profiles')
     .select('role, school_id')
-    .eq('id', userData.user.id)
+    .eq('id', user.id)
     .maybeSingle();
   if (!profile?.school_id || !['teacher', 'school_admin'].includes(profile.role)) {
     jsonError(response, 403, 'Only authorised teachers and school administrators may use curriculum generation.');

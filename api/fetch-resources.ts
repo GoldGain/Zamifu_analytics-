@@ -58,15 +58,15 @@ export default async function handler(request: RequestLike, response: ResponseLi
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
-  if (userError || !userData.user) {
+  const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken);
+  if (userError || !user) {
     jsonError(response, 401, 'Your session could not be verified.');
     return;
   }
   const { data: profile } = await supabase
     .from('profiles')
     .select('id, role')
-    .eq('id', userData.user.id)
+    .eq('id', user.id)
     .maybeSingle();
   if (profile?.role !== 'school_admin') {
     jsonError(response, 403, 'Only school administrators may review curriculum sources.');

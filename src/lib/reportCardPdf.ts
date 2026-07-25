@@ -339,9 +339,11 @@ export async function addLogoToPDF(
   try {
     const renderToCanvas = async (src: string): Promise<string> => {
       return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 8000);
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+          clearTimeout(timeout);
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
           canvas.height = img.height;
@@ -349,7 +351,10 @@ export async function addLogoToPDF(
           ctx.drawImage(img, 0, 0);
           resolve(canvas.toDataURL('image/png'));
         };
-        img.onerror = reject;
+        img.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Resource load failed'));
+        };
         img.src = src;
       });
     };
@@ -378,9 +383,11 @@ export async function addStudentPhotoToPDF(
   try {
     const renderToCanvas = async (src: string): Promise<string> => {
       return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 8000);
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
+          clearTimeout(timeout);
           const canvas = document.createElement('canvas');
           canvas.width = img.width;
           canvas.height = img.height;
@@ -388,7 +395,10 @@ export async function addStudentPhotoToPDF(
           ctx.drawImage(img, 0, 0);
           resolve(canvas.toDataURL('image/png'));
         };
-        img.onerror = reject;
+        img.onerror = () => {
+          clearTimeout(timeout);
+          reject(new Error('Resource load failed'));
+        };
         img.src = src;
       });
     };
