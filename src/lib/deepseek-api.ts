@@ -7,7 +7,9 @@ import {
   type QuestionType,
 } from './exam-schema.js';
 
-const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
+const AI_ENDPOINT = process.env.OPENAI_API_BASE
+  ? `${process.env.OPENAI_API_BASE.replace(/\/$/, '')}/chat/completions`
+  : 'https://api.deepseek.com/chat/completions';
 
 interface DeepSeekChoice {
   message?: { content?: string | null };
@@ -144,27 +146,27 @@ function parseJsonObject(content: string): Record<string, unknown> {
 }
 
 export async function generateExamWithDeepSeek(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    throw new DeepSeekConfigurationError('The exam-generation service is not configured. Add DEEPSEEK_API_KEY to the server environment.');
+    throw new DeepSeekConfigurationError('The exam-generation service is not configured. Add OPENAI_API_KEY or DEEPSEEK_API_KEY to the server environment.');
   }
 
-  const response = await fetch(DEEPSEEK_ENDPOINT, {
+  // Use gpt-4.1-mini as the primary model — it is fast, cheap, and supports json_object
+  const modelName = process.env.AI_EXAM_MODEL || 'gpt-4.1-mini';
+
+  const response = await fetch(AI_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      model: modelName,
       messages: [
         { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
         { role: 'user', content: buildExamPrompt(request, knowledgeContext) },
       ],
       response_format: { type: 'json_object' },
-      // DeepSeek specific: ensure json mode works
-      frequency_penalty: 0,
-      presence_penalty: 0,
       temperature: 0.45,
       max_tokens: 7000,
       stream: false,
