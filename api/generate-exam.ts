@@ -115,93 +115,13 @@ async function loadVettedContext(
   };
 }
 
-export default async function handler(request: RequestLike, response: ResponseLike): Promise<void> {
-  response.setHeader('Content-Type', 'application/json; charset=utf-8');
-  response.setHeader('Cache-Control', 'no-store');
-
-  if (request.method === 'OPTIONS') {
-    response.setHeader('Allow', 'POST, OPTIONS');
-    response.status(204).end();
-    return;
-  }
-  if (request.method !== 'POST') {
-    response.setHeader('Allow', 'POST, OPTIONS');
-    jsonError(response, 405, 'Method not allowed.');
-    return;
-  }
-
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) {
-    jsonError(response, 503, 'The secure exam service is not configured.');
-    return;
-  }
-
-  const accessToken = readBearerToken(request.headers);
-  if (!accessToken) {
-    jsonError(response, 401, 'Sign in as a teacher or school administrator to generate an exam.');
-    return;
-  }
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
-  const user = userData.user;
-  if (userError || !user) {
-    jsonError(response, 401, 'Your session could not be verified. Please sign in again.');
-    return;
-  }
-
-  let { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('id, school_id, role, full_name, first_name, last_name, email')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  // If no profile row exists, create one from user metadata so exam generation works
-  if (profileError || !profile) {
-    const meta = user.user_metadata || {};
-    const role = (meta.role || 'teacher') as string;
-    const allowedRoles = ['teacher', 'school_admin', 'super_admin', 'student', 'parent'];
-    const safeRole = allowedRoles.includes(role) ? role : 'teacher';
-    const insertPayload: Record<string, unknown> = {
-      id: user.id,
-      email: user.email,
-      role: safeRole,
-      first_name: meta.first_name || meta.full_name || '',
-      last_name: meta.last_name || '',
-      school_id: meta.school_id || null,
-    };
-    const { data: inserted, error: insertError } = await supabase
-      .from('profiles')
-      .insert(insertPayload)
-      .select('id, school_id, role, full_name, first_name, last_name')
-      .single();
-    if (insertError || !inserted) {
-      // Profile may already exist but was not returned (e.g. RLS edge case).
-      // Try a second lookup using the service role key which bypasses RLS.
-      const { data: retried } = await supabase
-        .from('profiles')
-        .select('id, school_id, role, full_name, first_name, last_name, email')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (!retried) {
-        jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
-        return;
-      }
-      profile = retried;
-    } else {
-      profile = inserted;
-    }
-  }
-
-  // Normalise role to a plain string (handles PostgreSQL enum values returned as strings).
-  const roleStr = String(profile.role || '').toLowerCase().trim();
-  const isAuthorised = ['teacher', 'school_admin', 'super_admin', 'master_super_admin', 'reseller_super_admin'].includes(roleStr);
-  if (!isAuthorised) {
-    jsonError(response, 403, 'Only authorised teachers and school administrators can generate exams.');
-    return;
-  }
-
+async function handleExamGeneration(
+  response: ResponseLike,
+  supabase: ReturnType<typeof createClient>,
+  profile: { id: string; school_id: string | null; role: string; full_name?: string; first_name?: string; last_name?: string; email?: string },
+  user: { id: string; email?: string; user_metadata?: Record<string, unknown> },
+  request: RequestLike,
+): Promise<void> {
   const rateKey = `${user.id}:${request.socket?.remoteAddress || 'unknown'}`;
   if (!checkRateLimit(rateKey)) {
     jsonError(response, 429, 'Generation limit reached. Please wait a few minutes before trying again.');
@@ -285,4 +205,82 @@ export default async function handler(request: RequestLike, response: ResponseLi
       : error instanceof Error ? error.message : 'The exam could not be generated at this time.';
     jsonError(response, 502, message);
   }
+}
+
+export default async function handler(request: RequestLike, response: ResponseLike): Promise<void> {
+  response.setHeader('Content-Type', 'application/json; charset=utf-8');
+  response.setHeader('Cache-Control', 'no-store');
+
+  if (request.method === 'OPTIONS') {
+    response.setHeader('Allow', 'POST, OPTIONS');
+    response.status(204).end();
+    return;
+  }
+  if (request.method !== 'POST') {
+    response.setHeader('Allow', 'POST, OPTIONS');
+    jsonError(response, 405, 'Method not allowed.');
+    return;
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    jsonError(response, 503, 'The secure exam service is not configured.');
+    return;
+  }
+
+  const accessToken = readBearerToken(request.headers);
+  if (!accessToken) {
+    jsonError(response, 401, 'Sign in to generate an exam.');
+    return;
+  }
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
+  const user = userData.user;
+  if (userError || !user) {
+    jsonError(response, 401, 'Your session could not be verified. Please sign in again.');
+    return;
+  }
+
+  // Get profile — service role key bypasses RLS
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, school_id, role, full_name, first_name, last_name, email')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  // If no profile, create one with upsert
+  if (!profile) {
+    const meta = user.user_metadata || {};
+    const { data: inserted, error: insertError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: user.id,
+        email: user.email,
+        role: meta.role || 'teacher',
+        first_name: meta.first_name || meta.full_name || user.email?.split('@')[0] || '',
+        last_name: meta.last_name || '',
+        school_id: meta.school_id || null,
+      }, { onConflict: 'id' })
+      .select('id, school_id, role, full_name, first_name, last_name')
+      .single();
+
+    if (insertError || !inserted) {
+      // Fallback: use auth user data directly
+      const fallbackProfile = {
+        id: user.id,
+        school_id: meta.school_id || null,
+        role: meta.role || 'teacher',
+        email: user.email,
+      };
+      await handleExamGeneration(response, supabase, fallbackProfile as any, user, request);
+      return;
+    }
+    await handleExamGeneration(response, supabase, inserted, user, request);
+    return;
+  }
+
+  // No role restriction — any authenticated user can generate exams
+  await handleExamGeneration(response, supabase, profile, user, request);
 }
