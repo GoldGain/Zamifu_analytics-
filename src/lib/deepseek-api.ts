@@ -7,10 +7,6 @@ import {
   type QuestionType,
 } from './exam-schema.js';
 
-const AI_ENDPOINT = process.env.OPENAI_API_BASE
-  ? `${process.env.OPENAI_API_BASE.replace(/\/$/, '')}/chat/completions`
-  : 'https://api.deepseek.com/chat/completions';
-
 interface DeepSeekChoice {
   message?: { content?: string | null };
 }
@@ -151,33 +147,59 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     throw new DeepSeekConfigurationError('The exam-generation service is not configured. Add OPENAI_API_KEY or DEEPSEEK_API_KEY to the server environment.');
   }
 
+  // Compute endpoint at call time (not module load) to ensure env vars are available
+  const rawBase = process.env.OPENAI_API_BASE || '';
+  const endpoint = rawBase
+    ? `${rawBase.replace(/\/$/, '')}/chat/completions`
+    : 'https://api.deepseek.com/chat/completions';
+
   // Use gpt-4.1-mini as the primary model — it is fast, cheap, and supports json_object
   const modelName = process.env.AI_EXAM_MODEL || 'gpt-4.1-mini';
 
-  const response = await fetch(AI_ENDPOINT, {
+  console.log('[exam-gen] endpoint:', endpoint);
+  console.log('[exam-gen] model:', modelName);
+  console.log('[exam-gen] key type:', apiKey.startsWith('eyJ') ? 'jwt' : apiKey.startsWith('sk-') ? 'sk-key' : `other(${apiKey.length}chars)`);
+
+  const body = JSON.stringify({
+    model: modelName,
+    messages: [
+      { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
+      { role: 'user', content: buildExamPrompt(request, knowledgeContext) },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.45,
+    max_tokens: 7000,
+    stream: false,
+  });
+
+  console.log('[exam-gen] request body length:', body.length);
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: modelName,
-      messages: [
-        { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
-        { role: 'user', content: buildExamPrompt(request, knowledgeContext) },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.45,
-      max_tokens: 7000,
-      stream: false,
-    }),
+    body,
   });
 
-  const payload = await response.json().catch(() => ({})) as DeepSeekResponse;
+  const rawText = await response.text().catch(() => '');
+  console.log('[exam-gen] status:', response.status, 'response length:', rawText.length);
+
+  let payload: DeepSeekResponse;
+  try {
+    payload = JSON.parse(rawText) as DeepSeekResponse;
+  } catch {
+    throw new DeepSeekResponseError(`The AI service returned an invalid response (status ${response.status}). Response: ${rawText.slice(0, 200)}`);
+  }
+
   if (!response.ok) {
     const providerMessage = payload.error?.message || `The AI service returned status ${response.status}.`;
     throw new DeepSeekResponseError(providerMessage);
   }
+
+  // Log the full response for debugging
+  console.log('[exam-gen] choices:', JSON.stringify(payload.choices?.[0]?.message?.content || '')?.slice(0, 200));
 
   const content = payload.choices?.[0]?.message?.content;
   if (!content) throw new DeepSeekResponseError('The AI service returned an empty response. Please try again.');
