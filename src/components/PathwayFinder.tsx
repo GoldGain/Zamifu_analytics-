@@ -60,6 +60,8 @@ interface InterestOption {
 interface CareerPath {
   id: string;
   title: string;
+  displayPathway?: string;
+  displayTrack?: string;
   description: string;
   pathway: string;
   requirements: string[];
@@ -163,101 +165,123 @@ const careerPaths: CareerPath[] = [
   {
     id: 'stem_pure',
     title: 'STEM — Pure Sciences',
+    displayPathway: 'STEM',
+    displayTrack: 'Pure Sciences',
     description: 'Physics, Chemistry, Biology and Mathematics for medicine, engineering and research.',
     pathway: 'STEM',
     requirements: ['Mathematics', 'Integrated Science', 'Pre-Technical Studies', 'English'],
     interests: ['scientific_inquiry', 'mathematical_thinking', 'medical_health', 'physics', 'chemistry', 'biology', 'space_astronomy'],
-    requiredGrade: 'ME2',
+    requiredGrade: 'EE2',
   },
   {
     id: 'stem_applied',
     title: 'STEM — Applied Sciences',
+    displayPathway: 'STEM',
+    displayTrack: 'Applied Sciences',
     description: 'General Science, Computer Studies, Home Science and Agriculture.',
     pathway: 'STEM',
     requirements: ['Mathematics', 'Integrated Science', 'Agriculture and Nutrition', 'Pre-Technical Studies'],
     interests: ['technology_enthusiasm', 'programming_coding', 'environmental_science', 'computer_studies', 'home_science', 'agriculture', 'health', 'gis'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
   {
     id: 'stem_technical',
     title: 'STEM — Technical Studies',
+    displayPathway: 'STEM',
+    displayTrack: 'Technical Studies',
     description: 'Aviation, construction, electricity, metal work, power mechanics, woodwork, media and marine tech.',
     pathway: 'STEM',
     requirements: ['Mathematics', 'Pre-Technical Studies', 'Integrated Science', 'English'],
     interests: ['engineering_design', 'robotics_automation', 'aviation', 'construction', 'electricity', 'metal_work', 'power_mechanics', 'woodwork', 'media_tech', 'marine_fisheries'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
   {
     id: 'social_humanities',
     title: 'Social Sciences — Humanities & Business',
+    displayPathway: 'Social Sciences',
+    displayTrack: 'Humanities & Business Studies',
     description: 'Business Studies, History & Citizenship, Geography, Religious Studies and related careers.',
     pathway: 'Social Sciences',
     requirements: ['English', 'Kiswahili', 'Social Studies', 'Mathematics', 'Religious Education'],
     interests: ['business', 'history', 'geography', 'law', 'hospitality_tourism', 'quantity_survey', 'investigating_economics', 'debating_laws', 'economics', 'analyzing_behavior'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
   {
     id: 'social_languages',
     title: 'Social Sciences — Languages & Literature',
+    displayPathway: 'Social Sciences',
+    displayTrack: 'Languages & Literature',
     description: 'Literature, Fasihi, foreign languages, journalism and diplomacy.',
     pathway: 'Social Sciences',
     requirements: ['English', 'Kiswahili', 'Social Studies', 'Religious Education'],
     interests: ['literature_english', 'fasihi', 'languages', 'journalism', 'telling_stories', 'global_affairs', 'history_culture'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
   {
     id: 'arts_sports_science',
     title: 'Creative Arts and Sports — Sports Science',
+    displayPathway: 'Creative Arts and Sports',
+    displayTrack: 'Sports Science',
     description: 'Physical Education, sports training, kinesiology and related careers.',
     pathway: 'Creative Arts and Sports',
     requirements: ['Creative Arts and Sports', 'Integrated Science', 'English', 'Agriculture and Nutrition'],
     interests: ['athletic_performance', 'human_anatomy', 'strategy_coaching', 'outdoor_activity', 'pe'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
   {
     id: 'arts_performing',
     title: 'Creative Arts and Sports — Performing Arts',
+    displayPathway: 'Creative Arts and Sports',
+    displayTrack: 'Performing Arts',
     description: 'Music, dance, theatre, film and media production.',
     pathway: 'Creative Arts and Sports',
     requirements: ['Creative Arts and Sports', 'English', 'Kiswahili'],
     interests: ['stage_expression', 'creative_writing', 'media_consumption', 'public_speaking', 'music', 'dance'],
-    requiredGrade: 'AE2',
+    requiredGrade: 'EE2',
   },
   {
     id: 'arts_visual',
     title: 'Creative Arts and Sports — Visual Arts',
+    displayPathway: 'Creative Arts and Sports',
+    displayTrack: 'Visual Arts',
     description: 'Fine arts, design, fashion, digital media and photography.',
     pathway: 'Creative Arts and Sports',
     requirements: ['Creative Arts and Sports', 'English', 'Pre-Technical Studies'],
     interests: ['visual_creation', 'digital_design', 'fine_arts'],
-    requiredGrade: 'AE2',
+    requiredGrade: 'EE2',
   },
   {
     id: 'research_innovation',
     title: 'Research and Innovation',
+    displayPathway: 'Research and Innovation',
+    displayTrack: 'Research and Innovation',
     description: 'Inquiry-driven pathways for discovery, data and invention.',
     pathway: 'Research and Innovation',
     requirements: ['Mathematics', 'Integrated Science', 'English', 'Pre-Technical Studies'],
     interests: ['research', 'innovation', 'data_analysis', 'scientific_inquiry', 'data_science_ai'],
-    requiredGrade: 'ME2',
+    requiredGrade: 'EE2',
   },
   {
     id: 'education_path',
     title: 'Education Pathway',
+    displayPathway: 'Education',
+    displayTrack: 'Education',
     description: 'Teaching, educational technology and special needs education.',
     pathway: 'Education',
     requirements: ['English', 'Kiswahili', 'Social Studies', 'Religious Education'],
     interests: ['teaching', 'edtech', 'special_ed', 'public_speaking'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
   {
     id: 'core_academic_path',
     title: 'Core Academic Foundation',
+    displayPathway: 'Core Academic',
+    displayTrack: 'Foundation',
     description: 'Strong foundation across all 9 junior learning areas before specializing.',
     pathway: 'Core Academic',
     requirements: JUNIOR_LEARNING_AREAS.map((s) => s.name),
     interests: ['mathematics', 'english', 'kiswahili', 'integrated_science', 'pre_technical', 'social_studies', 'agriculture_nutrition', 'creative_arts_sports', 'religious_ed'],
-    requiredGrade: 'ME1',
+    requiredGrade: 'EE2',
   },
 ];
 
@@ -297,28 +321,28 @@ export const PATHWAY_RECOMMENDATION: Record<
       'Recommend conditional placement. Advise remedial learning, career guidance, and close progress monitoring before or during enrollment.',
   },
   AE1: {
-    label: 'Strong Alternative Pathway Recommended',
-    status: 'Well Below Requirement',
+    label: 'Exploring Other Options',
+    status: 'Developing Skills',
     detail:
-      "Strongly recommend an alternative pathway better suited to the learner's current competencies. Develop an individualized improvement plan.",
+      "At this time, your current performance suggests that an alternative pathway may be a better match for your strengths and interests. Your dedication and unique talents are valued, and there are exciting pathways where you are more likely to thrive and grow. We encourage you to explore these options with an open mind — every learner has a pathway where they can truly shine.",
   },
   AE2: {
-    label: 'Not Recommended for the Pathway at Present',
-    status: 'Significantly Below Requirement',
+    label: 'Alternative Path Suggested',
+    status: 'Developing Skills',
     detail:
-      "Do not recommend the pathway. Provide comprehensive career guidance, foundational learning support, and recommend a more appropriate pathway based on interests and abilities.",
+      "At this time, you do not yet meet the requirements for this pathway. Your interests and performance indicate that another pathway may be a better match for you right now. We encourage you to explore the suggested alternatives, where you are more likely to succeed and develop your strengths. With continued effort and the right support, you can always revisit your goals.",
   },
   BE1: {
-    label: 'Consider Alternative Pathway',
-    status: 'Below Requirement',
+    label: 'Exploring Other Options',
+    status: 'Developing Skills',
     detail:
-      "Do not recommend the pathway at this stage. Suggest an alternative pathway aligned with the learner's strengths and provide opportunities for improvement.",
+      "Your current performance suggests that a different pathway may be a better fit for your talents at this stage. This is not a setback — it is an opportunity to discover where your true strengths lie. We encourage you to explore the suggested alternatives with confidence, and to keep working hard towards your goals.",
   },
   BE2: {
-    label: 'Alternative Pathway Recommended',
-    status: 'Below Requirement',
+    label: 'Alternative Path Suggested',
+    status: 'Developing Skills',
     detail:
-      'Recommend an alternative pathway and intensive academic support before reconsideration for the preferred pathway.',
+      "We encourage you to consider an alternative pathway that better aligns with your current strengths and interests. With focused effort, the right support, and a growth mindset, you can build the skills needed to pursue your long-term goals. Every step forward counts, and we believe in your potential.",
   },
 };
 
@@ -488,7 +512,7 @@ export default function PathwayFinder() {
       '',
       recommendPreferred
         ? `Recommended pathway: ${career.title} (${career.pathway})`
-        : `Not recommended at this stage: ${career.title} (${career.pathway})`,
+        : `Alternative path suggested: ${career.title} (${career.pathway}) may not be the best fit at this time`,
       '',
       'Why this decision:',
       finalRec.detail,
@@ -518,17 +542,18 @@ export default function PathwayFinder() {
         lines.push('  · Monitor progress closely in the first term of the pathway.');
       }
     } else {
-      lines.push('Recommended alternative pathway(s):');
+      lines.push('Suggested alternative pathway(s) where you may thrive:');
       for (const alt of suggestedAlts) {
         lines.push(`  · ${alt}`);
       }
       if (strongSubjects.length) {
-        lines.push(`  · Based on current strengths in: ${strongSubjects.join(', ')}`);
+        lines.push(`  · Based on your current strengths in: ${strongSubjects.join(', ')}`);
       }
       lines.push('');
-      lines.push('Improvement plan before reconsidering the preferred pathway:');
-      lines.push('  · Focus revision on subjects marked Below requirement.');
-      lines.push('  · Retake pathway readiness check after the next assessment cycle.');
+      lines.push('Encouragement and next steps:');
+      lines.push('  · Explore the suggested alternative pathways — they align well with your interests and strengths.');
+      lines.push('  · With focused effort and the right support, you can continue to grow and develop your skills.');
+      lines.push('  · Revisit your pathway readiness after the next assessment cycle — every step forward counts.');
     }
 
     return lines.filter((l) => l !== undefined).join('\n');
@@ -780,7 +805,12 @@ export default function PathwayFinder() {
                       {career.matchScore} match{career.matchScore === 1 ? '' : 'es'}
                     </span>
                   </div>
-                  <p className="text-xs text-emerald-300 mb-2">{career.pathway}</p>
+                  <div className="mb-2">
+                    <p className="text-xs text-emerald-300">Pathway - {career.displayPathway || career.pathway}</p>
+                    {career.displayTrack && career.displayTrack !== career.displayPathway && (
+                      <p className="text-xs text-emerald-200">Track - {career.displayTrack}</p>
+                    )}
+                  </div>
                   <p className="text-gray-400 text-sm mb-3">{career.description}</p>
                   <div className="flex flex-wrap gap-1">
                     {career.requirements.slice(0, 6).map((req) => (
@@ -872,15 +902,16 @@ export default function PathwayFinder() {
             {/* PART B preview */}
             <div className="bg-gray-800/40 rounded-2xl p-6 border border-gray-700 mb-8">
               <h4 className="text-sm font-medium text-[#60a5fa] mb-3">Part B: Required Performance (preview)</h4>
+              <p className="text-xs text-gray-400 mb-3">Minimum requirement: EE2 (Exceeding Expectations 2). Work towards EE1 (Exceeding Expectations 1) for the best pathway placement.</p>
               <div className="space-y-2">
                 {(selectedCareerObj()?.requirements || []).map((subj) => {
                   const current = subjectGrades[subj] || '';
-                  const required = selectedCareerObj()?.requiredGrade || 'ME1';
+                  const required = 'EE2' as JuniorGradeCode;
                   const met = current ? pointsRank(current) >= pointsRank(required) : false;
                   return (
                     <div key={subj} className="flex flex-wrap items-center justify-between gap-2 text-sm bg-gray-900/40 rounded-lg px-3 py-2">
                       <span className="text-gray-200">{subj}</span>
-                      <span className="text-gray-400">Required: {required}</span>
+                      <span className="text-gray-400">Required: EE2</span>
                       <span className="text-gray-300">Current: {current || '—'}</span>
                       <span className={met ? 'text-emerald-400' : 'text-amber-300'}>
                         {current ? (met ? 'Met Requirement' : 'Below Requirement') : 'Not entered'}
@@ -891,20 +922,32 @@ export default function PathwayFinder() {
               </div>
             </div>
 
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <button
                 onClick={() => setStep(2)}
                 className="flex items-center gap-2 px-6 py-3 border border-gray-600 text-gray-300 rounded-xl hover:bg-gray-800 transition-colors font-medium"
               >
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
-              <button
-                onClick={() => canSeeResults() && setShowResults(true)}
-                disabled={!canSeeResults()}
-                className="flex items-center gap-2 px-6 py-3 bg-[#2563EB] text-white rounded-xl hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
-              >
-                See Results <Target className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-3">
+                {canSeeResults() && !paymentUnlocked && (
+                  <button
+                    onClick={handlePay}
+                    disabled={paying}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-60"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    {paying ? 'Opening payment…' : 'Pay KSH 20'}
+                  </button>
+                )}
+                <button
+                  onClick={() => canSeeResults() && setShowResults(true)}
+                  disabled={!canSeeResults()}
+                  className="flex items-center gap-2 px-6 py-3 bg-[#2563EB] text-white rounded-xl hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                >
+                  See Results <Target className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -936,6 +979,12 @@ export default function PathwayFinder() {
                 <div className="bg-gray-900/50 rounded-xl p-4">
                   <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Pathway Decision</h4>
                   <p className="text-white font-semibold text-lg">{selectedCareerObj()?.title}</p>
+                  <div className="mt-1 mb-1">
+                    <p className="text-emerald-300 text-sm">Pathway - {selectedCareerObj()?.displayPathway || selectedCareerObj()?.pathway}</p>
+                    {selectedCareerObj()?.displayTrack && selectedCareerObj()?.displayTrack !== selectedCareerObj()?.displayPathway && (
+                      <p className="text-emerald-200 text-sm">Track - {selectedCareerObj()?.displayTrack}</p>
+                    )}
+                  </div>
                   <p className="text-gray-400 text-sm mt-1">{selectedCareerObj()?.description}</p>
                   {(() => {
                     const ev = evaluatePathway();
@@ -975,16 +1024,17 @@ export default function PathwayFinder() {
                 {/* PART B */}
                 <div className="bg-gray-900/50 rounded-xl p-4">
                   <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Part B: Required Performance</h4>
+                  <p className="text-xs text-gray-400 mb-3">Minimum requirement: EE2 (Exceeding Expectations 2). Aim for EE1 (Exceeding Expectations 1) for the best placement.</p>
                   <div className="space-y-2">
                     {(selectedCareerObj()?.requirements || []).map((subj) => {
                       const current = subjectGrades[subj] || '';
-                      const required = selectedCareerObj()?.requiredGrade || 'ME1';
+                      const required = 'EE2' as JuniorGradeCode;
                       const met = current ? pointsRank(current) >= pointsRank(required) : false;
                       return (
                         <div key={subj} className="flex flex-wrap items-center gap-3 text-sm">
                           <span className="text-gray-200 min-w-[140px]">{subj}</span>
-                          <span className="text-gray-400">Req {required}</span>
-                          <span>Now {current || '—'}</span>
+                          <span className="text-gray-400">Required: EE2</span>
+                          <span>Current: {current || '—'}</span>
                           {current ? (
                             met ? (
                               <span className="inline-flex items-center gap-1 text-emerald-400"><CheckCircle2 className="w-3.5 h-3.5" /> Met Requirement</span>

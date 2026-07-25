@@ -123,6 +123,8 @@ function getGradeLabel(pct: number, band: SchoolLevelBand): string {
  * - Compares with previous term performance
  * - Adapts language to curriculum level
  * - Includes class position and encouragement
+ * - Uses ACTUAL subject grade for the specific subject mentioned (not average)
+ * - Includes pathway performance sentence
  */
 export function generateSubjectSpecificComment(
   studentName: string,
@@ -155,11 +157,24 @@ export function generateSubjectSpecificComment(
     s.percentage < s.previousPercentage - 5
   );
 
+  // FIX Issue 1: Use ACTUAL grade for the specific subject mentioned (not the average grade)
+  // When a subject is referenced in the comment, fetch its actual grade, not the overall average.
+  const getActualSubjectGrade = (subjectName: string): string => {
+    const subjectResult = subjects.find(s =>
+      s.name.toLowerCase().includes(subjectName.toLowerCase()) ||
+      subjectName.toLowerCase().includes(s.name.toLowerCase())
+    );
+    if (subjectResult) {
+      return getGradeLabel(subjectResult.percentage, band);
+    }
+    return getGradeLabel(avgPct, band);
+  };
+
   const bestGrade = getGradeLabel(best.percentage, band);
   let comment = '';
   const firstName = studentName.split(' ')[0] || studentName;
 
-  // Opening: congratulate on best subject
+  // Opening: congratulate on best subject — use ACTUAL grade for that subject
   if (isPrimary) {
     comment += `${firstName}, you did very well in ${best.name} (${best.percentage.toFixed(0)}% — ${bestGrade}). `;
   } else {
@@ -216,6 +231,54 @@ export function generateSubjectSpecificComment(
       const prevPct = drop.previousPercentage!;
       comment += `Note that your ${drop.name} grade dropped from ${prevPct.toFixed(0)}% to ${drop.percentage.toFixed(0)}% — let's review the topics you struggled with this term. `;
     });
+  }
+
+  // FIX Issue 2: Add pathway performance sentence
+  // Group subjects by pathway and find the strongest pathway
+  const SUBJECT_PATHWAY_MAP: Record<string, string> = {
+    'Mathematics': 'STEM',
+    'Integrated Science': 'STEM',
+    'Pre-Technical Studies': 'STEM',
+    'Agriculture and Nutrition': 'STEM',
+    'Agriculture': 'STEM',
+    'Science and Technology': 'STEM',
+    'English': 'Social Sciences',
+    'Kiswahili': 'Social Sciences',
+    'Social Studies': 'Social Sciences',
+    'Religious Education': 'Social Sciences',
+    'CRE': 'Social Sciences',
+    'IRE': 'Social Sciences',
+    'HRE': 'Social Sciences',
+    'Creative Arts and Sports': 'Creative Arts and Sports',
+    'Creative Arts': 'Creative Arts and Sports',
+    'Physical and Health Education': 'Creative Arts and Sports',
+    'Music': 'Creative Arts and Sports',
+    'Art and Craft': 'Creative Arts and Sports',
+  };
+
+  const pathwayScores: Record<string, { total: number; count: number }> = {};
+  subjects.forEach(s => {
+    // Find matching pathway
+    const pathwayKey = Object.keys(SUBJECT_PATHWAY_MAP).find(k =>
+      s.name.toLowerCase().includes(k.toLowerCase()) ||
+      k.toLowerCase().includes(s.name.toLowerCase())
+    );
+    const pathway = pathwayKey ? SUBJECT_PATHWAY_MAP[pathwayKey] : null;
+    if (pathway) {
+      if (!pathwayScores[pathway]) pathwayScores[pathway] = { total: 0, count: 0 };
+      pathwayScores[pathway].total += s.percentage;
+      pathwayScores[pathway].count += 1;
+    }
+  });
+
+  const pathwayAverages = Object.entries(pathwayScores)
+    .filter(([, v]) => v.count > 0)
+    .map(([name, v]) => ({ name, avg: v.total / v.count }))
+    .sort((a, b) => b.avg - a.avg);
+
+  if (pathwayAverages.length > 0) {
+    const strongestPathway = pathwayAverages[0];
+    comment += `Your performance in the ${strongestPathway.name} pathway (${strongestPathway.avg.toFixed(1)}%) shows strong potential. `;
   }
 
   // Closing encouragement with position

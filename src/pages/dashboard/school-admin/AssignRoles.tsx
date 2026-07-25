@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 interface Teacher {
   id: string;
+  profile_id: string | null;
   first_name: string;
   last_name: string;
   employee_number: string;
@@ -45,7 +46,7 @@ export default function AssignRoles() {
       const [{ data: teachersData }, { data: classesData }, { data: schoolData }] = await Promise.all([
         (supabase as any)
           .from('teachers')
-          .select('id, first_name, last_name, employee_number')
+          .select('id, profile_id, first_name, last_name, employee_number')
           .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('first_name'),
@@ -65,25 +66,37 @@ export default function AssignRoles() {
       const teacherList: Teacher[] = teachersData || [];
       setTeachers(teacherList);
 
-      // Build teacher lookup map
-      const teacherLookup: Record<string, string> = {};
+      // Build teacher lookup maps:
+      // - by teachers.id (for the dropdown value)
+      // - by teachers.profile_id (for resolving class_teacher_id which is a profile_id FK)
+      const teacherLookupById: Record<string, string> = {};
+      const teacherLookupByProfileId: Record<string, string> = {};
+      // Also map profile_id -> teacher.id for the dropdown initial value
+      const profileIdToTeacherId: Record<string, string> = {};
       teacherList.forEach((t) => {
-        teacherLookup[t.id] = `${t.first_name} ${t.last_name}`;
+        teacherLookupById[t.id] = `${t.first_name} ${t.last_name}`;
+        if (t.profile_id) {
+          teacherLookupByProfileId[t.profile_id] = `${t.first_name} ${t.last_name}`;
+          profileIdToTeacherId[t.profile_id] = t.id;
+        }
       });
 
       // Enrich classes with teacher names
+      // class_teacher_id stores profile_id (FK references profiles.id)
       const enrichedClasses: ClassInfo[] = (classesData || []).map((cls: any) => ({
         ...cls,
         class_teacher_name: cls.class_teacher_id
-          ? teacherLookup[cls.class_teacher_id] || 'Unknown'
+          ? teacherLookupByProfileId[cls.class_teacher_id] || 'Unknown'
           : null,
       }));
       setClasses(enrichedClasses);
 
-      // Build initial class-teacher map
+      // Build initial class-teacher map using teachers.id (for dropdown)
+      // class_teacher_id is profile_id, so we reverse-map it to teacher.id
       const ctMap: Record<string, string> = {};
       enrichedClasses.forEach((cls) => {
-        ctMap[cls.id] = cls.class_teacher_id || '';
+        const profileId = cls.class_teacher_id || '';
+        ctMap[cls.id] = profileId ? (profileIdToTeacherId[profileId] || '') : '';
       });
       setClassTeacherMap(ctMap);
 
@@ -100,13 +113,24 @@ export default function AssignRoles() {
   };
 
   const handleAssignClassTeacher = async (classId: string) => {
-    const teacherId = classTeacherMap[classId];
+    const teacherId = classTeacherMap[classId]; // This is teachers.id
     setSavingClass(classId);
     try {
-      // Update the classes table class_teacher_id
+      // FIX Issue 7: classes.class_teacher_id FK references profiles.id, NOT teachers.id
+      // We must use the teacher's profile_id when updating classes.class_teacher_id
+      let profileId: string | null = null;
+      if (teacherId) {
+        const teacher = teachers.find((t) => t.id === teacherId);
+        profileId = teacher?.profile_id || null;
+        if (!profileId) {
+          throw new Error('Selected teacher does not have a linked profile. Please contact support.');
+        }
+      }
+
+      // Update the classes table class_teacher_id using profile_id (matches FK constraint)
       const { error: classError } = await (supabase as any)
         .from('classes')
-        .update({ class_teacher_id: teacherId || null })
+        .update({ class_teacher_id: profileId })
         .eq('id', classId);
       if (classError) throw classError;
 
