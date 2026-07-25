@@ -148,13 +148,13 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
   }
 
   // Compute endpoint at call time (not module load) to ensure env vars are available
-  const rawBase = process.env.OPENAI_API_BASE || '';
-  const endpoint = rawBase
-    ? `${rawBase.replace(/\/$/, '')}/chat/completions`
-    : 'https://api.deepseek.com/chat/completions';
+  // Use DeepSeek directly unless explicitly overridden
+  const endpoint = process.env.OPENAI_API_BASE
+    ? `${process.env.OPENAI_API_BASE.replace(/\/$/, '')}/chat/completions`
+    : (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com') + '/chat/completions';
 
-  // Use gpt-4.1-mini as the primary model — it is fast, cheap, and supports json_object
-  const modelName = process.env.AI_EXAM_MODEL || 'gpt-4.1-mini';
+  // Use deepseek-v4-pro as the primary model
+  const modelName = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
 
   console.log('[exam-gen] endpoint:', endpoint);
   console.log('[exam-gen] model:', modelName);
