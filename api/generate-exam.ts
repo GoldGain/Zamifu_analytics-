@@ -177,13 +177,26 @@ export default async function handler(request: RequestLike, response: ResponseLi
       .select('id, school_id, role, full_name, first_name, last_name')
       .single();
     if (insertError || !inserted) {
-      jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
-      return;
+      // Profile may already exist but was not returned (e.g. RLS edge case).
+      // Try a second lookup using the service role key which bypasses RLS.
+      const { data: retried } = await supabase
+        .from('profiles')
+        .select('id, school_id, role, full_name, first_name, last_name, email')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (!retried) {
+        jsonError(response, 403, 'Account verification failed. Please contact your school administrator.');
+        return;
+      }
+      profile = retried;
+    } else {
+      profile = inserted;
     }
-    profile = inserted;
   }
 
-  const isAuthorised = ['teacher', 'school_admin', 'super_admin'].includes(profile.role || '');
+  // Normalise role to a plain string (handles PostgreSQL enum values returned as strings).
+  const roleStr = String(profile.role || '').toLowerCase().trim();
+  const isAuthorised = ['teacher', 'school_admin', 'super_admin', 'master_super_admin', 'reseller_super_admin'].includes(roleStr);
   if (!isAuthorised) {
     jsonError(response, 403, 'Only authorised teachers and school administrators can generate exams.');
     return;

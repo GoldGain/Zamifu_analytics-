@@ -106,7 +106,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
       messages: [
         { role: 'system', content: 'You create original, curriculum-aligned Kenyan school assessments. Return valid json only.' },
         { role: 'user', content: buildExamPrompt(request, knowledgeContext) },

@@ -3,10 +3,10 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import ExamGenerator, {
   type CurriculumStrandOption,
+  type CurriculumSubStrandOption,
   type CurriculumTopicOption,
 } from '@/components/curriculum/ExamGenerator';
 import {
-  JUNIOR_SCHOOL_SUBJECTS,
   juniorExamSubjects,
   getStrandPacks,
 } from '@/lib/kicd-knowledge';
@@ -99,13 +99,19 @@ export default function ExamGeneratorPage() {
       .order('strand_order');
 
     if (!strandsData || strandsData.length === 0) {
-      // Fallback to embedded KICD knowledge
+      // Fallback to embedded KICD knowledge — build full strand+sub-strand+topic tree
       const packs = getStrandPacks(subjectName);
-      const localStrands: CurriculumStrandOption[] = packs.map((pack, si) => ({
-        id: `local-strand-${si}`,
-        topic_name: pack.strand,
-      }));
-      setStrands(localStrands);
+      const localStrands: CurriculumStrandOption[] = packs.map((pack, si) => {
+        const subStrands: CurriculumSubStrandOption[] = pack.subStrands.map((ss, ssi) => ({
+          id: `local-ss-${si}-${ssi}`,
+          sub_strand_name: ss.name,
+        }));
+        return {
+          id: `local-strand-${si}`,
+          strand_name: pack.strand,
+          sub_strands: subStrands,
+        };
+      });
       // Build flat topics list
       const localTopics: CurriculumTopicOption[] = [];
       let topicIdx = 0;
@@ -120,26 +126,33 @@ export default function ExamGeneratorPage() {
           }
         }
       }
+      setStrands(localStrands);
       setTopics(localTopics);
       setLoadingTree(false);
       return;
     }
 
-    // Load from database
+    // Load from database — fetch sub-strands for each strand and nest them
     const enriched: CurriculumStrandOption[] = [];
     const allTopics: CurriculumTopicOption[] = [];
 
     for (const strand of strandsData) {
-      enriched.push({
-        id: strand.id,
-        topic_name: strand.strand_name,
-      });
-
       const { data: ssData } = await supabaseUntyped
         .from('curriculum_sub_strands')
         .select('id, sub_strand_name, sub_strand_order')
         .eq('strand_id', strand.id)
         .order('sub_strand_order');
+
+      const subStrands: CurriculumSubStrandOption[] = (ssData || []).map((ss: { id: string; sub_strand_name: string }) => ({
+        id: ss.id,
+        sub_strand_name: ss.sub_strand_name,
+      }));
+
+      enriched.push({
+        id: strand.id,
+        strand_name: strand.strand_name,
+        sub_strands: subStrands,
+      });
 
       for (const ss of ssData || []) {
         const { data: topicsData } = await supabaseUntyped
@@ -153,6 +166,33 @@ export default function ExamGeneratorPage() {
             id: topic.id,
             topic_name: topic.topic_name,
           });
+        }
+      }
+    }
+
+    // If DB strands have no sub-strands at all, supplement with KICD embedded knowledge
+    const hasSubStrands = enriched.some(s => s.sub_strands && s.sub_strands.length > 0);
+    if (!hasSubStrands) {
+      const packs = getStrandPacks(subjectName);
+      for (const strand of enriched) {
+        const matchingPack = packs.find(p =>
+          p.strand.toLowerCase().includes(strand.strand_name.toLowerCase()) ||
+          strand.strand_name.toLowerCase().includes(p.strand.toLowerCase())
+        );
+        if (matchingPack) {
+          strand.sub_strands = matchingPack.subStrands.map((ss, ssi) => ({
+            id: `kicd-ss-${strand.id}-${ssi}`,
+            sub_strand_name: ss.name,
+          }));
+          if (allTopics.length === 0) {
+            let topicIdx = 0;
+            for (const ss of matchingPack.subStrands) {
+              for (const topicName of ss.topics) {
+                allTopics.push({ id: `kicd-topic-${topicIdx}`, topic_name: topicName });
+                topicIdx++;
+              }
+            }
+          }
         }
       }
     }
