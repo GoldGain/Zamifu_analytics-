@@ -64,7 +64,7 @@ export default async function handler(request: RequestLike, response: ResponseLi
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  const { data: { user }, error: authError } = await (supabase.auth as any).getUser(token);
   if (authError || !user) {
     jsonError(response, 401, 'Your session could not be verified.');
     return;
