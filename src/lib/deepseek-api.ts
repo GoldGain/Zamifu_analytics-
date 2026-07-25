@@ -82,15 +82,65 @@ function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: strin
   return `You are a senior Kenyan CBE/CBC assessment specialist. Create an original, age-appropriate, classroom-ready assessment. Do not reproduce copyrighted questions, proprietary marking schemes, or web text. Align questions to the stated grade, subject, strand, sub-strand, and topics. Use inclusive language, realistic Kenyan classroom contexts where suitable, clear command words, and internally consistent marks.\n\nAssessment context:\n- Grade: ${request.gradeLevel}\n- Subject: ${request.subject}\n- Strand(s): ${selectedStrands}\n- Sub-strand(s): ${selectedSubStrands}\n- Topic(s): ${selectedTopics}\n- Format: ${request.format.toUpperCase()}\n- Difficulty: ${request.difficulty}\n- Total marks target: ${request.totalMarks}\n- Duration: ${request.durationMinutes} minutes\n- Required question blueprint: ${blueprint.map((entry) => `${entry.count} ${entry.type} items totaling about ${entry.marks} marks`).join('; ')}\n- ${imageDirection}\n\nVetted internal curriculum context (use only as high-level guidance; do not quote it verbatim):\n${knowledgeContext || 'No additional knowledge records were supplied. Use established CBE assessment practice and the selected curriculum context.'}\n\nReturn json only. Use exactly this object shape:\n{\n  "title": "string",\n  "instructions": ["string"],\n  "questions": [\n    {\n      "question_type": "multiple_choice | multiple_response | modified_true_false | completion | matching | short_answer | numeric_response | case_study | essay",\n      "question_text": "string",\n      "options": ["string"],\n      "correct_answer": "string",\n      "marking_scheme": "string",\n      "marks": 1,\n      "difficulty": "easy | medium | hard",\n      "strand": "string",\n      "sub_strand": "string",\n      "topic": "string",\n      "image_prompt": "string or empty"\n    }\n  ]\n}\nThe word json is intentionally included to enable structured JSON output.`;
 }
 
-function parseJsonObject(content: string): Record<string, unknown> {
-  const trimmed = content.trim().replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+function extractJsonFromContent(content: string): Record<string, unknown> | null {
+  // Strategy 1: Try direct parse of the full content
   try {
-    const parsed = JSON.parse(trimmed);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Expected a JSON object.');
-    return parsed as Record<string, unknown>;
-  } catch {
-    throw new DeepSeekResponseError('The AI response could not be parsed as the requested structured JSON. Please try again.');
+    const direct = JSON.parse(content);
+    if (direct && typeof direct === 'object' && !Array.isArray(direct)) return direct;
+  } catch {}
+
+  // Strategy 2: Strip markdown code fences and try again
+  const fenced = content
+    .trim()
+    .replace(/^```(?:json)?\s*\n?/i, '')
+    .replace(/\n?\s*```\s*$/, '')
+    .trim();
+  try {
+    const fencedParsed = JSON.parse(fenced);
+    if (fencedParsed && typeof fencedParsed === 'object' && !Array.isArray(fencedParsed)) return fencedParsed;
+  } catch {}
+
+  // Strategy 3: Find the first { and last } and parse that substring
+  const firstBrace = content.indexOf('{');
+  const lastBrace = content.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const substring = content.slice(firstBrace, lastBrace + 1);
+    try {
+      const extracted = JSON.parse(substring);
+      if (extracted && typeof extracted === 'object' && !Array.isArray(extracted)) return extracted;
+    } catch {}
+
+    // Strategy 4: Try fixing common JSON issues — escaped newlines in strings
+    let fixed = substring
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '\\r')
+      .replace(/\t/g, '\\t');
+    try {
+      const fixedParsed = JSON.parse(fixed);
+      if (fixedParsed && typeof fixedParsed === 'object' && !Array.isArray(fixedParsed)) return fixedParsed;
+    } catch {}
   }
+
+  // Strategy 5: Try to find JSON arrays (in case response is just the questions array)
+  const firstBracket = content.indexOf('[');
+  const lastBracket = content.lastIndexOf(']');
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const arrayStr = content.slice(firstBracket, lastBracket + 1);
+    try {
+      const arr = JSON.parse(arrayStr);
+      if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'object') {
+        return { questions: arr, title: 'Generated Exam', instructions: [] };
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+function parseJsonObject(content: string): Record<string, unknown> {
+  const result = extractJsonFromContent(content);
+  if (result) return result;
+  throw new DeepSeekResponseError('The AI response could not be parsed as the requested structured JSON. Please try again.');
 }
 
 export async function generateExamWithDeepSeek(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
@@ -108,10 +158,13 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     body: JSON.stringify({
       model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
       messages: [
-        { role: 'system', content: 'You create original, curriculum-aligned Kenyan school assessments. Return valid json only.' },
+        { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
         { role: 'user', content: buildExamPrompt(request, knowledgeContext) },
       ],
       response_format: { type: 'json_object' },
+      // DeepSeek specific: ensure json mode works
+      frequency_penalty: 0,
+      presence_penalty: 0,
       temperature: 0.45,
       max_tokens: 7000,
       stream: false,
