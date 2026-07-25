@@ -960,24 +960,26 @@ export default function PathwayFinder() {
           </div>
         )}
 
-        {step === 3 && showResults && (
+        {step === 3 && showResults && !paymentUnlocked && (
           <div className="max-w-3xl mx-auto">
-            {paymentUnlocked ? null : (
-              <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-2xl p-8 border border-amber-500/30 mb-8 text-center">
-                <CreditCard className="w-12 h-12 text-amber-400 mx-auto mb-3" />
-                <h3 className="text-2xl font-bold text-white mb-2">Payment Required</h3>
-                <p className="text-gray-300 mb-4">Please complete the KSH 20 payment to unlock your pathway results.</p>
-                <button
-                  onClick={handlePay}
-                  disabled={paying}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-60"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  {paying ? 'Opening payment…' : 'Pay KSH 20'}
-                </button>
-              </div>
-            )}
-            {paymentUnlocked ? (
+            <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-2xl p-8 border border-amber-500/30 mb-8 text-center">
+              <CreditCard className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+              <h3 className="text-2xl font-bold text-white mb-2">Payment Required</h3>
+              <p className="text-gray-300 mb-4">Please complete the KSH 20 payment to unlock your pathway results.</p>
+              <button
+                onClick={handlePay}
+                disabled={paying}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-60"
+              >
+                <CreditCard className="w-4 h-4" />
+                {paying ? 'Opening payment…' : 'Pay KSH 20'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && showResults && paymentUnlocked && (
+          <div className="max-w-3xl mx-auto">
             <div className="bg-gradient-to-br from-[#2563EB]/20 to-[#1e40af]/20 rounded-2xl p-8 border border-[#2563EB]/30 mb-8">
               <div className="text-center mb-6">
                 <GraduationCap className="w-12 h-12 text-[#60a5fa] mx-auto mb-3" />
@@ -1074,41 +1076,18 @@ export default function PathwayFinder() {
                   </div>
                 </div>
 
-                {/* PART C + payment gate */}
-                <div className="bg-gray-900/50 rounded-xl p-4 relative overflow-hidden">
+                {/* PART C: Full guidance (unlocked) */}
+                <div className="bg-gray-900/50 rounded-xl p-4">
                   <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Part C: Academic Guidance</h4>
-                  {!paymentUnlocked ? (
-                    <div className="space-y-4">
-                      <p className="text-gray-300 text-sm line-clamp-3 whitespace-pre-line opacity-70">
-                        {buildGuidance().split('\n').slice(0, 4).join('\n')}
-                      </p>
-                      <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
-                        <div className="flex items-center gap-2 text-amber-200 font-medium mb-2">
-                          <Lock className="w-4 h-4" />
-                          Pay KSH 20 to View Full Results and Download PDF
-                        </div>
-                        <p className="text-xs text-gray-400 mb-3">Payment methods: M-Pesa / card via Paystack. Unlocks full guidance and download.</p>
-                        <button
-                          onClick={handlePay}
-                          disabled={paying}
-                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-60"
-                        >
-                          <CreditCard className="w-4 h-4" />
-                          {paying ? 'Opening payment…' : 'Pay KSH 20'}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <pre className="text-gray-300 text-sm whitespace-pre-wrap font-sans">{buildGuidance()}</pre>
-                      <button
-                        onClick={downloadGuidance}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-medium"
-                      >
-                        <Download className="w-4 h-4" /> Download PDF Results
-                      </button>
-                    </div>
-                  )}
+                  <div className="space-y-4">
+                    <pre className="text-gray-300 text-sm whitespace-pre-wrap font-sans">{buildGuidance()}</pre>
+                    <button
+                      onClick={downloadGuidance}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-medium"
+                    >
+                      <Download className="w-4 h-4" /> Download PDF Results
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1121,8 +1100,6 @@ export default function PathwayFinder() {
                 <RotateCcw className="w-4 h-4" /> Start Over
               </button>
             </div>
-            </div>
-            ) : null}
           </div>
         )}
       </div>
