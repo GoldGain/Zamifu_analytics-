@@ -331,14 +331,20 @@ export default function ParentChildReportCard() {
       const isNew = deviation === null;
       const position = results[0]?.class_position || results[0]?.position || null;
       const positionStr = formatPosition(position, totalStudents || 0);
-      const subjectScores = results.map(r => ({ name: r.subjects?.name || 'Unknown', pct: getPercentage(r) }));
-      const sortedBest = [...subjectScores].sort((a, b) => b.pct - a.pct);
+      // Build subjectScores with `percentage` key (matching SubjectResult interface for pathway logic)
+      const subjectScores = results.map(r => ({
+        name: r.subjects?.name || 'Unknown',
+        percentage: getPercentage(r),
+        previousPercentage: null,
+      }));
+      const sortedBest = [...subjectScores].sort((a, b) => b.percentage - a.percentage);
       const bestSubject = sortedBest[0]?.name || 'all subjects';
       const weakestSubject = sortedBest[sortedBest.length - 1]?.name || 'some subjects';
       const studentFullName = `${selectedChild.first_name} ${selectedChild.last_name}`;
+      // FIX Issue 2: Pass subjectScores so pathway performance is included in comment
       const aiComment = generateUniqueAIComment(
         studentFullName, avgPercentage, deviation, bestSubject, weakestSubject,
-        position, totalStudents || 0, isNew, classDataForGrading
+        position, totalStudents || 0, isNew, classDataForGrading, subjectScores
       );
 
       await drawReportHeader(doc, schoolInfo);

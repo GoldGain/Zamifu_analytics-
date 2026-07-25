@@ -941,9 +941,17 @@ export default function PathwayFinder() {
                   </button>
                 )}
                 <button
-                  onClick={() => canSeeResults() && setShowResults(true)}
-                  disabled={!canSeeResults()}
+                  onClick={() => {
+                    // FIX Issue 5: Must pay before seeing results
+                    if (!paymentUnlocked) {
+                      handlePay();
+                      return;
+                    }
+                    setShowResults(true);
+                  }}
+                  disabled={!canSeeResults() || !paymentUnlocked}
                   className="flex items-center gap-2 px-6 py-3 bg-[#2563EB] text-white rounded-xl hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                  title={paymentUnlocked ? '' : 'Please pay KSH 20 to unlock results'}
                 >
                   See Results <Target className="w-4 h-4" />
                 </button>
@@ -954,6 +962,22 @@ export default function PathwayFinder() {
 
         {step === 3 && showResults && (
           <div className="max-w-3xl mx-auto">
+            {paymentUnlocked ? null : (
+              <div className="bg-gradient-to-br from-amber-500/20 to-orange-500/20 rounded-2xl p-8 border border-amber-500/30 mb-8 text-center">
+                <CreditCard className="w-12 h-12 text-amber-400 mx-auto mb-3" />
+                <h3 className="text-2xl font-bold text-white mb-2">Payment Required</h3>
+                <p className="text-gray-300 mb-4">Please complete the KSH 20 payment to unlock your pathway results.</p>
+                <button
+                  onClick={handlePay}
+                  disabled={paying}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-60"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  {paying ? 'Opening payment…' : 'Pay KSH 20'}
+                </button>
+              </div>
+            )}
+            {paymentUnlocked ? (
             <div className="bg-gradient-to-br from-[#2563EB]/20 to-[#1e40af]/20 rounded-2xl p-8 border border-[#2563EB]/30 mb-8">
               <div className="text-center mb-6">
                 <GraduationCap className="w-12 h-12 text-[#60a5fa] mx-auto mb-3" />
@@ -1097,6 +1121,8 @@ export default function PathwayFinder() {
                 <RotateCcw className="w-4 h-4" /> Start Over
               </button>
             </div>
+            </div>
+            ) : null}
           </div>
         )}
       </div>
