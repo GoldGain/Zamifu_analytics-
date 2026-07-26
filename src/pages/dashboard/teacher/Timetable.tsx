@@ -182,17 +182,61 @@ export default function TeacherTimetable() {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
-      const { data, error } = await supabase
-        .from('teacher_timetables')
+      // Get school_id from profile
+      const { data: profileData } = await supabase.from('profiles').select('school_id').eq('id', authUser.id).single();
+      const schoolId = profileData?.school_id;
+      if (!schoolId) { setTimetableData(generateEmptyTimetable()); return; }
+
+      // Fetch time slots for this school/class
+      const { data: slots, error: slotError } = await supabaseUntyped
+        .from('timetable_time_slots')
         .select('*')
-        .eq('teacher_id', authUser.id)
+        .eq('school_id', schoolId)
+        .order('slot_order');
+      if (slotError) throw slotError;
+
+      // Fetch timetable entries for this class
+      const { data: entries, error: entryError } = await supabaseUntyped
+        .from('timetable_entries')
+        .select('*, subjects(name)')
         .eq('class_id', selectedClass)
-        .eq('term', selectedTerm)
-        .eq('academic_year', selectedYear)
-        .single();
-      if (error && (error as any).code !== 'PGRST116') throw error;
-      if (data) { setTimetableData(data.timetable_data || generateEmptyTimetable()); }
-      else { setTimetableData(generateEmptyTimetable()); }
+        .eq('school_id', schoolId);
+      if (entryError) throw entryError;
+
+      // Build timetable data from entries
+      const dayMap: Record<string, string[]> = {
+        'Monday': '08:00', 'Tuesday': '08:00', 'Wednesday': '08:00', 'Thursday': '08:00', 'Friday': '08:00'
+      };
+      const dayNames: Record<number, string> = {
+        1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday'
+      };
+      const timetable: TimetableData = {};
+      const slotsByTime: Map<string, { start_time: string; end_time: string }> = new Map();
+      (slots || []).forEach((s: any) => {
+        slotsByTime.set(s.id, { start_time: s.start_time?.toString().substring(0, 5) || '', end_time: s.end_time?.toString().substring(0, 5) || '' });
+      });
+
+      DAYS_OF_WEEK.forEach(day => { timetable[day] = []; });
+      (entries || []).forEach((e: any) => {
+        const dayName = dayNames[e.day_of_week] || 'Monday';
+        const slot = slotsByTime.get(e.time_slot_id);
+        timetable[dayName].push({
+          id: e.id,
+          day: dayName,
+          startTime: slot?.start_time || '08:00',
+          endTime: slot?.end_time || '08:40',
+          subject: e.entry_type === 'class' ? (e.subjects?.name || e.activity_name || '') : (e.activity_name || e.entry_type || ''),
+          room: undefined,
+          class_name: selectedClass,
+        });
+      });
+
+      // Sort each day by startTime
+      DAYS_OF_WEEK.forEach(day => {
+        timetable[day].sort((a, b) => a.startTime.localeCompare(b.startTime));
+      });
+
+      setTimetableData(timetable);
     } catch { setTimetableData(generateEmptyTimetable()); }
     finally { setLoading(false); }
   };
@@ -216,12 +260,71 @@ export default function TeacherTimetable() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
       const { data: school } = await supabase.from('profiles').select('school_id').eq('id', authUser.id).single();
-      const { error } = await supabase.from('teacher_timetables').upsert({
-        teacher_id: authUser.id, school_id: school?.school_id, class_id: selectedClass,
-        term: selectedTerm, academic_year: selectedYear, timetable_data: timetableData, is_published: false,
-      }, { onConflict: 'teacher_id,class_id,term,academic_year' });
-      if (error) throw error;
+      const schoolId = school?.school_id;
+      if (!schoolId) { toast.error('No school found'); return; }
+
+      // Get teacher_id from teachers table
+      const { data: teacherInfo } = await supabaseUntyped
+        .from('teachers')
+        .select('id')
+        .eq('profile_id', authUser.id)
+        .single();
+      const teacherId = teacherInfo?.id;
+
+      const dayToNum: Record<string, number> = {
+        'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5
+      };
+
+      // Get subject IDs for the subjects we have
+      const { data: allSubjects } = await supabaseUntyped
+        .from('subjects')
+        .select('id, name')
+        .eq('school_id', schoolId);
+      const subjectMap = new Map<string, string>();
+      (allSubjects || []).forEach((s: any) => { subjectMap.set(s.name, s.id); });
+
+      // Get time slot IDs for this school
+      const { data: allSlots } = await supabaseUntyped
+        .from('timetable_time_slots')
+        .select('*')
+        .eq('school_id', schoolId)
+        .order('slot_order');
+      const slotsByTime = new Map<string, any>();
+      (allSlots || []).forEach((s: any) => {
+        slotsByTime.set(s.start_time?.toString().substring(0, 5) || '', s);
+      });
+
+      // Build entries from timetableData
+      const entries: any[] = [];
+      DAYS_OF_WEEK.forEach(day => {
+        const dayNum = dayToNum[day] || 1;
+        const slots = timetableData[day] || [];
+        slots.forEach(slot => {
+          const subjectId = subjectMap.get(slot.subject || '') || null;
+          const timeSlot = slotsByTime.get(slot.startTime || '');
+          const entryType = (slot.subject === 'BREAK' || slot.subject === 'LUNCH' || !slot.subject) ? 'break' : 'class';
+          entries.push({
+            school_id: schoolId,
+            day_of_week: dayNum,
+            time_slot_id: timeSlot?.id || null,
+            class_id: selectedClass,
+            subject_id: subjectId,
+            teacher_id: teacherId || null,
+            entry_type: entryType,
+            activity_name: slot.subject || null,
+          });
+        });
+      });
+
+      // Delete existing entries for this class and insert new ones
+      await supabaseUntyped.from('timetable_entries').delete().eq('class_id', selectedClass).eq('school_id', schoolId);
+      if (entries.length > 0) {
+        const { error: insertError } = await supabaseUntyped.from('timetable_entries').insert(entries);
+        if (insertError) throw insertError;
+      }
       toast.success('Timetable saved successfully');
+      // Refresh
+      fetchTimetable();
     } catch (err: any) { toast.error(err.message || 'Failed to save timetable'); }
     finally { setSaving(false); }
   };

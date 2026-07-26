@@ -41,12 +41,9 @@ export const JUNIOR_LEARNING_AREAS = [
 
 /** Pathway display order */
 export const PATHWAY_ORDER = [
-  'Core Academic',
   'STEM',
-  'Creative Arts and Sports',
   'Social Sciences',
-  'Research and Innovation',
-  'Education',
+  'Creative Arts and Sports',
 ] as const;
 
 interface InterestOption {
@@ -150,15 +147,16 @@ const interestOptions: InterestOption[] = [
   { id: 'languages', label: 'Foreign Languages', description: 'Arabic, French, German, Mandarin, Indigenous', icon: <MessageSquare className="w-6 h-6" />, category: 'Social Sciences' },
   { id: 'economics', label: 'Economics', description: 'Markets, trade and policy', icon: <TrendingUp className="w-6 h-6" />, category: 'Social Sciences' },
 
-  // Research and Innovation
-  { id: 'research', label: 'Research', description: 'Discovery and inquiry', icon: <Microscope className="w-6 h-6" />, category: 'Research and Innovation' },
-  { id: 'innovation', label: 'Innovation', description: 'New ideas and creativity', icon: <FlaskConical className="w-6 h-6" />, category: 'Research and Innovation' },
-  { id: 'data_analysis', label: 'Data Analysis', description: 'Evidence-based discovery', icon: <TrendingUp className="w-6 h-6" />, category: 'Research and Innovation' },
+  // Research → now under STEM
+  { id: 'research', label: 'Research', description: 'Discovery and inquiry', icon: <Microscope className="w-6 h-6" />, category: 'STEM' },
+  { id: 'data_analysis', label: 'Data Analysis', description: 'Evidence-based discovery', icon: <TrendingUp className="w-6 h-6" />, category: 'STEM' },
+  // Innovation → now under Arts & Sports
+  { id: 'innovation', label: 'Innovation', description: 'New ideas and creativity', icon: <FlaskConical className="w-6 h-6" />, category: 'Creative Arts and Sports' },
 
-  // Education
-  { id: 'teaching', label: 'Teaching', description: 'Education and instruction', icon: <School className="w-6 h-6" />, category: 'Education' },
-  { id: 'edtech', label: 'Educational Technology', description: 'E-learning tools', icon: <Monitor className="w-6 h-6" />, category: 'Education' },
-  { id: 'special_ed', label: 'Special Education', description: 'Inclusive learning', icon: <Baby className="w-6 h-6" />, category: 'Education' },
+  // Education interests redistributed
+  { id: 'teaching', label: 'Teaching', description: 'Education and instruction', icon: <School className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'edtech', label: 'Educational Technology', description: 'E-learning tools', icon: <Monitor className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'special_ed', label: 'Special Education', description: 'Inclusive learning', icon: <Baby className="w-6 h-6" />, category: 'STEM' },
 ];
 
 const careerPaths: CareerPath[] = [
@@ -250,37 +248,64 @@ const careerPaths: CareerPath[] = [
     interests: ['visual_creation', 'digital_design', 'fine_arts'],
     requiredGrade: 'EE2',
   },
+  // Research interests merged into STEM and Arts & Sports
   {
-    id: 'research_innovation',
-    title: 'Research and Innovation',
-    displayPathway: 'Research and Innovation',
-    displayTrack: 'Research and Innovation',
-    description: 'Inquiry-driven pathways for discovery, data and invention.',
-    pathway: 'Research and Innovation',
+    id: 'stem_research',
+    title: 'STEM — Research & Data Science',
+    displayPathway: 'STEM',
+    displayTrack: 'Research & Data Science',
+    description: 'Research, data analysis, AI and scientific inquiry within the STEM pathway.',
+    pathway: 'STEM',
     requirements: ['Mathematics', 'Integrated Science', 'English', 'Pre-Technical Studies'],
-    interests: ['research', 'innovation', 'data_analysis', 'scientific_inquiry', 'data_science_ai'],
+    interests: ['research', 'data_analysis', 'scientific_inquiry', 'data_science_ai'],
     requiredGrade: 'EE2',
   },
+  // Arts & Sports innovation
   {
-    id: 'education_path',
-    title: 'Education Pathway',
-    displayPathway: 'Education',
-    displayTrack: 'Education',
-    description: 'Teaching, educational technology and special needs education.',
-    pathway: 'Education',
+    id: 'arts_innovation',
+    title: 'Creative Arts and Sports — Innovation & Media',
+    displayPathway: 'Creative Arts and Sports',
+    displayTrack: 'Innovation & Media',
+    description: 'Innovation, creative media, digital design and invention within the Arts & Sports pathway.',
+    pathway: 'Creative Arts and Sports',
+    requirements: ['Creative Arts and Sports', 'Integrated Science', 'Pre-Technical Studies', 'English'],
+    interests: ['innovation', 'visual_creation', 'digital_design', 'media_consumption', 'fine_arts'],
+    requiredGrade: 'EE2',
+  },
+  // Special Education merged into STEM
+  {
+    id: 'stem_special_ed',
+    title: 'STEM — Special Education & Science',
+    displayPathway: 'STEM',
+    displayTrack: 'Special Education & Science',
+    description: 'Special needs education with a focus on science and technology within the STEM pathway.',
+    pathway: 'STEM',
+    requirements: ['Integrated Science', 'English', 'Social Studies'],
+    interests: ['special_ed'],
+    requiredGrade: 'EE2',
+  },
+  // Teaching & EdTech in Social Sciences
+  {
+    id: 'social_teaching',
+    title: 'Social Sciences — Teaching & EdTech',
+    displayPathway: 'Social Sciences',
+    displayTrack: 'Teaching & EdTech',
+    description: 'Teaching, educational technology and pedagogy within the Social Sciences pathway.',
+    pathway: 'Social Sciences',
     requirements: ['English', 'Kiswahili', 'Social Studies', 'Religious Education'],
-    interests: ['teaching', 'edtech', 'special_ed', 'public_speaking'],
+    interests: ['teaching', 'edtech', 'public_speaking'],
     requiredGrade: 'EE2',
   },
+  // Teaching in Arts & Sports
   {
-    id: 'core_academic_path',
-    title: 'Core Academic Foundation',
-    displayPathway: 'Core Academic',
-    displayTrack: 'Foundation',
-    description: 'Strong foundation across all 9 junior learning areas before specializing.',
-    pathway: 'Core Academic',
-    requirements: JUNIOR_LEARNING_AREAS.map((s) => s.name),
-    interests: ['mathematics', 'english', 'kiswahili', 'integrated_science', 'pre_technical', 'social_studies', 'agriculture_nutrition', 'creative_arts_sports', 'religious_ed'],
+    id: 'arts_teaching',
+    title: 'Creative Arts and Sports — Teaching & Coaching',
+    displayPathway: 'Creative Arts and Sports',
+    displayTrack: 'Teaching & Coaching',
+    description: 'Physical education teaching, sports coaching and arts instruction within the Arts & Sports pathway.',
+    pathway: 'Creative Arts and Sports',
+    requirements: ['Creative Arts and Sports', 'English', 'Kiswahili'],
+    interests: ['teaching', 'pe', 'music', 'dance'],
     requiredGrade: 'EE2',
   },
 ];
@@ -306,7 +331,7 @@ export const PATHWAY_RECOMMENDATION: Record<
     label: 'Recommended',
     status: 'Exceeded Pathway Requirement',
     detail:
-      'Recommend placement in the pathway. The learner demonstrates high readiness and is likely to succeed with minimal support.',
+      'The learner demonstrates high readiness and is likely to succeed with minimal support.',
   },
   ME1: {
     label: 'Recommended with Support',
@@ -364,8 +389,8 @@ function overallPerformanceCode(codes: string[]): JuniorGradeCode | '' {
 }
 
 function alternativePathways(preferred: string): string[] {
-  const all = ['STEM', 'Social Sciences', 'Creative Arts and Sports', 'Research and Innovation', 'Education', 'Core Academic'];
-  return all.filter((p) => p !== preferred).slice(0, 3);
+  const all = ['STEM', 'Social Sciences', 'Creative Arts and Sports'];
+  return all.filter((p) => p !== preferred);
 }
 
 function loadPaystackScript(): Promise<void> {
@@ -1047,7 +1072,8 @@ export default function PathwayFinder() {
                   </div>
                 </div>
 
-                {/* PART B */}
+                {/* PART B - Only shown after payment */}
+                {paymentUnlocked && (
                 <div className="bg-gray-900/50 rounded-xl p-4">
                   <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Part B: Required Performance</h4>
                   <p className="text-xs text-gray-400 mb-3">Minimum requirement: EE2 (Exceeding Expectations 2). Aim for EE1 (Exceeding Expectations 1) for the best placement.</p>
@@ -1075,6 +1101,7 @@ export default function PathwayFinder() {
                     })}
                   </div>
                 </div>
+                )}
 
                 {/* PART C: Full guidance (unlocked) */}
                 <div className="bg-gray-900/50 rounded-xl p-4">

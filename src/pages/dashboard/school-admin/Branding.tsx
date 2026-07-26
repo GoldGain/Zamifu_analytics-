@@ -82,12 +82,13 @@ export default function SchoolBranding() {
         type: data.principal_signature_type || null,
       });
     }
-    // Fetch teachers with signatures
+    // Fetch class teachers (is_class_teacher = true) only
     const { data: teachersData } = await supabaseUntyped
       .from('teachers')
-      .select('id, first_name, last_name, signature_url, signature_type')
+      .select('id, first_name, last_name, signature_url, signature_type, is_class_teacher')
       .eq('school_id', user?.schoolId)
       .eq('is_active', true)
+      .eq('is_class_teacher', true)
       .order('first_name');
     if (teachersData) {
       setTeachers(teachersData);

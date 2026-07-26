@@ -1,6 +1,13 @@
 export type Curriculum = 'CBE';
 export type SchoolLevelBand = 'primary' | 'junior' | 'senior';
 
+export interface NumericGrade844 {
+  grade: string;
+  points: number;
+  descriptor: string;
+  band: '844';
+}
+
 export interface CompetencyGrade {
   subLevel: string;
   grade: 'EE' | 'ME' | 'AE' | 'BE';
@@ -76,6 +83,22 @@ export function calculateResultGrades(percentage: number, classData?: { curricul
   const band = getSchoolLevelBand(classData);
   const cbeGrade = calculateCompetencyGrade(percentage, band);
   return { band, cbeGrade };
+}
+
+export function calculate844Grade(score: number): NumericGrade844 {
+  const percentage = normalizePercentage(score);
+  if (percentage >= 80) return { grade: 'A', points: 12, descriptor: 'Excellent', band: '844' };
+  if (percentage >= 75) return { grade: 'A-', points: 11, descriptor: 'Very Good', band: '844' };
+  if (percentage >= 70) return { grade: 'B+', points: 10, descriptor: 'Good', band: '844' };
+  if (percentage >= 65) return { grade: 'B', points: 9, descriptor: 'Good', band: '844' };
+  if (percentage >= 60) return { grade: 'B-', points: 8, descriptor: 'Good', band: '844' };
+  if (percentage >= 55) return { grade: 'C+', points: 7, descriptor: 'Average', band: '844' };
+  if (percentage >= 50) return { grade: 'C', points: 6, descriptor: 'Average', band: '844' };
+  if (percentage >= 45) return { grade: 'C-', points: 5, descriptor: 'Average', band: '844' };
+  if (percentage >= 40) return { grade: 'D+', points: 4, descriptor: 'Below Average', band: '844' };
+  if (percentage >= 35) return { grade: 'D', points: 3, descriptor: 'Below Average', band: '844' };
+  if (percentage >= 30) return { grade: 'D-', points: 2, descriptor: 'Below Average', band: '844' };
+  return { grade: 'E', points: 1, descriptor: 'Poor', band: '844' };
 }
 
 export function gradeDisplayLabel(band: SchoolLevelBand): string {

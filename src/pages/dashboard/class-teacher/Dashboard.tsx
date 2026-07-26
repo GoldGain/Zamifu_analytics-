@@ -110,7 +110,7 @@ export default function ClassTeacherDashboard() {
         setSubjects(
           (subjectsData || []).map((a: any) => ({
             id: a.subject_id,
-            name: a.subjects?.name || 'Unknown',
+            name: (a.subjects?.name || 'Unknown') === 'Creative Arts' ? 'C-Arts' : (a.subjects?.name || 'Unknown'),
             teacher_name: a.teachers ? `${a.teachers.first_name} ${a.teachers.last_name}` : 'Unassigned',
             entered_count: 0,
           }))

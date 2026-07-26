@@ -44,6 +44,7 @@ export default function ResellerSchools() {
   const [lockAdmin, setLockAdmin] = useState(false);
   const [lockDos, setLockDos] = useState(false);
   const [lockSaving, setLockSaving] = useState(false);
+  const [portfolioMap, setPortfolioMap] = useState<Map<string, { learners: number; teachers: number; parents: number; admins: number }>>(new Map());
 
   useEffect(() => {
     if (user) fetchData();
@@ -56,6 +57,23 @@ export default function ResellerSchools() {
       setResellerId(reseller.id);
       const defaultFee = feeOrDefault(reseller.default_fee_per_learner);
       setForm((f) => ({ ...f, fee_per_learner_per_term: f.fee_per_learner_per_term || defaultFee }));
+      // Load portfolio for per-school counts
+      try {
+        const { loadResellerPortfolio } = await import('@/lib/reseller-dashboard');
+        const portfolio = await loadResellerPortfolio(reseller.id);
+        const map = new Map<string, { learners: number; teachers: number; parents: number; admins: number }>();
+        portfolio.schools.forEach(s => {
+          map.set(s.id, {
+            learners: s.learners,
+            teachers: s.teachers,
+            parents: s.parents,
+            admins: s.admins,
+          });
+        });
+        setPortfolioMap(map);
+      } catch (e) {
+        console.error('Failed to load portfolio', e);
+      }
       const { data: schoolsData } = await supabase
         .from('schools')
         .select('*')
@@ -379,6 +397,10 @@ export default function ResellerSchools() {
                     <th className="px-4 py-3">Level</th>
                     <th className="px-4 py-3">Source</th>
                   <th className="px-4 py-3">Code</th>
+                  <th className="px-4 py-3 text-center">Students</th>
+                  <th className="px-4 py-3 text-center">Teachers</th>
+                  <th className="px-4 py-3 text-center">Parents</th>
+                  <th className="px-4 py-3 text-center">Admins</th>
                   <th className="px-4 py-3">Fee / learner / term</th>
                   <th className="px-4 py-3">Admin lock</th>
                   <th className="px-4 py-3">DoS lock</th>
@@ -401,6 +423,10 @@ export default function ResellerSchools() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{s.code}</td>
+                    <td className="px-4 py-3 text-center">{portfolioMap.get(s.id)?.learners ?? 0}</td>
+                    <td className="px-4 py-3 text-center">{portfolioMap.get(s.id)?.teachers ?? 0}</td>
+                    <td className="px-4 py-3 text-center">{portfolioMap.get(s.id)?.parents ?? 0}</td>
+                    <td className="px-4 py-3 text-center">{portfolioMap.get(s.id)?.admins ?? 0}</td>
                     <td className="px-4 py-3 font-medium">KES {feeOrDefault(s.fee_per_learner_per_term).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       {s.admin_portal_locked ? (

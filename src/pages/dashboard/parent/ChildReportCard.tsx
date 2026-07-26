@@ -173,7 +173,7 @@ export default function ParentChildReportCard() {
         const { data: teacherSig } = await supabaseUntyped
           .from('teachers')
           .select('signature_url')
-          .eq('id', classTeacherId)
+          .eq('profile_id', classTeacherId)
           .maybeSingle();
         teacherSigUrl = teacherSig?.signature_url || null;
       } catch {}
@@ -565,7 +565,7 @@ export default function ParentChildReportCard() {
                         let g = 'BE'; if (pct >= 75) g = 'EE'; else if (pct >= 41) g = 'ME'; else if (pct >= 21) g = 'AE';
                         return (
                           <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#111111]">{r.subjects?.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#111111]">{r.subjects?.name === 'Creative Arts' ? 'C-Arts' : r.subjects?.name}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <div className="text-sm font-bold text-[#111111]">{pct}%</div>
                               <div className="w-24 bg-gray-100 h-1.5 rounded-full mx-auto mt-1.5 overflow-hidden">

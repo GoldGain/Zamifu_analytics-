@@ -534,7 +534,8 @@ export function drawResultsTable(
   const tableBody = sorted.map((r, i) => {
     const pct = getPercentage(r);
     const grading = gradeFromPercentage(pct, classData);
-    const row: any[] = [i + 1, r.subjects?.name || 'N/A', String(r.marks || '0'), String(r.out_of || 100), `${pct}% ${grading.grade}`];
+    const subjectName = r.subjects?.name === 'Creative Arts' ? 'C-Arts' : (r.subjects?.name || 'N/A');
+    const row: any[] = [i + 1, subjectName, String(r.marks || '0'), String(r.out_of || 100), `${pct}% ${grading.grade}`];
     if (!isPrimary) row.push(grading.points ?? '—');
     return row;
   });

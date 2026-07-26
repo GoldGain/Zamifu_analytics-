@@ -146,7 +146,7 @@ export default function StudentReportCard() {
         const { data: teacherSig } = await supabaseUntyped
           .from('teachers')
           .select('signature_url')
-          .eq('id', classTeacherId)
+          .eq('profile_id', classTeacherId)
           .maybeSingle();
         teacherSigUrl = teacherSig?.signature_url || null;
       } catch {}
@@ -502,7 +502,7 @@ export default function StudentReportCard() {
                   })();
                   return (
                     <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="py-2 px-3 font-medium">{r.subjects?.name}</td>
+                      <td className="py-2 px-3 font-medium">{r.subjects?.name === 'Creative Arts' ? 'C-Arts' : r.subjects?.name}</td>
                       <td className="py-2 px-3">{r.marks}</td>
                       <td className="py-2 px-3">{percentage}%</td>
                       <td className="py-2 px-3">
