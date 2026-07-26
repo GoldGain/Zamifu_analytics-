@@ -363,7 +363,7 @@ export default function SchoolAdminResults() {
         const mean = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
         const grade = overallGradeWithBand(mean, band);
         return { name: sub, mean, grade, vals };
-      });
+      }).sort((a, b) => b.mean - a.mean);
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const displaySchoolName = schoolInfo.name || schoolName || 'School';
@@ -465,9 +465,11 @@ export default function SchoolAdminResults() {
 
         const subRows = subjectStats.map((s, i) => {
           const gr = s.grade.subLevel;
-          let status = '\u2192 AVERAGE';
-          if (i === 0) status = '\u2191 STRONG'; else if (i === 1 && subjectStats.length > 3) status = '\u2191 GOOD';
-          else if (i >= subjectStats.length - 2) status = '\u2193 NEEDS WORK'; if (i === subjectStats.length - 1) status = '\u2193 WEAK';
+          let status = '--> AVERAGE';
+          if (i === 0) status = 'Up STRONG';
+          else if (i === 1 && subjectStats.length > 3) status = 'Up GOOD';
+          else if (i === subjectStats.length - 1) status = 'Down WEAK';
+          else if (i === subjectStats.length - 2) status = 'Down NEEDS WORK';
           const displayName = s.name === 'Creative Arts' ? 'C-Arts' : s.name;
           return [String(i + 1), displayName, `${s.mean.toFixed(1)}%`, gr, status];
         });
