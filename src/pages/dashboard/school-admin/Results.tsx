@@ -665,7 +665,7 @@ export default function SchoolAdminResults() {
 
       let teacherSigUrl: string | null = null;
       if (classObj?.class_teacher_id) {
-        const { data: teacherData } = await supabaseUntyped.from('teachers').select('signature_url').eq('id', classObj.class_teacher_id).maybeSingle();
+        const { data: teacherData } = await supabaseUntyped.from('teachers').select('signature_url').eq('profile_id', classObj.class_teacher_id).maybeSingle();
         teacherSigUrl = teacherData?.signature_url || null;
       }
       const signatures: SignatureInfo = { principal_signature_url: principalSignatureUrl, teacher_signature_url: teacherSigUrl };
