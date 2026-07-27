@@ -67,11 +67,9 @@ interface CareerPath {
 }
 
 const interestOptions: InterestOption[] = [
-  // Junior learning areas — remapped to the 3 senior pathways (no Core Academic)
-  { id: 'mathematics', label: 'Mathematics', description: 'Numbers, algebra, geometry, problem-solving', icon: <Calculator className="w-6 h-6" />, category: 'STEM' },
-  { id: 'integrated_science', label: 'Integrated Science', description: 'Combined science (not separate Bio/Chem/Phys)', icon: <Atom className="w-6 h-6" />, category: 'STEM' },
-  { id: 'pre_technical', label: 'Pre-Technical Studies', description: 'Computers, business and technical foundations', icon: <Wrench className="w-6 h-6" />, category: 'STEM' },
-  { id: 'agriculture_nutrition', label: 'Agriculture and Nutrition', description: 'Farming practices with health and home science', icon: <Sprout className="w-6 h-6" />, category: 'STEM' },
+  // Junior learning areas removed from interest selection (Issue 2)
+  // Mathematics, Integrated Science, Pre-Technical Studies, Agriculture and Nutrition
+  // are handled in the grade selection step (Step 2), not interest selection (Step 1)
   { id: 'english', label: 'English', description: 'Reading, writing, speaking English effectively', icon: <BookOpen className="w-6 h-6" />, category: 'Social Sciences' },
   { id: 'kiswahili', label: 'Kiswahili/Kenyan Sign Language', description: 'Language, culture, communication', icon: <MessageSquare className="w-6 h-6" />, category: 'Social Sciences' },
   { id: 'social_studies', label: 'Social Studies', description: 'History, geography, citizenship, life skills', icon: <Globe className="w-6 h-6" />, category: 'Social Sciences' },
