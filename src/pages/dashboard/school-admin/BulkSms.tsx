@@ -19,7 +19,7 @@ interface Student {
 }
 
 export default function BulkSms() {
-  const { user } = useAuth();
+  const { user, schoolData } = useAuth();
   const [smsType, setSmsType] = useState<SMSType>('custom');
   const [classes, setClasses] = useState<any[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
@@ -83,7 +83,7 @@ export default function BulkSms() {
     switch (smsType) {
       case 'announcement':
         return generateAnnouncementSMS(
-          user?.schoolName || 'School',
+          schoolData?.name || user?.schoolName || 'School',
           message || '[Announcement will be inserted]'
         );
       default:
@@ -115,7 +115,7 @@ export default function BulkSms() {
         .replace(/{parent_name}/g, student.parent_name || 'Parent')
         .replace(/{assessment_number}/g, student.admission_number || '')
         .replace(/{class}/g, student.classes?.name || '')
-        .replace(/{school}/g, user?.schoolName || 'School');
+        .replace(/{school}/g, schoolData?.name || user?.schoolName || 'School');
 
       const result = await sendBulkSMS([student.parent_phone], personalizedMessage);
       if (result.success) {

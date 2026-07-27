@@ -84,6 +84,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Grades', icon: <School className="w-5 h-5" />, path: '/school-admin/classes' },
     { label: 'Learning Areas', icon: <Library className="w-5 h-5" />, path: '/school-admin/subjects' },
     { label: 'Communicate', icon: <MessageSquare className="w-5 h-5" />, path: '/school-admin/communicate' },
+    { label: 'SMS Settings', icon: <Settings className="w-5 h-5" />, path: '/school-admin/sms-settings' },
     { label: 'Teacher Assignments', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teacher-assignments' },
     { label: 'Timetable Setup', icon: <Settings className="w-5 h-5" />, path: '/school-admin/timetable/setup' },
     { label: 'Generate Timetable', icon: <Zap className="w-5 h-5" />, path: '/school-admin/timetable/generate' },

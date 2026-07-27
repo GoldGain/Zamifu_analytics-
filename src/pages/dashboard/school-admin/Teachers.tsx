@@ -11,7 +11,7 @@ import type { GenderType } from '@/types/database';
 const DEFAULT_TEACHER_PASSWORD = 'Teacher@2025';
 
 export default function SchoolAdminTeachers() {
-  const { user } = useAuth();
+  const { user, schoolData } = useAuth();
   const { teachers, loading, refetch } = useTeachers(user?.schoolId || undefined);
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -107,7 +107,7 @@ export default function SchoolAdminTeachers() {
           'Teacher',
           formData.email.trim().toLowerCase(),
           DEFAULT_TEACHER_PASSWORD,
-          schoolName
+          schoolData?.name
         );
         if (formData.phone) {
           const smsResult = await sendSMS(formData.phone, welcomeMsg);
