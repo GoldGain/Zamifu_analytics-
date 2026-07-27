@@ -148,8 +148,8 @@ export default function InterestsSection() {
             Learning Areas & Career Interests
           </h2>
           <p className="text-[#666666] max-w-2xl mx-auto">
-            Explore the six pathways: Core Academic, STEM, Creative Arts and Sports, Social Sciences,
-            Research and Innovation, and Education.
+            Explore the three senior pathways: STEM, Social Sciences, and Arts and Sports Science, 
+            mapped from Junior School learning areas.
           </p>
         </div>
 
