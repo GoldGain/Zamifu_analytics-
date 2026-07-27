@@ -6,7 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 
-import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
+import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade } from '@/lib/grading';
 import type { SchoolLevelBand, SubjectResult } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
@@ -817,6 +817,11 @@ export default function SchoolAdminResults() {
   const allSubjects = sortSubjects(allSubjectsRaw);
   const band = getSchoolLevelBand(classObj);
   const isPrimary = band === 'primary';
+  const is844Class = is844Curriculum(classObj);
+  const getDisplayGrade = (pct: number) => {
+    if (is844Class) { const g = calculate844Grade(pct); return g.grade; }
+    return overallGradeWithBand(pct, band).subLevel;
+  };
 
   return (
     <div className="space-y-6">

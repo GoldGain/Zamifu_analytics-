@@ -35,7 +35,7 @@ export const JUNIOR_LEARNING_AREAS = [
   { name: 'Pre-Technical Studies', pathway: 'STEM' },
   { name: 'Social Studies', pathway: 'Social Sciences' },
   { name: 'Agriculture and Nutrition', pathway: 'STEM' },
-  { name: 'Creative Arts and Sports', pathway: 'Creative Arts and Sports' },
+  { name: 'Creative Arts and Sports', pathway: 'Arts and Sports Science' },
   { name: 'Religious Education', pathway: 'Social Sciences' },
 ] as const;
 
@@ -43,7 +43,7 @@ export const JUNIOR_LEARNING_AREAS = [
 export const PATHWAY_ORDER = [
   'STEM',
   'Social Sciences',
-  'Creative Arts and Sports',
+  'Arts and Sports Science',
 ] as const;
 
 interface InterestOption {
@@ -67,16 +67,16 @@ interface CareerPath {
 }
 
 const interestOptions: InterestOption[] = [
-  // Core Academic — 9 junior learning areas
-  { id: 'mathematics', label: 'Mathematics', description: 'Numbers, algebra, geometry, problem-solving', icon: <Calculator className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'english', label: 'English', description: 'Reading, writing, speaking English effectively', icon: <BookOpen className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'kiswahili', label: 'Kiswahili/Kenyan Sign Language', description: 'Language, culture, communication', icon: <MessageSquare className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'integrated_science', label: 'Integrated Science', description: 'Combined science (not separate Bio/Chem/Phys)', icon: <Atom className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'pre_technical', label: 'Pre-Technical Studies', description: 'Computers, business and technical foundations', icon: <Wrench className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'social_studies', label: 'Social Studies', description: 'History, geography, citizenship, life skills', icon: <Globe className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'agriculture_nutrition', label: 'Agriculture and Nutrition', description: 'Farming practices with health and home science', icon: <Sprout className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'creative_arts_sports', label: 'Creative Arts and Sports', description: 'Music, art, crafts and physical education', icon: <Palette className="w-6 h-6" />, category: 'Core Academic' },
-  { id: 'religious_ed', label: 'Religious Education (CRE/IRE/HRE)', description: 'Morals, values and faith traditions', icon: <Landmark className="w-6 h-6" />, category: 'Core Academic' },
+  // Junior learning areas — remapped to the 3 senior pathways (no Core Academic)
+  { id: 'mathematics', label: 'Mathematics', description: 'Numbers, algebra, geometry, problem-solving', icon: <Calculator className="w-6 h-6" />, category: 'STEM' },
+  { id: 'integrated_science', label: 'Integrated Science', description: 'Combined science (not separate Bio/Chem/Phys)', icon: <Atom className="w-6 h-6" />, category: 'STEM' },
+  { id: 'pre_technical', label: 'Pre-Technical Studies', description: 'Computers, business and technical foundations', icon: <Wrench className="w-6 h-6" />, category: 'STEM' },
+  { id: 'agriculture_nutrition', label: 'Agriculture and Nutrition', description: 'Farming practices with health and home science', icon: <Sprout className="w-6 h-6" />, category: 'STEM' },
+  { id: 'english', label: 'English', description: 'Reading, writing, speaking English effectively', icon: <BookOpen className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'kiswahili', label: 'Kiswahili/Kenyan Sign Language', description: 'Language, culture, communication', icon: <MessageSquare className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'social_studies', label: 'Social Studies', description: 'History, geography, citizenship, life skills', icon: <Globe className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'religious_ed', label: 'Religious Education (CRE/IRE/HRE)', description: 'Morals, values and faith traditions', icon: <Landmark className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'creative_arts_sports', label: 'Creative Arts and Sports', description: 'Music, art, crafts and physical education', icon: <Palette className="w-6 h-6" />, category: 'Arts and Sports Science' },
 
   // STEM interests (10)
   { id: 'scientific_inquiry', label: 'Scientific Inquiry', description: 'How the natural world works through biology, chemistry and physics', icon: <FlaskConical className="w-6 h-6" />, category: 'STEM' },
@@ -107,21 +107,21 @@ const interestOptions: InterestOption[] = [
   { id: 'media_tech', label: 'Media Technology', description: 'Technical Studies track', icon: <Camera className="w-6 h-6" />, category: 'STEM' },
   { id: 'marine_fisheries', label: 'Marine and Fisheries Technology', description: 'Technical Studies track', icon: <Leaf className="w-6 h-6" />, category: 'STEM' },
 
-  // Creative Arts and Sports interests (10)
-  { id: 'athletic_performance', label: 'Athletic Performance', description: 'Competitive sports and physical conditioning', icon: <Volleyball className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'human_anatomy', label: 'Human Anatomy', description: 'Muscles, healing and nutrition for energy', icon: <Heart className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'strategy_coaching', label: 'Strategy and Coaching', description: 'Game tactics, formations and leading peers', icon: <Users className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'outdoor_activity', label: 'Outdoor Activity', description: 'Active, hands-on tasks over desk work', icon: <Sprout className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'stage_expression', label: 'Stage Expression', description: 'Acting, dancing, singing or instruments', icon: <Theater className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'creative_writing', label: 'Creative Writing', description: 'Poetry, scripts, lyrics and stories', icon: <Pen className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'media_consumption', label: 'Media Consumption', description: 'Films, theatre, podcasts and music production', icon: <Camera className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'public_speaking', label: 'Public Speaking', description: 'Spotlight and dynamic presentation', icon: <UsersRound className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'visual_creation', label: 'Visual Creation', description: 'Drawing, painting, sculpting or photography', icon: <Palette className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'digital_design', label: 'Digital Design', description: 'Digital illustration, video editing, layout', icon: <PenTool className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'music', label: 'Music Composition', description: 'Performing Arts track', icon: <Music className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'dance', label: 'Dance Choreography', description: 'Performing Arts track', icon: <Theater className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'fine_arts', label: 'Fine Arts', description: 'Visual Arts track', icon: <Palette className="w-6 h-6" />, category: 'Creative Arts and Sports' },
-  { id: 'pe', label: 'Physical Education', description: 'Sports Science track', icon: <Volleyball className="w-6 h-6" />, category: 'Creative Arts and Sports' },
+  // Arts and Sports Science interests
+  { id: 'athletic_performance', label: 'Athletic Performance', description: 'Competitive sports and physical conditioning', icon: <Volleyball className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'human_anatomy', label: 'Human Anatomy', description: 'Muscles, healing and nutrition for energy', icon: <Heart className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'strategy_coaching', label: 'Strategy and Coaching', description: 'Game tactics, formations and leading peers', icon: <Users className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'outdoor_activity', label: 'Outdoor Activity', description: 'Active, hands-on tasks over desk work', icon: <Sprout className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'stage_expression', label: 'Stage Expression', description: 'Acting, dancing, singing or instruments', icon: <Theater className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'creative_writing', label: 'Creative Writing', description: 'Poetry, scripts, lyrics and stories', icon: <Pen className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'media_consumption', label: 'Media Consumption', description: 'Films, theatre, podcasts and music production', icon: <Camera className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'public_speaking', label: 'Public Speaking', description: 'Spotlight and dynamic presentation', icon: <UsersRound className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'visual_creation', label: 'Visual Creation', description: 'Drawing, painting, sculpting or photography', icon: <Palette className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'digital_design', label: 'Digital Design', description: 'Digital illustration, video editing, layout', icon: <PenTool className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'music', label: 'Music Composition', description: 'Performing Arts track', icon: <Music className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'dance', label: 'Dance Choreography', description: 'Performing Arts track', icon: <Theater className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'fine_arts', label: 'Fine Arts', description: 'Visual Arts track', icon: <Palette className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'pe', label: 'Physical Education', description: 'Sports Science track', icon: <Volleyball className="w-6 h-6" />, category: 'Arts and Sports Science' },
 
   // Social Sciences interests (10)
   { id: 'analyzing_behavior', label: 'Analyzing Human Behavior', description: 'Why individuals and groups make decisions', icon: <Users className="w-6 h-6" />, category: 'Social Sciences' },
@@ -147,15 +147,16 @@ const interestOptions: InterestOption[] = [
   { id: 'languages', label: 'Foreign Languages', description: 'Arabic, French, German, Mandarin, Indigenous', icon: <MessageSquare className="w-6 h-6" />, category: 'Social Sciences' },
   { id: 'economics', label: 'Economics', description: 'Markets, trade and policy', icon: <TrendingUp className="w-6 h-6" />, category: 'Social Sciences' },
 
-  // Research → now under STEM
+    // Research → STEM
   { id: 'research', label: 'Research', description: 'Discovery and inquiry', icon: <Microscope className="w-6 h-6" />, category: 'STEM' },
   { id: 'data_analysis', label: 'Data Analysis', description: 'Evidence-based discovery', icon: <TrendingUp className="w-6 h-6" />, category: 'STEM' },
-  // Innovation → now under Arts & Sports
-  { id: 'innovation', label: 'Innovation', description: 'New ideas and creativity', icon: <FlaskConical className="w-6 h-6" />, category: 'Creative Arts and Sports' },
+  // Innovation → Arts and Sports Science
+  { id: 'innovation', label: 'Innovation', description: 'New ideas and creativity', icon: <FlaskConical className="w-6 h-6" />, category: 'Arts and Sports Science' },
 
-  // Education interests redistributed
-  { id: 'teaching', label: 'Teaching', description: 'Education and instruction', icon: <School className="w-6 h-6" />, category: 'Social Sciences' },
-  { id: 'edtech', label: 'Educational Technology', description: 'E-learning tools', icon: <Monitor className="w-6 h-6" />, category: 'Social Sciences' },
+  // Education interests redistributed per spec
+  { id: 'teaching', label: 'Teaching', description: 'Education and instruction', icon: <School className="w-6 h-6" />, category: 'Arts and Sports Science' },
+  { id: 'edtech', label: 'Educational Technology', description: 'Teaching and Educational Technology', icon: <Monitor className="w-6 h-6" />, category: 'Social Sciences' },
+  { id: 'edtech_stem', label: 'Educational Technology (STEM)', description: 'Teaching and Educational Technology in STEM', icon: <Monitor className="w-6 h-6" />, category: 'STEM' },
   { id: 'special_ed', label: 'Special Education', description: 'Inclusive learning', icon: <Baby className="w-6 h-6" />, category: 'STEM' },
 ];
 
@@ -217,33 +218,33 @@ const careerPaths: CareerPath[] = [
   },
   {
     id: 'arts_sports_science',
-    title: 'Creative Arts and Sports — Sports Science',
-    displayPathway: 'Creative Arts and Sports',
+    title: 'Arts and Sports Science — Sports Science',
+    displayPathway: 'Arts and Sports Science',
     displayTrack: 'Sports Science',
     description: 'Physical Education, sports training, kinesiology and related careers.',
-    pathway: 'Creative Arts and Sports',
+    pathway: 'Arts and Sports Science',
     requirements: ['Creative Arts and Sports', 'Integrated Science', 'English', 'Agriculture and Nutrition'],
     interests: ['athletic_performance', 'human_anatomy', 'strategy_coaching', 'outdoor_activity', 'pe'],
     requiredGrade: 'EE2',
   },
   {
     id: 'arts_performing',
-    title: 'Creative Arts and Sports — Performing Arts',
-    displayPathway: 'Creative Arts and Sports',
+    title: 'Arts and Sports Science — Performing Arts',
+    displayPathway: 'Arts and Sports Science',
     displayTrack: 'Performing Arts',
     description: 'Music, dance, theatre, film and media production.',
-    pathway: 'Creative Arts and Sports',
+    pathway: 'Arts and Sports Science',
     requirements: ['Creative Arts and Sports', 'English', 'Kiswahili'],
     interests: ['stage_expression', 'creative_writing', 'media_consumption', 'public_speaking', 'music', 'dance'],
     requiredGrade: 'EE2',
   },
   {
     id: 'arts_visual',
-    title: 'Creative Arts and Sports — Visual Arts',
-    displayPathway: 'Creative Arts and Sports',
+    title: 'Arts and Sports Science — Visual Arts',
+    displayPathway: 'Arts and Sports Science',
     displayTrack: 'Visual Arts',
     description: 'Fine arts, design, fashion, digital media and photography.',
-    pathway: 'Creative Arts and Sports',
+    pathway: 'Arts and Sports Science',
     requirements: ['Creative Arts and Sports', 'English', 'Pre-Technical Studies'],
     interests: ['visual_creation', 'digital_design', 'fine_arts'],
     requiredGrade: 'EE2',
@@ -263,11 +264,11 @@ const careerPaths: CareerPath[] = [
   // Arts & Sports innovation
   {
     id: 'arts_innovation',
-    title: 'Creative Arts and Sports — Innovation & Media',
-    displayPathway: 'Creative Arts and Sports',
+    title: 'Arts and Sports Science — Innovation & Media',
+    displayPathway: 'Arts and Sports Science',
     displayTrack: 'Innovation & Media',
     description: 'Innovation, creative media, digital design and invention within the Arts & Sports pathway.',
-    pathway: 'Creative Arts and Sports',
+    pathway: 'Arts and Sports Science',
     requirements: ['Creative Arts and Sports', 'Integrated Science', 'Pre-Technical Studies', 'English'],
     interests: ['innovation', 'visual_creation', 'digital_design', 'media_consumption', 'fine_arts'],
     requiredGrade: 'EE2',
@@ -299,11 +300,11 @@ const careerPaths: CareerPath[] = [
   // Teaching in Arts & Sports
   {
     id: 'arts_teaching',
-    title: 'Creative Arts and Sports — Teaching & Coaching',
-    displayPathway: 'Creative Arts and Sports',
+    title: 'Arts and Sports Science — Teaching & Coaching',
+    displayPathway: 'Arts and Sports Science',
     displayTrack: 'Teaching & Coaching',
     description: 'Physical education teaching, sports coaching and arts instruction within the Arts & Sports pathway.',
-    pathway: 'Creative Arts and Sports',
+    pathway: 'Arts and Sports Science',
     requirements: ['Creative Arts and Sports', 'English', 'Kiswahili'],
     interests: ['teaching', 'pe', 'music', 'dance'],
     requiredGrade: 'EE2',
@@ -389,7 +390,7 @@ function overallPerformanceCode(codes: string[]): JuniorGradeCode | '' {
 }
 
 function alternativePathways(preferred: string): string[] {
-  const all = ['STEM', 'Social Sciences', 'Creative Arts and Sports'];
+  const all = ['STEM', 'Social Sciences', 'Arts and Sports Science'];
   return all.filter((p) => p !== preferred);
 }
 
@@ -756,7 +757,7 @@ export default function PathwayFinder() {
             <div className="text-center mb-6">
               <h3 className="text-xl font-semibold mb-2">What excites you?</h3>
               <p className="text-gray-400 text-sm">
-                Pick up to 5 interests across Core Academic, STEM, Creative Arts and Sports, Social Sciences, Research and Innovation, and Education.
+                Pick up to 5 interests across STEM, Social Sciences, and Arts and Sports Science.
               </p>
               <p className="text-[#60a5fa] text-sm mt-2 font-medium">{selectedInterests.length} of 5 selected</p>
             </div>
@@ -809,7 +810,7 @@ export default function PathwayFinder() {
             <div className="text-center mb-6">
               <h3 className="text-xl font-semibold mb-2">Choose Your Pathway Track</h3>
               <p className="text-gray-400 text-sm">
-                Based on your interests, explore STEM, Social Sciences, Creative Arts and Sports, Research and Innovation, Education, and Core Academic.
+                Based on your interests, explore STEM, Social Sciences, and Arts and Sports Science.
               </p>
             </div>
 
@@ -924,27 +925,11 @@ export default function PathwayFinder() {
               <p className="text-xs text-gray-500">Description and points populate automatically when you select a grade.</p>
             </div>
 
-            {/* PART B preview */}
-            <div className="bg-gray-800/40 rounded-2xl p-6 border border-gray-700 mb-8">
-              <h4 className="text-sm font-medium text-[#60a5fa] mb-3">Part B: Required Performance (preview)</h4>
-              <p className="text-xs text-gray-400 mb-3">Minimum requirement: EE2 (Exceeding Expectations 2). Work towards EE1 (Exceeding Expectations 1) for the best pathway placement.</p>
-              <div className="space-y-2">
-                {(selectedCareerObj()?.requirements || []).map((subj) => {
-                  const current = subjectGrades[subj] || '';
-                  const required = 'EE2' as JuniorGradeCode;
-                  const met = current ? pointsRank(current) >= pointsRank(required) : false;
-                  return (
-                    <div key={subj} className="flex flex-wrap items-center justify-between gap-2 text-sm bg-gray-900/40 rounded-lg px-3 py-2">
-                      <span className="text-gray-200">{subj}</span>
-                      <span className="text-gray-400">Required: EE2</span>
-                      <span className="text-gray-300">Current: {current || '—'}</span>
-                      <span className={met ? 'text-emerald-400' : 'text-amber-300'}>
-                        {current ? (met ? 'Met Requirement' : 'Below Requirement') : 'Not entered'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+            {/* PART B — hidden until payment */}
+            <div className="bg-amber-500/10 rounded-2xl p-6 border border-amber-500/30 mb-8 text-center">
+              <Lock className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+              <h4 className="text-sm font-semibold text-amber-300 mb-2">Part B: Required Performance</h4>
+              <p className="text-gray-300 text-sm">Pay KSh 20 to view your results and see how your performance compares to the requirements for each pathway.</p>
             </div>
 
             <div className="flex justify-between items-center">

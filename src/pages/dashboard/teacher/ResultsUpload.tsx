@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Upload, Download, FileText, Loader2, CheckCircle, AlertCircle, ClipboardEdit, BookOpen, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateResultGrades, gradeDisplayLabel, getSchoolLevelBand } from '@/lib/grading';
+import { calculateResultGrades, gradeDisplayLabel, getSchoolLevelBand, is844Curriculum, calculate844Grade } from '@/lib/grading';
 import {
   fetchTeacherAssignments,
   verifyTeacherSubjectAssignment,
@@ -23,6 +23,7 @@ interface ProcessedRow {
   out_of: number;
   percentage: number;
   cbcGrade: ReturnType<typeof calculateResultGrades>['cbeGrade'];
+  grade844?: ReturnType<typeof calculate844Grade>;
   position?: number;
 }
 
@@ -211,6 +212,7 @@ export default function TeacherResultsUpload() {
         out_of: outOf,
         percentage,
         cbcGrade: grades.cbeGrade,
+        grade844: grades.grade844,
       };
     });
     const sorted = [...processed].sort((a, b) => b.percentage - a.percentage);
@@ -221,8 +223,9 @@ export default function TeacherResultsUpload() {
   };
 
   // ── Download helpers ─────────────────────────────────────────────────────────
-  const getMainGrade = (row: ProcessedRow) => row.cbcGrade.subLevel;
-  const getMainPoints = (row: ProcessedRow) => row.cbcGrade.points;
+  const is844Class = is844Curriculum(currentClassData);
+  const getMainGrade = (row: ProcessedRow) => is844Class && row.grade844 ? row.grade844.grade : row.cbcGrade.subLevel;
+  const getMainPoints = (row: ProcessedRow) => is844Class && row.grade844 ? row.grade844.points : row.cbcGrade.points;
 
   const downloadManualPDF = () => {
     if (!manualPreview.length) return;
@@ -341,7 +344,7 @@ export default function TeacherResultsUpload() {
         cbc_grade: row.cbcGrade.grade,
         cbc_points: isPrimaryClass ? null : row.cbcGrade.points,
         cbc_descriptor: row.cbcGrade.descriptor,
-        grade_844: row.cbcGrade.grade,
+        grade_844: is844Class && row.grade844 ? row.grade844.grade : row.cbcGrade.grade,
         exam_id: selectedExam || null,
         position: row.position,
         status: asDraft ? 'draft' as const : 'submitted' as const,
@@ -457,6 +460,7 @@ export default function TeacherResultsUpload() {
             out_of: rowOutOf,
             percentage,
             cbcGrade: grades.cbeGrade,
+            grade844: grades.grade844,
           };
         });
         const sorted = [...processed].sort((a, b) => b.percentage - a.percentage);

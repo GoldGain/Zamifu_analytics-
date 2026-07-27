@@ -10,6 +10,7 @@ export interface SchoolPortfolioItem {
   email: string | null;
   phone: string | null;
   status: string | null;
+  registrationSource: string | null;
   currency: string;
   feePerLearnerPerTerm: number;
   learners: number;
@@ -44,6 +45,7 @@ type SchoolRow = {
   email: string | null;
   phone: string | null;
   status: string | null;
+  registration_source: string | null;
   currency: string | null;
   fee_per_learner_per_term: number | null;
   admin_portal_locked: boolean | null;
@@ -80,7 +82,7 @@ function emptyPortfolio(): ResellerPortfolio {
 export async function loadResellerPortfolio(resellerId: string): Promise<ResellerPortfolio> {
   const { data: schoolData, error: schoolError } = await supabaseUntyped
     .from('schools')
-    .select('id, name, code, county, sub_county, email, phone, status, currency, fee_per_learner_per_term, admin_portal_locked, dos_portal_locked')
+    .select('id, name, code, county, sub_county, email, phone, status, registration_source, currency, fee_per_learner_per_term, admin_portal_locked, dos_portal_locked')
     .eq('reseller_id', resellerId)
     .order('name');
 
@@ -140,6 +142,7 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
       email: school.email,
       phone: school.phone,
       status: school.status,
+      registrationSource: school.registration_source,
       currency: currencyCode(school.currency),
       feePerLearnerPerTerm,
       learners,

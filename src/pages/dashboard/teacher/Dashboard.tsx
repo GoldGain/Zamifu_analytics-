@@ -11,8 +11,8 @@ interface TimetableEntry {
   start_time: string;
   end_time: string;
   room: string | null;
-  subjects: { name: string } | null;
-  classes: { name: string } | null;
+  subject_name: string | null;
+  class_name: string | null;
 }
 
 interface SubjectBestMap {
@@ -46,13 +46,32 @@ export default function TeacherDashboard() {
 
     if (teacherData) {
       const tId = teacherData.id;
-      const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-      const { data: classes } = await supabaseUntyped
-        .from('timetable')
-        .select('*, subjects(name), classes(name)')
-        .eq('teacher_id', tId)
-        .eq('day_of_week', today.charAt(0).toUpperCase() + today.slice(1));
-      setTodayClasses((classes || []) as unknown as TimetableEntry[]);
+      // day_of_week in timetable_entries is an integer: 1=Monday ... 5=Friday
+      const dayIndex = new Date().getDay(); // 0=Sun, 1=Mon ... 6=Sat
+      const todayInt = dayIndex >= 1 && dayIndex <= 5 ? dayIndex : null;
+
+      if (todayInt !== null) {
+        // Fetch timetable_entries for this teacher today, joined with time slots
+        const { data: entries } = await supabaseUntyped
+          .from('timetable_entries')
+          .select('id, day_of_week, time_slot_id, subject_id, class_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
+          .eq('teacher_id', tId)
+          .eq('day_of_week', todayInt)
+          .eq('entry_type', 'class');
+
+        const mapped: TimetableEntry[] = (entries || []).map((e: any) => ({
+          id: e.id,
+          start_time: e.timetable_time_slots?.start_time?.toString().substring(0, 5) || '',
+          end_time: e.timetable_time_slots?.end_time?.toString().substring(0, 5) || '',
+          room: null,
+          subject_name: e.subjects?.name || null,
+          class_name: e.classes?.name || null,
+        }));
+        mapped.sort((a, b) => a.start_time.localeCompare(b.start_time));
+        setTodayClasses(mapped);
+      } else {
+        setTodayClasses([]);
+      }
 
       const { count: sCount } = await supabaseUntyped
         .from('students')
@@ -184,11 +203,11 @@ export default function TeacherDashboard() {
               {todayClasses.map((c, i) => (
                 <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
                   <div className="w-10 h-10 bg-[#2563EB] rounded-lg flex items-center justify-center text-white text-xs font-bold">
-                    {c.subjects?.name?.[0]}
+                    {c.subject_name?.[0]}
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium">{c.subjects?.name}</p>
-                    <p className="text-xs text-[#666666]">{c.classes?.name} {c.room && `| Room ${c.room}`}</p>
+                    <p className="text-sm font-medium">{c.subject_name}</p>
+                    <p className="text-xs text-[#666666]">{c.class_name} {c.room && `| Room ${c.room}`}</p>
                   </div>
                   <span className="text-xs font-medium text-[#2563EB]">{c.start_time?.slice(0, 5)} - {c.end_time?.slice(0, 5)}</span>
                 </div>

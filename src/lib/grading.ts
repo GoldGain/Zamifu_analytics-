@@ -1,5 +1,10 @@
-export type Curriculum = 'CBE';
+export type Curriculum = 'CBE' | '844';
 export type SchoolLevelBand = 'primary' | 'junior' | 'senior';
+
+/** Returns true if the class uses the 8-4-4 curriculum */
+export function is844Curriculum(classData?: { curriculum?: string | null }): boolean {
+  return String(classData?.curriculum || '').toUpperCase() === '844';
+}
 
 export interface NumericGrade844 {
   grade: string;
@@ -22,6 +27,8 @@ function normalizePercentage(value: number): number {
 }
 
 export function getSchoolLevelBand(classData?: { curriculum?: Curriculum | string | null; grade_level?: number | string | null; level?: number | string | null; name?: string | null }): SchoolLevelBand {
+  // 8-4-4 curriculum: treat Form 1-4 as senior band for CBE display
+  if (is844Curriculum(classData)) return 'senior';
   // Use grade_level first (new column), fall back to level (legacy)
   const rawLevel = classData?.grade_level ?? classData?.level;
   const parsedLevel = typeof rawLevel === 'number' ? rawLevel : parseInt(String(rawLevel || '').replace(/[^0-9]/g, ''), 10);
@@ -43,6 +50,9 @@ export function getSchoolLevelBand(classData?: { curriculum?: Curriculum | strin
   if (/senior|grade\s*1[012]|\b1[012]\b/.test(name)) return 'senior';
   if (/junior|jss|grade\s*[789]|\b[789]\b/.test(name)) return 'junior';
   if (/pp1|pp2|pre.?primary|grade\s*[1-6]/i.test(name)) return 'primary';
+  // 8-4-4 form names (fallback if curriculum not set)
+  if (/form\s*[34]/i.test(name)) return 'senior';
+  if (/form\s*[12]/i.test(name)) return 'junior';
   return 'primary';
 }
 
@@ -79,10 +89,11 @@ export function calculateCompetencyGrade(score: number, band: SchoolLevelBand = 
   return { subLevel: 'BE', grade: 'BE', points: 0, descriptor: 'Below Expectation', band };
 }
 
-export function calculateResultGrades(percentage: number, classData?: { curriculum?: Curriculum | string | null; level?: number | string | null; name?: string | null }) {
+export function calculateResultGrades(percentage: number, classData?: { curriculum?: Curriculum | string | null; grade_level?: number | string | null; level?: number | string | null; name?: string | null }) {
   const band = getSchoolLevelBand(classData);
   const cbeGrade = calculateCompetencyGrade(percentage, band);
-  return { band, cbeGrade };
+  const grade844 = is844Curriculum(classData) ? calculate844Grade(percentage) : undefined;
+  return { band, cbeGrade, grade844 };
 }
 
 export function calculate844Grade(score: number): NumericGrade844 {
