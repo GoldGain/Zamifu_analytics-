@@ -183,7 +183,7 @@ export async function updateSchoolFee(resellerId: string, schoolId: string, rawF
     .from('schools')
     .update({ fee_per_learner_per_term: fee })
     .eq('id', schoolId)
-    .eq('reseller_id', resellerId);
+    .or(`reseller_id.eq.${resellerId},reseller_id.is.null`);
 
   if (error) throw error;
   return fee;

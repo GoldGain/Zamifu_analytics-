@@ -26,12 +26,12 @@ export default function ResellerPayments() {
         supabase
           .from('parent_payments')
           .select('*')
-          .eq('reseller_id', reseller.id)
+          .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
           .order('created_at', { ascending: false }),
         (supabase as any)
           .from('school_subscription_payments')
           .select('*')
-          .eq('reseller_id', reseller.id)
+          .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
           .order('created_at', { ascending: false }),
       ]);
       setParentPayments(parent || []);
