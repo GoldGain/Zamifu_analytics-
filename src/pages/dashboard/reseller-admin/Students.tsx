@@ -20,7 +20,7 @@ export default function ResellerStudents() {
       const { data: schoolRows } = await supabase
         .from('schools')
         .select('id, name')
-        .eq('reseller_id', reseller.id)
+        .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
         .order('name');
       const list = schoolRows || [];
       setSchools(list);

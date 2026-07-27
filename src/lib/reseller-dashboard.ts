@@ -83,7 +83,7 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
   const { data: schoolData, error: schoolError } = await supabaseUntyped
     .from('schools')
     .select('id, name, code, county, sub_county, email, phone, status, registration_source, currency, fee_per_learner_per_term, admin_portal_locked, dos_portal_locked')
-    .eq('reseller_id', resellerId)
+    .or(`reseller_id.eq.${resellerId},reseller_id.is.null`)
     .order('name');
 
   if (schoolError) throw schoolError;

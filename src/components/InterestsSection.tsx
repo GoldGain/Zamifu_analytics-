@@ -23,23 +23,6 @@ interface InterestCategory {
 
 const categories: InterestCategory[] = [
   {
-    name: 'Core Academic',
-    icon: <BookOpen className="w-6 h-6" />,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50 hover:bg-blue-100 border-blue-200',
-    interests: [
-      { name: 'Mathematics', icon: <Calculator className="w-4 h-4" /> },
-      { name: 'English', icon: <BookOpen className="w-4 h-4" /> },
-      { name: 'Kiswahili/Kenyan Sign Language', icon: <MessageSquare className="w-4 h-4" /> },
-      { name: 'Integrated Science', icon: <Atom className="w-4 h-4" /> },
-      { name: 'Pre-Technical Studies', icon: <Wrench className="w-4 h-4" /> },
-      { name: 'Social Studies', icon: <Globe className="w-4 h-4" /> },
-      { name: 'Agriculture and Nutrition', icon: <Sprout className="w-4 h-4" /> },
-      { name: 'Creative Arts and Sports', icon: <Palette className="w-4 h-4" /> },
-      { name: 'Religious Education (CRE/IRE/HRE)', icon: <Landmark className="w-4 h-4" /> },
-    ],
-  },
-  {
     name: 'STEM',
     icon: <Cpu className="w-6 h-6" />,
     color: 'text-indigo-600',
@@ -55,34 +38,9 @@ const categories: InterestCategory[] = [
       { name: 'Robotics and Automation', icon: <Cpu className="w-4 h-4" /> },
       { name: 'Programming and Coding', icon: <Code className="w-4 h-4" /> },
       { name: 'Data Science and AI', icon: <Database className="w-4 h-4" /> },
-      { name: 'Health', icon: <Heart className="w-4 h-4" /> },
-      { name: 'Agriculture', icon: <Sprout className="w-4 h-4" /> },
-      { name: 'Mathematics', icon: <Calculator className="w-4 h-4" /> },
-      { name: 'GIS', icon: <Globe className="w-4 h-4" /> },
-      { name: 'Home Science', icon: <UtensilsCrossed className="w-4 h-4" /> },
-      { name: 'Physics / Chemistry / Biology', icon: <Beaker className="w-4 h-4" /> },
-      { name: 'Computer Studies', icon: <Monitor className="w-4 h-4" /> },
-      { name: 'Technical Studies (Aviation, Construction, Electricity…)', icon: <Wrench className="w-4 h-4" /> },
-    ],
-  },
-  {
-    name: 'Creative Arts and Sports',
-    icon: <Palette className="w-6 h-6" />,
-    color: 'text-pink-600',
-    bgColor: 'bg-pink-50 hover:bg-pink-100 border-pink-200',
-    interests: [
-      { name: 'Athletic Performance', icon: <Volleyball className="w-4 h-4" /> },
-      { name: 'Human Anatomy', icon: <Heart className="w-4 h-4" /> },
-      { name: 'Strategy and Coaching', icon: <Users className="w-4 h-4" /> },
-      { name: 'Outdoor Activity', icon: <Sprout className="w-4 h-4" /> },
-      { name: 'Stage Expression', icon: <Theater className="w-4 h-4" /> },
-      { name: 'Creative Writing', icon: <Pen className="w-4 h-4" /> },
-      { name: 'Media Consumption', icon: <Camera className="w-4 h-4" /> },
-      { name: 'Public Speaking', icon: <UsersRound className="w-4 h-4" /> },
-      { name: 'Visual Creation', icon: <Palette className="w-4 h-4" /> },
-      { name: 'Digital Design', icon: <PenTool className="w-4 h-4" /> },
-      { name: 'Music / Dance / Theatre', icon: <Music className="w-4 h-4" /> },
-      { name: 'Fine Arts & Design', icon: <Palette className="w-4 h-4" /> },
+      { name: 'Research', icon: <Microscope className="w-4 h-4" /> },
+      { name: 'Special Education', icon: <Baby className="w-4 h-4" /> },
+      { name: 'Educational Technology (STEM)', icon: <Monitor className="w-4 h-4" /> },
     ],
   },
   {
@@ -107,28 +65,30 @@ const categories: InterestCategory[] = [
       { name: 'Quantity Survey', icon: <Building2 className="w-4 h-4" /> },
       { name: 'Journalism & Languages', icon: <MessageSquare className="w-4 h-4" /> },
       { name: 'GIS (Social Sciences applications)', icon: <Wifi className="w-4 h-4" /> },
-    ],
-  },
-  {
-    name: 'Research and Innovation',
-    icon: <FlaskConical className="w-6 h-6" />,
-    color: 'text-teal-600',
-    bgColor: 'bg-teal-50 hover:bg-teal-100 border-teal-200',
-    interests: [
-      { name: 'Research', icon: <Microscope className="w-4 h-4" /> },
-      { name: 'Innovation', icon: <FlaskConical className="w-4 h-4" /> },
-      { name: 'Data Analysis', icon: <TrendingUp className="w-4 h-4" /> },
-    ],
-  },
-  {
-    name: 'Education',
-    icon: <School className="w-6 h-6" />,
-    color: 'text-violet-600',
-    bgColor: 'bg-violet-50 hover:bg-violet-100 border-violet-200',
-    interests: [
       { name: 'Teaching', icon: <School className="w-4 h-4" /> },
       { name: 'Educational Technology', icon: <Monitor className="w-4 h-4" /> },
-      { name: 'Special Education', icon: <Baby className="w-4 h-4" /> },
+    ],
+  },
+  {
+    name: 'Arts and Sports Science',
+    icon: <Palette className="w-6 h-6" />,
+    color: 'text-pink-600',
+    bgColor: 'bg-pink-50 hover:bg-pink-100 border-pink-200',
+    interests: [
+      { name: 'Athletic Performance', icon: <Volleyball className="w-4 h-4" /> },
+      { name: 'Human Anatomy', icon: <Heart className="w-4 h-4" /> },
+      { name: 'Strategy and Coaching', icon: <Users className="w-4 h-4" /> },
+      { name: 'Outdoor Activity', icon: <Sprout className="w-4 h-4" /> },
+      { name: 'Stage Expression', icon: <Theater className="w-4 h-4" /> },
+      { name: 'Creative Writing', icon: <Pen className="w-4 h-4" /> },
+      { name: 'Media Consumption', icon: <Camera className="w-4 h-4" /> },
+      { name: 'Public Speaking', icon: <UsersRound className="w-4 h-4" /> },
+      { name: 'Visual Creation', icon: <Palette className="w-4 h-4" /> },
+      { name: 'Digital Design', icon: <PenTool className="w-4 h-4" /> },
+      { name: 'Music / Dance / Theatre', icon: <Music className="w-4 h-4" /> },
+      { name: 'Fine Arts & Design', icon: <Palette className="w-4 h-4" /> },
+      { name: 'Innovation', icon: <FlaskConical className="w-4 h-4" /> },
+      { name: 'Teaching & Coaching', icon: <School className="w-4 h-4" /> },
     ],
   },
 ];
@@ -145,11 +105,10 @@ export default function InterestsSection() {
             Explore Your Options
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold text-[#111111] mb-3">
-            Learning Areas & Career Interests
+            Pathway Interests
           </h2>
           <p className="text-[#666666] max-w-2xl mx-auto">
-            Explore the three senior pathways: STEM, Social Sciences, and Arts and Sports Science, 
-            mapped from Junior School learning areas.
+            Explore career interests across the three senior pathways: STEM, Social Sciences, and Arts and Sports Science.
           </p>
         </div>
 
@@ -160,7 +119,7 @@ export default function InterestsSection() {
               <div
                 key={category.name}
                 className={`rounded-2xl border-2 transition-all duration-300 ${category.bgColor} ${
-                  isExpanded ? 'col-span-1 md:col-span-2 lg:col-span-3' : ''
+                  isExpanded ? 'col-span-1 md:col-span-3 lg:col-span-3' : ''
                 }`}
               >
                 <button

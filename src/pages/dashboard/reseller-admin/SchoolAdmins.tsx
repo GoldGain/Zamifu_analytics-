@@ -70,7 +70,7 @@ export default function ResellerSchoolAdmins() {
       const { data: schoolsData } = await supabase
         .from('schools')
         .select('id, name')
-        .eq('reseller_id', resellerData.id)
+        .or(`reseller_id.eq.${resellerData.id},reseller_id.is.null`)
         .order('name', { ascending: true });
 
       setSchools(schoolsData || []);

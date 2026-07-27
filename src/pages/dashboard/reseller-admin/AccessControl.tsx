@@ -19,7 +19,7 @@ export default function ResellerAccessControl() {
       const { data } = await supabase
         .from('schools')
         .select('id, name, code, admin_portal_locked, dos_portal_locked, lock_reason, locked_at, locked_by_role')
-        .eq('reseller_id', reseller.id)
+        .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
         .order('name');
       setSchools(data || []);
     }

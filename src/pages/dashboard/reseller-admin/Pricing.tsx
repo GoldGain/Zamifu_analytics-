@@ -25,7 +25,7 @@ export default function ResellerPricing() {
       const { data } = await supabase
         .from('schools')
         .select('id, name, code, fee_per_learner_per_term')
-        .eq('reseller_id', reseller.id)
+        .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
         .order('name');
       const list = data || [];
       setSchools(list);

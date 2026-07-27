@@ -531,7 +531,7 @@ export default function PathwayFinder() {
 
     const lines = [
       `PATHWAY RECOMMENDATION: ${career.title}`,
-      `Track: ${career.pathway}`,
+      `Track: ${career.displayTrack || career.pathway}`,
       '',
       `Decision: ${finalRec.label}`,
       `Performance level: ${finalCode} — ${finalRec.status}`,
@@ -554,33 +554,6 @@ export default function PathwayFinder() {
       missing.length ? `Subjects not entered: ${missing.join(', ')}` : '',
       '',
     ];
-
-    if (recommendPreferred) {
-      lines.push('Next steps for this pathway:');
-      if (finalCode === 'EE1' || finalCode === 'EE2') {
-        lines.push('  · Proceed with placement in the recommended pathway.');
-        lines.push('  · Consider advanced or enrichment options and leadership roles.');
-      } else if (finalCode === 'ME1') {
-        lines.push('  · Proceed with placement and arrange targeted support in weaker subjects.');
-        lines.push('  · Use mentoring or bridging sessions before senior pathway specialization.');
-      } else {
-        lines.push('  · Conditional placement only after short remedial work.');
-        lines.push('  · Monitor progress closely in the first term of the pathway.');
-      }
-    } else {
-      lines.push('Suggested alternative pathway(s) where you may thrive:');
-      for (const alt of suggestedAlts) {
-        lines.push(`  · ${alt}`);
-      }
-      if (strongSubjects.length) {
-        lines.push(`  · Based on your current strengths in: ${strongSubjects.join(', ')}`);
-      }
-      lines.push('');
-      lines.push('Encouragement and next steps:');
-      lines.push('  · Explore the suggested alternative pathways — they align well with your interests and strengths.');
-      lines.push('  · With focused effort and the right support, you can continue to grow and develop your skills.');
-      lines.push('  · Revisit your pathway readiness after the next assessment cycle — every step forward counts.');
-    }
 
     return lines.filter((l) => l !== undefined).join('\n');
   };
@@ -673,7 +646,7 @@ export default function PathwayFinder() {
     write(`Generated: ${new Date().toLocaleString()}`, { size: 9, color: [100, 100, 100] });
     y += 8;
     write(`Selected pathway: ${career?.title || '—'}`, { bold: true, size: 12 });
-    write(`Track: ${career?.pathway || '—'}`, { size: 11 });
+    write(`Track: ${career?.displayTrack || career?.pathway || '—'}`, { size: 11 });
     if (ev?.finalRec && ev.finalCode) {
       write(`Decision: ${ev.finalRec.label}`, { bold: true, size: 12, color: [16, 185, 129] });
       write(`Performance level: ${ev.finalCode} — ${ev.finalRec.status}`, { size: 11 });
