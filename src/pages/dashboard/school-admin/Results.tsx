@@ -5,6 +5,8 @@ import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, M
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade } from '@/lib/grading';
 import type { SchoolLevelBand, SubjectResult } from '@/lib/grading';
@@ -673,9 +675,9 @@ export default function SchoolAdminResults() {
       const prevAvgMap: Record<string, number | null> = {};
       for (const s of summaries) { prevAvgMap[s.studentId] = await fetchPreviousTermAvg(s.studentId, selectedTerm); }
 
-      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       const bulkBestPerSubject = computeBestPerSubject(rawResults, classObj);
 
+      // Pre-fetch all student trends in one pass
       const studentTrends: Record<string, { term: string; avg: number }[]> = {};
       for (const s of summaries) {
         const { data: allResults } = await supabaseUntyped.from('results').select('percentage, marks, out_of, term_id, terms(name, academic_year)').eq('student_id', s.studentId).order('terms(academic_year)', { ascending: true }).order('terms(name)', { ascending: true });
@@ -692,9 +694,11 @@ export default function SchoolAdminResults() {
         }
       }
 
+      // Use JSZip to package individual PDFs — avoids "Invalid string length" / OOM crash
+      const zip = new JSZip();
+
       for (let idx = 0; idx < summaries.length; idx++) {
         const s = summaries[idx];
-        if (idx > 0) doc.addPage();
         const prevAvg = prevAvgMap[s.studentId];
         const deviation = prevAvg !== null && prevAvg !== undefined ? s.avgPct - prevAvg : null;
         const isNew = deviation === null;
@@ -707,12 +711,11 @@ export default function SchoolAdminResults() {
           if (indexB === -1) return -1;
           return indexA - indexB;
         });
-        
+
         const sortedBest = [...subjectEntries].sort((a, b) => b[1] - a[1]);
         const bestSubject = sortedBest[0]?.[0] || 'all learning areas';
         const weakestSubject = sortedBest[sortedBest.length - 1]?.[0] || 'some learning areas';
         const studentFullName = `${s.student?.first_name || ''} ${s.student?.last_name || ''}`;
-        // Build full subject results for accurate comment generation (uses actual subject grades, not mean)
         const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
           name,
           percentage: pct,
@@ -720,6 +723,9 @@ export default function SchoolAdminResults() {
           previousPercentage: studentTrends[s.studentId]?.slice(-2)[0]?.pct ?? null,
         }));
         const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, totalStudents, isNew, classObj, allSubjectResults);
+
+        // Create a fresh single-page PDF for each learner
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
 
         await drawReportHeader(doc, schoolInfo);
         if (s.student?.photo_url) { try { await addStudentPhotoToPDF(doc, s.student.photo_url, 168, 33, 30); } catch {} }
@@ -796,11 +802,20 @@ export default function SchoolAdminResults() {
         const sigY = commentY + 32;
         addSignaturesToPDF(doc, signatures, sigY, schoolInfo);
         doc.setFontSize(7); doc.setTextColor(150, 150, 150);
-        doc.text(`Page ${idx + 1} of ${totalStudents} | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
+        doc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
+
+        // Add to ZIP as individual PDF — keeps memory per-file small
+        const safeName = `${s.student?.first_name || 'Learner'}_${s.student?.last_name || ''}_${s.student?.admission_number || ''}`.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_');
+        const pdfBlob = doc.output('blob');
+        zip.file(`${safeName}.pdf`, pdfBlob);
+
+        // Yield to browser between learners to prevent freeze
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      const bulkPdfName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
-      doc.save(`${bulkPdfName}.pdf`);
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
+      saveAs(zipBlob, `${zipName}.zip`);
       toast.success(assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);
     } catch (err: any) { toast.error('Failed to generate bulk report cards: ' + err.message); console.error(err); }
     setGeneratingBulk(false);
