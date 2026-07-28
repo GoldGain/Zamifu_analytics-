@@ -293,7 +293,7 @@ export default function StudentReportCard() {
 
       const photoUrl = student.photo_url || null;
       if (photoUrl) {
-        try { await addStudentPhotoToPDF(doc, photoUrl, 163, 30, 35); } catch {}
+        try { await addStudentPhotoToPDF(doc, photoUrl, 172, 4, 24); } catch {}
       }
 
       drawStudentInfo(

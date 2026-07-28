@@ -694,9 +694,10 @@ export default function SchoolAdminResults() {
         }
       }
 
-      // Use JSZip to package individual PDFs — avoids "Invalid string length" / OOM crash
-      const zip = new JSZip();
+      // Generate a single optimized PDF for all learners
+      const mainDoc = new jsPDF({ unit: 'mm', format: 'a4' });
       const BATCH_SIZE = 5;
+      let addedFirstPage = false;
 
       for (let idx = 0; idx < summaries.length; idx++) {
         const s = summaries[idx];
@@ -725,29 +726,37 @@ export default function SchoolAdminResults() {
         }));
         const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, totalStudents, isNew, classObj, allSubjectResults);
 
-        // Create a fresh single-page PDF for each learner
-        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        if (addedFirstPage) mainDoc.addPage();
+        addedFirstPage = true;
 
-        await drawReportHeader(doc, schoolInfo);
-        if (s.student?.photo_url) { try { await addStudentPhotoToPDF(doc, s.student.photo_url, 168, 33, 30); } catch {} }
+        await drawReportHeader(mainDoc, schoolInfo);
+        
+        // Beautifully placed student photo on top right
+        if (s.student?.photo_url) { 
+          try { 
+            await addStudentPhotoToPDF(mainDoc, s.student.photo_url, 172, 4, 24); 
+          } catch (e) {
+            console.error("Photo error", e);
+          } 
+        }
 
         const cardAssessment = s.examName || assessmentLabel || '';
-        doc.setTextColor(0, 0, 0); doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+        mainDoc.setTextColor(0, 0, 0); mainDoc.setFontSize(10); mainDoc.setFont('helvetica', 'normal');
         const y = 38;
-        doc.text(`Learner: ${studentFullName}`, 14, y);
-        doc.text(`Adm No: ${s.student?.admission_number || 'N/A'}`, 14, y + 7);
-        doc.text(`Class: ${classObj?.name || 'N/A'}`, 14, y + 14);
-        doc.text(`Term: ${termObj?.name || ''} ${termObj?.academic_year || ''}`, 120, y);
+        mainDoc.text(`Learner: ${studentFullName}`, 14, y);
+        mainDoc.text(`Adm No: ${s.student?.admission_number || 'N/A'}`, 14, y + 7);
+        mainDoc.text(`Class: ${classObj?.name || 'N/A'}`, 14, y + 14);
+        mainDoc.text(`Term: ${termObj?.name || ''} ${termObj?.academic_year || ''}`, 120, y);
         if (cardAssessment) {
-          doc.setTextColor(106, 27, 154); doc.setFont('helvetica', 'bold'); doc.text(`Assessment: ${cardAssessment}`, 120, y + 7);
-          doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
-          doc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 14);
-          doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 21);
-          doc.setDrawColor(106, 27, 154); doc.line(14, y + 26, 196, y + 26);
+          mainDoc.setTextColor(106, 27, 154); mainDoc.setFont('helvetica', 'bold'); mainDoc.text(`Assessment: ${cardAssessment}`, 120, y + 7);
+          mainDoc.setFont('helvetica', 'normal'); mainDoc.setTextColor(0, 0, 0);
+          mainDoc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 14);
+          mainDoc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 21);
+          mainDoc.setDrawColor(106, 27, 154); mainDoc.line(14, y + 26, 196, y + 26);
         } else {
-          doc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 7);
-          doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 14);
-          doc.setDrawColor(106, 27, 154); doc.line(14, y + 20, 196, y + 20);
+          mainDoc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 7);
+          mainDoc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 14);
+          mainDoc.setDrawColor(106, 27, 154); mainDoc.line(14, y + 20, 196, y + 20);
         }
         const tableStartY = cardAssessment ? y + 31 : y + 25;
 
@@ -757,62 +766,53 @@ export default function SchoolAdminResults() {
           return isPrimary ? [displayName, `${pct.toFixed(0)}%`, g.subLevel, g.descriptor] : [displayName, `${pct.toFixed(0)}%`, g.subLevel, String(g.points), g.descriptor];
         });
 
-        autoTable(doc, { startY: tableStartY, head: [isPrimary ? ['Learning Area', 'Percentage', 'CBE Grade', 'Descriptor'] : ['Learning Area', 'Percentage', 'CBE Grade', 'Points', 'Descriptor']], body: subjectRows, styles: { fontSize: 9 }, headStyles: { fillColor: [106, 27, 154], textColor: 255 }, alternateRowStyles: { fillColor: [232, 234, 246] } });
+        autoTable(mainDoc, { startY: tableStartY, head: [isPrimary ? ['Learning Area', 'Percentage', 'CBE Grade', 'Descriptor'] : ['Learning Area', 'Percentage', 'CBE Grade', 'Points', 'Descriptor']], body: subjectRows, styles: { fontSize: 9 }, headStyles: { fillColor: [106, 27, 154], textColor: 255 }, alternateRowStyles: { fillColor: [232, 234, 246] } });
 
-        let currentY = (doc as any).lastAutoTable.finalY + 8;
+        let currentY = (mainDoc as any).lastAutoTable.finalY + 8;
         const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
         if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
           const studentResultsForPathways = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
-          currentY = drawPathwayPerformance(doc, studentResultsForPathways, currentY) + 8;
+          currentY = drawPathwayPerformance(mainDoc, studentResultsForPathways, currentY) + 8;
         }
 
         const gr = overallGradeWithBand(s.avgPct, band);
-        doc.setFillColor(0, 137, 123); doc.rect(14, currentY, 182, 25, 'F');
-        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
-        doc.text(`Average: ${s.avgPct.toFixed(1)}%`, 20, currentY + 8);
-        doc.text(`Grade: ${gr.subLevel}`, 70, currentY + 8);
-        doc.text(`Position: ${s.position}/${totalStudents}`, 120, currentY + 8);
-        if (!isPrimary) doc.text(`Points: ${s.totalPoints}`, 160, currentY + 8);
-        doc.text(`Total: ${s.totalPct.toFixed(0)}/${allSubjects.length * 100}`, 20, currentY + 17);
-        if (!isPrimary) doc.text(`${gr.descriptor}`, 70, currentY + 17);
+        mainDoc.setFillColor(0, 137, 123); mainDoc.rect(14, currentY, 182, 25, 'F');
+        mainDoc.setFontSize(9); mainDoc.setFont('helvetica', 'bold'); mainDoc.setTextColor(255, 255, 255);
+        mainDoc.text(`Average: ${s.avgPct.toFixed(1)}%`, 20, currentY + 8);
+        mainDoc.text(`Grade: ${gr.subLevel}`, 70, currentY + 8);
+        mainDoc.text(`Position: ${s.position}/${totalStudents}`, 120, currentY + 8);
+        if (!isPrimary) mainDoc.text(`Points: ${s.totalPoints}`, 160, currentY + 8);
+        mainDoc.text(`Total: ${s.totalPct.toFixed(0)}/${allSubjects.length * 100}`, 20, currentY + 17);
+        if (!isPrimary) mainDoc.text(`${gr.descriptor}`, 70, currentY + 17);
 
         let devText = 'First Term \u2014 No previous data';
         if (deviation !== null) { const arrow = deviation >= 0 ? '\u25B2' : '\u25BC'; const sign = deviation >= 0 ? '+' : ''; devText = `${arrow} ${sign}${deviation.toFixed(1)}% vs previous term`; }
-        doc.setFont('helvetica', 'normal');
-        if (deviation !== null && deviation >= 0) doc.setTextColor(22, 163, 74); else if (deviation !== null && deviation < 0) doc.setTextColor(220, 38, 38); else doc.setTextColor(255, 255, 255);
-        doc.text(devText, 120, currentY + 17); doc.setTextColor(0, 0, 0);
+        mainDoc.setFont('helvetica', 'normal');
+        if (deviation !== null && deviation >= 0) mainDoc.setTextColor(22, 163, 74); else if (deviation !== null && deviation < 0) mainDoc.setTextColor(220, 38, 38); else mainDoc.setTextColor(255, 255, 255);
+        mainDoc.text(devText, 120, currentY + 17); mainDoc.setTextColor(0, 0, 0);
 
         let trendY = currentY + 30;
         const trends = studentTrends[s.studentId] || [];
-        if (trends.length >= 2) { drawTrendGraph(doc, trends, 14, trendY, 182, 45, band); trendY += 50; }
+        if (trends.length >= 2) { drawTrendGraph(mainDoc, trends, 14, trendY, 182, 45, band); trendY += 50; }
 
         const bulkStudentBests = bulkBestPerSubject.filter(b => b.studentId === (s.student?.id || s.studentId));
         if (bulkStudentBests.length > 0) {
-          doc.setFillColor(255, 248, 225); doc.rect(14, trendY, 182, 6 + bulkStudentBests.length * 6, 'F');
-          doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
-          doc.text('ACHIEVEMENT:', 18, trendY + 5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
-          bulkStudentBests.forEach((b, bi) => { const pts = b.points !== null ? ` (${b.points} pts)` : ''; doc.text(`Best in ${b.subjectName}: ${b.percentage}% \u2014 ${b.gradeLabel}${pts}`, 18, trendY + 11 + bi * 6); });
+          mainDoc.setFillColor(255, 248, 225); mainDoc.rect(14, trendY, 182, 6 + bulkStudentBests.length * 6, 'F');
+          mainDoc.setFontSize(8); mainDoc.setFont('helvetica', 'bold'); mainDoc.setTextColor(245, 166, 35);
+          mainDoc.text('ACHIEVEMENT:', 18, trendY + 5); mainDoc.setFont('helvetica', 'normal'); mainDoc.setTextColor(0, 0, 0);
+          bulkStudentBests.forEach((b, bi) => { const pts = b.points !== null ? ` (${b.points} pts)` : ''; mainDoc.text(`Best in ${b.subjectName}: ${b.percentage}% \u2014 ${b.gradeLabel}${pts}`, 18, trendY + 11 + bi * 6); });
           trendY += 6 + bulkStudentBests.length * 6 + 4;
         }
 
         const commentY = trendY + 2;
-        doc.setFillColor(232, 234, 246); doc.rect(14, commentY, 182, 28, 'F');
-        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.text("Class Teacher's Comment:", 18, commentY + 7); doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
-        const commentLines = doc.splitTextToSize(aiComment, 170); doc.text(commentLines, 18, commentY + 14);
+        mainDoc.setFillColor(232, 234, 246); mainDoc.rect(14, commentY, 182, 28, 'F');
+        mainDoc.setFontSize(9); mainDoc.setFont('helvetica', 'bold'); mainDoc.text("Class Teacher's Comment:", 18, commentY + 7); mainDoc.setFont('helvetica', 'italic'); mainDoc.setFontSize(8);
+        const commentLines = mainDoc.splitTextToSize(aiComment, 170); mainDoc.text(commentLines, 18, commentY + 14);
 
         const sigY = commentY + 32;
-        await addSignaturesToPDF(doc, signatures, sigY, schoolInfo);
-        doc.setFontSize(7); doc.setTextColor(150, 150, 150);
-        doc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
-
-        // Add to ZIP as individual PDF using arraybuffer to avoid base64 "Invalid string length" OOM crash
-        const safeName = `${s.student?.first_name || 'Learner'}_${s.student?.last_name || ''}_${s.student?.admission_number || ''}`.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_');
-        const pdfBuffer = doc.output('arraybuffer');
-        zip.file(`${safeName}.pdf`, pdfBuffer);
-
-        // Clear internal jsPDF references to free memory for GC
-        const _d: any = doc;
-        if (_d.internal) _d.internal._data = null;
+        await addSignaturesToPDF(mainDoc, signatures, sigY, schoolInfo);
+        mainDoc.setFontSize(7); mainDoc.setTextColor(150, 150, 150);
+        mainDoc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
 
         // Yield to browser between learners to prevent freeze
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -823,9 +823,8 @@ export default function SchoolAdminResults() {
         }
       }
 
-      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 9 } });
-      const zipName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
-      saveAs(zipBlob, `${zipName}.zip`);
+      const pdfName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
+      mainDoc.save(`${pdfName}.pdf`);
       toast.success(assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);
     } catch (err: any) { toast.error('Failed to generate bulk report cards: ' + err.message); console.error(err); }
     setGeneratingBulk(false);

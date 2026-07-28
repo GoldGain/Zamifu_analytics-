@@ -405,7 +405,19 @@ export async function addStudentPhotoToPDF(
       dataUrl = await compressImage(photoUrl, 200, 0.6);
       imageCache[photoUrl] = dataUrl;
     }
+    
+    // Add a nice border around the student photo
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(1);
+    doc.rect(x - 0.5, y - 0.5, size + 1, size + 1, 'D');
+    
     doc.addImage(dataUrl, 'JPEG', x, y, size, size, undefined, 'FAST');
+    
+    // Add a subtle outer shadow/border
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.1);
+    doc.rect(x - 0.6, y - 0.6, size + 1.2, size + 1.2, 'D');
+    
     return true;
   } catch (err) {
     console.error('Photo add error:', err);
