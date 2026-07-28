@@ -327,6 +327,46 @@ export function drawTrendGraph(
 }
 
 // ── Add Logo to PDF ──────────────────────────────────────────────────────────
+// Helper to compress and convert image to JPEG data URL
+async function compressImage(src: string, maxWidth: number = 400, quality: number = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 10000);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      clearTimeout(timeout);
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      // Resize if too large
+      if (width > maxWidth) {
+        height = (maxWidth / width) * height;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+      // Use white background for JPEG conversion
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Convert to JPEG with compression
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error('Resource load failed'));
+    };
+    img.src = src;
+  });
+}
+
+// Image cache to prevent redundant processing and bloat in bulk generation
+const imageCache: Record<string, string> = {};
+
 export async function addLogoToPDF(
   doc: jsPDF,
   logoUrl: string | null | undefined,
@@ -337,33 +377,12 @@ export async function addLogoToPDF(
 ): Promise<boolean> {
   if (!logoUrl) return false;
   try {
-    const renderToCanvas = async (src: string): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 8000);
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          clearTimeout(timeout);
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/png'));
-        };
-        img.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Resource load failed'));
-        };
-        img.src = src;
-      });
-    };
-
-    let dataUrl = logoUrl;
-    if (!logoUrl.startsWith('data:')) {
-      dataUrl = await renderToCanvas(logoUrl);
+    let dataUrl = imageCache[logoUrl];
+    if (!dataUrl) {
+      dataUrl = await compressImage(logoUrl, 300, 0.7);
+      imageCache[logoUrl] = dataUrl;
     }
-    doc.addImage(dataUrl, 'PNG', x, y, maxWidth, maxHeight);
+    doc.addImage(dataUrl, 'JPEG', x, y, maxWidth, maxHeight, undefined, 'FAST');
     return true;
   } catch (err) {
     console.error('Logo add error:', err);
@@ -381,33 +400,12 @@ export async function addStudentPhotoToPDF(
 ): Promise<boolean> {
   if (!photoUrl) return false;
   try {
-    const renderToCanvas = async (src: string): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 8000);
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          clearTimeout(timeout);
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d')!;
-          ctx.drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/png'));
-        };
-        img.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error('Resource load failed'));
-        };
-        img.src = src;
-      });
-    };
-
-    let dataUrl = photoUrl;
-    if (!photoUrl.startsWith('data:')) {
-      dataUrl = await renderToCanvas(photoUrl);
+    let dataUrl = imageCache[photoUrl];
+    if (!dataUrl) {
+      dataUrl = await compressImage(photoUrl, 200, 0.6);
+      imageCache[photoUrl] = dataUrl;
     }
-    doc.addImage(dataUrl, 'PNG', x, y, size, size);
+    doc.addImage(dataUrl, 'JPEG', x, y, size, size, undefined, 'FAST');
     return true;
   } catch (err) {
     console.error('Photo add error:', err);
@@ -427,7 +425,7 @@ export async function drawReportHeader(doc: jsPDF, school: SchoolInfo) {
 }
 
 // ── Add Signatures to PDF ────────────────────────────────────────────────────
-export function addSignaturesToPDF(
+export async function addSignaturesToPDF(
   doc: jsPDF,
   signatures: SignatureInfo,
   y: number,
@@ -442,7 +440,12 @@ export function addSignaturesToPDF(
     doc.text('DIGITAL SIGNATURES', 14, y);
     if (hasTeacherSig) {
       try {
-        doc.addImage(signatures.teacher_signature_url!, 'PNG', 14, y + 3, 45, 16);
+        let sigUrl = imageCache[signatures.teacher_signature_url!];
+        if (!sigUrl) {
+          sigUrl = await compressImage(signatures.teacher_signature_url!, 200, 0.6);
+          imageCache[signatures.teacher_signature_url!] = sigUrl;
+        }
+        doc.addImage(sigUrl, 'JPEG', 14, y + 3, 45, 16, undefined, 'FAST');
       } catch {
         doc.setDrawColor(150, 150, 155);
         doc.line(14, y + 16, 60, y + 16);
@@ -457,7 +460,12 @@ export function addSignaturesToPDF(
     doc.text('Class Teacher Signature', 14, y + 22);
     if (hasPrincipalSig) {
       try {
-        doc.addImage(signatures.principal_signature_url!, 'PNG', 120, y + 3, 45, 16);
+        let sigUrl = imageCache[signatures.principal_signature_url!];
+        if (!sigUrl) {
+          sigUrl = await compressImage(signatures.principal_signature_url!, 200, 0.6);
+          imageCache[signatures.principal_signature_url!] = sigUrl;
+        }
+        doc.addImage(sigUrl, 'JPEG', 120, y + 3, 45, 16, undefined, 'FAST');
       } catch {
         doc.setDrawColor(150, 150, 155);
         doc.line(120, y + 16, 165, y + 16);

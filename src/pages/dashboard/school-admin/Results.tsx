@@ -801,7 +801,7 @@ export default function SchoolAdminResults() {
         const commentLines = doc.splitTextToSize(aiComment, 170); doc.text(commentLines, 18, commentY + 14);
 
         const sigY = commentY + 32;
-        addSignaturesToPDF(doc, signatures, sigY, schoolInfo);
+        await addSignaturesToPDF(doc, signatures, sigY, schoolInfo);
         doc.setFontSize(7); doc.setTextColor(150, 150, 150);
         doc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
 
@@ -823,7 +823,7 @@ export default function SchoolAdminResults() {
         }
       }
 
-      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 9 } });
       const zipName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
       saveAs(zipBlob, `${zipName}.zip`);
       toast.success(assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);

@@ -325,7 +325,7 @@ export default function StudentReportCard() {
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
       const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
-      addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
+      await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
 
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
