@@ -696,6 +696,7 @@ export default function SchoolAdminResults() {
 
       // Use JSZip to package individual PDFs — avoids "Invalid string length" / OOM crash
       const zip = new JSZip();
+      const BATCH_SIZE = 5;
 
       for (let idx = 0; idx < summaries.length; idx++) {
         const s = summaries[idx];
@@ -804,16 +805,25 @@ export default function SchoolAdminResults() {
         doc.setFontSize(7); doc.setTextColor(150, 150, 150);
         doc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
 
-        // Add to ZIP as individual PDF — keeps memory per-file small
+        // Add to ZIP as individual PDF using arraybuffer to avoid base64 "Invalid string length" OOM crash
         const safeName = `${s.student?.first_name || 'Learner'}_${s.student?.last_name || ''}_${s.student?.admission_number || ''}`.replace(/[^a-zA-Z0-9_]/g, '_').replace(/_+/g, '_');
-        const pdfBlob = doc.output('blob');
-        zip.file(`${safeName}.pdf`, pdfBlob);
+        const pdfBuffer = doc.output('arraybuffer');
+        zip.file(`${safeName}.pdf`, pdfBuffer);
+
+        // Clear internal jsPDF references to free memory for GC
+        const _d: any = doc;
+        if (_d.internal) _d.internal._data = null;
 
         // Yield to browser between learners to prevent freeze
         await new Promise(resolve => setTimeout(resolve, 0));
+
+        // Extra yield every BATCH_SIZE learners
+        if ((idx + 1) % BATCH_SIZE === 0) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
       }
 
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
       const zipName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
       saveAs(zipBlob, `${zipName}.zip`);
       toast.success(assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);
