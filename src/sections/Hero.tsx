@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ArrowRight, Sparkles, Smartphone } from 'lucide-react';
+import { ArrowRight, Sparkles, Smartphone, Compass } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { usePWA } from '@/hooks/usePWA';
 
@@ -35,6 +35,13 @@ function HeroCarousel() {
         alt={img.caption}
         className="absolute inset-0 w-full h-full object-cover"
         style={{ transition: 'opacity 0.4s ease', opacity: fade ? 1 : 0 }}
+        onError={(e) => {
+          const target = e.currentTarget;
+          target.style.display = 'none';
+          if (target.parentElement) {
+            target.parentElement.style.background = 'linear-gradient(135deg, #1A365D 0%, #2D4A7C 50%, #1A365D 100%)';
+          }
+        }}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
       <div className="absolute bottom-4 left-4 right-4">
@@ -123,9 +130,10 @@ export default function Hero() {
 
   return (
     <section className="relative overflow-hidden bg-[#F5F3EF]">
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 py-6 md:py-12">
         <div ref={cardsRef} className="grid grid-cols-1 md:grid-cols-12 gap-4 auto-rows-auto">
-          {/* Main Hero Card - Dark */}
+
+          {/* Main Hero Card - Dark — full width on mobile */}
           <div className="hero-card md:col-span-7 md:row-span-2 bg-[#1A1A1A] rounded-2xl p-6 md:p-8 text-white relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-shadow duration-200">
             <div className="relative z-10">
               <div className="flex items-center gap-2 mb-4">
@@ -152,14 +160,16 @@ export default function Hero() {
                   <span className="text-sm text-gray-300">Real Time Collaboration</span>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3 mb-6">
+
+              {/* Action Buttons — wrap cleanly on mobile */}
+              <div className="flex flex-wrap gap-3 mb-4">
                 <Link to="/register-school" className="inline-flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-[#1d4ed8] transition-colors">
                   Get Started <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Link to="/auth/login" className="inline-flex items-center gap-2 border border-gray-600 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">
                   Login
                 </Link>
-                <a 
+                <a
                   href="https://wa.me/254712644205"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -172,7 +182,17 @@ export default function Hero() {
                 </a>
                 <DownloadAppButton />
               </div>
+
+              {/* Pathway Finder — prominent button */}
+              <Link
+                to="/pathway-finder"
+                className="inline-flex items-center gap-2 bg-[#E6F24B] text-[#1A1A1A] px-5 py-2.5 rounded-full text-sm font-bold hover:bg-yellow-300 transition-colors w-full sm:w-auto justify-center sm:justify-start"
+              >
+                <Compass className="w-4 h-4" />
+                Pathway Finder — Discover Your Career Path
+              </Link>
             </div>
+
             {/* Mini Dashboard Preview */}
             <div className="relative mt-4 bg-[#2A2A2A] rounded-xl p-4 border border-gray-700">
               <div className="flex items-center gap-2 mb-3">
@@ -205,13 +225,13 @@ export default function Hero() {
             </div>
           </div>
 
-          {/* Image Carousel Card */}
-          <div className="hero-card md:col-span-5 rounded-2xl relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200" style={{ minHeight: '200px' }}>
+          {/* Image Carousel Card — full width on mobile, 5 cols on desktop */}
+          <div className="hero-card md:col-span-5 rounded-2xl relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200" style={{ minHeight: '240px' }}>
             <HeroCarousel />
           </div>
 
-          {/* Stats Card */}
-          <div className="hero-card md:col-span-3 bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200">
+          {/* Stats Card — hidden on mobile to reduce clutter */}
+          <div className="hero-card hidden md:block md:col-span-3 bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200">
             <div className="text-xs text-gray-500 mb-1">Performance</div>
             <div className="flex items-baseline gap-2 mb-2">
               <span className="text-2xl font-bold text-[#111111]">32%</span>
@@ -229,8 +249,8 @@ export default function Hero() {
             </div>
           </div>
 
-          {/* Chart Card */}
-          <div className="hero-card md:col-span-5 bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200">
+          {/* Chart Card — hidden on mobile */}
+          <div className="hero-card hidden md:block md:col-span-5 bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-[#111111]">Revenue Growth</span>
               <span className="text-xs text-green-500 font-medium">+24.5%</span>
@@ -238,9 +258,9 @@ export default function Hero() {
             <div className="flex items-end gap-1 h-20">
               {[30, 45, 35, 60, 50, 75, 65, 80, 70, 85, 78, 90].map((h, i) => (
                 <div key={i} className="flex-1 flex flex-col justify-end">
-                  <div 
-                    className="w-full bg-[#2563EB] rounded-t-sm transition-all duration-500" 
-                    style={{ height: `${h}%`, opacity: 0.3 + (i / 20) }} 
+                  <div
+                    className="w-full bg-[#2563EB] rounded-t-sm transition-all duration-500"
+                    style={{ height: `${h}%`, opacity: 0.3 + (i / 20) }}
                   />
                 </div>
               ))}
@@ -252,10 +272,10 @@ export default function Hero() {
             </div>
           </div>
 
-          {/* Big Number Card */}
-          <div className="hero-card md:col-span-4 md:row-span-2 bg-white rounded-2xl p-6 border-4 border-[#1A1A1A] relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-shadow duration-200">
+          {/* Big Number Card — show on mobile as a compact strip */}
+          <div className="hero-card md:col-span-4 md:row-span-2 bg-white rounded-2xl p-5 md:p-6 border-4 border-[#1A1A1A] relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-shadow duration-200">
             <div className="text-center">
-              <div className="text-5xl md:text-6xl font-bold text-[#1A1A1A] mb-2">2,000+</div>
+              <div className="text-4xl md:text-5xl lg:text-6xl font-bold text-[#1A1A1A] mb-2">2,000+</div>
               <p className="text-sm text-gray-500 mb-4">Schools Using Zamifu Analytics</p>
             </div>
             <div className="flex justify-center gap-2 mb-4">
@@ -266,14 +286,14 @@ export default function Hero() {
               ))}
             </div>
             <div className="bg-[#E6F24B]/30 rounded-xl p-4 text-center">
-              <div className="text-3xl font-bold text-[#1A1A1A]">All-in-one</div>
+              <div className="text-2xl md:text-3xl font-bold text-[#1A1A1A]">All-in-one</div>
               <p className="text-xs text-gray-600">School operations, analytics, and communication</p>
             </div>
             <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-[#E6F24B] rounded-full opacity-20" />
           </div>
 
-          {/* Calendar Card */}
-          <div className="hero-card md:col-span-4 bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200">
+          {/* Calendar Card — hidden on mobile */}
+          <div className="hero-card hidden md:block md:col-span-4 bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.2)] transition-shadow duration-200">
             <div className="text-center">
               <div className="text-3xl font-bold text-[#2563EB] font-mono tabular-nums">{formatTime(currentTime)}</div>
               <div className="text-sm text-gray-500 mb-3">{formatDate(currentTime)}</div>
@@ -285,8 +305,8 @@ export default function Hero() {
                   <div key={`empty-${i}`} />
                 ))}
                 {Array.from({ length: daysInMonth }, (_, i) => (
-                  <div 
-                    key={i} 
+                  <div
+                    key={i}
                     className={`py-1 rounded ${i + 1 === today ? 'bg-[#2563EB] text-white font-bold' : 'text-gray-600 hover:bg-gray-100'}`}
                   >
                     {i + 1}
@@ -295,6 +315,7 @@ export default function Hero() {
               </div>
             </div>
           </div>
+
         </div>
       </div>
     </section>

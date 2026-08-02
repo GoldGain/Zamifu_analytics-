@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, GraduationCap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight, Compass, LogIn } from 'lucide-react';
+import { Link } from 'react-router';
 
 interface Slide {
   image: string;
@@ -54,7 +55,10 @@ export default function StudentCarousel() {
   }, [isAutoPlaying, next]);
 
   return (
-    <section className="relative w-full h-[400px] sm:h-[500px] md:h-[600px] overflow-hidden bg-gray-900">
+    <section
+      className="relative w-full overflow-hidden bg-[#0F1729]"
+      style={{ height: '100vh', minHeight: '600px' }}
+    >
       {/* Slides */}
       {slides.map((slide, index) => (
         <div
@@ -67,26 +71,103 @@ export default function StudentCarousel() {
             src={slide.image}
             alt={slide.title}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              const target = e.currentTarget;
+              target.style.display = 'none';
+              if (target.parentElement) {
+                target.parentElement.style.background = 'linear-gradient(135deg, #1A365D 0%, #2D4A7C 50%, #1A365D 100%)';
+              }
+            }}
           />
-          {/* Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
         </div>
       ))}
 
-      {/* Content */}
-      <div className="absolute inset-0 flex items-end">
-        <div className="container mx-auto px-4 pb-16 sm:pb-20">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-[#2563EB]/90 text-white px-4 py-2 rounded-full text-sm font-medium mb-4">
-              <GraduationCap className="w-4 h-4" />
-              Zamifu Analytics
-            </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 transition-all duration-500">
-              {slides[current].title}
-            </h2>
-            <p className="text-gray-300 text-lg sm:text-xl transition-all duration-500">
-              {slides[current].subtitle}
-            </p>
+      {/* Overlays */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/20 to-black/60 z-[1]" />
+      <div className="absolute inset-0 bg-gradient-to-r from-black/35 via-transparent to-black/30 z-[1]" />
+
+      {/* Content — centered like Kimatu */}
+      <div className="relative z-10 flex items-center justify-center h-full px-4">
+        <div className="text-center max-w-3xl mx-auto w-full">
+          {/* Badge */}
+          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 text-white px-4 py-2 rounded-full text-sm font-medium mb-6">
+            <span className="text-[#E6F24B]">✦</span>
+            <span>Kenya&apos;s #1 School Platform</span>
+          </div>
+
+          {/* Title */}
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold text-white mb-3 tracking-tight leading-none drop-shadow-lg">
+            Zamifu Analytics
+          </h1>
+
+          {/* Subtitle */}
+          <p className="text-xl sm:text-2xl md:text-3xl font-bold mb-5 drop-shadow-md text-[#E6F24B]">
+            {slides[current].subtitle}
+          </p>
+
+          <p className="text-base md:text-lg text-white/90 mb-8 max-w-xl mx-auto leading-relaxed drop-shadow-md">
+            School Analytics Simplified. Manage learners, learning areas, assessments, fees, and report cards all in one place.
+          </p>
+
+          {/* Primary action buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+            <Link to="/auth/login">
+              <span
+                className="relative inline-flex items-center gap-3 px-8 py-4 rounded-full text-base font-bold shadow-2xl cursor-pointer"
+                style={{
+                  background: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 50%, #2563EB 100%)',
+                  color: '#ffffff',
+                  boxShadow: '0 0 30px rgba(37, 99, 235, 0.5), 0 10px 40px rgba(0, 0, 0, 0.3)',
+                }}
+              >
+                <LogIn className="w-5 h-5" />
+                Login to Your School
+              </span>
+            </Link>
+            <Link to="/register-school">
+              <span className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border-2 border-white/40 text-white px-7 py-4 rounded-full text-base font-bold hover:bg-white/20 transition-colors cursor-pointer">
+                Get Started <ArrowRight className="w-5 h-5" />
+              </span>
+            </Link>
+          </div>
+
+          {/* Pathway Finder — prominent button */}
+          <div className="flex justify-center mb-8">
+            <Link to="/pathway-finder">
+              <span className="inline-flex items-center gap-2 bg-[#E6F24B] text-[#1A1A1A] px-7 py-3 rounded-full text-sm font-bold hover:bg-yellow-300 transition-colors cursor-pointer shadow-lg">
+                <Compass className="w-4 h-4" />
+                Pathway Finder — Discover Your Career Path
+              </span>
+            </Link>
+          </div>
+
+          {/* Stats */}
+          <div className="flex flex-wrap items-center justify-center gap-6 md:gap-10">
+            {[
+              ['2,000+', 'Schools'],
+              ['500K+', 'Learners'],
+              ['50K+', 'Teachers'],
+              ['98%', 'Satisfaction'],
+            ].map(([v, l]) => (
+              <span key={l} className="text-white text-center drop-shadow-md">
+                <span className="block text-xl md:text-2xl font-bold">{v}</span>
+                <span className="text-xs text-gray-200">{l}</span>
+              </span>
+            ))}
+          </div>
+
+          {/* Slide dots */}
+          <div className="flex justify-center gap-2 mt-8">
+            {slides.map((_, index) => (
+              <button
+                key={index}
+                onClick={() => { setCurrent(index); setIsAutoPlaying(false); }}
+                className={`transition-all duration-300 rounded-full ${
+                  index === current ? 'w-8 h-2 bg-[#E6F24B]' : 'w-2 h-2 bg-white/50 hover:bg-white/80'
+                }`}
+                aria-label={`Go to slide ${index + 1}`}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -94,34 +175,18 @@ export default function StudentCarousel() {
       {/* Navigation Arrows */}
       <button
         onClick={() => { prev(); setIsAutoPlaying(false); }}
-        className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 backdrop-blur-sm hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all border border-white/20"
+        className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 backdrop-blur-sm hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all border border-white/20 z-10"
         aria-label="Previous slide"
       >
-        <ChevronLeft className="w-6 h-6" />
+        <ChevronLeft className="w-5 h-5" />
       </button>
       <button
         onClick={() => { next(); setIsAutoPlaying(false); }}
-        className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 bg-white/10 backdrop-blur-sm hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all border border-white/20"
+        className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/10 backdrop-blur-sm hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-all border border-white/20 z-10"
         aria-label="Next slide"
       >
-        <ChevronRight className="w-6 h-6" />
+        <ChevronRight className="w-5 h-5" />
       </button>
-
-      {/* Dots */}
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2">
-        {slides.map((_, index) => (
-          <button
-            key={index}
-            onClick={() => { setCurrent(index); setIsAutoPlaying(false); }}
-            className={`transition-all rounded-full ${
-              index === current
-                ? 'w-8 h-3 bg-[#2563EB]'
-                : 'w-3 h-3 bg-white/40 hover:bg-white/60'
-            }`}
-            aria-label={`Go to slide ${index + 1}`}
-          />
-        ))}
-      </div>
     </section>
   );
 }

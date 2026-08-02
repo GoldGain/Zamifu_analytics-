@@ -653,7 +653,7 @@ export function drawAchievements(
   doc.text('ACHIEVEMENT:', 18, startY + 4); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
   bestSubjects.forEach((b, bi) => {
     const pts = b.points !== null ? ` (${b.points} pts)` : '';
-    doc.text(`Best in ${b.subjectName}: ${b.percentage}% — ${b.gradeLabel}${pts}`, 18, startY + 9 + bi * 5);
+    doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 18, startY + 9 + bi * 5);
   });
   return startY + 5 + bestSubjects.length * 5 + 5;
 }

@@ -27,7 +27,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center gap-6">
-              <Link to="/pathway-finder" className="text-sm text-[#666666] hover:text-[#111111] transition-colors">Pathway Finder</Link>
+              <Link to="/pathway-finder" className="text-sm font-medium bg-[#E6F24B] text-[#111111] px-3 py-1.5 rounded-full hover:bg-yellow-300 transition-colors">Pathway Finder</Link>
               <a href="#features" className="text-sm text-[#666666] hover:text-[#111111] transition-colors">Features</a>
               <a href="#testimonials" className="text-sm text-[#666666] hover:text-[#111111] transition-colors">Testimonials</a>
               <a href="#faq" className="text-sm text-[#666666] hover:text-[#111111] transition-colors">FAQ</a>
@@ -70,7 +70,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           {mobileMenuOpen && (
             <div className="md:hidden py-4 border-t border-[#E5E5E5]">
               <div className="flex flex-col gap-3">
-                <Link to="/pathway-finder" className="text-sm text-[#666666] py-2" onClick={() => setMobileMenuOpen(false)}>Pathway Finder</Link>
+                <Link to="/pathway-finder" className="text-sm font-bold bg-[#E6F24B] text-[#111111] px-4 py-2.5 rounded-full text-center" onClick={() => setMobileMenuOpen(false)}>✦ Pathway Finder</Link>
                 <a href="#features" className="text-sm text-[#666666] py-2" onClick={() => setMobileMenuOpen(false)}>Features</a>
                 <a href="#testimonials" className="text-sm text-[#666666] py-2" onClick={() => setMobileMenuOpen(false)}>Testimonials</a>
                 <a href="#faq" className="text-sm text-[#666666] py-2" onClick={() => setMobileMenuOpen(false)}>FAQ</a>

@@ -296,8 +296,8 @@ export const SMS_TEMPLATES = {
     'Zamifu Analytics: Your password has been reset successfully. If you did not make this change, contact support.',
 
   resultsToParent: (studentName: string, className: string, subjects: Array<{ name: string; marks: number; grade: string }>, totalPoints: number, totalPossible: number, rank: number, totalStudents: number, comment: string) => {
-    const subjectLines = subjects.slice(0, 5).map(s => `${s.name}: ${s.marks}% - ${s.grade}`).join('\n');
-    return `Zamifu Analytics\n\nResults for ${studentName} - ${className}\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nTotal Points: ${totalPoints}/${totalPossible}\nClass Rank: ${rank}/${totalStudents}\n\nView Full Results:\nhttps://zamifu.company`;
+    const subjectLines = subjects.map(s => `${s.name}: ${s.marks}% - ${s.grade}`).join('\n');
+    return `Zamifu Analytics\n\nResults for ${studentName} -\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nTotal Points: ${totalPoints}/${totalPossible}\nClass Rank: ${rank}/${totalStudents}\n\nView Full Results:\nhttps://zamifu.company`;
   },
 
   announcement: (schoolName: string, message: string) =>
