@@ -136,30 +136,7 @@ export default function Hero() {
           {/* Main Hero Card - Dark — full width on mobile */}
           <div className="hero-card md:col-span-7 md:row-span-2 bg-[#1A1A1A] rounded-2xl p-6 md:p-8 text-white relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-shadow duration-200">
             <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="w-5 h-5 text-[#E6F24B]" />
-                <span className="text-sm text-gray-400">Kenya&apos;s #1 School Platform</span>
-              </div>
-              <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-2">
-                An Intelligent School
-              </h1>
-              <h1 className="text-3xl md:text-5xl font-bold tracking-tight mb-6 text-[#E6F24B]">
-                Management System
-              </h1>
-              <div className="space-y-3 mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-sm text-gray-300">Smart System and Workflow</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" style={{ animationDelay: '0.3s' }} />
-                  <span className="text-sm text-gray-300">Flexible System and Workflow</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse" style={{ animationDelay: '0.6s' }} />
-                  <span className="text-sm text-gray-300">Real Time Collaboration</span>
-                </div>
-              </div>
+              {/* Action Buttons */}
 
               {/* Action Buttons — wrap cleanly on mobile */}
               <div className="flex flex-wrap gap-3 mb-4">
