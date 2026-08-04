@@ -297,7 +297,32 @@ export const SMS_TEMPLATES = {
 
   resultsToParent: (studentName: string, className: string, subjects: Array<{ name: string; marks: number; grade: string }>, totalPoints: number, totalPossible: number, rank: number, totalStudents: number, comment: string) => {
     const subjectLines = subjects.map(s => `${s.name}: ${s.marks}% - ${s.grade}`).join('\n');
-    return `Zamifu Analytics\n\nResults for ${studentName} -\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nTotal Points: ${totalPoints}/${totalPossible}\nClass Rank: ${rank}/${totalStudents}\n\nView Full Results:\nhttps://zamifu.company`;
+    // Calculate average grade - find the most common grade across all subjects
+    const gradeMap: Record<string, { grade: string; desc: string; count: number }> = {
+      'EE': { grade: 'EE', desc: 'Exceeding Expectation', count: 0 },
+      'ME': { grade: 'ME', desc: 'Meeting Expectation', count: 0 },
+      'AE': { grade: 'AE', desc: 'Approaching Expectation', count: 0 },
+      'BE': { grade: 'BE', desc: 'Below Expectation', count: 0 },
+    };
+    subjects.forEach(s => {
+      const g = (s.grade || '').substring(0, 2).toUpperCase();
+      if (gradeMap[g]) gradeMap[g].count++;
+    });
+    const gradesByCount = Object.values(gradeMap).filter(g => g.count > 0).sort((a, b) => b.count - a.count);
+    let avgGrade = '';
+    if (gradesByCount.length > 0) {
+      const mostFrequent = gradesByCount[0];
+      // Check for tie - use higher grade (EE > ME > AE > BE)
+      const gradeOrder = ['BE', 'AE', 'ME', 'EE'];
+      let best = mostFrequent;
+      for (const g of gradesByCount) {
+        if (g.count === mostFrequent.count && gradeOrder.indexOf(g.grade) > gradeOrder.indexOf(best.grade)) {
+          best = g;
+        }
+      }
+      avgGrade = `Average Grade: ${best.grade} (${best.desc})`;
+    }
+    return `Zamifu Analytics\n\nResults for ${studentName} -\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nTotal Points: ${totalPoints}/${totalPossible}\nClass Rank: ${rank}/${totalStudents}\n${avgGrade}\n\nView Full Results:\nhttps://zamifu.company`;
   },
 
   announcement: (schoolName: string, message: string) =>
