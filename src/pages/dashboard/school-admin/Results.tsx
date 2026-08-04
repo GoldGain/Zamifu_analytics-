@@ -223,7 +223,7 @@ export default function SchoolAdminResults() {
                 return {
                   name: r.subjects?.name || 'Unknown',
                   marks: pct,
-                  grade: gradeInfo.subLevel || gradeInfo.grade || '',
+                  grade: gradeInfo.grade || '',
                 };
               });
               // Compute totals and rank
@@ -411,13 +411,20 @@ export default function SchoolAdminResults() {
 
         const classGrade = overallGradeWithBand(classMean, band);
         const statsY = 42;
-        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 35, 'F');
+        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 50, 'F');
         doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
-        doc.text(`Class Average: ${classMean.toFixed(1)}%`, 75, statsY + 8);
+        // Build subject average marks line
+        const subjectAvgLine = subjectStats.map(s => `${shortName(s.name)}: ${s.mean.toFixed(1)}%`).join(' | ');
+        doc.text(`Subject Average Marks:`, 75, statsY + 8);
+        doc.text(subjectAvgLine, 20, statsY + 14);
+        // Class Average Marks = sum of all student totals / number of students
+        const totalMarksAllLearners = summaries.reduce((sum, s) => sum + s.totalPct, 0);
+        const classAvgMarks = totalStudents > 0 ? totalMarksAllLearners / totalStudents : 0;
+        doc.text(`Class Average Marks: ${classAvgMarks.toFixed(1)} / ${allSubjects.length * 100}`, 75, statsY + 20);
         doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} points)` : ''}`, 130, statsY + 8);
-        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 20, statsY + 18);
-        doc.text(`Learning Areas: ${allSubjects.length}`, 130, statsY + 18);
+        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 20, statsY + 28);
+        doc.text(`Learning Areas: ${allSubjects.length}`, 130, statsY + 20);
         
         const boys = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('m')).length;
         const girls = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('f')).length;
@@ -428,7 +435,7 @@ export default function SchoolAdminResults() {
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         }
 
-        const gradeDistY = statsY + 42;
+        const gradeDistY = statsY + 57;
         doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
         doc.text('PERFORMANCE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
 
