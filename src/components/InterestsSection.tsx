@@ -18,6 +18,7 @@ interface InterestCategory {
   icon: React.ReactNode;
   color: string;
   bgColor: string;
+  tracks: string[];
   interests: { name: string; icon: React.ReactNode }[];
 }
 
@@ -27,6 +28,7 @@ const categories: InterestCategory[] = [
     icon: <Cpu className="w-6 h-6" />,
     color: 'text-indigo-600',
     bgColor: 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200',
+    tracks: ['Pure Sciences', 'Applied Sciences', 'Technical Studies', 'Career & Technology Studies'],
     interests: [
       { name: 'Scientific Inquiry', icon: <FlaskConical className="w-4 h-4" /> },
       { name: 'Technology Enthusiasm', icon: <Monitor className="w-4 h-4" /> },
@@ -48,6 +50,7 @@ const categories: InterestCategory[] = [
     icon: <Briefcase className="w-6 h-6" />,
     color: 'text-emerald-600',
     bgColor: 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200',
+    tracks: ['Humanities & Business Studies', 'Languages & Literature'],
     interests: [
       { name: 'Analyzing Human Behavior', icon: <Users className="w-4 h-4" /> },
       { name: 'Solving Social Issues', icon: <Heart className="w-4 h-4" /> },
@@ -74,6 +77,7 @@ const categories: InterestCategory[] = [
     icon: <Palette className="w-6 h-6" />,
     color: 'text-pink-600',
     bgColor: 'bg-pink-50 hover:bg-pink-100 border-pink-200',
+    tracks: ['Arts', 'Sports Science'],
     interests: [
       { name: 'Athletic Performance', icon: <Volleyball className="w-4 h-4" /> },
       { name: 'Human Anatomy', icon: <Heart className="w-4 h-4" /> },
@@ -141,6 +145,14 @@ export default function InterestsSection() {
                 </button>
                 {isExpanded && (
                   <div className="px-5 pb-5">
+                    <div className="mb-4 rounded-xl border border-white bg-white/60 p-3">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Official CBC Tracks</p>
+                      <div className="flex flex-wrap gap-2">
+                        {category.tracks.map((track) => (
+                          <span key={track} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm">{track}</span>
+                        ))}
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                       {category.interests.map((interest) => (
                         <div
