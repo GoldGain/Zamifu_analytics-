@@ -46,6 +46,12 @@ export const PATHWAY_ORDER = [
   'Arts and Sports Science',
 ] as const;
 
+export const CBC_PATHWAY_TRACKS: Record<(typeof PATHWAY_ORDER)[number], string[]> = {
+  STEM: ['Pure Sciences', 'Applied Sciences', 'Technical Studies', 'Career & Technology Studies'],
+  'Social Sciences': ['Humanities & Business Studies', 'Languages & Literature'],
+  'Arts and Sports Science': ['Arts', 'Sports Science'],
+};
+
 interface InterestOption {
   id: string;
   label: string;
@@ -193,6 +199,17 @@ const careerPaths: CareerPath[] = [
     requiredGrade: 'EE2',
   },
   {
+    id: 'stem_career_technology',
+    title: 'STEM — Career & Technology Studies',
+    displayPathway: 'STEM',
+    displayTrack: 'Career & Technology Studies',
+    description: 'Career-focused technology, digital innovation, entrepreneurship and applied problem-solving.',
+    pathway: 'STEM',
+    requirements: ['Mathematics', 'Pre-Technical Studies', 'Integrated Science', 'English'],
+    interests: ['technology_enthusiasm', 'programming_coding', 'robotics_automation', 'media_tech', 'data_science_ai'],
+    requiredGrade: 'EE2',
+  },
+  {
     id: 'social_humanities',
     title: 'Social Sciences — Humanities & Business',
     displayPathway: 'Social Sciences',
@@ -226,85 +243,14 @@ const careerPaths: CareerPath[] = [
     requiredGrade: 'EE2',
   },
   {
-    id: 'arts_performing',
-    title: 'Arts and Sports Science — Performing Arts',
+    id: 'arts_arts',
+    title: 'Arts and Sports Science — Arts',
     displayPathway: 'Arts and Sports Science',
-    displayTrack: 'Performing Arts',
-    description: 'Music, dance, theatre, film and media production.',
+    displayTrack: 'Arts',
+    description: 'Performing arts, visual arts, design, music, dance, theatre and creative media.',
     pathway: 'Arts and Sports Science',
     requirements: ['Creative Arts and Sports', 'English', 'Kiswahili'],
-    interests: ['stage_expression', 'creative_writing', 'media_consumption', 'public_speaking', 'music', 'dance'],
-    requiredGrade: 'EE2',
-  },
-  {
-    id: 'arts_visual',
-    title: 'Arts and Sports Science — Visual Arts',
-    displayPathway: 'Arts and Sports Science',
-    displayTrack: 'Visual Arts',
-    description: 'Fine arts, design, fashion, digital media and photography.',
-    pathway: 'Arts and Sports Science',
-    requirements: ['Creative Arts and Sports', 'English', 'Pre-Technical Studies'],
-    interests: ['visual_creation', 'digital_design', 'fine_arts'],
-    requiredGrade: 'EE2',
-  },
-  // Research interests merged into STEM and Arts & Sports
-  {
-    id: 'stem_research',
-    title: 'STEM — Research & Data Science',
-    displayPathway: 'STEM',
-    displayTrack: 'Research & Data Science',
-    description: 'Research, data analysis, AI and scientific inquiry within the STEM pathway.',
-    pathway: 'STEM',
-    requirements: ['Mathematics', 'Integrated Science', 'English', 'Pre-Technical Studies'],
-    interests: ['research', 'data_analysis', 'scientific_inquiry', 'data_science_ai'],
-    requiredGrade: 'EE2',
-  },
-  // Arts & Sports innovation
-  {
-    id: 'arts_innovation',
-    title: 'Arts and Sports Science — Innovation & Media',
-    displayPathway: 'Arts and Sports Science',
-    displayTrack: 'Innovation & Media',
-    description: 'Innovation, creative media, digital design and invention within the Arts & Sports pathway.',
-    pathway: 'Arts and Sports Science',
-    requirements: ['Creative Arts and Sports', 'Integrated Science', 'Pre-Technical Studies', 'English'],
-    interests: ['innovation', 'visual_creation', 'digital_design', 'media_consumption', 'fine_arts'],
-    requiredGrade: 'EE2',
-  },
-  // Special Education merged into STEM
-  {
-    id: 'stem_special_ed',
-    title: 'STEM — Special Education & Science',
-    displayPathway: 'STEM',
-    displayTrack: 'Special Education & Science',
-    description: 'Special needs education with a focus on science and technology within the STEM pathway.',
-    pathway: 'STEM',
-    requirements: ['Integrated Science', 'English', 'Social Studies'],
-    interests: ['special_ed'],
-    requiredGrade: 'EE2',
-  },
-  // Teaching & EdTech in Social Sciences
-  {
-    id: 'social_teaching',
-    title: 'Social Sciences — Teaching & EdTech',
-    displayPathway: 'Social Sciences',
-    displayTrack: 'Teaching & EdTech',
-    description: 'Teaching, educational technology and pedagogy within the Social Sciences pathway.',
-    pathway: 'Social Sciences',
-    requirements: ['English', 'Kiswahili', 'Social Studies', 'Religious Education'],
-    interests: ['teaching', 'edtech', 'public_speaking'],
-    requiredGrade: 'EE2',
-  },
-  // Teaching in Arts & Sports
-  {
-    id: 'arts_teaching',
-    title: 'Arts and Sports Science — Teaching & Coaching',
-    displayPathway: 'Arts and Sports Science',
-    displayTrack: 'Teaching & Coaching',
-    description: 'Physical education teaching, sports coaching and arts instruction within the Arts & Sports pathway.',
-    pathway: 'Arts and Sports Science',
-    requirements: ['Creative Arts and Sports', 'English', 'Kiswahili'],
-    interests: ['teaching', 'pe', 'music', 'dance'],
+    interests: ['stage_expression', 'creative_writing', 'media_consumption', 'public_speaking', 'music', 'dance', 'visual_creation', 'digital_design', 'fine_arts'],
     requiredGrade: 'EE2',
   },
 ];
@@ -783,6 +729,18 @@ export default function PathwayFinder() {
               <p className="text-gray-400 text-sm">
                 Based on your interests, explore STEM, Social Sciences, and Arts and Sports Science.
               </p>
+            </div>
+
+            <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+              {PATHWAY_ORDER.map((pathway) => (
+                <div key={pathway} className="rounded-xl border border-gray-700 bg-gray-800/40 p-4 text-left">
+                  <h4 className="font-semibold text-white">{pathway}</h4>
+                  <p className="mt-1 text-xs text-gray-400">Available Tracks</p>
+                  <ul className="mt-2 space-y-1.5 text-sm text-emerald-200">
+                    {CBC_PATHWAY_TRACKS[pathway].map((track) => <li key={track}>• {track}</li>)}
+                  </ul>
+                </div>
+              ))}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">

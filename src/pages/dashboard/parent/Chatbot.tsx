@@ -41,8 +41,8 @@ export default function ParentChatbot() {
   useEffect(() => {
     fetchChildData();
     const greeting = lang === 'en'
-      ? `Hello! I'm your Zamifu Analytics AI Assistant. I can help you with:\n• Fee balance inquiries\n• Viewing your child's results\n• Downloading report cards\n• Booking teacher meetings\n• Exam schedules\n• Class timetables\n\nHow can I help you today?`
-      : `Habari! Mimi ni Msaidizi wa Zamifu Analytics. Naweza kukusaidia na:\n• Maswali ya ada\n• Kuona matokeo ya mtoto wako\n• Kupakua kadi ya ripoti\n• Kuweka mkutano na mwalimu\n• Ratiba za mitihani\n• Ratiba za darasa\n\nNinawezaje kukusaidia leo?`;
+      ? `Hello! I'm your Zamifu Analytics AI Assistant. I can help you with:\n• Fee balance inquiries\n• Viewing your child's results\n• Downloading report cards\n• Booking teacher meetings\n• Exam schedules\n• Homework\n\nHow can I help you today?`
+      : `Habari! Mimi ni Msaidizi wa Zamifu Analytics. Naweza kukusaidia na:\n• Maswali ya ada\n• Kuona matokeo ya mtoto wako\n• Kupakua kadi ya ripoti\n• Kuweka mkutano na mwalimu\n• Ratiba za mitihani\n• Kazi ya nyumbani\n\nNinawezaje kukusaidia leo?`;
     setMessages([{ id: '1', role: 'assistant', content: greeting, timestamp: new Date() }]);
   }, [lang]);
 
@@ -149,26 +149,6 @@ export default function ParentChatbot() {
       );
     }
 
-    // Timetable
-    if (q.includes('timetable') || q.includes('schedule') || q.includes('ratiba') || q.includes('darasa')) {
-      if (child?.class_id) {
-        const { data: timetable } = await supabaseUntyped
-          .from('timetable')
-          .select('*, subjects(name)')
-          .eq('class_id', child.class_id)
-          .order('day_of_week')
-          .limit(10);
-        if (timetable && timetable.length > 0) {
-          const ttList = timetable.map((t: any) => `  • ${t.day_of_week}: ${t.subjects?.name} (${t.start_time}-${t.end_time})`).join('\n');
-          return t(`📚 **${childName}'s Timetable:**\n\n${ttList}`, `📚 **Ratiba ya ${childName}:**\n\n${ttList}`);
-        }
-      }
-      return t(
-        'Timetable not available yet. Please contact the school.',
-        'Ratiba haipatikani bado. Tafadhali wasiliana na shule.'
-      );
-    }
-
     // Homework
     if (q.includes('homework') || q.includes('assignment') || q.includes('kazi') || q.includes('nyumbani') || q.includes('imebaki')) {
       if (child?.class_id) {
@@ -197,8 +177,8 @@ export default function ParentChatbot() {
 
     // Default response
     return t(
-      `I can help you with:\n\n• **Fee balance** - Ask "What is my child's fee balance?"\n• **Results** - Ask "Show my child's results"\n• **Report card** - Ask "Download report card"\n• **Absence** - Ask "My child was absent today"\n• **Meeting** - Ask "Book meeting with teacher"\n• **Exams** - Ask "When is next exam?"\n• **Timetable** - Ask "Show timetable"\n\n📧 Support: tutorsultimate@gmail.com`,
-      `Ninaweza kukusaidia na:\n\n• **Salio la ada** - Uliza "Salio la ada ya mtoto wangu ni ngapi?"\n• **Matokeo** - Uliza "Nionyeshe matokeo"\n• **Kadi ya ripoti** - Uliza "Pakua kadi ya ripoti"\n• **Kutokuwepo** - Uliza "Mtoto wangu hakuwepo leo"\n• **Mkutano** - Uliza "Weka mkutano na mwalimu"\n• **Mitihani** - Uliza "Mtihani ujao ni lini?"\n• **Ratiba** - Uliza "Nionyeshe ratiba"\n\n📧 Msaada: tutorsultimate@gmail.com`
+      `I can help you with:\n\n• **Fee balance** - Ask "What is my child's fee balance?"\n• **Results** - Ask "Show my child's results"\n• **Report card** - Ask "Download report card"\n• **Absence** - Ask "My child was absent today"\n• **Meeting** - Ask "Book meeting with teacher"\n• **Exams** - Ask "When is next exam?"\n• **Homework** - Ask "Show my child's homework"\n\n📧 Support: tutorsultimate@gmail.com`,
+      `Ninaweza kukusaidia na:\n\n• **Salio la ada** - Uliza "Salio la ada ya mtoto wangu ni ngapi?"\n• **Matokeo** - Uliza "Nionyeshe matokeo"\n• **Kadi ya ripoti** - Uliza "Pakua kadi ya ripoti"\n• **Kutokuwepo** - Uliza "Mtoto wangu hakuwepo leo"\n• **Mkutano** - Uliza "Weka mkutano na mwalimu"\n• **Mitihani** - Uliza "Mtihani ujao ni lini?"\n• **Kazi ya nyumbani** - Uliza "Nionyeshe kazi ya nyumbani"\n\n📧 Msaada: tutorsultimate@gmail.com`
     );
   };
 
@@ -309,7 +289,7 @@ export default function ParentChatbot() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={lang === 'en' ? "Ask about fees, results, timetable..." : "Uliza kuhusu ada, matokeo, ratiba..."}
+              placeholder={lang === 'en' ? "Ask about fees, results, homework..." : "Uliza kuhusu ada, matokeo, kazi ya nyumbani..."}
               className="w-full bg-gray-50 border-none rounded-xl py-3 pl-4 pr-12 text-sm focus:ring-2 focus:ring-blue-500 transition-all"
             />
             <button

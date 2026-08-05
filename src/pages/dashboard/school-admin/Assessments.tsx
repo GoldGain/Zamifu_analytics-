@@ -4,6 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Trash2, Edit2, CheckCircle, XCircle, Calendar, BookOpen, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+type AssessmentTargetType = 'school' | 'grade' | 'class';
+
 interface Exam {
   id: string;
   name: string;
@@ -14,6 +16,9 @@ interface Exam {
   weightage: number | null;
   is_active: boolean;
   created_at: string;
+  target_type?: AssessmentTargetType | null;
+  target_class_id?: string | null;
+  target_grade_level?: number | null;
   terms?: { name: string } | null;
 }
 
@@ -21,6 +26,26 @@ interface Term {
   id: string;
   name: string;
   academic_year: string;
+}
+
+interface ClassOption {
+  id: string;
+  name: string;
+  stream?: string | null;
+  grade_level?: number | null;
+  level?: number | null;
+}
+
+interface AssessmentForm {
+  name: string;
+  type: string;
+  term_id: string;
+  start_date: string;
+  end_date: string;
+  weightage: string;
+  target_type: AssessmentTargetType;
+  target_class_id: string;
+  target_grade_level: string;
 }
 
 const EXAM_TYPES = [
@@ -40,19 +65,23 @@ const EXAM_TYPES = [
   'Custom',
 ];
 
-const defaultForm = {
+const defaultForm: AssessmentForm = {
   name: '',
   type: 'Custom',
   term_id: '',
   start_date: '',
   end_date: '',
   weightage: '',
+  target_type: 'school',
+  target_class_id: '',
+  target_grade_level: '',
 };
 
 export default function Assessments() {
   const { user } = useAuth();
   const [exams, setExams] = useState<Exam[]>([]);
   const [terms, setTerms] = useState<Term[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
@@ -69,12 +98,22 @@ export default function Assessments() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: termsData } = await (supabase as any)
-        .from('terms')
-        .select('id, name, academic_year')
-        .eq('school_id', user?.schoolId)
-        .order('academic_year', { ascending: false });
+      const [{ data: termsData }, { data: classesData }] = await Promise.all([
+        (supabase as any)
+          .from('terms')
+          .select('id, name, academic_year')
+          .eq('school_id', user?.schoolId)
+          .order('academic_year', { ascending: false }),
+        (supabase as any)
+          .from('classes')
+          .select('id, name, stream, grade_level, level')
+          .eq('school_id', user?.schoolId)
+          .eq('is_active', true)
+          .order('grade_level', { ascending: true })
+          .order('level', { ascending: true }),
+      ]);
       setTerms(termsData || []);
+      setClasses(classesData || []);
 
       // Prefer embedded term name; fall back if PostgREST relationship is missing
       let examsData: any[] | null = null;
@@ -122,6 +161,9 @@ export default function Assessments() {
       start_date: exam.start_date || '',
       end_date: exam.end_date || '',
       weightage: exam.weightage != null ? String(exam.weightage) : '',
+      target_type: exam.target_type || 'school',
+      target_class_id: exam.target_class_id || '',
+      target_grade_level: exam.target_grade_level != null ? String(exam.target_grade_level) : '',
     });
     setShowModal(true);
   };
@@ -129,6 +171,14 @@ export default function Assessments() {
   const handleSave = async () => {
     if (!form.name.trim()) {
       toast.error('Assessment name is required');
+      return;
+    }
+    if (form.target_type === 'class' && !form.target_class_id) {
+      toast.error('Select the specific class for this assessment');
+      return;
+    }
+    if (form.target_type === 'grade' && !form.target_grade_level) {
+      toast.error('Select the grade for this assessment');
       return;
     }
     setSaving(true);
@@ -141,6 +191,9 @@ export default function Assessments() {
         start_date: form.start_date || null,
         end_date: form.end_date || null,
         weightage: form.weightage ? parseFloat(form.weightage) : null,
+        target_type: form.target_type,
+        target_class_id: form.target_type === 'class' ? form.target_class_id : null,
+        target_grade_level: form.target_type === 'grade' ? parseInt(form.target_grade_level, 10) : null,
         is_active: true,
         created_by: user?.id,
       };
@@ -211,13 +264,27 @@ export default function Assessments() {
     }
   };
 
+  const gradeOptions = Array.from(
+    new Set(classes.map((classItem) => classItem.grade_level ?? classItem.level).filter((level): level is number => typeof level === 'number'))
+  ).sort((a, b) => a - b);
+
+  const getTargetLabel = (exam: Exam) => {
+    const targetType = exam.target_type || 'school';
+    if (targetType === 'class') {
+      const targetClass = classes.find((classItem) => classItem.id === exam.target_class_id);
+      return targetClass ? `Class: ${targetClass.name}${targetClass.stream ? ` (${targetClass.stream})` : ''}` : 'Specific Class';
+    }
+    if (targetType === 'grade') return `Grade ${exam.target_grade_level}`;
+    return 'Whole School';
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Assessments</h1>
-          <p className="text-sm text-gray-500 mt-1">Create and manage any assessment with any name</p>
+          <p className="text-sm text-gray-500 mt-1">Create and manage assessments for a specific class, grade, or the whole school</p>
         </div>
         <button
           onClick={openCreate}
@@ -271,6 +338,7 @@ export default function Assessments() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-semibold text-gray-900 truncate">{exam.name}</h3>
                     <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{exam.type}</span>
+                    <span className="text-xs px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full">{getTargetLabel(exam)}</span>
                     {exam.is_active ? (
                       <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Active</span>
                     ) : (
@@ -386,6 +454,64 @@ export default function Assessments() {
                     <option key={t.id} value={t.id}>{t.name} ({t.academic_year})</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Assessment scope */}
+              <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Create Assessment For</label>
+                  <select
+                    value={form.target_type}
+                    onChange={(e) => setForm({
+                      ...form,
+                      target_type: e.target.value as AssessmentTargetType,
+                      target_class_id: e.target.value === 'class' ? form.target_class_id : '',
+                      target_grade_level: e.target.value === 'grade' ? form.target_grade_level : '',
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    <option value="school">Whole School — all classes</option>
+                    <option value="grade">Specific Grade — every class in one grade</option>
+                    <option value="class">Specific Class — one class only</option>
+                  </select>
+                </div>
+                {form.target_type === 'class' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Class <span className="text-red-500">*</span></label>
+                    <select
+                      value={form.target_class_id}
+                      onChange={(e) => setForm({ ...form, target_class_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">Select Class</option>
+                      {classes.map((classItem) => (
+                        <option key={classItem.id} value={classItem.id}>
+                          {classItem.name}{classItem.stream ? ` (${classItem.stream})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {form.target_type === 'grade' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Grade <span className="text-red-500">*</span></label>
+                    <select
+                      value={form.target_grade_level}
+                      onChange={(e) => setForm({ ...form, target_grade_level: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">Select Grade</option>
+                      {gradeOptions.map((grade) => <option key={grade} value={grade}>Grade {grade}</option>)}
+                    </select>
+                  </div>
+                )}
+                <p className="text-xs text-blue-700">
+                  {form.target_type === 'school'
+                    ? 'All teachers can select this assessment when entering results.'
+                    : form.target_type === 'grade'
+                      ? 'Only teachers entering results for the selected grade can select this assessment.'
+                      : 'Only teachers entering results for the selected class can select this assessment.'}
+                </p>
               </div>
 
               {/* Dates */}

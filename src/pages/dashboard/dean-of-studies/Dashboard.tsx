@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { Link } from 'react-router';
 import {
   GraduationCap, BarChart3, BookOpen, Users, CheckCircle, XCircle,
   Loader2, AlertCircle, Plus, ChevronDown, ChevronUp, Calendar, Trash2, Edit2
@@ -260,18 +261,26 @@ export default function DeanOfStudiesDashboard() {
             {classes.length} classes · {classes.reduce((sum, c) => sum + (c.student_count || 0), 0)} learners
           </p>
         </div>
-        <select
-          value={selectedTerm}
-          onChange={(e) => setSelectedTerm(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Select Term</option>
-          {terms.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name} ({t.academic_year}){t.is_current ? ' ✓' : ''}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/teacher/timetable"
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+          >
+            <Calendar className="w-4 h-4" /> My Personal Timetable
+          </Link>
+          <select
+            value={selectedTerm}
+            onChange={(e) => setSelectedTerm(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select Term</option>
+            {terms.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.academic_year}){t.is_current ? ' ✓' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Stats */}

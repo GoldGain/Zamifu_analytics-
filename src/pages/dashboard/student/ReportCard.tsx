@@ -319,8 +319,7 @@ export default function StudentReportCard() {
       const devEndY = drawDeviation(doc, deviation, previousAvg, summaryEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2) {
-        drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band, is);
-        trendEndY = devEndY + 55;
+        trendEndY = drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band);
       }
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);

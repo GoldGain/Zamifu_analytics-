@@ -1,6 +1,8 @@
 // ─── SMS API Integration ─────────────────────────────────────────────────────
 // Supports Olympus SMS (default, no config needed) and Africa's Talking (per-school)
 
+import { calculate844Grade, calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
+
 const OLYMPUS_API_URL = 'https://sms.ots.co.ke/api/v3/sms/send';
 const OLYMPUS_API_TOKEN = '3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbfef70cf';
 const OLYMPUS_SENDER_ID = 'PROCALL';
@@ -24,6 +26,33 @@ export interface SMSConfig {
   apiKey?: string;
   username?: string;
   senderId?: string;
+}
+
+export interface ResultsSmsClassData {
+  curriculum?: string | null;
+  grade_level?: number | string | null;
+  level?: number | string | null;
+  name?: string | null;
+}
+
+function getLearnerLevelLabel(classData?: ResultsSmsClassData, fallbackClassName = ''): string {
+  const className = String(classData?.name || fallbackClassName || '').trim();
+  const normalizedName = className.toLowerCase();
+
+  if (/\bpp\s*1\b|pre[-\s]?primary\s*1/.test(normalizedName)) return 'PP1';
+  if (/\bpp\s*2\b|pre[-\s]?primary\s*2/.test(normalizedName)) return 'PP2';
+
+  const rawLevel = classData?.grade_level ?? classData?.level;
+  const parsedLevel = typeof rawLevel === 'number'
+    ? rawLevel
+    : parseInt(String(rawLevel ?? '').replace(/[^0-9]/g, ''), 10);
+  if (Number.isFinite(parsedLevel) && parsedLevel >= 1 && parsedLevel <= 12) {
+    return `Grade ${parsedLevel}`;
+  }
+
+  const gradeMatch = className.match(/grade\s*(\d{1,2})/i);
+  if (gradeMatch) return `Grade ${gradeMatch[1]}`;
+  return className || 'Class';
 }
 
 function normalizePhone(phone: string): string {
@@ -295,34 +324,35 @@ export const SMS_TEMPLATES = {
   passwordResetSuccess: () =>
     'Zamifu Analytics: Your password has been reset successfully. If you did not make this change, contact support.',
 
-  resultsToParent: (studentName: string, className: string, subjects: Array<{ name: string; marks: number; grade: string }>, totalPoints: number, totalPossible: number, rank: number, totalStudents: number, comment: string) => {
+  resultsToParent: (
+    studentName: string,
+    className: string,
+    subjects: Array<{ name: string; marks: number; grade: string }>,
+    totalPoints: number,
+    totalPossible: number,
+    rank: number,
+    totalStudents: number,
+    comment: string,
+    classData?: ResultsSmsClassData,
+  ) => {
     const subjectLines = subjects.map(s => `${s.name}: ${s.marks}% - ${s.grade}`).join('\n');
-    // Calculate average grade - find the most common grade across all subjects
-    const gradeMap: Record<string, { grade: string; desc: string; count: number }> = {
-      'EE': { grade: 'EE', desc: 'Exceeding Expectation', count: 0 },
-      'ME': { grade: 'ME', desc: 'Meeting Expectation', count: 0 },
-      'AE': { grade: 'AE', desc: 'Approaching Expectation', count: 0 },
-      'BE': { grade: 'BE', desc: 'Below Expectation', count: 0 },
-    };
-    subjects.forEach(s => {
-      const g = (s.grade || '').substring(0, 2).toUpperCase();
-      if (gradeMap[g]) gradeMap[g].count++;
-    });
-    const gradesByCount = Object.values(gradeMap).filter(g => g.count > 0).sort((a, b) => b.count - a.count);
-    let avgGrade = '';
-    if (gradesByCount.length > 0) {
-      const mostFrequent = gradesByCount[0];
-      // Check for tie - use higher grade (EE > ME > AE > BE)
-      const gradeOrder = ['BE', 'AE', 'ME', 'EE'];
-      let best = mostFrequent;
-      for (const g of gradesByCount) {
-        if (g.count === mostFrequent.count && gradeOrder.indexOf(g.grade) > gradeOrder.indexOf(best.grade)) {
-          best = g;
-        }
-      }
-      avgGrade = `Average Grade: ${best.grade} (${best.desc})`;
-    }
-    return `Zamifu Analytics\n\nResults for ${studentName} -\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nTotal Points: ${totalPoints}/${totalPossible}\nClass Rank: ${rank}/${totalStudents}\n${avgGrade}\n\nView Full Results:\nhttps://zamifu.company`;
+    const averagePercentage = totalPossible > 0
+      ? Math.round((totalPoints / totalPossible) * 100)
+      : subjects.length > 0
+        ? Math.round(subjects.reduce((sum, subject) => sum + subject.marks, 0) / subjects.length)
+        : 0;
+    const band = getSchoolLevelBand(classData || { name: className });
+    const gradeInfo = is844Curriculum(classData)
+      ? calculate844Grade(averagePercentage)
+      : calculateCompetencyGrade(averagePercentage, band);
+    const averageGrade = gradeInfo.grade === 'EE' || gradeInfo.grade === 'ME' || gradeInfo.grade === 'AE' || gradeInfo.grade === 'BE'
+      ? gradeInfo.subLevel
+      : gradeInfo.grade;
+    const learnerLevel = getLearnerLevelLabel(classData, className);
+    const rankLine = rank > 0 && totalStudents > 0 ? `Class Rank: ${rank}/${totalStudents}\n` : '';
+    const commentLine = comment.trim() ? `\n${comment.trim()}\n` : '';
+
+    return `Zamifu Analytics\n\nResults for ${studentName} - ${learnerLevel}\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nAverage Marks: ${averagePercentage}%\nAverage Grade: ${averageGrade} (${gradeInfo.descriptor})\n${rankLine}${commentLine}\nView Full Results:\nhttps://zamifu.company`;
   },
 
   announcement: (schoolName: string, message: string) =>

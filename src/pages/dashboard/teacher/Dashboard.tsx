@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Link } from 'react-router';
-import { Upload, ClipboardList, BookOpen, Users, Clock, Trophy } from 'lucide-react';
+import { Upload, ClipboardList, BookOpen, Users, Clock, Trophy, School } from 'lucide-react';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 
@@ -31,6 +31,10 @@ export default function TeacherDashboard() {
   const [homeworkCount, setHomeworkCount] = useState(0);
   const [subjectBests, setSubjectBests] = useState<SubjectBestMap[]>([]);
   const [loadingBests, setLoadingBests] = useState(false);
+  const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [hasSubjectAssignments, setHasSubjectAssignments] = useState(false);
+  const [classTeacherName, setClassTeacherName] = useState('');
+  const [subjectAssignmentCount, setSubjectAssignmentCount] = useState(0);
 
   useEffect(() => { fetchData(); }, []);
 
@@ -40,12 +44,30 @@ export default function TeacherDashboard() {
 
     const { data: teacherData } = await supabaseUntyped
       .from('teachers')
-      .select('id')
+      .select('id, profile_id, is_class_teacher, assigned_class_id')
       .eq('profile_id', teacherId)
       .single();
 
     if (teacherData) {
       const tId = teacherData.id;
+      const [{ count: assignmentCount }, { data: classTeacherRecord }] = await Promise.all([
+        supabaseUntyped
+          .from('teacher_subject_assignments')
+          .select('id', { count: 'exact', head: true })
+          .eq('teacher_id', tId)
+          .eq('is_active', true),
+        supabaseUntyped
+          .from('classes')
+          .select('id, name, stream')
+          .eq('school_id', schoolId)
+          .or(`class_teacher_id.eq.${teacherData.profile_id},id.eq.${teacherData.assigned_class_id || '00000000-0000-0000-0000-000000000000'}`)
+          .maybeSingle(),
+      ]);
+      const classRole = Boolean(teacherData.is_class_teacher || classTeacherRecord);
+      setIsClassTeacher(classRole);
+      setClassTeacherName(classTeacherRecord ? `${classTeacherRecord.name}${classTeacherRecord.stream ? ` (${classTeacherRecord.stream})` : ''}` : 'your assigned class');
+      setSubjectAssignmentCount(assignmentCount || 0);
+      setHasSubjectAssignments((assignmentCount || 0) > 0);
       // day_of_week in timetable_entries is an integer: 1=Monday ... 5=Friday
       const dayIndex = new Date().getDay(); // 0=Sun, 1=Mon ... 6=Sat
       const todayInt = dayIndex >= 1 && dayIndex <= 5 ? dayIndex : null;
@@ -179,6 +201,46 @@ export default function TeacherDashboard() {
           <h1 className="text-2xl font-bold text-[#111111]">Teacher Dashboard</h1>
           <p className="text-sm text-[#666666]">Welcome back, {user?.firstName}</p>
         </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <School className="w-5 h-5 text-blue-600" />
+          <h2 className="text-lg font-bold text-gray-900">Your Teaching Workspaces</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">Choose the workspace that matches the work you need to complete.</p>
+        <div className="grid gap-4 md:grid-cols-2">
+          {isClassTeacher && (
+            <Link to="/teacher/class-dashboard" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 transition-colors hover:bg-emerald-100">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-emerald-600 p-2 text-white"><Users className="w-5 h-5" /></div>
+                <div>
+                  <h3 className="font-bold text-emerald-950">Class Teacher Workspace</h3>
+                  <p className="text-xs text-emerald-800">One class: {classTeacherName}. Monitor all learning areas, learners, missing marks, and full-class analysis.</p>
+                </div>
+              </div>
+            </Link>
+          )}
+          {hasSubjectAssignments && (
+            <Link to="/teacher/subject-dashboard" className="rounded-xl border border-blue-200 bg-blue-50 p-4 transition-colors hover:bg-blue-100">
+              <div className="flex items-center gap-3">
+                <div className="rounded-lg bg-blue-600 p-2 text-white"><BookOpen className="w-5 h-5" /></div>
+                <div>
+                  <h3 className="font-bold text-blue-950">Subject Teacher Workspace</h3>
+                  <p className="text-xs text-blue-800">{subjectAssignmentCount} assigned subject-class {subjectAssignmentCount === 1 ? 'assignment' : 'assignments'}. Enter and review marks only for your allocated learning areas.</p>
+                </div>
+              </div>
+            </Link>
+          )}
+          {!isClassTeacher && !hasSubjectAssignments && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Your teaching assignments have not been configured yet. Please contact the school administrator.
+            </div>
+          )}
+        </div>
+        {isClassTeacher && hasSubjectAssignments && (
+          <p className="mt-4 rounded-lg bg-violet-50 px-3 py-2 text-xs font-medium text-violet-800">You have both roles. Use the class workspace for one class across all learning areas, and the subject workspace for your assigned learning areas across classes.</p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

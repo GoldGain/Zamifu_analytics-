@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Download, Save, RefreshCw, Clock, Calendar, BookOpen, GraduationCap, Loader2, Eye, Edit3 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 interface TimeSlot {
   id: string;
@@ -94,54 +94,36 @@ export default function TeacherTimetable() {
 
       setTeacherName(`${teacherData.first_name || ''} ${teacherData.last_name || ''}`);
 
-      // Get teacher's assignments
+      // Show only active class-and-subject assignments belonging to this teacher.
       const { data: assignments } = await supabaseUntyped
         .from('teacher_subject_assignments')
         .select('class_id, subject_id, classes(name), subjects(name)')
-        .eq('teacher_id', teacherData.id);
+        .eq('teacher_id', teacherData.id)
+        .eq('is_active', true);
 
       setTeacherAssignments(assignments || []);
 
-      // Fetch timetable slots for this teacher
-      const { data: timetableSlots } = await supabaseUntyped
-        .from('timetable_slots')
-        .select('*, subjects(name), classes(name)')
+      // timetable_entries is the canonical generated timetable. Joining its time
+      // slots ensures that this page contains only lessons assigned to this teacher.
+      const { data: timetableEntries, error: timetableError } = await supabaseUntyped
+        .from('timetable_entries')
+        .select('id, day_of_week, teacher_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
         .eq('teacher_id', teacherData.id)
-        .order('day')
-        .order('start_time');
+        .eq('entry_type', 'class')
+        .order('day_of_week');
+      if (timetableError) throw timetableError;
 
-      // Also check if teacher is a class teacher
-      const { data: teacherInfo } = await supabaseUntyped
-        .from('teachers')
-        .select('class_id')
-        .eq('id', teacherData.id)
-        .single();
-
-      let allSlots: any[] = timetableSlots || [];
-
-      if (teacherInfo?.class_id) {
-        const { data: classSlots } = await supabaseUntyped
-          .from('timetable_slots')
-          .select('*, subjects(name), classes(name)')
-          .eq('class_id', teacherInfo.class_id)
-          .order('day')
-          .order('start_time');
-        if (classSlots) {
-          const existingIds = new Set(allSlots.map((s: any) => s.id));
-          classSlots.forEach((s: any) => { if (!existingIds.has(s.id)) allSlots.push(s); });
-        }
-      }
-
-      const mappedSlots: TeacherSlot[] = allSlots.map((s: any) => ({
-        id: s.id,
-        day: s.day,
-        start_time: s.start_time,
-        end_time: s.end_time,
-        subject_name: s.subjects?.name || s.subject_name || 'Unknown',
-        class_name: s.classes?.name || s.class_name || 'Unknown',
-        room: s.room,
-        teacher_id: s.teacher_id,
-      }));
+      const dayNames: Record<number, string> = {
+        1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday',
+      };
+      const mappedSlots: TeacherSlot[] = (timetableEntries || []).map((entry: any) => ({
+        id: entry.id,
+        day: dayNames[entry.day_of_week] || 'Monday',
+        start_time: entry.timetable_time_slots?.start_time?.toString().substring(0, 5) || '',
+        end_time: entry.timetable_time_slots?.end_time?.toString().substring(0, 5) || '',
+        subject_name: entry.subjects?.name || 'Learning Area',
+        class_name: entry.classes?.name || 'Class',
+      })).sort((a, b) => a.day.localeCompare(b.day) || a.start_time.localeCompare(b.start_time));
 
       setTeacherSlots(mappedSlots);
     } catch (err) {
@@ -329,6 +311,51 @@ export default function TeacherTimetable() {
     finally { setSaving(false); }
   };
 
+  const exportPersonalTimetablePDF = () => {
+    if (teacherSlots.length === 0) {
+      toast.error('No personal timetable entries are available to export.');
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    doc.setFillColor(37, 99, 235);
+    doc.rect(0, 0, 297, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(17);
+    doc.text('MY PERSONAL TIMETABLE', 14, 13);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text(`${teacherName || 'Teacher'} · Generated ${new Date().toLocaleDateString()}`, 14, 20);
+
+    const timeRanges = Array.from(new Set(teacherSlots.map((slot) => `${slot.start_time}-${slot.end_time}`)))
+      .sort((a, b) => a.localeCompare(b));
+    const body = timeRanges.map((timeRange) => {
+      const [startTime, endTime] = timeRange.split('-');
+      const row = [`${startTime} – ${endTime}`];
+      DAYS_OF_WEEK.forEach((day) => {
+        const slot = teacherSlots.find((item) => item.day === day && item.start_time === startTime && item.end_time === endTime);
+        row.push(slot ? `${slot.subject_name}\n${slot.class_name}${slot.room ? `\nRoom: ${slot.room}` : ''}` : '');
+      });
+      return row;
+    });
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Time', ...DAYS_OF_WEEK]],
+      body,
+      styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [239, 246, 255] },
+      margin: { left: 12, right: 12 },
+    });
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Zamifu Analytics School Management System', 148.5, 200, { align: 'center' });
+    doc.save(`my-personal-timetable-${new Date().toISOString().slice(0, 10)}.pdf`);
+    toast.success('Personal timetable exported as PDF.');
+  };
+
   const exportToPDF = () => {
     if (!selectedClass || Object.keys(timetableData).length === 0) { toast.error('Please create a timetable first'); return; }
     const doc = new jsPDF();
@@ -346,7 +373,7 @@ export default function TeacherTimetable() {
       });
       tableData.push(row);
     });
-    (doc as any).autoTable({ head: [['Time', ...DAYS_OF_WEEK]], body: tableData, startY: 35, styles: { fontSize: 9, cellPadding: 3 }, headStyles: { fillColor: [41, 128, 185], textColor: 255 }, alternateRowStyles: { fillColor: [240, 240, 240] } });
+    autoTable(doc, { head: [['Time', ...DAYS_OF_WEEK]], body: tableData, startY: 35, styles: { fontSize: 9, cellPadding: 3 }, headStyles: { fillColor: [41, 128, 185], textColor: 255 }, alternateRowStyles: { fillColor: [240, 240, 240] } });
     doc.save(`${selectedClassObj?.name}-timetable-${selectedYear}.pdf`);
     toast.success('Timetable exported to PDF');
   };
@@ -418,6 +445,16 @@ export default function TeacherTimetable() {
           )}
 
           {/* Personalized Timetable Grid */}
+          <div className="flex justify-end">
+            <button
+              onClick={exportPersonalTimetablePDF}
+              disabled={loadingPersonal || teacherSlots.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              <Download className="w-4 h-4" /> Download My Timetable (PDF)
+            </button>
+          </div>
+
           <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden">
             {loadingPersonal ? (
               <div className="flex items-center justify-center py-20">

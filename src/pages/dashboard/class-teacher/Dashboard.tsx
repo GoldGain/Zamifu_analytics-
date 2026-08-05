@@ -3,10 +3,10 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Users, FileText, Loader2, BookOpen, TrendingUp, Award, BarChart3,
-  Search, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Download
+  Search, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Download, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getSchoolLevelBand } from '@/lib/grading';
+import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
 import { MarksProgress } from '@/components/MarksProgress';
 
 interface StudentPerformance {
@@ -26,6 +26,7 @@ interface SubjectInfo {
   id: string;
   name: string;
   teacher_name: string;
+  teacher_profile_id: string | null;
   entered_count: number;
 }
 
@@ -40,6 +41,7 @@ export default function ClassTeacherDashboard() {
   const [performance, setPerformance] = useState<StudentPerformance[]>([]);
   const [loadingPerf, setLoadingPerf] = useState(false);
   const [search, setSearch] = useState('');
+  const [remindingSubjectId, setRemindingSubjectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'marks-progress' | 'students' | 'performance'>('overview');
 
   useEffect(() => {
@@ -67,7 +69,7 @@ export default function ClassTeacherDashboard() {
         const { data: cls } = await supabaseUntyped
           .from('classes')
           .select('*')
-          .eq('class_teacher_id', teacherData?.id)
+          .eq('class_teacher_id', user?.id)
           .maybeSingle();
         if (cls) classId = cls.id;
       }
@@ -95,7 +97,7 @@ export default function ClassTeacherDashboard() {
             .order('first_name'),
           supabaseUntyped
             .from('teacher_subject_assignments')
-            .select('subject_id, subjects(name), teachers(first_name, last_name)')
+            .select('subject_id, subjects(name), teachers(profile_id, first_name, last_name)')
             .eq('class_id', classId)
             .eq('school_id', user?.schoolId)
             .eq('is_active', true),
@@ -112,6 +114,7 @@ export default function ClassTeacherDashboard() {
             id: a.subject_id,
             name: (a.subjects?.name || 'Unknown') === 'Creative Arts' ? 'C-Arts' : (a.subjects?.name || 'Unknown'),
             teacher_name: a.teachers ? `${a.teachers.first_name} ${a.teachers.last_name}` : 'Unassigned',
+            teacher_profile_id: a.teachers?.profile_id || null,
             entered_count: 0,
           }))
         );
@@ -157,8 +160,6 @@ export default function ClassTeacherDashboard() {
       });
       setSubjects(updatedSubjects);
 
-      const band = getSchoolLevelBand(assignedClass.curriculum || '', assignedClass.name || '');
-
       const perf: StudentPerformance[] = students.map((student) => {
         const sResults = resultsMap[student.id] || {};
         const pcts = Object.values(sResults).map((r: any) => r.pct).filter((p) => p != null && p > 0);
@@ -201,6 +202,61 @@ export default function ClassTeacherDashboard() {
   const overallPct = subjects.length > 0 && students.length > 0
     ? Math.round((subjects.reduce((sum, s) => sum + s.entered_count, 0) / (subjects.length * students.length)) * 100)
     : 0;
+  const missingLearnerRows = performance
+    .map((learner) => ({
+      ...learner,
+      missingSubjects: subjects.filter((subject) => !learner.subjectResults[subject.id]),
+    }))
+    .filter((learner) => learner.missingSubjects.length > 0);
+  const analyzedLearners = performance.filter((learner) => learner.avgPercentage !== null);
+  const classAverage = analyzedLearners.length > 0
+    ? analyzedLearners.reduce((sum, learner) => sum + (learner.avgPercentage || 0), 0) / analyzedLearners.length
+    : 0;
+  const classBand = getSchoolLevelBand(assignedClass || {});
+  const classMeanGrade = calculateCompetencyGrade(classAverage, classBand);
+  const gradeDistribution = analyzedLearners.reduce<Record<string, number>>((distribution, learner) => {
+    const grade = calculateCompetencyGrade(learner.avgPercentage || 0, classBand).subLevel;
+    distribution[grade] = (distribution[grade] || 0) + 1;
+    return distribution;
+  }, {});
+
+  const remindTeacher = async (subject: SubjectInfo) => {
+    if (!subject.teacher_profile_id) {
+      toast.error(`No teacher account is linked to ${subject.name}.`);
+      return;
+    }
+    if (!assignedClass || !user?.id || !user?.schoolId) return;
+
+    const missingCount = Math.max(students.length - subject.entered_count, 0);
+    const selectedTermName = terms.find((term: any) => term.id === selectedTerm)?.name || 'the selected term';
+    setRemindingSubjectId(subject.id);
+    try {
+      const body = `Reminder: ${missingCount} learner${missingCount === 1 ? '' : 's'} in ${assignedClass.name} still need ${subject.name} marks for ${selectedTermName}. Please complete the marks entry.`;
+      const { error } = await supabaseUntyped.from('teacher_messages').insert({
+        school_id: user.schoolId,
+        sender_id: user.id,
+        recipient_id: subject.teacher_profile_id,
+        subject: `Pending marks: ${assignedClass.name} — ${subject.name}`,
+        body,
+      });
+      if (error) throw error;
+
+      await supabaseUntyped.from('notifications').insert({
+        user_id: subject.teacher_profile_id,
+        school_id: user.schoolId,
+        title: 'Marks entry reminder',
+        message: body,
+        type: 'marks_reminder',
+        is_read: false,
+        action_url: '/teacher/results/assigned',
+      });
+      toast.success(`Reminder sent to ${subject.teacher_name}.`);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not send the reminder.');
+    } finally {
+      setRemindingSubjectId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -296,8 +352,8 @@ export default function ClassTeacherDashboard() {
         {[
           { key: 'overview', label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
           { key: 'marks-progress', label: 'Marks Progress', icon: <CheckCircle className="w-4 h-4" /> },
-          { key: 'students', label: 'Learners', icon: <Users className="w-4 h-4" /> },
-          { key: 'performance', label: 'Performance', icon: <TrendingUp className="w-4 h-4" /> },
+          { key: 'students', label: 'Raw Marks', icon: <Users className="w-4 h-4" /> },
+          { key: 'performance', label: 'Results Analysis', icon: <TrendingUp className="w-4 h-4" /> },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -325,26 +381,73 @@ export default function ClassTeacherDashboard() {
               <p className="text-sm text-green-600 mt-1">Every subject has complete marks for all learners.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {missingMarksSubjects.map((s) => (
-                <div key={s.id} className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{s.name}</p>
-                      <p className="text-xs text-gray-500">Teacher: {s.teacher_name}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-red-600">
-                      {s.entered_count}/{students.length} entered
-                    </p>
-                    <p className="text-xs text-red-400">
-                      {students.length - s.entered_count} missing
-                    </p>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-xl border border-red-100">
+              <table className="w-full text-sm">
+                <thead className="bg-red-50 border-b border-red-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-red-700">Learning Area</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-red-700">Teacher</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-red-700">Uploaded</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase text-red-700">Pending</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-red-700">Status</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-red-700">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {missingMarksSubjects.map((subject) => (
+                    <tr key={subject.id} className="border-b border-red-50 bg-white">
+                      <td className="px-4 py-3 font-medium text-gray-900">{subject.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{subject.teacher_name}</td>
+                      <td className="px-4 py-3 text-center text-gray-700">{subject.entered_count}/{students.length}</td>
+                      <td className="px-4 py-3 text-center font-semibold text-red-600">{Math.max(students.length - subject.entered_count, 0)}</td>
+                      <td className="px-4 py-3"><span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">Pending</span></td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => remindTeacher(subject)}
+                          disabled={remindingSubjectId === subject.id || !subject.teacher_profile_id}
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {remindingSubjectId === subject.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                          Remind
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {missingLearnerRows.length > 0 && (
+            <div className="mt-6">
+              <h3 className="mb-2 text-sm font-semibold text-gray-700">Learners With Missing Marks</h3>
+              <div className="overflow-x-auto rounded-xl border border-amber-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-amber-50 border-b border-amber-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-amber-800">Learner</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-amber-800">Missing Learning Areas</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-amber-800">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {missingLearnerRows.map((learner) => (
+                      <tr key={learner.id} className="border-b border-amber-50 bg-white">
+                        <td className="px-4 py-3 font-medium text-gray-900">{learner.first_name} {learner.last_name}</td>
+                        <td className="px-4 py-3 text-gray-600">{learner.missingSubjects.map((subject) => subject.name).join(', ')}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => { setSearch(`${learner.first_name} ${learner.last_name}`); setActiveTab('students'); }}
+                            className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                          >
+                            Review Marks
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -447,7 +550,23 @@ export default function ClassTeacherDashboard() {
       )}
 
       {activeTab === 'performance' && (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+              <p className="text-xs font-medium text-blue-700">Class Average</p>
+              <p className="mt-1 text-2xl font-bold text-blue-900">{classAverage.toFixed(1)}%</p>
+            </div>
+            <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+              <p className="text-xs font-medium text-violet-700">Class Mean Grade</p>
+              <p className="mt-1 text-2xl font-bold text-violet-900">{classMeanGrade.subLevel}</p>
+              <p className="text-xs text-violet-700">{classMeanGrade.descriptor}</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="text-xs font-medium text-emerald-700">Performance Distribution</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-900">{Object.entries(gradeDistribution).length ? Object.entries(gradeDistribution).map(([grade, count]) => `${grade}: ${count}`).join(' · ') : 'No analyzed marks yet'}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           {loadingPerf ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
@@ -461,6 +580,7 @@ export default function ClassTeacherDashboard() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Learner</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Adm No.</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Avg %</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Mean Grade</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Subjects</th>
                   </tr>
                 </thead>
@@ -489,6 +609,13 @@ export default function ClassTeacherDashboard() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
+                          {student.avgPercentage !== null ? (
+                            <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-700">
+                              {calculateCompetencyGrade(student.avgPercentage, classBand).subLevel}
+                            </span>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-center">
                           <span className="text-xs text-gray-500">
                             {Object.keys(student.subjectResults).length}/{subjects.length}
                           </span>
@@ -499,6 +626,7 @@ export default function ClassTeacherDashboard() {
               </table>
             </div>
           )}
+          </div>
         </div>
       )}
     </div>

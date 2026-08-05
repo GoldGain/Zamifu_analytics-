@@ -251,7 +251,6 @@ function AppRoutes() {
       <Route path="/student/papers" element={<ProtectedRoute allowedRoles={['student']}><StudentPapers /></ProtectedRoute>} />
       <Route path="/student/fees" element={<ProtectedRoute allowedRoles={['student']}><StudentFees /></ProtectedRoute>} />
       <Route path="/student/attendance" element={<ProtectedRoute allowedRoles={['student']}><StudentAttendance /></ProtectedRoute>} />
-      <Route path="/student/timetable" element={<ProtectedRoute allowedRoles={['student']}><TimetableView /></ProtectedRoute>} />
       <Route path="/student/homework" element={<ProtectedRoute allowedRoles={['student']}><StudentHomework /></ProtectedRoute>} />
       <Route path="/student/report-card" element={<ProtectedRoute allowedRoles={['student']}><StudentReportCard /></ProtectedRoute>} />
       <Route path="/student/change-password" element={<ProtectedRoute allowedRoles={['student']}><StudentChangePassword /></ProtectedRoute>} />
@@ -267,10 +266,9 @@ function AppRoutes() {
       <Route path="/parent/change-password" element={<ProtectedRoute allowedRoles={['parent']}><ParentChangePassword /></ProtectedRoute>} />
       <Route path="/parent/profile" element={<ProtectedRoute allowedRoles={['parent']}><ParentProfile /></ProtectedRoute>} />
       <Route path="/parent/fee-transcript" element={<ProtectedRoute allowedRoles={['parent']}><ParentFeeTranscript /></ProtectedRoute>} />
-      <Route path="/parent/timetable" element={<ProtectedRoute allowedRoles={['parent']}><TimetableView /></ProtectedRoute>} />
 
       {/* General routes */}
-      <Route path="/timetable" element={<ProtectedRoute allowedRoles={['school_admin', 'teacher', 'student', 'parent', 'super_admin', 'reseller_super_admin', 'master_super_admin']}><TimetableView /></ProtectedRoute>} />
+      <Route path="/timetable" element={<ProtectedRoute allowedRoles={['teacher']}><Navigate to="/teacher/timetable" replace /></ProtectedRoute>} />
 
       {/* Public Pathway Finder route */}
       <Route path="/pathway-finder" element={<PublicRoute><PathwayFinder /></PublicRoute>} />

@@ -223,7 +223,7 @@ export default function SchoolAdminResults() {
                 return {
                   name: r.subjects?.name || 'Unknown',
                   marks: pct,
-                  grade: gradeInfo.grade || '',
+                  grade: gradeInfo.subLevel || gradeInfo.grade || '',
                 };
               });
               // Compute totals and rank
@@ -244,7 +244,8 @@ export default function SchoolAdminResults() {
                 totalPossible,
                 rank,
                 totalStudentsInClass,
-                ''
+                '',
+                classObj
               );
               const smsResult = await sendSMS(student.parent_phone, smsMsg);
               if (smsResult.success) smsSentCount++;
@@ -411,27 +412,25 @@ export default function SchoolAdminResults() {
 
         const classGrade = overallGradeWithBand(classMean, band);
         const statsY = 42;
-        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 50, 'F');
-        doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
-        doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
-        // Build subject average marks line
-        const subjectAvgLine = subjectStats.map(s => `${shortName(s.name)}: ${s.mean.toFixed(1)}%`).join(' | ');
-        doc.text(`Subject Average Marks:`, 75, statsY + 8);
-        doc.text(subjectAvgLine, 20, statsY + 14);
-        // Class Average Marks = sum of all student totals / number of students
-        const totalMarksAllLearners = summaries.reduce((sum, s) => sum + s.totalPct, 0);
-        const classAvgMarks = totalStudents > 0 ? totalMarksAllLearners / totalStudents : 0;
-        doc.text(`Class Average Marks: ${classAvgMarks.toFixed(1)} / ${allSubjects.length * 100}`, 75, statsY + 20);
-        doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} points)` : ''}`, 130, statsY + 8);
-        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 20, statsY + 28);
-        doc.text(`Learning Areas: ${allSubjects.length}`, 130, statsY + 20);
-        
         const boys = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('m')).length;
         const girls = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('f')).length;
-        doc.text(`Boys: ${boys}`, 20, statsY + 28);
-        doc.text(`Girls: ${girls}`, 75, statsY + 28);
+        // The requested subject average is the mean of every learning area's average.
+        const subjectAverageMarks = subjectStats.length > 0
+          ? subjectStats.reduce((sum, subject) => sum + subject.mean, 0) / subjectStats.length
+          : 0;
+
+        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 50, 'F');
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
+        doc.text(`Boys: ${boys}`, 72, statsY + 8);
+        doc.text(`Girls: ${girls}`, 108, statsY + 8);
+        doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} pts)` : ''}`, 140, statsY + 8);
+        doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 18);
+        doc.text(`Learning Areas: ${allSubjects.length}`, 88, statsY + 18);
+        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 125, statsY + 18);
         if (assessmentLabel) {
-          doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154); doc.text(`Assessment: ${assessmentLabel}`, 130, statsY + 28);
+          doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154);
+          doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 28);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         }
 

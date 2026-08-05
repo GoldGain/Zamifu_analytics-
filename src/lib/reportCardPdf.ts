@@ -28,6 +28,20 @@ export interface StudentResult {
   [key: string]: any;
 }
 
+const REPORT_CONTENT_TOP = 18;
+const REPORT_CONTENT_BOTTOM_MARGIN = 16;
+
+/**
+ * Starts a clean continuation page when a report-card block cannot fit in the
+ * remaining printable space. The returned Y coordinate is always safe to draw.
+ */
+export function ensureReportCardSpace(doc: jsPDF, y: number, requiredHeight: number): number {
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (y + requiredHeight <= pageHeight - REPORT_CONTENT_BOTTOM_MARGIN) return y;
+  doc.addPage();
+  return REPORT_CONTENT_TOP;
+}
+
 // Pathway Mapping based on Junior School Learning Areas
 export const PATHWAY_MAPPING: Record<string, string> = {
   'Mathematics': 'STEM',
@@ -255,8 +269,9 @@ export function drawTrendGraph(
   width: number,
   height: number,
   band: SchoolLevelBand
-) {
-  if (!trendData || trendData.length < 2) return;
+): number {
+  if (!trendData || trendData.length < 2) return y;
+  y = ensureReportCardSpace(doc, y, height + 6);
 
   const padding = 15;
   const graphX = x + padding;
@@ -324,6 +339,7 @@ export function drawTrendGraph(
 
   doc.setLineWidth(0.2);
   doc.setTextColor(0, 0, 0);
+  return y + height;
 }
 
 // ── Add Logo to PDF ──────────────────────────────────────────────────────────
@@ -443,6 +459,7 @@ export async function addSignaturesToPDF(
   y: number,
   schoolInfo?: SchoolInfo
 ) {
+  y = ensureReportCardSpace(doc, y, 34);
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
   doc.setFontSize(7);
@@ -548,6 +565,7 @@ export function drawResultsTable(
   classData: any,
   startY: number
 ): number {
+  startY = ensureReportCardSpace(doc, startY, 24);
   const sorted = sortResultsBySubject(results);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const tableHead = isPrimary ? ['#', 'Learning Area', 'Marks', 'Out Of', 'Score & Grade'] : ['#', 'Learning Area', 'Marks', 'Out Of', 'Score & Grade', 'Points'];
@@ -605,6 +623,7 @@ export function drawSummaryBox(
   classData: any,
   startY: number
 ): number {
+  startY = ensureReportCardSpace(doc, startY, 28);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const overallGrading = gradeFromPercentage(avgPercentage, classData);
@@ -626,6 +645,7 @@ export function drawDeviation(
   previousAvg: number | null,
   startY: number
 ): number {
+  startY = ensureReportCardSpace(doc, startY, 12);
   if (deviation !== null) {
     const arrow = deviation >= 0 ? '\u25B2' : '\u25BC';
     const sign = deviation >= 0 ? '+' : '';
@@ -648,14 +668,16 @@ export function drawAchievements(
   startY: number
 ): number {
   if (bestSubjects.length === 0) return startY;
-  doc.setFillColor(255, 248, 225); doc.rect(14, startY, 182, 5 + bestSubjects.length * 5, 'F');
+  const boxHeight = 5 + bestSubjects.length * 5;
+  startY = ensureReportCardSpace(doc, startY, boxHeight + 6);
+  doc.setFillColor(255, 248, 225); doc.rect(14, startY, 182, boxHeight, 'F');
   doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
   doc.text('ACHIEVEMENT:', 18, startY + 4); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
   bestSubjects.forEach((b, bi) => {
     const pts = b.points !== null ? ` (${b.points} pts)` : '';
     doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 18, startY + 9 + bi * 5);
   });
-  return startY + 5 + bestSubjects.length * 5 + 5;
+  return startY + boxHeight + 5;
 }
 
 // ── Draw AI Comment ──────────────────────────────────────────────────────────
@@ -664,12 +686,37 @@ export function drawAIComment(
   comment: string,
   startY: number
 ): number {
-  const commentLines = doc.splitTextToSize(comment, 168);
-  const boxHeight = Math.max(20, commentLines.length * 4.5 + 10);
-  doc.setFillColor(232, 234, 246); doc.rect(14, startY, 182, boxHeight, 'F');
-  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
-  doc.text("Class Teacher's Comment:", 18, startY + 6);
-  doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
-  doc.text(commentLines, 18, startY + 12);
-  return startY + boxHeight + 4;
+  const commentLines = doc.splitTextToSize(comment || 'No class teacher comment provided.', 168) as string[];
+  const lineHeight = 4.5;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let remainingLines = [...commentLines];
+  let y = startY;
+  let isContinuation = false;
+
+  while (remainingLines.length > 0) {
+    y = ensureReportCardSpace(doc, y, 20);
+    const availableHeight = pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - y;
+    const maxLines = Math.max(1, Math.floor((availableHeight - 10) / lineHeight));
+    const chunk = remainingLines.splice(0, maxLines);
+    const boxHeight = Math.max(20, chunk.length * lineHeight + 10);
+
+    doc.setFillColor(232, 234, 246);
+    doc.rect(14, y, 182, boxHeight, 'F');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + 6);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.text(chunk, 18, y + 12);
+    y += boxHeight + 4;
+
+    if (remainingLines.length > 0) {
+      doc.addPage();
+      y = REPORT_CONTENT_TOP;
+      isContinuation = true;
+    }
+  }
+
+  return y;
 }

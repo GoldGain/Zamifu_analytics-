@@ -103,11 +103,11 @@ const navConfig: Record<string, NavItem[]> = {
   ],
   'teacher': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
-    { label: 'Grade Dashboard', icon: <Users className="w-5 h-5" />, path: '/teacher/class-dashboard' },
+    { label: 'Class Teacher Workspace', icon: <Users className="w-5 h-5" />, path: '/teacher/class-dashboard' },
     { label: 'DoS Dashboard', icon: <GraduationCap className="w-5 h-5" />, path: '/dean-of-studies' },
-    { label: 'Subject Dashboard', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/subject-dashboard' },
+    { label: 'Subject Teacher Workspace', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/subject-dashboard' },
     { label: 'My Learning Areas', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/my-subjects' },
-    { label: 'View Timetable', icon: <Calendar className="w-5 h-5" />, path: '/timetable' },
+    { label: 'My Personal Timetable', icon: <Calendar className="w-5 h-5" />, path: '/teacher/timetable' },
     { label: 'Results Upload', icon: <Upload className="w-5 h-5" />, path: '/teacher/results/assigned' },
     { label: 'View My Marks', icon: <Eye className="w-5 h-5" />, path: '/teacher/view-marks' },
     { label: 'Marklist', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/teacher/marklist' },
@@ -126,7 +126,6 @@ const navConfig: Record<string, NavItem[]> = {
   ],
   'student': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/student' },
-    { label: 'Timetable', icon: <Calendar className="w-5 h-5" />, path: '/timetable' },
     { label: 'My Results', icon: <Award className="w-5 h-5" />, path: '/student/results' },
     { label: 'Fees', icon: <CreditCard className="w-5 h-5" />, path: '/student/fees' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/student/attendance' },
@@ -139,7 +138,6 @@ const navConfig: Record<string, NavItem[]> = {
   'parent': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/parent' },
     { label: 'My Children', icon: <Users className="w-5 h-5" />, path: '/parent/children' },
-    { label: 'Timetable', icon: <Calendar className="w-5 h-5" />, path: '/parent/timetable' },
     { label: 'Fees', icon: <CreditCard className="w-5 h-5" />, path: '/parent/fees' },
     { label: 'Fee Transcript', icon: <FileText className="w-5 h-5" />, path: '/parent/fee-transcript' },
     { label: 'Conferences', icon: <MessageSquare className="w-5 h-5" />, path: '/parent/conferences' },
@@ -169,6 +167,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const [additionalRoles, setAdditionalRoles] = useState<string[]>([]);
   const [isClassTeacher, setIsClassTeacher] = useState(false);
+  const [hasSubjectAssignments, setHasSubjectAssignments] = useState(false);
   const [isDoS, setIsDoS] = useState(false);
 
   useEffect(() => {
@@ -191,7 +190,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .select('is_class_teacher, id, school_id')
           .eq('profile_id', user.id)
           .maybeSingle();
-        if (teacherData?.is_class_teacher) setIsClassTeacher(true);
+        setIsClassTeacher(Boolean(teacherData?.is_class_teacher));
+        if (teacherData?.id) {
+          const { count: assignmentCount } = await (supabase as any)
+            .from('teacher_subject_assignments')
+            .select('id', { count: 'exact', head: true })
+            .eq('teacher_id', teacherData.id)
+            .eq('is_active', true);
+          setHasSubjectAssignments((assignmentCount || 0) > 0);
+        }
         if (teacherData?.school_id) {
           const { data: schoolInfo } = await (supabase as any)
             .from('schools')
@@ -227,6 +234,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (user?.role === 'teacher') {
     navItems = navItems.filter(item => {
       if (item.path === '/teacher/class-dashboard' && !isClassTeacher) return false;
+      if (item.path === '/teacher/subject-dashboard' && !hasSubjectAssignments) return false;
       if (item.path === '/dean-of-studies' && !isDoS) return false;
       return true;
     });
@@ -282,6 +290,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div>
               <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
               <p className="text-xs text-gray-400 capitalize">{user?.role?.replace(/_/g, ' ')}</p>
+              {isClassTeacher && (
+                <p className="text-xs text-emerald-400 mt-0.5 font-medium">Class Teacher</p>
+              )}
+              {hasSubjectAssignments && (
+                <p className="text-xs text-sky-400 mt-0.5 font-medium">Subject Teacher</p>
+              )}
               {isDoS && (
                 <p className="text-xs text-purple-400 mt-0.5 font-medium">Dean of Studies</p>
               )}

@@ -66,7 +66,7 @@ export default function TeacherResultsUpload() {
       const [{ data: c }, { data: t }, { data: ex }, assignmentResult] = await Promise.all([
         supabase.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
-        (supabase as any).from('school_exams').select('id, name, type, term_id').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
+        (supabase as any).from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
         fetchTeacherAssignments(user?.id),
       ]);
 
@@ -161,6 +161,22 @@ export default function TeacherResultsUpload() {
       .forEach((a) => map.set(a.subject_id, a.subject_name || 'Learning Area'));
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [selectedClass, teacherAssignments]);
+
+  const availableExams = useMemo(() => {
+    if (!selectedClass) return [];
+    const selectedGrade = currentClassData?.grade_level ?? currentClassData?.level;
+    return exams.filter((exam: any) => {
+      if (selectedTerm && exam.term_id && exam.term_id !== selectedTerm) return false;
+      const targetType = exam.target_type || 'school';
+      if (targetType === 'class') return exam.target_class_id === selectedClass;
+      if (targetType === 'grade') return String(exam.target_grade_level) === String(selectedGrade);
+      return true;
+    });
+  }, [exams, selectedClass, selectedTerm, currentClassData]);
+
+  useEffect(() => {
+    setSelectedExam((current) => current && !availableExams.some((exam: any) => exam.id === current) ? '' : current);
+  }, [availableExams]);
 
   const updateManualMark = (idx: number, value: string) => {
     // Issue 24: Prevent marks above max
@@ -299,6 +315,10 @@ export default function TeacherResultsUpload() {
   const handleSubmit = async (dataToSubmit: ProcessedRow[], asDraft: boolean = false) => {
     if (!selectedClass || !selectedSubject || !selectedTerm) {
       toast.error('Please select class, learning area, and term');
+      return;
+    }
+    if (selectedExam && !availableExams.some((exam: any) => exam.id === selectedExam)) {
+      toast.error('The selected assessment is not available for this class.');
       return;
     }
 
@@ -609,17 +629,24 @@ export default function TeacherResultsUpload() {
             {terms.map((t: any) => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
           </select>
 
-          {/* Assessment / Exam selector */}
-          <select
-            value={selectedExam}
-            onChange={e => setSelectedExam(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
-          >
-            <option value="">Select Assessment (optional)</option>
-            {exams.filter(ex => !selectedTerm || ex.term_id === selectedTerm || !ex.term_id).map((ex: any) => (
-              <option key={ex.id} value={ex.id}>{ex.name} {ex.type ? `(${ex.type})` : ''}</option>
-            ))}
-          </select>
+          {/* Assessment / Exam selector — scoped to this class or grade */}
+          <div className="space-y-1">
+            <select
+              value={selectedExam}
+              onChange={e => setSelectedExam(e.target.value)}
+              disabled={!selectedClass}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white disabled:bg-gray-100"
+            >
+              <option value="">{!selectedClass ? 'Select class first' : 'Select Assessment (optional)'}</option>
+              {availableExams.map((exam: any) => {
+                const scope = exam.target_type === 'class' ? 'Class' : exam.target_type === 'grade' ? `Grade ${exam.target_grade_level}` : 'Whole School';
+                return <option key={exam.id} value={exam.id}>{exam.name} {exam.type ? `(${exam.type})` : ''} — {scope}</option>;
+              })}
+            </select>
+            {selectedClass && availableExams.length === 0 && (
+              <p className="text-xs text-amber-700">No assessment is currently targeted to this class or grade.</p>
+            )}
+          </div>
 
           {/* Out of */}
           <div>

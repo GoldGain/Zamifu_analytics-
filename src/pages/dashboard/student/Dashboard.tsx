@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Link } from 'react-router';
-import { Award, CreditCard, ClipboardList, Clock, BookOpen, Bell } from 'lucide-react';
+import { Award, CreditCard, ClipboardList, BookOpen, Bell } from 'lucide-react';
 import PhotoZoomModal from '@/components/PhotoZoomModal';
 
 interface StudentRecord {
@@ -113,11 +113,6 @@ export default function StudentDashboard() {
           <ClipboardList className="w-6 h-6 text-green-500 mb-2" />
           <div className="text-lg font-bold text-[#111111]">View</div>
           <div className="text-xs text-[#666666]">Attendance</div>
-        </Link>
-        <Link to="/student/timetable" className="bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.12)] transition-all">
-          <Clock className="w-6 h-6 text-blue-500 mb-2" />
-          <div className="text-lg font-bold text-[#111111]">View</div>
-          <div className="text-xs text-[#666666]">Timetable</div>
         </Link>
       </div>
 

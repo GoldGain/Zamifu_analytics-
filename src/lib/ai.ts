@@ -89,7 +89,7 @@ const PAGE_GUIDES: Record<string, string> = {
   '/teacher/curriculum-navigator':
     'Welcome to the Curriculum Navigator - Your complete educational resource center. Explore curriculum levels with a Grade 7-9 exam generator focus, create lesson plans and schemes of work, and access embedded resources. Select level, subject, strands, sub-strands, then generate and download exams with marking schemes and image support.',
   '/student':
-    'Welcome Student! This is your personal dashboard where you can: 1. View your daily timetable. 2. Check your results and academic performance. 3. Access your learner portfolio. 4. Explore career pathways and interests. 5. Communicate with your teachers. 6. View your attendance records. 7. Access learning resources and materials.',
+    'Welcome Student! This is your personal dashboard where you can: 1. Check your results and academic performance. 2. Access your learner portfolio. 3. Explore career pathways and interests. 4. Communicate with your teachers. 5. View your attendance records. 6. Access learning resources and materials.',
   '/student/portfolio':
     'Review historical results across years, including records that remain after graduation. Use this page for long-term progress tracking.',
   '/student/results':
@@ -159,7 +159,7 @@ export function roleQuickActions(role?: AiRole): { label: string; query: string 
       { label: 'My results', query: 'Show my recent results' },
       { label: 'Portfolio', query: 'How do I use my portfolio?' },
       { label: 'Fees', query: 'What is my fee balance?' },
-      { label: 'Timetable', query: 'Where do I see my timetable?' },
+      { label: 'Homework', query: 'Show my current homework' },
       { label: 'Progress', query: 'Summarize my academic progress' },
     ];
   }
