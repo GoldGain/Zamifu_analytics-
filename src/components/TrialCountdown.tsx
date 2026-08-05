@@ -75,7 +75,7 @@ export const TrialCountdown: React.FC = () => {
                 Trial Period Expired
               </h3>
               <p className="text-sm text-red-700 mt-1">
-                Your 90-day free trial has ended. Subscribe now to continue using the system.
+                Your 60-day free trial has ended. Subscribe now to continue using the system.
               </p>
             </div>
           </div>

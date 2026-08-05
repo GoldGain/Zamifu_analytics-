@@ -14,6 +14,7 @@ interface TeacherAssignment {
   subject_name: string;
   lessons_per_week: number;
   is_priority: boolean;
+  available_days?: string[];
 }
 
 interface Teacher {

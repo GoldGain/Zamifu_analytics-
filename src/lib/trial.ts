@@ -3,7 +3,7 @@
 // All trial data stored in localStorage — NO Supabase changes
 // ============================================================
 
-export const TRIAL_DAYS = 90;
+export const TRIAL_DAYS = 60;
 export const PRICE_PER_LEARNER = 50; // fallback default KES per learner per term
 
 export interface TrialData {

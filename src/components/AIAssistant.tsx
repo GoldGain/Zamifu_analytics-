@@ -10,6 +10,8 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -52,14 +54,72 @@ export default function AIAssistant() {
   const { user, schoolData } = useAuth();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [insights, setInsights] = useState<AiInsight[]>([]);
   const [showInsights, setShowInsights] = useState(true);
   const [insightLoading, setInsightLoading] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const endRef = useRef<HTMLDivElement>(null);
   const shownPopupFor = useRef<string>('');
+  const panelRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize position from sessionStorage
+  useEffect(() => {
+    const saved = sessionStorage.getItem('copilot-position');
+    if (saved) {
+      try {
+        setPosition(JSON.parse(saved));
+      } catch {}
+    } else {
+      setPosition({ x: window.innerWidth - 420, y: window.innerHeight - 680 });
+    }
+  }, []);
+
+  // Save position to sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem('copilot-position', JSON.stringify(position));
+  }, [position]);
+
+  // Handle dragging
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!headerRef.current) return;
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setIsDragging(true);
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setPosition({
+        x: e.clientX - dragOffset.x,
+        y: e.clientY - dragOffset.y,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragOffset]);
 
   const ctx = useMemo(
     () => ({
@@ -162,27 +222,54 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
       </button>
 
       {open && (
-        <div className="fixed bottom-5 right-5 z-[70] flex h-[min(78vh,640px)] w-[min(100vw-1.5rem,400px)] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-4 py-3 text-white">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              <div>
-                <p className="text-sm font-semibold">Zamifu Copilot</p>
-                <p className="text-[11px] text-blue-100 capitalize">
-                  {ctx.pageTitle} · {(ctx.role || 'guest').replace(/_/g, ' ')}
-                  {ctx.schoolName ? ` · ${ctx.schoolName}` : ''}
-                </p>
-              </div>
+        <div
+          ref={panelRef}
+          className={`fixed z-[70] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all ${
+            minimized ? 'h-14 w-80' : 'h-[min(78vh,640px)] w-[min(100vw-1.5rem,400px)]'
+          }`}
+          style={{
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+            cursor: isDragging ? 'grabbing' : 'grab',
+          }}
+        >
+          <div
+            ref={headerRef}
+            onMouseDown={handleMouseDown}
+            className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-4 py-3 text-white cursor-grab active:cursor-grabbing"
+          >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Sparkles className="h-4 w-4 flex-shrink-0" />
+              {!minimized && (
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Zamifu Copilot</p>
+                  <p className="text-[11px] text-blue-100 capitalize truncate">
+                    {ctx.pageTitle} · {(ctx.role || 'guest').replace(/_/g, ' ')}
+                    {ctx.schoolName ? ` · ${ctx.schoolName}` : ''}
+                  </p>
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-lg p-1 hover:bg-white/10"
-              aria-label="Close assistant"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setMinimized(!minimized)}
+                className="rounded-lg p-1 hover:bg-white/10"
+                aria-label={minimized ? 'Expand assistant' : 'Minimize assistant'}
+              >
+                {minimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-lg p-1 hover:bg-white/10"
+                aria-label="Close assistant"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+          {!minimized && (
 
           {/* Live insights */}
           <div className="border-b border-gray-100 bg-slate-50">
@@ -278,6 +365,8 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
               Page-aware help for your role
             </p>
           </div>
+        </div>
+          )}
         </div>
       )}
     </>

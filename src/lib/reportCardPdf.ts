@@ -686,30 +686,33 @@ export function drawAIComment(
   comment: string,
   startY: number
 ): number {
-  const commentLines = doc.splitTextToSize(comment || 'No class teacher comment provided.', 168) as string[];
-  const lineHeight = 4.5;
+  const commentLines = doc.splitTextToSize(comment || 'No class teacher comment provided.', 165) as string[];
+  const lineHeight = 4.8;
   const pageHeight = doc.internal.pageSize.getHeight();
   let remainingLines = [...commentLines];
   let y = startY;
   let isContinuation = false;
 
   while (remainingLines.length > 0) {
-    y = ensureReportCardSpace(doc, y, 20);
+    y = ensureReportCardSpace(doc, y, 35);
     const availableHeight = pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - y;
-    const maxLines = Math.max(1, Math.floor((availableHeight - 10) / lineHeight));
+    const maxLines = Math.max(3, Math.floor((availableHeight - 15) / lineHeight));
     const chunk = remainingLines.splice(0, maxLines);
-    const boxHeight = Math.max(20, chunk.length * lineHeight + 10);
+    const boxHeight = Math.max(30, chunk.length * lineHeight + 12);
 
+    doc.setDrawColor(100, 120, 180);
+    doc.setLineWidth(0.5);
     doc.setFillColor(232, 234, 246);
-    doc.rect(14, y, 182, boxHeight, 'F');
+    doc.rect(14, y, 182, boxHeight, 'FD');
     doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 0, 0);
-    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + 6);
-    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(26, 35, 126);
+    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + 7);
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
-    doc.text(chunk, 18, y + 12);
-    y += boxHeight + 4;
+    doc.setTextColor(0, 0, 0);
+    doc.text(chunk, 18, y + 14, { align: 'left' });
+    y += boxHeight + 5;
 
     if (remainingLines.length > 0) {
       doc.addPage();

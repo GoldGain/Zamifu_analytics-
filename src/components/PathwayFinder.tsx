@@ -270,7 +270,7 @@ export const PATHWAY_RECOMMENDATION: Record<
     label: 'Highly Recommended',
     status: 'Exceeded Pathway Requirement',
     detail:
-      'Strongly recommend placement in the pathway. Encourage enrollment in advanced or enrichment programs and leadership opportunities.',
+      'The learner is recommended for placement in this pathway.',
   },
   EE2: {
     label: 'Recommended',
@@ -943,11 +943,11 @@ export default function PathwayFinder() {
 
                 <div className="bg-gray-900/50 rounded-xl p-4">
                   <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Pathway Decision</h4>
-                  <p className="text-white font-semibold text-lg">{selectedCareerObj()?.title}</p>
+                  <p className="text-white font-semibold text-lg text-blue-400">{selectedCareerObj()?.title}</p>
                   <div className="mt-1 mb-1">
-                    <p className="text-emerald-300 text-sm">Pathway - {selectedCareerObj()?.displayPathway || selectedCareerObj()?.pathway}</p>
+                    <p className="text-green-400 text-sm font-semibold">Pathway - {selectedCareerObj()?.displayPathway || selectedCareerObj()?.pathway}</p>
                     {selectedCareerObj()?.displayTrack && selectedCareerObj()?.displayTrack !== selectedCareerObj()?.displayPathway && (
-                      <p className="text-emerald-200 text-sm">Track - {selectedCareerObj()?.displayTrack}</p>
+                      <p className="text-green-300 text-sm">Track - {selectedCareerObj()?.displayTrack}</p>
                     )}
                   </div>
                   <p className="text-gray-400 text-sm mt-1">{selectedCareerObj()?.description}</p>
@@ -957,8 +957,8 @@ export default function PathwayFinder() {
                     const positive = ev.recommendPreferred;
                     return (
                       <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${positive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-200 border border-amber-500/30'}`}>
-                        <div className="font-semibold">{ev.finalRec.label}</div>
-                        <div className="text-xs opacity-90 mt-0.5">{ev.finalCode} — {ev.finalRec.status}</div>
+                        <div className={`font-semibold ${positive ? 'text-emerald-400' : 'text-amber-400'}`}>{ev.finalRec.label}</div>
+                        <div className="text-xs opacity-90 mt-0.5 text-gray-300">{ev.finalCode} — {ev.finalRec.status}</div>
                         {!positive && ev.suggestedAlts.length > 0 && (
                           <div className="text-xs mt-2">Suggested alternative(s): {ev.suggestedAlts.join(', ')}</div>
                         )}
@@ -976,10 +976,10 @@ export default function PathwayFinder() {
                       const meta = gradeMeta(code);
                       return (
                         <div key={s.name} className="flex flex-wrap justify-between gap-2 text-sm border-b border-gray-800 py-1">
-                          <span>{s.name}</span>
-                          <span className="text-[#60a5fa]">{code}</span>
+                          <span className="text-gray-200">{s.name}</span>
+                          <span className="text-green-400 font-semibold">{code}</span>
                           <span className="text-gray-400">{meta?.description}</span>
-                          <span>{meta?.points} pts</span>
+                          <span className="text-gray-300">{meta?.points} pts</span>
                         </div>
                       );
                     })}
@@ -1000,12 +1000,12 @@ export default function PathwayFinder() {
                         <div key={subj} className="flex flex-wrap items-center gap-3 text-sm">
                           <span className="text-gray-200 min-w-[140px]">{subj}</span>
                           <span className="text-gray-400">Required: EE2</span>
-                          <span>Current: {current || '—'}</span>
+                          <span className={met ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>Current: {current || '—'}</span>
                           {current ? (
                             met ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-400"><CheckCircle2 className="w-3.5 h-3.5" /> Met Requirement</span>
+                              <span className="inline-flex items-center gap-1 text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Met Requirement</span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-rose-300"><XCircle className="w-3.5 h-3.5" /> Below Requirement</span>
+                              <span className="inline-flex items-center gap-1 text-red-400"><XCircle className="w-3.5 h-3.5" /> Below Requirement</span>
                             )
                           ) : (
                             <span className="text-gray-500">Not entered</span>

@@ -75,16 +75,16 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
     activities_start: '16:00', activities_end: '16:40',
   },
   'senior': {
-    start_time: '08:00', end_time: '16:30', period_duration: 40,
-    lessons_per_day: 9, after_lunch_lessons: 3,
+    start_time: '08:00', end_time: '16:00', period_duration: 40,
+    lessons_per_day: 9, after_lunch_lessons: 2,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
-    activities_start: '16:30', activities_end: '17:10',
+    activities_start: '16:00', activities_end: '16:40',
   },
   'form-3-4': {
     start_time: '08:00', end_time: '17:00', period_duration: 40,
-    lessons_per_day: 8, after_lunch_lessons: 2,
+    lessons_per_day: 8, after_lunch_lessons: 3,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -99,8 +99,8 @@ const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; not
   'upper-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'combined-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { total: 9, afterLunch: 3, note: '3 lessons after lunch' },
-  'form-3-4': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { total: 9, afterLunch: 2, note: '2 lessons after lunch' },
+  'form-3-4': { total: 8, afterLunch: 3, note: '3 lessons after lunch' },
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────

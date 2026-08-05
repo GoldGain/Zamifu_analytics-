@@ -419,15 +419,17 @@ export default function SchoolAdminResults() {
           ? subjectStats.reduce((sum, subject) => sum + subject.mean, 0) / subjectStats.length
           : 0;
 
-        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 50, 'F');
+        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 60, 'F');
         doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
         doc.text(`Boys: ${boys}`, 72, statsY + 8);
         doc.text(`Girls: ${girls}`, 108, statsY + 8);
         doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} pts)` : ''}`, 140, statsY + 8);
-        doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 18);
-        doc.text(`Learning Areas: ${allSubjects.length}`, 88, statsY + 18);
-        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 125, statsY + 18);
+        const classMeanMarks = classMean;
+        doc.text(`Class Mean Marks: ${classMeanMarks.toFixed(1)} / 100`, 20, statsY + 18);
+        doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 26);
+        doc.text(`Learning Areas: ${allSubjects.length}`, 88, statsY + 26);
+        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 125, statsY + 26);
         if (assessmentLabel) {
           doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154);
           doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 28);

@@ -137,12 +137,17 @@ export default function TeacherTimetable() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
       const { data, error } = await supabase
-        .from('teacher_classes')
+        .from('teacher_subject_assignments')
         .select('classes(id, name, grade_level)')
-        .eq('teacher_id', authUser.id);
+        .eq('teacher_id', authUser.id)
+        .eq('is_active', true);
       if (error) throw error;
-      setClasses(data?.map((tc: any) => tc.classes) || []);
-    } catch { toast.error('Failed to load classes'); }
+      const uniqueClasses = Array.from(new Map((data || []).map((item: any) => [item.classes?.id, item.classes])).values());
+      setClasses(uniqueClasses.filter(Boolean) || []);
+    } catch (err) {
+      console.error('Error loading classes:', err);
+      toast.error('Failed to load classes');
+    }
   };
 
   const fetchTeacherSubjects = async () => {
