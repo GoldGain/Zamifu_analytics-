@@ -270,7 +270,7 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
             </div>
           </div>
           {!minimized && (
-
+          <>
           {/* Live insights */}
           <div className="border-b border-gray-100 bg-slate-50">
             <button
@@ -365,7 +365,7 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
               Page-aware help for your role
             </p>
           </div>
-        </div>
+          </>
           )}
         </div>
       )}
