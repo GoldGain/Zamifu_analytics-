@@ -86,14 +86,16 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
 };
 
 // Display info for each level's lesson structure
+// Senior (Grade 10-12): 9 lessons/day, 2 after lunch
+// Form 3 & 4 (8-4-4): 8 lessons/day, 3 after lunch
 const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; note: string }> = {
   'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
   'lower-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'upper-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'combined-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { lessons: 9, afterLunch: 3, note: '3 lessons after lunch' },
-  'form-3-4': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { lessons: 9, afterLunch: 2, note: '2 lessons after lunch' },
+  'form-3-4': { lessons: 8, afterLunch: 3, note: '3 lessons after lunch' },
 };
 
 export default function TimetableGenerate() {

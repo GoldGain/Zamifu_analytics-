@@ -136,17 +136,29 @@ export default function TeacherTimetable() {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
-      const { data, error } = await supabase
+      // Resolve the teacher's DB id from the teachers table using profile_id
+      const { data: teacherRow } = await supabaseUntyped
+        .from('teachers')
+        .select('id')
+        .eq('profile_id', authUser.id)
+        .maybeSingle();
+      if (!teacherRow?.id) {
+        // No teacher record found — show empty state instead of error
+        setClasses([]);
+        return;
+      }
+      const { data, error } = await supabaseUntyped
         .from('teacher_subject_assignments')
         .select('classes(id, name, grade_level)')
-        .eq('teacher_id', authUser.id)
+        .eq('teacher_id', teacherRow.id)
         .eq('is_active', true);
       if (error) throw error;
       const uniqueClasses = Array.from(new Map((data || []).map((item: any) => [item.classes?.id, item.classes])).values());
       setClasses(uniqueClasses.filter(Boolean) || []);
     } catch (err) {
       console.error('Error loading classes:', err);
-      toast.error('Failed to load classes');
+      // Show empty state rather than error toast — teacher may simply have no classes yet
+      setClasses([]);
     }
   };
 
@@ -154,13 +166,26 @@ export default function TeacherTimetable() {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) return;
-      const { data, error } = await supabase
+      // Resolve the teacher's DB id from the teachers table using profile_id
+      const { data: teacherRow } = await supabaseUntyped
+        .from('teachers')
+        .select('id')
+        .eq('profile_id', authUser.id)
+        .maybeSingle();
+      if (!teacherRow?.id) {
+        setSubjects([]);
+        return;
+      }
+      const { data, error } = await supabaseUntyped
         .from('teacher_subject_assignments')
         .select('subjects(id, name)')
-        .eq('teacher_id', authUser.id);
+        .eq('teacher_id', teacherRow.id);
       if (error) throw error;
-      setSubjects(data?.map((ts: any) => ts.subjects) || []);
-    } catch { toast.error('Failed to load subjects'); }
+      setSubjects(data?.map((ts: any) => ts.subjects).filter(Boolean) || []);
+    } catch (err) {
+      console.error('Error loading subjects:', err);
+      setSubjects([]);
+    }
   };
 
   const fetchTimetable = async () => {
@@ -513,9 +538,13 @@ export default function TeacherTimetable() {
           {teacherSlots.length === 0 && !loadingPersonal && (
             <div className="bg-white rounded-2xl p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] text-center">
               <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">No Timetable Found</h3>
-              <p className="text-sm text-gray-500 mb-2">Your personalized timetable will appear here once your school admin sets it up.</p>
-              <p className="text-xs text-gray-400">You have {teacherAssignments.length} class/subject assignment(s).</p>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">No Timetable Generated Yet</h3>
+              <p className="text-sm text-gray-500 mb-2">Your personalized timetable will appear here once your school admin generates the timetable.</p>
+              {teacherAssignments.length > 0 ? (
+                <p className="text-xs text-blue-500">You have {teacherAssignments.length} class/subject assignment(s). Ask your admin to generate the timetable.</p>
+              ) : (
+                <p className="text-xs text-gray-400">No class assignments found. Please contact your school admin to assign you to classes.</p>
+              )}
             </div>
           )}
         </>

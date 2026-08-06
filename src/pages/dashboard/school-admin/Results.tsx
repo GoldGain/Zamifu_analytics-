@@ -14,6 +14,7 @@ import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import {
   generateUniqueAIComment,
+  drawAIComment,
   drawTrendGraph,
   addSignaturesToPDF,
   drawReportHeader,
@@ -419,24 +420,32 @@ export default function SchoolAdminResults() {
           ? subjectStats.reduce((sum, subject) => sum + subject.mean, 0) / subjectStats.length
           : 0;
 
-        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 60, 'F');
+        // Class Mean Marks = Total Marks of ALL Learners ÷ Number of Learners
+        // Each student's totalPct is the sum of their subject percentages (each out of 100)
+        // totalPct / count = avgPct (their average %). Total marks = avgPct * numSubjects
+        const numSubjects = allSubjects.length;
+        const classMeanMarksValue = totalStudents > 0
+          ? summaries.reduce((sum, s) => sum + s.totalPct, 0) / totalStudents
+          : 0;
+        const classMeanMarksOutOf = numSubjects * 100;
+
+        doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 68, 'F');
         doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
         doc.text(`Boys: ${boys}`, 72, statsY + 8);
         doc.text(`Girls: ${girls}`, 108, statsY + 8);
         doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} pts)` : ''}`, 140, statsY + 8);
-        const classMeanMarks = classMean;
-        doc.text(`Class Mean Marks: ${classMeanMarks.toFixed(1)} / 100`, 20, statsY + 18);
-        doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 26);
-        doc.text(`Learning Areas: ${allSubjects.length}`, 88, statsY + 26);
-        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 125, statsY + 26);
+        doc.text(`Class Mean Marks: ${classMeanMarksValue.toFixed(1)} / ${classMeanMarksOutOf}`, 20, statsY + 18);
+        doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 28);
+        doc.text(`Learning Areas: ${allSubjects.length}`, 88, statsY + 28);
+        doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 125, statsY + 28);
         if (assessmentLabel) {
           doc.setFont('helvetica', 'bold'); doc.setTextColor(106, 27, 154);
-          doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 28);
+          doc.text(`Assessment: ${assessmentLabel}`, 20, statsY + 38);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         }
 
-        const gradeDistY = statsY + 57;
+        const gradeDistY = statsY + 75;
         doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
         doc.text('PERFORMANCE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
 
@@ -837,13 +846,9 @@ export default function SchoolAdminResults() {
           trendY += 6 + bulkStudentBests.length * 6 + 4;
         }
 
-        const commentY = trendY + 2;
-        mainDoc.setFillColor(232, 234, 246); mainDoc.rect(14, commentY, 182, 28, 'F');
-        mainDoc.setFontSize(9); mainDoc.setFont('helvetica', 'bold'); mainDoc.text("Class Teacher's Comment:", 18, commentY + 7); mainDoc.setFont('helvetica', 'italic'); mainDoc.setFontSize(8);
-        const commentLines = mainDoc.splitTextToSize(aiComment, 170); mainDoc.text(commentLines, 18, commentY + 14);
-
-        const sigY = commentY + 32;
-        await addSignaturesToPDF(mainDoc, signatures, sigY, schoolInfo);
+        // Issue 7 & 8: Use shared drawAIComment to auto-expand comment box and prevent cut-off
+        const commentEndY = drawAIComment(mainDoc, aiComment, trendY + 2);
+        await addSignaturesToPDF(mainDoc, signatures, commentEndY, schoolInfo);
         mainDoc.setFontSize(7); mainDoc.setTextColor(150, 150, 150);
         mainDoc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
 

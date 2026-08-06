@@ -269,50 +269,42 @@ export const PATHWAY_RECOMMENDATION: Record<
   EE1: {
     label: 'Highly Recommended',
     status: 'Exceeded Pathway Requirement',
-    detail:
-      'The learner is recommended for placement in this pathway.',
+    detail: 'The learner is recommended for placement in this pathway.',
   },
   EE2: {
     label: 'Recommended',
     status: 'Exceeded Pathway Requirement',
-    detail:
-      'The learner demonstrates high readiness and is likely to succeed with minimal support.',
+    detail: 'The learner is recommended for placement in this pathway.',
   },
   ME1: {
     label: 'Recommended with Support',
     status: 'Almost Meeting Requirement',
-    detail:
-      'Recommend the pathway with targeted academic support, mentoring, or bridging programs to strengthen areas of weakness.',
+    detail: 'The learner is recommended for placement in this pathway.',
   },
   ME2: {
     label: 'Conditionally Recommended',
     status: 'Almost Meeting Requirement',
-    detail:
-      'Recommend conditional placement. Advise remedial learning, career guidance, and close progress monitoring before or during enrollment.',
+    detail: 'The learner is recommended for placement in this pathway.',
   },
   AE1: {
     label: 'Exploring Other Options',
     status: 'Developing Skills',
-    detail:
-      "At this time, your current performance suggests that an alternative pathway may be a better match for your strengths and interests. Your dedication and unique talents are valued, and there are exciting pathways where you are more likely to thrive and grow. We encourage you to explore these options with an open mind — every learner has a pathway where they can truly shine.",
+    detail: 'The learner is not recommended for placement in this pathway at this time. Please consider the suggested alternatives.',
   },
   AE2: {
     label: 'Alternative Path Suggested',
     status: 'Developing Skills',
-    detail:
-      "At this time, you do not yet meet the requirements for this pathway. Your interests and performance indicate that another pathway may be a better match for you right now. We encourage you to explore the suggested alternatives, where you are more likely to succeed and develop your strengths. With continued effort and the right support, you can always revisit your goals.",
+    detail: 'The learner is not recommended for placement in this pathway at this time. Please consider the suggested alternatives.',
   },
   BE1: {
     label: 'Exploring Other Options',
     status: 'Developing Skills',
-    detail:
-      "Your current performance suggests that a different pathway may be a better fit for your talents at this stage. This is not a setback — it is an opportunity to discover where your true strengths lie. We encourage you to explore the suggested alternatives with confidence, and to keep working hard towards your goals.",
+    detail: 'The learner is not recommended for placement in this pathway at this time. Please consider the suggested alternatives.',
   },
   BE2: {
     label: 'Alternative Path Suggested',
     status: 'Developing Skills',
-    detail:
-      "We encourage you to consider an alternative pathway that better aligns with your current strengths and interests. With focused effort, the right support, and a growth mindset, you can build the skills needed to pursue your long-term goals. Every step forward counts, and we believe in your potential.",
+    detail: 'The learner is not recommended for placement in this pathway at this time. Please consider the suggested alternatives.',
   },
 };
 
@@ -943,11 +935,12 @@ export default function PathwayFinder() {
 
                 <div className="bg-gray-900/50 rounded-xl p-4">
                   <h4 className="text-sm font-medium text-[#60a5fa] mb-2">Pathway Decision</h4>
-                  <p className="text-white font-semibold text-lg text-blue-400">{selectedCareerObj()?.title}</p>
+                  {/* Pathway Name — Blue */}
+                  <p className="text-blue-400 font-semibold text-lg">{selectedCareerObj()?.title}</p>
                   <div className="mt-1 mb-1">
-                    <p className="text-green-400 text-sm font-semibold">Pathway - {selectedCareerObj()?.displayPathway || selectedCareerObj()?.pathway}</p>
+                    <p className="text-blue-300 text-sm font-semibold">Pathway - {selectedCareerObj()?.displayPathway || selectedCareerObj()?.pathway}</p>
                     {selectedCareerObj()?.displayTrack && selectedCareerObj()?.displayTrack !== selectedCareerObj()?.displayPathway && (
-                      <p className="text-green-300 text-sm">Track - {selectedCareerObj()?.displayTrack}</p>
+                      <p className="text-blue-200 text-sm">Track - {selectedCareerObj()?.displayTrack}</p>
                     )}
                   </div>
                   <p className="text-gray-400 text-sm mt-1">{selectedCareerObj()?.description}</p>
@@ -956,11 +949,14 @@ export default function PathwayFinder() {
                     if (!ev?.finalRec) return null;
                     const positive = ev.recommendPreferred;
                     return (
-                      <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${positive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/15 text-amber-200 border border-amber-500/30'}`}>
-                        <div className={`font-semibold ${positive ? 'text-emerald-400' : 'text-amber-400'}`}>{ev.finalRec.label}</div>
-                        <div className="text-xs opacity-90 mt-0.5 text-gray-300">{ev.finalCode} — {ev.finalRec.status}</div>
+                      <div className={`mt-3 rounded-lg px-3 py-2 text-sm ${positive ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-red-500/15 border border-red-500/30'}`}>
+                        {/* Decision — Green if recommended, Red if not */}
+                        <div className={`font-semibold text-base ${positive ? 'text-green-400' : 'text-red-400'}`}>{ev.finalRec.label}</div>
+                        {/* Performance Level — Green */}
+                        <div className="text-xs mt-0.5 text-green-300 font-medium">{ev.finalCode} — {ev.finalRec.status}</div>
+                        <div className="text-xs mt-1 text-gray-300">{ev.finalRec.detail}</div>
                         {!positive && ev.suggestedAlts.length > 0 && (
-                          <div className="text-xs mt-2">Suggested alternative(s): {ev.suggestedAlts.join(', ')}</div>
+                          <div className="text-xs mt-2 text-amber-300">Suggested alternative(s): {ev.suggestedAlts.join(', ')}</div>
                         )}
                       </div>
                     );
@@ -997,15 +993,16 @@ export default function PathwayFinder() {
                       const required = 'EE2' as JuniorGradeCode;
                       const met = current ? pointsRank(current) >= pointsRank(required) : false;
                       return (
-                        <div key={subj} className="flex flex-wrap items-center gap-3 text-sm">
-                          <span className="text-gray-200 min-w-[140px]">{subj}</span>
+                        <div key={subj} className="flex flex-wrap items-center gap-3 text-sm border-b border-gray-800 py-1.5">
+                          {/* Subject name — green if met, red if below */}
+                          <span className={`min-w-[140px] font-medium ${current ? (met ? 'text-green-300' : 'text-red-300') : 'text-gray-200'}`}>{subj}</span>
                           <span className="text-gray-400">Required: EE2</span>
                           <span className={met ? 'text-green-400 font-semibold' : 'text-red-400 font-semibold'}>Current: {current || '—'}</span>
                           {current ? (
                             met ? (
-                              <span className="inline-flex items-center gap-1 text-green-400"><CheckCircle2 className="w-3.5 h-3.5" /> Met Requirement</span>
+                              <span className="inline-flex items-center gap-1 text-green-400 font-semibold"><CheckCircle2 className="w-3.5 h-3.5" /> Met Requirement</span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-red-400"><XCircle className="w-3.5 h-3.5" /> Below Requirement</span>
+                              <span className="inline-flex items-center gap-1 text-red-400 font-semibold"><XCircle className="w-3.5 h-3.5" /> Below Requirement</span>
                             )
                           ) : (
                             <span className="text-gray-500">Not entered</span>
