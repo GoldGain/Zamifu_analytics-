@@ -681,13 +681,58 @@ export function drawAchievements(
 }
 
 // ── Draw AI Comment ──────────────────────────────────────────────────────────
+
+/**
+ * Word-wrap text using measured widths, so wrapping is always correct
+ * regardless of which font is active when splitting happens. The text font
+ * is configured BEFORE measuring to guarantee accurate line widths.
+ */
+function wrapCommentText(doc: jsPDF, text: string): string[] {
+  // Configure the exact font/size that the text will be drawn with.
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const textX = 18;
+  const rightMargin = 14;
+  // Wrap width: leave a safety margin on both sides of the page.
+  const maxWidth = Math.min(165, Math.max(60, pageWidth - textX - rightMargin));
+
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    if (!word) continue;
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const width = doc.getTextWidth(testLine);
+    if (width <= maxWidth || !currentLine) {
+      // Allow a single very long word to occupy its own line even if it
+      // exceeds maxWidth (better than losing characters).
+      currentLine = testLine;
+    } else {
+      lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  return lines.length > 0 ? lines : ['No class teacher comment provided.'];
+}
+
 export function drawAIComment(
   doc: jsPDF,
   comment: string,
   startY: number
 ): number {
-  const commentLines = doc.splitTextToSize(comment || 'No class teacher comment provided.', 165) as string[];
-  const lineHeight = 4.8;
+  // Set the drawing font FIRST so all width measurements match the draw font.
+  const fontSize = 7.5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(fontSize);
+
+  const commentLines = wrapCommentText(doc, (comment || 'No class teacher comment provided.').trim());
+  // Measured line step: font size + small gap for readability.
+  const lineHeight = fontSize * 0.62 + 0.8;
   const pageHeight = doc.internal.pageSize.getHeight();
   let remainingLines = [...commentLines];
   let y = startY;
@@ -698,7 +743,8 @@ export function drawAIComment(
     const availableHeight = pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - y;
     const maxLines = Math.max(3, Math.floor((availableHeight - 15) / lineHeight));
     const chunk = remainingLines.splice(0, maxLines);
-    const boxHeight = Math.max(30, chunk.length * lineHeight + 12);
+    // Box height derives from the actual wrapped line count plus the header.
+    const boxHeight = Math.max(30, 14 + chunk.length * lineHeight + 8);
 
     doc.setDrawColor(100, 120, 180);
     doc.setLineWidth(0.5);
@@ -709,9 +755,14 @@ export function drawAIComment(
     doc.setTextColor(26, 35, 126);
     doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + 7);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(fontSize);
     doc.setTextColor(0, 0, 0);
-    doc.text(chunk, 18, y + 14, { align: 'left' });
+
+    // Draw each wrapped line explicitly at a measured vertical step so the
+    // last line can never be clipped by the box bottom.
+    for (let i = 0; i < chunk.length; i++) {
+      doc.text(chunk[i], 18, y + 14 + i * lineHeight);
+    }
     y += boxHeight + 5;
 
     if (remainingLines.length > 0) {
