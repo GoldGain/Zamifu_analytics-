@@ -45,6 +45,17 @@ const DEFAULT_TIME_SLOTS: TimeSlot[] = [
   { id: '10', day: '', startTime: '14:10', endTime: '14:50', subject: '', room: '' },
 ];
 
+// Grid rows are anchored to the unique start times of the teacher's actual lessons
+// (every 30/40-minute lesson start is shown, so no lesson is ever hidden).
+// Grid rows are anchored to the actual start times of the teacher's lessons so
+// every lesson is visible even when schools use 40-minute periods. Simultaneous
+// lessons (e.g. two classes starting at the same time) are stacked in the cell.
+const getPersonalGridTimes = (slots: TeacherSlot[]): string[] => {
+  const starts = Array.from(new Set(slots.map(s => s.start_time.substring(0, 5)))).sort();
+  if (starts.length === 0) return VIEW_TIME_SLOTS;
+  return starts;
+};
+
 const VIEW_TIME_SLOTS = [
   '08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
   '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
@@ -109,7 +120,7 @@ export default function TeacherTimetable() {
         .from('timetable_entries')
         .select('id, day_of_week, teacher_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
         .eq('teacher_id', teacherData.id)
-        .eq('entry_type', 'class')
+        .in('entry_type', ['lesson', 'class', 'activity'])
         .order('day_of_week');
       if (timetableError) throw timetableError;
 
@@ -409,6 +420,16 @@ export default function TeacherTimetable() {
   };
 
   // Helper for personalized view
+  // Slots for a day/time cell — grid rows are anchored to actual lesson start
+  // times, so each lesson appears exactly once in its own start row; cells may
+  // stack multiple simultaneous lessons (e.g. two classes at the same time).
+  const getSlotsForDayTime = (day: string, time: string): TeacherSlot[] => {
+    return teacherSlots.filter(s => {
+      if (s.day.toLowerCase() !== day.toLowerCase()) return false;
+      return s.start_time.substring(0, 5) === time;
+    });
+  };
+
   const getSlotForDayTime = (day: string, time: string): TeacherSlot | null => {
     return teacherSlots.find(s => {
       if (s.day.toLowerCase() !== day.toLowerCase()) return false;
@@ -506,24 +527,22 @@ export default function TeacherTimetable() {
                     </tr>
                   </thead>
                   <tbody>
-                    {VIEW_TIME_SLOTS.map((time, idx) => (
+                    {getPersonalGridTimes(teacherSlots).map((time, idx) => (
                       <tr key={time} className={idx % 2 === 0 ? 'bg-gray-50/50' : ''}>
                         <td className="px-3 py-2 text-xs font-medium text-gray-600 border border-gray-100">{time}</td>
                         {DAYS_OF_WEEK.map(day => {
-                          const slot = getSlotForDayTime(day, time);
-                          const isStart = slot && slot.start_time.substring(0, 5) === time;
-                          if (slot && !isStart) return <td key={day} className="border border-gray-100" />;
+                          const slots = getSlotsForDayTime(day, time);
                           return (
                             <td key={day} className="border border-gray-100 px-1 py-1">
-                              {slot ? (
-                                <div className={`rounded-lg p-2 border ${getSubjectColor(slot.subject_name)}`}>
-                                  <p className="text-xs font-bold truncate">{slot.subject_name}</p>
+                              {slots.map(s => (
+                                <div key={s.id} className={`rounded-lg p-2 border ${getSubjectColor(s.subject_name)}`}>
+                                  <p className="text-xs font-bold truncate">{s.subject_name}</p>
                                   <p className="text-xs flex items-center gap-1 mt-0.5">
-                                    <GraduationCap className="w-3 h-3" /> {slot.class_name}
+                                    <GraduationCap className="w-3 h-3" /> {s.class_name}
                                   </p>
-                                  {slot.room && <p className="text-xs text-gray-500 mt-0.5">Rm: {slot.room}</p>}
+                                  {s.room && <p className="text-xs text-gray-500 mt-0.5">Rm: {s.room}</p>}
                                 </div>
-                              ) : null}
+                              ))}
                             </td>
                           );
                         })}

@@ -79,7 +79,7 @@ export default function TeacherDashboard() {
           .select('id, day_of_week, time_slot_id, subject_id, class_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
           .eq('teacher_id', tId)
           .eq('day_of_week', todayInt)
-          .eq('entry_type', 'class');
+          .in('entry_type', ['lesson', 'class', 'activity']);
 
         const mapped: TimetableEntry[] = (entries || []).map((e: any) => ({
           id: e.id,
