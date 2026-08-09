@@ -61,6 +61,9 @@ export default function AIAssistant() {
   const [insights, setInsights] = useState<AiInsight[]>([]);
   const [showInsights, setShowInsights] = useState(true);
   const [insightLoading, setInsightLoading] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(
+    typeof window !== 'undefined' && window.innerWidth < 768
+  );
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -69,16 +72,28 @@ export default function AIAssistant() {
   const panelRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize position from sessionStorage
+  // Initialize position from sessionStorage (clamped so the panel never renders
+  // off-screen or wider than the viewport on desktop)
   useEffect(() => {
+    const clampX = (x: number) => Math.max(0, Math.min(x, window.innerWidth - 340));
+    const clampY = (y: number) => Math.max(0, Math.min(y, Math.max(0, window.innerHeight - 640)));
     const saved = sessionStorage.getItem('copilot-position');
     if (saved) {
       try {
-        setPosition(JSON.parse(saved));
+        const p = JSON.parse(saved);
+        setPosition({ x: clampX(p.x), y: clampY(p.y) });
       } catch {}
     } else {
-      setPosition({ x: window.innerWidth - 420, y: window.innerHeight - 680 });
+      setPosition({ x: clampX(window.innerWidth - 420), y: clampY(window.innerHeight - 680) });
     }
+  }, []);
+
+  // Track viewport size so the panel snaps to a bottom sheet on mobile
+  useEffect(() => {
+    const onResize = () => setIsMobileView(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    onResize();
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   // Save position to sessionStorage
@@ -207,10 +222,10 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-[60] flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-white shadow-lg shadow-blue-600/30 hover:from-blue-700 hover:to-indigo-700 transition-all"
+        className="fixed bottom-5 right-4 z-[60] flex max-w-[70%] items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-3 text-white shadow-lg shadow-blue-600/30 hover:from-blue-700 hover:to-indigo-700 transition-all sm:right-5 sm:px-4"
         aria-label="Open Zamifu Copilot"
       >
-        <span className="relative">
+        <span className="relative flex-shrink-0">
           <Bot className="h-5 w-5" />
           {warningCount > 0 && (
             <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-amber-950">
@@ -218,31 +233,33 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
             </span>
           )}
         </span>
-        <span className="hidden sm:inline text-sm font-semibold">Zamifu Copilot</span>
+        <span className="hidden truncate sm:inline text-sm font-semibold">Zamifu Copilot</span>
       </button>
 
       {open && (
         <div
           ref={panelRef}
-          className={`fixed z-[70] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl transition-all ${
-            minimized ? 'h-14 w-80' : 'h-[min(78vh,640px)] w-[min(100vw-1.5rem,400px)]'
+          className={`fixed z-[70] flex flex-col overflow-hidden border border-gray-200 bg-white shadow-2xl transition-all
+            max-md:bottom-0 max-md:left-0 max-md:top-auto max-md:h-[min(88vh,640px)] max-md:w-full max-md:rounded-t-2xl max-md:rounded-b-none max-md:left-auto max-md:right-auto
+            md:rounded-2xl ${
+            minimized ? 'max-md:h-12 md:h-14 md:w-80' : 'md:h-[min(78vh,640px)] md:w-[min(100vw-1.5rem,400px)]'
           }`}
           style={{
-            left: `${position.x}px`,
-            top: `${position.y}px`,
+            left: isMobileView ? undefined : `${position.x}px`,
+            top: isMobileView ? undefined : `${position.y}px`,
             cursor: isDragging ? 'grabbing' : 'grab',
           }}
         >
           <div
             ref={headerRef}
-            onMouseDown={handleMouseDown}
-            className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-4 py-3 text-white cursor-grab active:cursor-grabbing"
+            onMouseDown={isMobileView ? undefined : handleMouseDown}
+            className="flex items-center justify-between bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 px-4 py-3 text-white cursor-grab active:cursor-grabbing max-md:cursor-default"
           >
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Sparkles className="h-4 w-4 flex-shrink-0" />
               {!minimized && (
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">Zamifu Copilot</p>
+                  <p className="text-sm font-semibold whitespace-nowrap">Zamifu Copilot</p>
                   <p className="text-[11px] text-blue-100 capitalize truncate">
                     {ctx.pageTitle} · {(ctx.role || 'guest').replace(/_/g, ' ')}
                     {ctx.schoolName ? ` · ${ctx.schoolName}` : ''}

@@ -43,8 +43,12 @@ export function usePaystack() {
       amount: config.amount * 100, // convert to kobo
       currency: 'KES',
       metadata: config.metadata || {},
+      // NOTE: Paystack V1 inline.js rejects async arrow functions in callbacks
+      // ("Attribute callback must be a valid function") — keep the callback sync;
+      // onSuccess handlers must wrap their own async logic
       callback: (response: any) => {
-        config.onSuccess(response.reference);
+        try { config.onSuccess(response.reference); }
+        catch (err) { console.error('[Paystack] onSuccess handler failed', err); }
       },
       onClose: () => {
         config.onCancel?.();

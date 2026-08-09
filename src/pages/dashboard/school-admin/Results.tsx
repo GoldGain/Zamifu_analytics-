@@ -228,8 +228,18 @@ export default function SchoolAdminResults() {
                 };
               });
               // Compute totals and rank
+              // totalPct: sum of percentage marks (used for Average Marks across all levels)
+              // totalPoints/totalPointsPossible: for Junior/Senior — actual points out of subjects × 8
+              const isPrimaryBand = band === 'primary';
               const totalPct = subjectList.reduce((s: number, r: any) => s + r.marks, 0);
-              const totalPossible = subjectList.length * 100;
+              const gradePoints = subjectList.reduce((sum: number, r: any) => {
+                const pct = typeof r.marks === 'number' ? r.marks : 0;
+                const g = calculateCompetencyGrade(pct, band);
+                return sum + (g.points || 0);
+              }, 0);
+              // For Primary use percentage-sum semantics (as before); for Junior/Senior use points out of subjects × 8
+              const smsTotalPoints = isPrimaryBand ? totalPct : gradePoints;
+              const smsTotalPossible = isPrimaryBand ? subjectList.length * 100 : subjectList.length * 8;
               const allStudentSummaries = buildStudentSummary(
                 results.filter((r: any) => r.class_id === selectedClass && r.term_id === selectedTerm),
                 classObj
@@ -241,8 +251,8 @@ export default function SchoolAdminResults() {
                 `${student.first_name} ${student.last_name}`,
                 classData?.name || '',
                 subjectList,
-                totalPct,
-                totalPossible,
+                smsTotalPoints,
+                smsTotalPossible,
                 rank,
                 totalStudentsInClass,
                 '',

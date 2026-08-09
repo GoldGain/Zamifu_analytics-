@@ -7,6 +7,7 @@ import {
   generateUniqueAIComment,
   drawTrendGraph,
   addSignaturesToPDF,
+  drawReportFooter,
   drawReportHeader,
   drawStudentInfo,
   drawResultsTable,
@@ -350,29 +351,30 @@ export default function ParentChildReportCard() {
       await drawReportHeader(doc, schoolInfo);
       const photoUrl = selectedChild.photo_url || null;
       if (photoUrl) {
-        await addStudentPhotoToPDF(doc, photoUrl, 163, 30, 35);
+        await addStudentPhotoToPDF(doc, photoUrl, 168, 26, 26);
       }
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr);
-      let currentY = drawResultsTable(doc, results, classDataForGrading, 70) + 8;
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr, 34, results[0]?.school_exams?.name || undefined);
+      let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
       const gradeLevelNum = Number(classDataForGrading?.grade_level || classDataForGrading?.level || 0);
       if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
-        currentY = drawPathwayPerformance(doc, results, currentY) + 8;
+        currentY = drawPathwayPerformance(doc, results, currentY) + 6;
       }
       
       currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
-      currentY = drawDeviation(doc, deviation, previousAvg, currentY + 8);
+      currentY = drawDeviation(doc, deviation, previousAvg, currentY + 6);
       if (trendData.length >= 2) {
-        drawTrendGraph(doc, trendData, 14, currentY, 182, 45, getSchoolLevelBand(classDataForGrading));
-        currentY += 50;
+        drawTrendGraph(doc, trendData, 14, currentY, 182, 40, getSchoolLevelBand(classDataForGrading));
+        currentY += 42;
       }
       const studentBests = classBestList.filter(b => b.studentId === selectedChild.id);
       if (studentBests.length > 0) {
         currentY = drawAchievements(doc, studentBests, currentY);
       }
       currentY = drawAIComment(doc, aiComment, currentY);
-      addSignaturesToPDF(doc, signatures, currentY, schoolInfo);
+      await addSignaturesToPDF(doc, signatures, currentY, schoolInfo);
+      drawReportFooter(doc);
       doc.save(`Report_Card_${selectedChild.first_name}_${selectedChild.last_name}.pdf`);
     } catch (err: any) {
       toast.error('PDF Error: ' + err.message);
@@ -405,8 +407,11 @@ export default function ParentChildReportCard() {
         amount: amount * 100,
         currency: 'KES',
         ref: `PAY_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        callback: async (response: any) => {
-          const { error } = await supabaseUntyped.from('parent_payments').insert({
+        // NOTE: Paystack V1 inline.js rejects async arrow functions in callbacks
+        // ("Attribute callback must be a valid function") — wrap async logic in a
+        // plain synchronous function
+        callback: (response: any) => {
+          supabaseUntyped.from('parent_payments').insert({
             parent_id: user?.id,
             student_id: selectedChild.id,
             school_id: schoolPayConfig.school_id,
@@ -414,14 +419,15 @@ export default function ParentChildReportCard() {
             payment_type: type,
             status: 'success',
             transaction_ref: response.reference,
+          }).then(({ error }) => {
+            if (error) toast.error('Payment recorded with error: ' + error.message);
+            else {
+              toast.success('Payment successful!');
+              if (type === 'pdf_report') setPdfPaid(prev => ({ ...prev, [selectedChild.id]: true }));
+              fetchResults();
+            }
+            setPaying(false);
           });
-          if (error) toast.error('Payment recorded with error: ' + error.message);
-          else {
-            toast.success('Payment successful!');
-            if (type === 'pdf_report') setPdfPaid(prev => ({ ...prev, [selectedChild.id]: true }));
-            fetchResults();
-          }
-          setPaying(false);
         },
         onClose: () => { setPaying(false); toast.info('Payment cancelled'); },
       });

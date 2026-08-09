@@ -215,8 +215,11 @@ export default function ParentChildren() {
             { display_name: 'Payment Type', variable_name: 'type', value: 'View Results' },
           ],
         },
-        callback: async (response: any) => {
-          const { error } = await supabaseUntyped.from('parent_payments').insert({
+        // NOTE: Paystack V1 inline.js rejects async arrow functions in callbacks
+        // ("Attribute callback must be a valid function") — wrap async logic in a
+        // plain synchronous function
+        callback: (response: any) => {
+          supabaseUntyped.from('parent_payments').insert({
             parent_id: user.id,
             parent_name: `${user.firstName} ${user.lastName}`,
             student_id: selectedChild.id,
@@ -227,15 +230,16 @@ export default function ParentChildren() {
             payment_type: 'view_results',
             status: 'success',
             paystack_reference: response.reference || reference,
+          }).then(({ error }) => {
+            if (error) {
+              toast.error('Payment recorded but failed to save: ' + error.message);
+            } else {
+              toast.success(`Payment of KES ${amount} successful! Loading results...`);
+              setResultsPaid(prev => ({ ...prev, [selectedChild.id]: true }));
+              loadResults(selectedChild.id);
+            }
+            setPaying(false);
           });
-          if (error) {
-            toast.error('Payment recorded but failed to save: ' + error.message);
-          } else {
-            toast.success(`Payment of KES ${amount} successful! Loading results...`);
-            setResultsPaid(prev => ({ ...prev, [selectedChild.id]: true }));
-            await loadResults(selectedChild.id);
-          }
-          setPaying(false);
         },
         onClose: () => {
           toast.info('Payment cancelled');

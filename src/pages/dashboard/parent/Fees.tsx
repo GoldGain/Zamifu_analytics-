@@ -98,22 +98,29 @@ export default function ParentFees() {
         key: schoolPayment.paystack_public_key, email: user.email,
         amount: Math.round(amount * 100), currency: schoolPayment.paystack_currency || 'KES', ref: reference,
         metadata: { invoice_id: invoice.id, school_id: invoice.school_id, student_id: invoice.student_id, parent_id: user.id, school_name: schoolPayment.name },
-        callback: async (response: any) => {
-          try {
-            const paidAmount = amount;
-            const newAmountPaid = Number(invoice.amount_paid || 0) + paidAmount;
-            const newBalance = Math.max(0, Number(invoice.total_amount || 0) - newAmountPaid);
-            const nextStatus = newBalance <= 0 ? 'paid' : 'partial';
-            const { error: paymentError } = await supabaseUntyped.from('fee_payments').insert({
-              school_id: invoice.school_id, invoice_id: invoice.id, student_id: invoice.student_id,
-              amount: paidAmount, payment_method: 'other', reference_number: response.reference || reference,
-              payment_date: new Date().toISOString(), notes: 'Paystack parent payment',
-            });
+        // NOTE: Paystack V1 inline.js rejects async arrow functions in callbacks
+        // ("Attribute callback must be a valid function") — wrap async logic in a
+        // plain synchronous function
+        callback: (response: any) => {
+          const paidAmount = amount;
+          const newAmountPaid = Number(invoice.amount_paid || 0) + paidAmount;
+          const newBalance = Math.max(0, Number(invoice.total_amount || 0) - newAmountPaid);
+          const nextStatus = newBalance <= 0 ? 'paid' : 'partial';
+          supabaseUntyped.from('fee_payments').insert({
+            school_id: invoice.school_id, invoice_id: invoice.id, student_id: invoice.student_id,
+            amount: paidAmount, payment_method: 'other', reference_number: response.reference || reference,
+            payment_date: new Date().toISOString(), notes: 'Paystack parent payment',
+          }).then(({ error: paymentError }) => {
             if (paymentError) throw new Error(paymentError.message);
-            await supabaseUntyped.from('fee_invoices').update({ amount_paid: newAmountPaid, balance: newBalance, status: nextStatus }).eq('id', invoice.id);
-            toast.success('Payment recorded successfully.'); await refreshCurrentChild();
-          } catch (err: any) { toast.error(`Payment succeeded but recording failed: ${err.message}`); }
-          finally { setPayingInvoice(null); }
+            return supabaseUntyped.from('fee_invoices').update({ amount_paid: newAmountPaid, balance: newBalance, status: nextStatus }).eq('id', invoice.id);
+          }).then(() => {
+            toast.success('Payment recorded successfully.');
+            refreshCurrentChild();
+            setPayingInvoice(null);
+          }).catch((err: any) => {
+            toast.error(`Payment succeeded but recording failed: ${err?.message || err}`);
+            setPayingInvoice(null);
+          });
         },
         onClose: () => { setPayingInvoice(null); toast.info('Payment window closed.'); },
       });

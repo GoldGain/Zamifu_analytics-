@@ -8,6 +8,7 @@ import {
   generateUniqueAIComment,
   drawTrendGraph,
   addSignaturesToPDF,
+  drawReportFooter,
   drawReportHeader,
   drawStudentInfo,
   drawResultsTable,
@@ -304,15 +305,9 @@ export default function StudentReportCard() {
         term?.name || '',
         term?.academic_year || '',
         positionStr,
+        34,
+        results[0]?.school_exams?.name || undefined,
       );
-
-      // Show assessment name if available
-      const assessmentName = results[0]?.school_exams?.name || '';
-      if (assessmentName) {
-        doc.setFontSize(9);
-        doc.setTextColor(37, 99, 235);
-        doc.text(`Assessment: ${assessmentName}`, 120, 70);
-      }
 
       const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
       const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
@@ -324,11 +319,11 @@ export default function StudentReportCard() {
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
       const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
-      await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
+      const sigEndY = await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
 
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('Zamifu Analytics School Management System | Support: tutorsultimate@gmail.com', 105, 285, { align: 'center' });
+      // Footer anchored to the bottom of the last page (never pushes content down)
+      drawReportFooter(doc);
+      void sigEndY;
 
       doc.save(`report_card_${student.first_name}_${student.last_name}_${term?.name}.pdf`);
       toast.success('Report card downloaded!');
@@ -365,6 +360,9 @@ export default function StudentReportCard() {
               <h2 className="text-lg font-bold text-[#111111]">{student.first_name} {student.last_name}</h2>
               <p className="text-sm text-[#666666]">Assessment #: {student.admission_number}</p>
               <p className="text-sm text-[#666666]">Class: {student.classes?.name}</p>
+              {results[0]?.school_exams?.name && (
+                <p className="text-sm font-semibold text-[#6A1B9A] mt-1">Assessment: {results[0].school_exams.name}</p>
+              )}
             </div>
             {zoomPhoto && <PhotoZoomModal photoUrl={zoomPhoto} altText={student.first_name} onClose={() => setZoomPhoto(null)} />}
             {student.photo_url ? (

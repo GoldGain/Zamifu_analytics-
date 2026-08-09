@@ -349,10 +349,15 @@ export const SMS_TEMPLATES = {
       ? gradeInfo.subLevel
       : gradeInfo.grade;
     const learnerLevel = getLearnerLevelLabel(classData, className);
+    // Total Points: Junior (Grade 7-9) and Senior (Grade 10-12) use points;
+    // Primary (PP1-Grade 6) uses total marks, so no points line there.
+    const pointsLine = band !== 'primary' && totalPossible > 0
+      ? `Total Points: ${totalPoints}/${totalPossible}\n`
+      : '';
     const rankLine = rank > 0 && totalStudents > 0 ? `Class Rank: ${rank}/${totalStudents}\n` : '';
     const commentLine = comment.trim() ? `\n${comment.trim()}\n` : '';
 
-    return `Zamifu Analytics\n\nResults for ${studentName} - ${learnerLevel}\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nAverage Marks: ${averagePercentage}%\nAverage Grade: ${averageGrade} (${gradeInfo.descriptor})\n${rankLine}${commentLine}\nView Full Results:\nhttps://zamifu.company`;
+    return `Zamifu Analytics\n\nResults for ${studentName} - ${learnerLevel}\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nAverage Marks: ${averagePercentage}%\nAverage Grade: ${averageGrade} (${gradeInfo.descriptor})\n${pointsLine}${rankLine}${commentLine}\nView Full Results:\nhttps://zamifu.company`;
   },
 
   announcement: (schoolName: string, message: string) =>

@@ -110,7 +110,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'My Personal Timetable', icon: <Calendar className="w-5 h-5" />, path: '/teacher/timetable' },
     { label: 'Results Upload', icon: <Upload className="w-5 h-5" />, path: '/teacher/results/assigned' },
     { label: 'View My Marks', icon: <Eye className="w-5 h-5" />, path: '/teacher/view-marks' },
-    { label: 'Marklist', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/teacher/marklist' },
+    // Marklist removed per requirements — Class List kept
     { label: 'Class List', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/teacher/class-list' },
     { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/assessment-progress' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/teacher/attendance' },
