@@ -58,4 +58,13 @@ DONE in src/lib/reportCardPdf.ts: export COMPACT_MODE=true; HDR_H 28mm; ROW 4.5m
 DONE in student/ReportCard.tsx: y=34. DONE in parent/ChildReportCard.tsx: photo 26x26 at 168,26; y=34; table startY 62; gaps 6; trend 40h +42.
 TODO verify: teacher ResultsUpload.tsx has 2 jsPDF uses (lines 248, 495) — check if they also call drawReportHeader/drawStudentInfo at y=38; update if so.
 Also TODO: shorten AI comment templates in grading.ts? Check template length — currently ~3 sentences; compact lineHeight 4.45*lines. If comment ~4 lines (28mm) + box ≈ fits.
-Then: test build, check pages, push, deploy via Vercel MCP (vercel server), verify live.
+## Push + Deploy status
+- ALL 7 FIXES PUSHED to origin AND backup main (commit a76ac82).
+- Vercel project: zamifu-analytics (prj_nQCW94U36pxzAeXEOwOC2pzawhXH), team goldgain-3350s-projects (team_hxUpiTU3c8DwOJJprzIRSxvG). Git-connected: push to main auto-deploys production.
+- LATEST DEPLOYMENT: dpl_2XE44MuByKei99tm83USkxsvKMpu — state BUILDING (commit a76ac82, the 7-issue fix commit). URL: zamifu-analytics-xzsbeocr3-goldgain-3350s-projects.vercel.app — inspector: https://vercel.com/goldgain-3350s-projects/zamifu-analytics/2XE44MuByKei99tm83USkxsvKMpu
+- Previous READY production: dpl_6D8fjtSD8jSsNGMTzUM1LGht4xDP (commit 89a3447).
+- Live domain: https://zamifu.company (Vercel alias of project).
+- NEXT: poll get_deployment for state READY, then verify live site (check footer policy links /privacy, landing, report card, copilot).
+- test_onepage.mjs test PASSED: compact layout = 1 page A4 (PAGES:1), content: header28 + info + 13-subject table + summary + trend(32) + achievements + comment + signatures + footer.
+- Cleanup TODO: remove TASK_NOTES.md, test_onepage.mjs, test_pdf.sh from repo before final report? (they were committed — optional; better keep repo clean next time).
+- Vercel MCP tool list_projects/get_deployment need teamId required param.

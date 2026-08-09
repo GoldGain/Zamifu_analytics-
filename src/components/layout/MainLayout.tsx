@@ -123,7 +123,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-gray-400">&copy; 2025 Zamifu Analytics. All rights reserved.</p>
+            <p className="text-sm text-gray-400">&copy; {new Date().getFullYear()} Zamifu Analytics. All rights reserved.</p>
+            <nav className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm text-gray-400">
+              <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+              <Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
+              <Link to="/cookie-policy" className="hover:text-white transition-colors">Cookie Policy</Link>
+              <Link to="/data-processing-agreement" className="hover:text-white transition-colors">Data Protection (DPA)</Link>
+              <Link to="/confidentiality" className="hover:text-white transition-colors">Confidentiality</Link>
+            </nav>
             <p className="text-sm text-gray-400">Designed for Kenyan Schools</p>
           </div>
         </div>

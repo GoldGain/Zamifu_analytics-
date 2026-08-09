@@ -103,6 +103,12 @@ import PathwayFinder from '@/components/PathwayFinder';
 import SchoolAdminProfile from '@/pages/dashboard/school-admin/Profile';
 import ParentProfile from '@/pages/dashboard/parent/Profile';
 import ParentFeeTranscript from '@/pages/dashboard/parent/FeeTranscript';
+// Legal pages
+import PrivacyPolicy from '@/pages/legal/PrivacyPolicy';
+import TermsOfService from '@/pages/legal/TermsOfService';
+import CookiePolicy from '@/pages/legal/CookiePolicy';
+import DataProcessingAgreement from '@/pages/legal/DataProcessingAgreement';
+import Confidentiality from '@/pages/legal/Confidentiality';
 
 function LoadingSpinner() {
   return (
@@ -272,6 +278,13 @@ function AppRoutes() {
 
       {/* Public Pathway Finder route */}
       <Route path="/pathway-finder" element={<PublicRoute><PathwayFinder /></PublicRoute>} />
+
+      {/* Legal pages */}
+      <Route path="/privacy" element={<PublicRoute><PrivacyPolicy /></PublicRoute>} />
+      <Route path="/terms" element={<PublicRoute><TermsOfService /></PublicRoute>} />
+      <Route path="/cookie-policy" element={<PublicRoute><CookiePolicy /></PublicRoute>} />
+      <Route path="/data-processing-agreement" element={<PublicRoute><DataProcessingAgreement /></PublicRoute>} />
+      <Route path="/confidentiality" element={<PublicRoute><Confidentiality /></PublicRoute>} />
 
       {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />
