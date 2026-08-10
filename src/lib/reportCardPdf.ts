@@ -38,8 +38,8 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 16;
  * signatures) fits on a single A4 page.
  */
 export const COMPACT_MODE = true;
-const ROW = COMPACT_MODE ? 4.5 : 6;   // vertical row step for student info
-const HDR_H = COMPACT_MODE ? 28 : 32; // header band height
+const ROW = COMPACT_MODE ? 3.5 : 5;   // vertical row step for student info (reduced)
+const HDR_H = COMPACT_MODE ? 24 : 28; // header band height (reduced)
 
 /**
  * Starts a clean continuation page when a report-card block cannot fit in the
@@ -280,6 +280,12 @@ export function drawTrendGraph(
   height: number,
   band: SchoolLevelBand
 ): number {
+  // REMOVED: Performance Trend Graph is no longer displayed on report cards
+  // This function is kept for backward compatibility but returns immediately
+  return y;
+  
+  // Original code below (disabled):
+  /*
   if (!trendData || trendData.length < 2) return y;
   if (COMPACT_MODE) height = Math.min(height, 32); // cap trend height in one-page mode
   y = ensureReportCardSpace(doc, y, height + 6);
@@ -322,6 +328,8 @@ export function drawTrendGraph(
     term: d.term,
   }));
 
+  // DISABLED: Performance Trend Graph removed
+  /*
   // Draw connecting line - Use Purple instead of Blue
   doc.setDrawColor(106, 27, 154); // Deep Purple
   doc.setLineWidth(1.5);
@@ -680,15 +688,20 @@ export function drawDeviation(
   doc: jsPDF,
   deviation: number | null,
   previousAvg: number | null,
+  previousPosition: number | null,
   startY: number
 ): number {
   startY = ensureReportCardSpace(doc, startY, COMPACT_MODE ? 10 : 12);
-  if (deviation !== null) {
+  if (deviation !== null && previousAvg !== null) {
     const arrow = deviation >= 0 ? '\u25B2' : '\u25BC';
     const sign = deviation >= 0 ? '+' : '';
     if (deviation >= 0) doc.setTextColor(76, 175, 80); else doc.setTextColor(244, 67, 54);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(COMPACT_MODE ? 7 : 8);
-    doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous term (Prev: ${previousAvg?.toFixed(1)}%)`, 14, startY);
+    doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous (Prev: ${previousAvg?.toFixed(1)}% - Pos: ${previousPosition || 'N/A'})`, 14, startY);
+    doc.setTextColor(0, 0, 0);
+  } else if (previousAvg !== null) {
+    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(COMPACT_MODE ? 7 : 8);
+    doc.text(`Previous performance: ${previousAvg.toFixed(1)}% - Position: ${previousPosition || 'N/A'}`, 14, startY);
     doc.setTextColor(0, 0, 0);
   } else {
     doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(COMPACT_MODE ? 7 : 8);

@@ -28,6 +28,7 @@ export default function SchoolBranding() {
     email: '',
     website: '',
     principal_name: '',
+    next_term_start_date: '',
   });
   // Signature states
   const [principalSig, setPrincipalSig] = useState<{ url: string | null; type: string | null }>({ url: null, type: null });
@@ -48,7 +49,7 @@ export default function SchoolBranding() {
     try {
       const { data: schoolData, error } = await supabaseUntyped
         .from('schools')
-        .select('id, name, motto, primary_color, secondary_color, logo_url, address, phone, email, website, principal_name, principal_signature_url, principal_signature_type')
+        .select('id, name, motto, primary_color, secondary_color, logo_url, address, phone, email, website, principal_name, next_term_start_date, principal_signature_url, principal_signature_type')
         .eq('id', user?.schoolId)
         .single();
       if (error) throw error;
@@ -76,6 +77,7 @@ export default function SchoolBranding() {
         email: data.email || '',
         website: data.website || '',
         principal_name: data.principal_name || '',
+        next_term_start_date: data.next_term_start_date || '',
       });
       setPrincipalSig({
         url: data.principal_signature_url || null,
@@ -156,6 +158,7 @@ export default function SchoolBranding() {
             email: form.email,
             website: form.website,
             principal_name: form.principal_name,
+            next_term_start_date: form.next_term_start_date || null,
           })
           .eq('id', user?.schoolId);
         error = result.error;
@@ -173,6 +176,7 @@ export default function SchoolBranding() {
               email: form.email,
               website: form.website,
               principal_name: form.principal_name,
+              next_term_start_date: form.next_term_start_date || null,
             })
             .eq('id', user?.schoolId);
           error = result.error;
@@ -444,6 +448,11 @@ export default function SchoolBranding() {
             <div>
               <label className="block text-xs text-gray-500 mb-1">Website</label>
               <input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} placeholder="https://yourschool.ac.ke" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Next Term Start Date</label>
+              <input type="date" value={form.next_term_start_date} onChange={e => setForm({ ...form, next_term_start_date: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+              <p className="text-xs text-gray-400 mt-1">This date will be displayed on all report cards</p>
+            </div>
             </div>
           </div>
 

@@ -137,6 +137,29 @@ export default function SchoolAdminStudents() {
     e.preventDefault();
     setAdding(true);
     try {
+      // Check for duplicate admission number in this class only
+      const { data: existingStudent } = await supabaseUntyped
+        .from('students')
+        .select('id')
+        .eq('class_id', formData.class_id)
+        .eq('admission_number', formData.assessment_number)
+        .single();
+      
+      if (existingStudent) {
+        throw new Error('Admission number already exists in this class. Please use a different number.');
+      }
+      
+      // Check for duplicate email
+      const { data: emailExists } = await supabaseUntyped
+        .from('students')
+        .select('id')
+        .eq('student_email', formData.student_email)
+        .single();
+      
+      if (emailExists) {
+        throw new Error('Email already registered. Please use a different email.');
+      }
+      
       const studentEmail = formData.student_email || `${formData.assessment_number.toLowerCase().replace(/\s+/g, '')}@student.edu`;
       const studentPassword = `${formData.assessment_number}@2025`;
       const authData = await createScopedUser({

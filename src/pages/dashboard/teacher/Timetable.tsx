@@ -466,12 +466,7 @@ export default function TeacherTimetable() {
           >
             <Eye className="w-4 h-4" /> My View
           </button>
-          <button
-            onClick={() => setViewMode('edit')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'edit' ? 'bg-blue-600 text-white' : 'border border-gray-300 hover:bg-gray-50'}`}
-          >
-            <Edit3 className="w-4 h-4" /> Edit Timetable
-          </button>
+          {/* Issue 12: Edit Timetable button removed - teachers cannot edit their timetable */}
         </div>
       </div>
 
@@ -570,49 +565,8 @@ export default function TeacherTimetable() {
       )}
 
       {/* EDIT VIEW */}
-      {viewMode === 'edit' && (
-        <>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Class *</label>
-                <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select a class</option>
-                  {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Term</label>
-                <select value={selectedTerm} onChange={e => setSelectedTerm(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="Term 1">Term 1</option>
-                  <option value="Term 2">Term 2</option>
-                  <option value="Term 3">Term 3</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Year</label>
-                <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {[2024, 2025, 2026, 2027].map(year => <option key={year} value={year.toString()}>{year}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button onClick={fetchTimetable} className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            <button onClick={exportToPDF} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
-              <Download className="w-4 h-4" /> Export PDF
-            </button>
-            <button onClick={saveTimetable} disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50">
-              <Save className="w-4 h-4" /> {saving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
+      {/* Issue 12: Edit mode removed - teachers cannot edit their timetable */}
+      {false && (
 
           {loading ? (
             <div className="flex items-center justify-center h-40">
