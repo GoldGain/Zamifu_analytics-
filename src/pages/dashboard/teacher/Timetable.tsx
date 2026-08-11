@@ -567,7 +567,7 @@ export default function TeacherTimetable() {
       {/* EDIT VIEW */}
       {/* Issue 12: Edit mode removed - teachers cannot edit their timetable */}
       {false && (
-
+        <>
           {loading ? (
             <div className="flex items-center justify-center h-40">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />

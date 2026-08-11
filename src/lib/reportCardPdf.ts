@@ -285,80 +285,8 @@ export function drawTrendGraph(
   return y;
   
   // Original code below (disabled):
-  /*
-  if (!trendData || trendData.length < 2) return y;
-  if (COMPACT_MODE) height = Math.min(height, 32); // cap trend height in one-page mode
-  y = ensureReportCardSpace(doc, y, height + 6);
-
-  const padding = COMPACT_MODE ? 10 : 15;
-  const graphX = x + padding;
-  const graphY = y + padding;
-  const graphW = width - padding * 2;
-  const graphH = height - padding * 2;
-
-  // Background
-  doc.setFillColor(250, 250, 252);
-  doc.rect(x, y, width, height, 'F');
-  doc.setDrawColor(200, 200, 210);
-  doc.rect(x, y, width, height, 'S');
-
-  // Title
-  doc.setFontSize(7);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(60, 60, 70);
-  doc.text('PERFORMANCE TREND', x + 5, y + 7);
-
-  const maxAvg = Math.max(...trendData.map(d => d.avg), 100);
-  const minAvg = Math.min(...trendData.map(d => d.avg), 0);
-  const range = maxAvg - minAvg || 100;
-
-  // Grid lines
-  for (let i = 0; i <= 4; i++) {
-    const gridY = graphY + (graphH / 4) * i;
-    doc.setDrawColor(230, 230, 235);
-    doc.line(graphX, gridY, graphX + graphW, gridY);
-  }
-
-  const stepX = graphW / Math.max(trendData.length - 1, 1);
-
-  const points = trendData.map((d, i) => ({
-    x: graphX + stepX * i,
-    y: graphY + graphH - ((d.avg - minAvg) / range) * graphH,
-    avg: d.avg,
-    term: d.term,
-  }));
-
-  // DISABLED: Performance Trend Graph removed
-  /*
-  // Draw connecting line - Use Purple instead of Blue
-  doc.setDrawColor(106, 27, 154); // Deep Purple
-  doc.setLineWidth(1.5);
-  for (let i = 0; i < points.length - 1; i++) {
-    doc.line(points[i].x, points[i].y, points[i + 1].x, points[i + 1].y);
-  }
-
-  // Draw points
-  points.forEach((p) => {
-    doc.setFillColor(106, 27, 154); // Deep Purple
-    doc.circle(p.x, p.y, 2.5, 'F');
-    doc.setFillColor(255, 255, 255);
-    doc.circle(p.x, p.y, 1.2, 'F');
-
-    doc.setFontSize(5.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 110);
-    const termLabel = p.term.length > 10 ? p.term.substring(0, 10) : p.term;
-    doc.text(termLabel, p.x, graphY + graphH + 7, { align: 'center' });
-
-    doc.setFontSize(5.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(106, 27, 154); // Deep Purple
-    doc.text(`${p.avg.toFixed(0)}%`, p.x, p.y - 5, { align: 'center' });
-  });
-
-  doc.setLineWidth(0.2);
-  doc.setTextColor(0, 0, 0);
-  return y + height;
+  // Performance trend graph has been removed to fit report cards on one page
+  // The graph drawing code is intentionally removed for compact layout
 }
 
 // ── Add Logo to PDF ──────────────────────────────────────────────────────────
@@ -681,6 +609,27 @@ export function drawSummaryBox(
   doc.text(`Grade: ${overallGrading.grade}`, 65, startY + gap * 2);
   if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
   return startY + boxH + 4;
+}
+
+// ── Draw Next Term Start Date ──────────────────────────────────────────────────
+export function drawNextTermStartDate(
+  doc: jsPDF,
+  nextTermStartDate: string | null | undefined,
+  startY: number
+): number {
+  if (!nextTermStartDate) return startY;
+  
+  startY = ensureReportCardSpace(doc, startY, COMPACT_MODE ? 8 : 10);
+  const dateObj = new Date(nextTermStartDate);
+  const formattedDate = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  
+  doc.setTextColor(0, 102, 102);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
+  doc.text(`Next term will start on: ${formattedDate}`, 14, startY);
+  doc.setTextColor(0, 0, 0);
+  
+  return startY + (COMPACT_MODE ? 7 : 8);
 }
 
 // ── Draw Deviation ───────────────────────────────────────────────────────────

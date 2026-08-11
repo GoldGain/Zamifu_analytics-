@@ -16,6 +16,7 @@ import {
   drawDeviation,
   drawAchievements,
   drawAIComment,
+  drawNextTermStartDate,
   getPercentage,
   formatPosition,
   addStudentPhotoToPDF,
@@ -84,7 +85,7 @@ export default function StudentReportCard() {
     try {
       const { data } = await supabaseUntyped
         .from('schools')
-        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email')
+        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date')
         .eq('id', schoolId)
         .maybeSingle();
       if (data) {
@@ -96,6 +97,7 @@ export default function StudentReportCard() {
           address: data.address || '',
           phone: data.phone || '',
           email: data.email || '',
+          next_term_start_date: data.next_term_start_date || null,
         });
         setSignatures(prev => ({
           ...prev,
@@ -311,7 +313,8 @@ export default function StudentReportCard() {
 
       const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
       const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
-      const devEndY = drawDeviation(doc, deviation, previousAvg, summaryEndY);
+      const nextTermEndY = drawNextTermStartDate(doc, schoolInfo.next_term_start_date, summaryEndY);
+      const devEndY = drawDeviation(doc, deviation, previousAvg, nextTermEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2) {
         trendEndY = drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band);
