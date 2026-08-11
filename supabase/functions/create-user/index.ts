@@ -63,13 +63,49 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { email, password, first_name, last_name, role, school_id, metadata } = body;
+    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, class_id } = body;
 
     if (!email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields: email, password, role" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Issue 4: Validate admission number for learners
+    if (role === "learner" && admission_number && class_id) {
+      const tempAdminClient = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      // Check for duplicate admission number in the same class
+      const { data: existingStudent, error: checkError } = await tempAdminClient
+        .from("students")
+        .select("id, admission_number")
+        .eq("class_id", class_id)
+        .eq("admission_number", admission_number)
+        .eq("school_id", school_id || callerProfile.school_id)
+        .maybeSingle();
+
+      if (checkError && checkError.code !== "PGRST116") {
+        return new Response(JSON.stringify({ error: "Database error checking admission number" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (existingStudent) {
+        return new Response(
+          JSON.stringify({ 
+            error: `Admission number ${admission_number} already exists in this class`,
+            code: "DUPLICATE_ADMISSION_NUMBER"
+          }),
+          {
+            status: 409,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
     }
 
     // Use service role client to create user (does NOT change current session)
@@ -89,6 +125,8 @@ Deno.serve(async (req) => {
         last_name: last_name || "",
         role: role,
         school_id: school_id || callerProfile.school_id,
+        admission_number: admission_number || null,
+        class_id: class_id || null,
         ...metadata,
       },
     });
