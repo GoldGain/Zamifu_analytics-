@@ -122,7 +122,7 @@ export default function SchoolAdminResults() {
         supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
-        supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email').eq('id', schoolId).maybeSingle(),
+        supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date').eq('id', schoolId).maybeSingle(),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
       ]);
       setResults((resultsData[0].data as any[]) || []);
@@ -143,6 +143,7 @@ export default function SchoolAdminResults() {
         address: sch.address || '',
         phone: sch.phone || '',
         email: sch.email || '',
+        next_term_start_date: sch.next_term_start_date || null,
       });
       setPrincipalSignatureUrl(sch.principal_signature_url || null);
     }

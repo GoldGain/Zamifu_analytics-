@@ -110,18 +110,19 @@ export default function StudentReportCard() {
       try {
         const { data } = await supabaseUntyped
           .from('schools')
-          .select('name, logo_url, principal_name, address, phone, email')
+          .select('name, motto, logo_url, principal_name, address, phone, email, next_term_start_date')
           .eq('id', schoolId)
           .maybeSingle();
         if (data) {
           setSchoolInfo({
             name: data.name?.trim() || 'School',
-            motto: '',
+            motto: data.motto || '',
             logo_url: data.logo_url || null,
             principal_name: data.principal_name || '',
             address: data.address || '',
             phone: data.phone || '',
             email: data.email || '',
+            next_term_start_date: data.next_term_start_date || null,
           });
         } else {
           setSchoolInfo({ name: 'School' });
@@ -321,12 +322,10 @@ export default function StudentReportCard() {
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
       const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
-      const sigEndY = await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
-      const nextTermEndY = drawNextTermStartDate(doc, schoolInfo.next_term_start_date, sigEndY);
+      await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
 
       // Footer anchored to the bottom of the last page (never pushes content down)
       drawReportFooter(doc);
-      void nextTermEndY;
 
       doc.save(`report_card_${student.first_name}_${student.last_name}_${term?.name}.pdf`);
       toast.success('Report card downloaded!');

@@ -13,6 +13,7 @@ export interface SchoolInfo {
   address?: string;
   phone?: string;
   email?: string;
+  next_term_start_date?: string | null;
 }
 
 export interface SignatureInfo {
@@ -38,8 +39,8 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 16;
  * signatures) fits on a single A4 page.
  */
 export const COMPACT_MODE = true;
-const ROW = COMPACT_MODE ? 3.5 : 5;   // vertical row step for student info (reduced)
-const HDR_H = COMPACT_MODE ? 24 : 28; // header band height (reduced)
+const ROW = COMPACT_MODE ? 3.2 : 5;   // vertical row step for student info (further reduced)
+const HDR_H = COMPACT_MODE ? 22 : 28; // header band height (further reduced)
 
 /**
  * Starts a clean continuation page when a report-card block cannot fit in the
@@ -410,10 +411,10 @@ export async function addSignaturesToPDF(
   schoolInfo?: SchoolInfo
 ) {
   // Compact mode shrinks the signature block so it fits on page 1
-  const sigBlockH = COMPACT_MODE ? 24 : 34;
-  const sigImgH = COMPACT_MODE ? 12 : 16;
-  const sigImgY = COMPACT_MODE ? 2 : 3;
-  const sigLabelY = COMPACT_MODE ? 16 : 22;
+  const sigBlockH = COMPACT_MODE ? 20 : 34;
+  const sigImgH = COMPACT_MODE ? 10 : 16;
+  const sigImgY = COMPACT_MODE ? 1.5 : 3;
+  const sigLabelY = COMPACT_MODE ? 14 : 22;
   y = ensureReportCardSpace(doc, y, sigBlockH);
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
@@ -484,6 +485,13 @@ export async function addSignaturesToPDF(
   doc.setFontSize(5.5);
   doc.setTextColor(150, 150, 155);
   doc.text('OFFICIAL STAMP', 134, y + sigImgY + sigImgH / 2, { align: 'center' });
+
+  // Move "Next term begins on" to AFTER the signatures as requested
+  if (schoolInfo?.next_term_start_date) {
+    y = drawNextTermStartDate(doc, schoolInfo.next_term_start_date, y + sigBlockH + 2);
+    return y;
+  }
+
   return y + sigBlockH;
 }
 
@@ -548,8 +556,8 @@ export function drawResultsTable(
     startY,
     head: [tableHead],
     body: tableBody,
-    styles: { fontSize: COMPACT_MODE ? 7 : 8, cellPadding: COMPACT_MODE ? 0.8 : 1.5 },
-    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: COMPACT_MODE ? 7.5 : 8, cellPadding: 1 },
+    styles: { fontSize: COMPACT_MODE ? 6.8 : 8, cellPadding: COMPACT_MODE ? 0.6 : 1.5 },
+    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: COMPACT_MODE ? 7.2 : 8, cellPadding: 0.8 },
     alternateRowStyles: { fillColor: [232, 234, 246] }, margin: { left: 14, right: 14 },
   });
   return (doc as any).lastAutoTable.finalY;
@@ -593,14 +601,14 @@ export function drawSummaryBox(
   classData: any,
   startY: number
 ): number {
-  const boxH = COMPACT_MODE ? 15 : 22;
+  const boxH = COMPACT_MODE ? 13 : 22;
   startY = ensureReportCardSpace(doc, startY, boxH + 2);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const overallGrading = gradeFromPercentage(avgPercentage, classData);
   doc.setFillColor(0, 137, 123); doc.rect(14, startY, 182, boxH, 'F');
-  const fs = COMPACT_MODE ? 7.5 : 8;
-  const gap = COMPACT_MODE ? 6.5 : 8;
+  const fs = COMPACT_MODE ? 7.2 : 8;
+  const gap = COMPACT_MODE ? 5.8 : 8;
   doc.setFontSize(fs); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
   doc.text(`Learning Areas: ${results.length}`, 20, startY + gap);
   doc.text(`Total Marks: ${totalMarks}`, 65, startY + gap);

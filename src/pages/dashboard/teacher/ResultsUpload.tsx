@@ -126,9 +126,15 @@ export default function TeacherResultsUpload() {
         .from('students')
         .select('id, first_name, last_name, admission_number')
         .eq('class_id', selectedClass)
-        .eq('is_active', true)
-        .order('admission_number');
-      const studs = data || [];
+        .eq('is_active', true);
+      
+      // Issue: Natural sort for admission numbers (e.g., 2 before 10)
+      const studs = (data || []).sort((a, b) => {
+        const aNum = a.admission_number || '';
+        const bNum = b.admission_number || '';
+        return aNum.localeCompare(bNum, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
       setStudents(studs);
       setManualRows(studs.map((s: any) => ({
         student_id: s.id,
