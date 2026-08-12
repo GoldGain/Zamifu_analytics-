@@ -509,7 +509,7 @@ export function drawStudentInfo(
   assessmentName?: string
 ) {
   // Compact: two-column grid, denser rows so the info block uses <= 14mm
-  const fs = COMPACT_MODE ? 8.5 : 9;
+  const fs = COMPACT_MODE ? 8 : 9;
   doc.setTextColor(0, 0, 0); doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
   doc.text(`Learner: ${studentName}`, 14, y);
   doc.text(`Adm No: ${admissionNo}`, 14, y + ROW);
@@ -548,7 +548,7 @@ export function drawResultsTable(
     startY,
     head: [tableHead],
     body: tableBody,
-    styles: { fontSize: COMPACT_MODE ? 7.5 : 8, cellPadding: COMPACT_MODE ? 1 : 1.5 },
+    styles: { fontSize: COMPACT_MODE ? 7 : 8, cellPadding: COMPACT_MODE ? 0.8 : 1.5 },
     headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: COMPACT_MODE ? 7.5 : 8, cellPadding: 1 },
     alternateRowStyles: { fillColor: [232, 234, 246] }, margin: { left: 14, right: 14 },
   });
@@ -593,7 +593,7 @@ export function drawSummaryBox(
   classData: any,
   startY: number
 ): number {
-  const boxH = COMPACT_MODE ? 17 : 22;
+  const boxH = COMPACT_MODE ? 15 : 22;
   startY = ensureReportCardSpace(doc, startY, boxH + 2);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
@@ -626,7 +626,7 @@ export function drawNextTermStartDate(
   doc.setTextColor(0, 102, 102);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
-  doc.text(`Next term will start on: ${formattedDate}`, 14, startY);
+  doc.text(`Next term begins on: ${formattedDate}`, 14, startY);
   doc.setTextColor(0, 0, 0);
   
   return startY + (COMPACT_MODE ? 7 : 8);

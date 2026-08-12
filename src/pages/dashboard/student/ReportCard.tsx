@@ -313,8 +313,7 @@ export default function StudentReportCard() {
 
       const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
       const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
-      const nextTermEndY = drawNextTermStartDate(doc, schoolInfo.next_term_start_date, summaryEndY);
-      const devEndY = drawDeviation(doc, deviation, previousAvg, nextTermEndY);
+      const devEndY = drawDeviation(doc, deviation, previousAvg, summaryEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2) {
         trendEndY = drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band);
@@ -323,10 +322,11 @@ export default function StudentReportCard() {
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
       const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
       const sigEndY = await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
+      const nextTermEndY = drawNextTermStartDate(doc, schoolInfo.next_term_start_date, sigEndY);
 
       // Footer anchored to the bottom of the last page (never pushes content down)
       drawReportFooter(doc);
-      void sigEndY;
+      void nextTermEndY;
 
       doc.save(`report_card_${student.first_name}_${student.last_name}_${term?.name}.pdf`);
       toast.success('Report card downloaded!');

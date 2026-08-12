@@ -127,7 +127,7 @@ export default function TeacherResultsUpload() {
         .select('id, first_name, last_name, admission_number')
         .eq('class_id', selectedClass)
         .eq('is_active', true)
-        .order('first_name');
+        .order('admission_number');
       const studs = data || [];
       setStudents(studs);
       setManualRows(studs.map((s: any) => ({
