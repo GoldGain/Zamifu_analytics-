@@ -415,7 +415,7 @@ export async function addSignaturesToPDF(
   const sigImgH = COMPACT_MODE ? 8 : 16;
   const sigImgY = COMPACT_MODE ? 0.5 : 3;
   const sigLabelY = COMPACT_MODE ? 9 : 22;
-  y = ensureReportCardSpace(doc, y, sigBlockH + 5);
+  y = ensureReportCardSpace(doc, y, sigBlockH + (schoolInfo?.next_term_start_date ? 8 : 5));
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
   doc.setFontSize(COMPACT_MODE ? 6 : 7);
@@ -488,8 +488,14 @@ export async function addSignaturesToPDF(
 
   // Move "Next term begins on" to AFTER the signatures as requested
   if (schoolInfo?.next_term_start_date) {
-    y = drawNextTermStartDate(doc, schoolInfo.next_term_start_date, y + sigBlockH + 2);
-    return y;
+    const dateObj = new Date(schoolInfo.next_term_start_date);
+    const formattedDate = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    doc.setTextColor(0, 102, 102);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
+    doc.text(`Next term begins on: ${formattedDate}`, 14, y + sigBlockH + (COMPACT_MODE ? 2 : 4));
+    doc.setTextColor(0, 0, 0);
+    return y + sigBlockH + (COMPACT_MODE ? 6 : 10);
   }
 
   return y + sigBlockH;

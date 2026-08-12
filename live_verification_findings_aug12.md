@@ -34,3 +34,14 @@ The verification of the report card PDF layout revealed that while the content a
 ## Next Steps for Final Optimization
 
 To fully resolve the report card layout issue, further code modifications are required in `reportCardPdf.ts` to reduce vertical spacing and ensure all footer elements are contained within the first page. The goal is to anchor the signatures and term information more closely to the comments section without compromising readability. A subsequent deployment and verification will be performed to confirm the single-page layout.
+
+## Follow-up Verification After Additional PDF Optimization
+
+A second live deployment reduced the total bulk PDF from 31 pages to 22 pages, which confirms that the compacting changes improved the layout materially. The signatures for several learners now appear on the first page alongside the main report content. However, the line reading **"Next term begins on: August 24, 2026"** still spills onto a separate second page for some learners, especially the first reports in the Grade 7 bulk file. This indicates that the remaining issue is no longer the signatures themselves, but the isolated rendering of the next-term line after the signature block.
+
+| Artifact | Before | After | Remaining Issue |
+| :--- | :--- | :--- | :--- |
+| `bulk_report_cards_Grade_7_Term_2_2026_END_TERM_2_ASSESMENT.pdf` | 31 pages | 22 pages | Some learners still use a second page only for the next-term line and footer. |
+
+The next corrective action is to place the next-term start-date line inside the compact signature/footer block itself, rather than rendering it as a separate block that can independently trigger a page break.
+
