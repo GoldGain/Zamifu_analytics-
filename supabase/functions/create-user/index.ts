@@ -75,6 +75,8 @@ Deno.serve(async (req) => {
     // Issue 4: Validate admission number for learners/students
     const effectiveAdmissionNumber = admission_number || metadata?.assessment_number || metadata?.admission_number;
     const effectiveClassId = class_id || metadata?.class_id;
+    
+    console.log(`Creating user: role=${role}, email=${email}, admission=${effectiveAdmissionNumber}, class=${effectiveClassId}`);
 
     if (["learner", "student"].includes(role) && effectiveAdmissionNumber && effectiveClassId) {
       const tempAdminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -91,6 +93,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (checkError && checkError.code !== "PGRST116") {
+        console.error("Database error checking admission number:", checkError);
         return new Response(JSON.stringify({ error: "Database error checking admission number" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -98,6 +101,7 @@ Deno.serve(async (req) => {
       }
 
       if (existingStudent) {
+        console.warn(`Duplicate admission number found: ${effectiveAdmissionNumber} in class ${effectiveClassId}`);
         return new Response(
           JSON.stringify({ 
             error: `Admission number ${effectiveAdmissionNumber} already exists in this class`,
@@ -109,6 +113,8 @@ Deno.serve(async (req) => {
           }
         );
       }
+    } else {
+      console.log("Skipping admission number duplicate check (missing role/admission/class)");
     }
 
     // Use service role client to create user (does NOT change current session)

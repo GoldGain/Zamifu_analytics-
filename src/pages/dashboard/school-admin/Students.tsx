@@ -160,8 +160,11 @@ export default function SchoolAdminStudents() {
         throw new Error('Email already registered. Please use a different email.');
       }
       
-      const studentEmail = formData.student_email || `${formData.assessment_number.toLowerCase().replace(/\s+/g, '')}@student.edu`;
+      // Make student email unique to this school to avoid cross-school conflicts
+      const schoolPrefix = user?.schoolId ? user.schoolId.split('-')[0] : 'student';
+      const studentEmail = formData.student_email || `${formData.assessment_number.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
       const studentPassword = `${formData.assessment_number}@2025`;
+      
       const authData = await createScopedUser({
         email: studentEmail,
         password: studentPassword,
@@ -169,7 +172,10 @@ export default function SchoolAdminStudents() {
         last_name: formData.last_name,
         role: 'student',
         school_id: user?.schoolId || null,
-        metadata: { assessment_number: formData.assessment_number },
+        metadata: { 
+          assessment_number: formData.assessment_number,
+          class_id: formData.class_id // Pass class_id in metadata for Edge Function check
+        },
       });
       const studentUserId = authData.user.id;
       let parentId: string | null = null;
