@@ -178,22 +178,22 @@ export default function SchoolAdminAttendance() {
             ${students.map((s, i) => {
               const status = attendance[s.id] || 'Not Marked';
               const statusClass = attendance[s.id] || '';
-              return \`<tr>
-                <td>\${i + 1}</td>
-                <td>\${s.admission_number || '-'}</td>
-                <td>\${s.first_name} \${s.last_name}</td>
-                <td class="\${statusClass}">\${status.charAt(0).toUpperCase() + status.slice(1)}</td>
-              </tr>\`;
+              return `<tr>
+                <td>${i + 1}</td>
+                <td>${s.admission_number || '-'}</td>
+                <td>${s.first_name} ${s.last_name}</td>
+                <td class="${statusClass}">${status.charAt(0).toUpperCase() + status.slice(1)}</td>
+              </tr>`;
             }).join('')}
           </tbody>
         </table>
         <div class="summary">
           <strong>Summary:</strong> 
-          Present: \${summary.present} | 
-          Absent: \${summary.absent} | 
-          Late: \${summary.late} | 
-          Excused: \${summary.excused} | 
-          Unmarked: \${summary.unmarked}
+          Present: ${summary.present} | 
+          Absent: ${summary.absent} | 
+          Late: ${summary.late} | 
+          Excused: ${summary.excused} | 
+          Unmarked: ${summary.unmarked}
         </div>
         <div class="no-print" style="margin-top: 20px; text-align: center;">
           <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">Print Report</button>
