@@ -794,74 +794,44 @@ export default function SchoolAdminResults() {
         }
 
         const cardAssessment = s.examName || assessmentLabel || '';
-        mainDoc.setTextColor(0, 0, 0); mainDoc.setFontSize(10); mainDoc.setFont('helvetica', 'normal');
-        const y = 38;
-        mainDoc.text(`Learner: ${studentFullName}`, 14, y);
-        mainDoc.text(`Adm No: ${s.student?.admission_number || 'N/A'}`, 14, y + 7);
-        mainDoc.text(`Class: ${classObj?.name || 'N/A'}`, 14, y + 14);
-        mainDoc.text(`Term: ${termObj?.name || ''} ${termObj?.academic_year || ''}`, 120, y);
-        if (cardAssessment) {
-          mainDoc.setTextColor(106, 27, 154); mainDoc.setFont('helvetica', 'bold'); mainDoc.text(`Assessment: ${cardAssessment}`, 120, y + 7);
-          mainDoc.setFont('helvetica', 'normal'); mainDoc.setTextColor(0, 0, 0);
-          mainDoc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 14);
-          mainDoc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + 21);
-          mainDoc.setDrawColor(106, 27, 154); mainDoc.line(14, y + 26, 196, y + 26);
-        } else {
-          mainDoc.text(`Position: ${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`, 120, y + 7);
-          mainDoc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + 14);
-          mainDoc.setDrawColor(106, 27, 154); mainDoc.line(14, y + 20, 196, y + 20);
-        }
-        const tableStartY = cardAssessment ? y + 31 : y + 25;
+        const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`;
+        
+        drawStudentInfo(
+          mainDoc,
+          studentFullName,
+          s.student?.admission_number || 'N/A',
+          classObj?.name || 'N/A',
+          termObj?.name || '',
+          termObj?.academic_year || '',
+          studentPosition,
+          38,
+          cardAssessment
+        );
 
-        const subjectRows = subjectEntries.map(([subName, pct]) => {
-          const g = overallGradeWithBand(pct, band);
-          const displayName = subName === 'Creative Arts' ? 'C-Arts' : subName;
-          return isPrimary ? [displayName, `${pct.toFixed(0)}%`, g.subLevel, g.descriptor] : [displayName, `${pct.toFixed(0)}%`, g.subLevel, String(g.points), g.descriptor];
-        });
+        const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({
+          subjects: { name: subName },
+          marks: pct,
+          out_of: 100
+        }));
 
-        autoTable(mainDoc, { startY: tableStartY, head: [isPrimary ? ['Learning Area', 'Percentage', 'CBE Grade', 'Descriptor'] : ['Learning Area', 'Percentage', 'CBE Grade', 'Points', 'Descriptor']], body: subjectRows, styles: { fontSize: 9 }, headStyles: { fillColor: [106, 27, 154], textColor: 255 }, alternateRowStyles: { fillColor: [232, 234, 246] } });
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63);
 
-        let currentY = (mainDoc as any).lastAutoTable.finalY + 8;
         const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
         if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
-          const studentResultsForPathways = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
-          currentY = drawPathwayPerformance(mainDoc, studentResultsForPathways, currentY) + 8;
+          currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4);
         }
 
-        const gr = overallGradeWithBand(s.avgPct, band);
-        mainDoc.setFillColor(0, 137, 123); mainDoc.rect(14, currentY, 182, 25, 'F');
-        mainDoc.setFontSize(9); mainDoc.setFont('helvetica', 'bold'); mainDoc.setTextColor(255, 255, 255);
-        mainDoc.text(`Average: ${s.avgPct.toFixed(1)}%`, 20, currentY + 8);
-        mainDoc.text(`Grade: ${gr.subLevel}`, 70, currentY + 8);
-        mainDoc.text(`Position: ${s.position}/${totalStudents}`, 120, currentY + 8);
-        if (!isPrimary) mainDoc.text(`Points: ${s.totalPoints}`, 160, currentY + 8);
-        mainDoc.text(`Total: ${s.totalPct.toFixed(0)}/${allSubjects.length * 100}`, 20, currentY + 17);
-        if (!isPrimary) mainDoc.text(`${gr.descriptor}`, 70, currentY + 17);
-
-        let devText = 'First Term \u2014 No previous data';
-        if (deviation !== null) { const arrow = deviation >= 0 ? '\u25B2' : '\u25BC'; const sign = deviation >= 0 ? '+' : ''; devText = `${arrow} ${sign}${deviation.toFixed(1)}% vs previous term`; }
-        mainDoc.setFont('helvetica', 'normal');
-        if (deviation !== null && deviation >= 0) mainDoc.setTextColor(22, 163, 74); else if (deviation !== null && deviation < 0) mainDoc.setTextColor(220, 38, 38); else mainDoc.setTextColor(255, 255, 255);
-        mainDoc.text(devText, 120, currentY + 17); mainDoc.setTextColor(0, 0, 0);
-
-        let trendY = currentY + 30;
-        const trends = studentTrends[s.studentId] || [];
-        if (trends.length >= 2) { drawTrendGraph(mainDoc, trends, 14, trendY, 182, 45, band); trendY += 50; }
+        currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${totalStudents}`, classObj, currentY + 4);
+        
+        currentY = drawDeviation(mainDoc, deviation, prevAvg, null, currentY);
 
         const bulkStudentBests = bulkBestPerSubject.filter(b => b.studentId === (s.student?.id || s.studentId));
-        if (bulkStudentBests.length > 0) {
-          mainDoc.setFillColor(255, 248, 225); mainDoc.rect(14, trendY, 182, 6 + bulkStudentBests.length * 6, 'F');
-          mainDoc.setFontSize(8); mainDoc.setFont('helvetica', 'bold'); mainDoc.setTextColor(245, 166, 35);
-          mainDoc.text('ACHIEVEMENT:', 18, trendY + 5); mainDoc.setFont('helvetica', 'normal'); mainDoc.setTextColor(0, 0, 0);
-          bulkStudentBests.forEach((b, bi) => { const pts = b.points !== null ? ` (${b.points} pts)` : ''; mainDoc.text(`Best in ${b.subjectName}: ${b.percentage}% \u2014 ${b.gradeLabel}${pts}`, 18, trendY + 11 + bi * 6); });
-          trendY += 6 + bulkStudentBests.length * 6 + 4;
-        }
+        currentY = drawAchievements(mainDoc, bulkStudentBests, currentY + 2);
 
         // Issue 7 & 8: Use shared drawAIComment to auto-expand comment box and prevent cut-off
-        const commentEndY = drawAIComment(mainDoc, aiComment, trendY + 2);
-        await addSignaturesToPDF(mainDoc, signatures, commentEndY, schoolInfo);
-        mainDoc.setFontSize(7); mainDoc.setTextColor(150, 150, 150);
-        mainDoc.text(`Report Card | Zamifu Analytics School Management System`, 105, 290, { align: 'center' });
+        currentY = drawAIComment(mainDoc, aiComment, currentY + 2);
+        await addSignaturesToPDF(mainDoc, signatures, currentY + 2, schoolInfo);
+        drawReportFooter(mainDoc);
 
         // Yield to browser between learners to prevent freeze
         await new Promise(resolve => setTimeout(resolve, 0));

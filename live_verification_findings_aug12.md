@@ -45,3 +45,16 @@ A second live deployment reduced the total bulk PDF from 31 pages to 22 pages, w
 
 The next corrective action is to place the next-term start-date line inside the compact signature/footer block itself, rather than rendering it as a separate block that can independently trigger a page break.
 
+
+## Final PDF Verification Snapshot Before Additional Adjustment
+
+A further live deployment reduced the bulk Grade 7 Term 2 report-card file from **22 pages to 21 pages**. This confirms that the latest compacting change improved the layout again. The evidence also shows that most learners now have the **signatures, footer, and the line "Next term begins on" on the same page** as the report content. However, the first learner in the sampled output still spills to a second page that contains only the signature/footer area and the next-term line. This means the remaining defect is now isolated to edge cases where long content still leaves insufficient space for the final block on page one.
+
+| Artifact | Observed State |
+| :--- | :--- |
+| `bulk_report_cards_Grade_7_Term_2_2026_END_TERM_2_ASSESMENT (3).pdf` | Reduced to 21 pages total. |
+| Page 1–2 sample | First learner still split across two pages. |
+| Page 3 onward sample | Subsequent learners show signatures and next-term line on the same page. |
+
+The next action is to reduce the vertical footprint of the comment/signature/footer stack further so that worst-case learners also remain on a single page.
+
