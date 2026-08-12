@@ -5,7 +5,8 @@ import {
   fetchTeacherAssignments,
   type TeacherAssignment,
 } from '@/lib/teacher-restrictions';
-import { BookOpen, Upload, AlertCircle, Loader2, GraduationCap } from 'lucide-react';
+import { BookOpen, Upload, AlertCircle, Loader2, GraduationCap, CheckCircle2 } from 'lucide-react';
+import { supabaseUntyped } from '@/lib/supabase/client';
 
 /**
  * Teacher Results Upload hub — shows ONLY learning areas assigned to this teacher.
@@ -13,18 +14,52 @@ import { BookOpen, Upload, AlertCircle, Loader2, GraduationCap } from 'lucide-re
  */
 export default function AssignedSubjectsUpload() {
   const { user } = useAuth();
-  const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
+  const [assignments, setAssignments] = useState<(TeacherAssignment & { hasResults?: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
+      if (!user?.id) return;
       setLoading(true);
-      const { assignments: rows } = await fetchTeacherAssignments(user?.id);
-      setAssignments(rows);
-      setLoading(false);
+      try {
+        const { assignments: rows } = await fetchTeacherAssignments(user.id);
+        
+        // Get current term
+        const { data: termData } = await supabaseUntyped
+          .from('terms')
+          .select('id')
+          .eq('school_id', user.schoolId)
+          .eq('is_current', true)
+          .maybeSingle();
+        
+        const currentTermId = termData?.id;
+        
+        if (currentTermId && rows.length > 0) {
+          // Check which assignments have results
+          const { data: results } = await supabaseUntyped
+            .from('results')
+            .select('class_id, subject_id')
+            .eq('term_id', currentTermId)
+            .in('class_id', rows.map(r => r.class_id))
+            .in('subject_id', rows.map(r => r.subject_id));
+          
+          const resultKeys = new Set((results || []).map(r => `${r.class_id}-${r.subject_id}`));
+          
+          setAssignments(rows.map(r => ({
+            ...r,
+            hasResults: resultKeys.has(`${r.class_id}-${r.subject_id}`)
+          })));
+        } else {
+          setAssignments(rows);
+        }
+      } catch (err) {
+        console.error('Failed to load assignments:', err);
+      } finally {
+        setLoading(false);
+      }
     };
     load();
-  }, [user?.id]);
+  }, [user?.id, user?.schoolId]);
 
   // Group by class
   const byClass = assignments.reduce<Record<string, { className: string; items: TeacherAssignment[] }>>(
@@ -101,10 +136,17 @@ export default function AssignedSubjectsUpload() {
                       <p className="font-medium text-[#111111] truncate">{item.subject_name || 'Learning Area'}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{item.class_name}</p>
                     </div>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg shrink-0">
-                      <Upload className="w-3.5 h-3.5" />
-                      Upload
-                    </span>
+                    {item.hasResults ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-3 py-1.5 rounded-lg shrink-0">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Uploaded
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg shrink-0">
+                        <Upload className="w-3.5 h-3.5" />
+                        Upload
+                      </span>
+                    )}
                   </Link>
                 ))}
               </div>

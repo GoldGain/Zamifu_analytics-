@@ -92,6 +92,7 @@ import StudentReportCard from '@/pages/dashboard/student/ReportCard';
 import StudentChangePassword from '@/pages/dashboard/student/ChangePassword';
 import StudentPortfolio from '@/pages/dashboard/student/Portfolio';
 import SchoolAdminChangePassword from '@/pages/dashboard/school-admin/ChangePassword';
+import SchoolAdminAttendance from '@/pages/dashboard/school-admin/Attendance';
 import TeacherChangePassword from '@/pages/dashboard/teacher/ChangePassword';
 import ParentChangePassword from '@/pages/dashboard/parent/ChangePassword';
 import TimetableView from '@/pages/dashboard/TimetableView';
@@ -209,6 +210,7 @@ function AppRoutes() {
       <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAnnouncements /></ProtectedRoute>} />
       <Route path="/school-admin/subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjects /></ProtectedRoute>} />
       <Route path="/school-admin/branding" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBranding /></ProtectedRoute>} />
+	      <Route path="/school-admin/attendance" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAttendance /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/setup" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTimetableSetup /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/generate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTimetableGenerate /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/assign" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAssignTeachers /></ProtectedRoute>} />

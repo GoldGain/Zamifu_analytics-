@@ -16,9 +16,11 @@ interface StudentPerformance {
   admission_number: string;
   gender: string;
   avgPercentage: number | null;
+  totalMarks: number | null;
+  totalOutOf: number | null;
   totalPoints: number | null;
   position: number | null;
-  subjectResults: Record<string, { pct: number; grade: string; marks: number | null }>;
+  subjectResults: Record<string, { pct: number; grade: string; marks: number | null; out_of: number | null }>;
   hasAllMarks: boolean;
 }
 
@@ -150,6 +152,7 @@ export default function ClassTeacherDashboard() {
           pct: r.percentage ?? 0,
           grade: r.cbc_grade || r.grade_844 || '—',
           marks: r.marks,
+          out_of: r.out_of,
         };
       });
 
@@ -164,11 +167,19 @@ export default function ClassTeacherDashboard() {
         const sResults = resultsMap[student.id] || {};
         const pcts = Object.values(sResults).map((r: any) => r.pct).filter((p) => p != null && p > 0);
         const avgPct = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
+        
+        const marks = Object.values(sResults).map((r: any) => r.marks).filter((m) => m != null);
+        const outOfs = Object.values(sResults).map((r: any) => r.out_of).filter((o) => o != null);
+        const totalMarks = marks.length > 0 ? marks.reduce((a, b) => a + b, 0) : null;
+        const totalOutOf = outOfs.length > 0 ? outOfs.reduce((a, b) => a + b, 0) : null;
+        
         const hasAllMarks = subjects.length > 0 && Object.keys(sResults).length >= subjects.length;
 
         return {
           ...student,
           avgPercentage: avgPct,
+          totalMarks,
+          totalOutOf,
           totalPoints: null,
           position: null,
           subjectResults: sResults,
@@ -579,6 +590,7 @@ export default function ClassTeacherDashboard() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Pos</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Learner</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Adm No.</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Total Marks</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Avg %</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Mean Grade</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Subjects</th>
@@ -596,6 +608,9 @@ export default function ClassTeacherDashboard() {
                           {student.first_name} {student.last_name}
                         </td>
                         <td className="px-4 py-3 text-gray-500">{student.admission_number}</td>
+                        <td className="px-4 py-3 text-center text-gray-600 font-medium">
+                          {student.totalMarks !== null ? `${student.totalMarks} / ${student.totalOutOf}` : <span className="text-gray-300">—</span>}
+                        </td>
                         <td className="px-4 py-3 text-center">
                           {student.avgPercentage !== null ? (
                             <span className={`text-sm font-bold ${

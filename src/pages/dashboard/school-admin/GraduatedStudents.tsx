@@ -18,7 +18,9 @@ interface GraduatedStudent {
   graduation_year?: number | null;
   graduation_date?: string | null;
   academic_year?: string;
-  classes?: { name?: string } | null;
+  kjsea_score?: string | null;
+  kcse_score?: string | null;
+  classes?: { name?: string; level?: number } | null;
   previous_class?: { name?: string } | null;
 }
 
@@ -28,6 +30,7 @@ export default function GraduatedStudents() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState<string>('all');
+  const [levelFilter, setLevelFilter] = useState<string>('all');
 
   useEffect(() => {
     if (user?.schoolId) fetchGraduates();
@@ -39,7 +42,7 @@ export default function GraduatedStudents() {
       const { data, error } = await supabaseUntyped
         .from('students')
         .select(
-          'id, first_name, last_name, middle_name, admission_number, gender, class_id, previous_class_id, status, learner_status, graduation_year, graduation_date, academic_year, classes:class_id(name)'
+          'id, first_name, last_name, middle_name, admission_number, gender, class_id, previous_class_id, status, learner_status, graduation_year, graduation_date, academic_year, kjsea_score, kcse_score, classes:class_id(name, level)'
         )
         .eq('school_id', user?.schoolId)
         .or('status.eq.graduated,learner_status.ilike.%graduat%,is_active.eq.false')
@@ -77,9 +80,14 @@ export default function GraduatedStudents() {
         const y = s.graduation_year || (s.graduation_date ? new Date(s.graduation_date).getFullYear() : null);
         if (String(y) !== yearFilter) return false;
       }
+      if (levelFilter !== 'all') {
+        const level = (s.classes as any)?.level;
+        if (levelFilter === 'primary' && level > 9) return false;
+        if (levelFilter === 'secondary' && level <= 9) return false;
+      }
       return true;
     });
-  }, [students, search, yearFilter]);
+  }, [students, search, yearFilter, levelFilter]);
 
   return (
     <div className="space-y-6">
@@ -127,6 +135,20 @@ export default function GraduatedStudents() {
               ))}
             </select>
           </div>
+          <div className="sm:w-48">
+            <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" /> Level
+            </label>
+            <select
+              value={levelFilter}
+              onChange={(e) => setLevelFilter(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+            >
+              <option value="all">All levels</option>
+              <option value="primary">Primary (Grade 9)</option>
+              <option value="secondary">Secondary (Form 4)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -147,6 +169,8 @@ export default function GraduatedStudents() {
                   <th className="px-4 py-3 font-semibold text-gray-600">Gender</th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Last class</th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Grad year</th>
+                  <th className="px-4 py-3 font-semibold text-gray-600 text-center">KJSEA</th>
+                  <th className="px-4 py-3 font-semibold text-gray-600 text-center">KCSE</th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Grad date</th>
                 </tr>
               </thead>
@@ -162,6 +186,12 @@ export default function GraduatedStudents() {
                       <td className="px-4 py-3 capitalize text-gray-600">{s.gender || '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{(s.classes as any)?.name || '—'}</td>
                       <td className="px-4 py-3">{year}</td>
+                      <td className="px-4 py-3 text-center">
+                        {s.kjsea_score ? <span className="font-bold text-indigo-600">{s.kjsea_score}</span> : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {s.kcse_score ? <span className="font-bold text-indigo-600">{s.kcse_score}</span> : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">
                         {s.graduation_date ? new Date(s.graduation_date).toLocaleDateString() : '—'}
                       </td>

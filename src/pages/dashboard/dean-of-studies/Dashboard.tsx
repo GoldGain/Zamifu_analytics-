@@ -578,6 +578,16 @@ function ClassListExpander({ cls, schoolId, isExpanded, onToggle }: { cls: Class
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [sortField, setSortField] = useState<'name' | 'adm'>('name');
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+  const [showColumnPicker, setShowColumnPicker] = useState(false);
+
+  const availableColumns = [
+    { id: 'parent_name', label: 'Parent Name' },
+    { id: 'parent_phone', label: 'Parent Phone' },
+    { id: 'dob', label: 'Date of Birth' },
+    { id: 'enrollment_date', label: 'Enrollment Date' },
+  ];
 
   const loadStudents = async () => {
     if (loaded || !schoolId) return;
@@ -585,10 +595,9 @@ function ClassListExpander({ cls, schoolId, isExpanded, onToggle }: { cls: Class
     try {
       const { data } = await (supabase as any)
         .from('students')
-        .select('id, first_name, last_name, admission_number, gender')
+        .select('id, first_name, last_name, admission_number, gender, parent_name, parent_phone, date_of_birth, enrollment_date')
         .eq('class_id', cls.id)
-        .eq('is_active', true)
-        .order('first_name');
+        .eq('is_active', true);
       setStudents(data || []);
       setLoaded(true);
     } catch (err) {
@@ -617,39 +626,103 @@ function ClassListExpander({ cls, schoolId, isExpanded, onToggle }: { cls: Class
         {isExpanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
       </button>
       {isExpanded && (
-        <div className="border-t border-gray-100 overflow-x-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-600" /></div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Adm #</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Gender</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.length === 0 ? (
-                  <tr><td colSpan={4} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
-                ) : (
-                  students.map((s, i) => (
-                    <tr key={s.id} className="border-b hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-500">{i + 1}</td>
-                      <td className="px-4 py-3 text-gray-600">{s.admission_number || '-'}</td>
-                      <td className="px-4 py-3 font-medium">{s.first_name} {s.last_name}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${s.gender?.toLowerCase() === 'male' ? 'bg-blue-50 text-blue-600' : s.gender?.toLowerCase() === 'female' ? 'bg-pink-50 text-pink-600' : 'bg-gray-50 text-gray-600'}`}>
-                          {s.gender || '-'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
+        <div className="border-t border-gray-100">
+          <div className="p-3 bg-gray-50/50 flex items-center justify-between border-b border-gray-100">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sort by:</span>
+                <div className="flex bg-white border border-gray-200 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setSortField('name')}
+                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${sortField === 'name' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    Name (A-Z)
+                  </button>
+                  <button
+                    onClick={() => setSortField('adm')}
+                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors ${sortField === 'adm' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    Adm No.
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowColumnPicker(!showColumnPicker)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Columns
+              </button>
+              {showColumnPicker && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-xl z-10 p-2 animate-in fade-in zoom-in duration-200">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase px-2 py-1.5 border-b border-gray-50 mb-1">Toggle Columns</p>
+                  {availableColumns.map(col => (
+                    <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.includes(col.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setVisibleColumns([...visibleColumns, col.id]);
+                          else setVisibleColumns(visibleColumns.filter(c => c !== col.id));
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-xs font-medium text-gray-700">{col.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            {loading ? (
+              <div className="flex items-center justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-blue-600" /></div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Adm #</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Gender</th>
+                    {visibleColumns.includes('parent_name') && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Parent</th>}
+                    {visibleColumns.includes('parent_phone') && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Phone</th>}
+                    {visibleColumns.includes('dob') && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">DOB</th>}
+                    {visibleColumns.includes('enrollment_date') && <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Enrolled</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.length === 0 ? (
+                    <tr><td colSpan={4 + visibleColumns.length} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
+                  ) : (
+                    [...students]
+                      .sort((a, b) => {
+                        if (sortField === 'name') return `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`);
+                        return (a.admission_number || '').localeCompare(b.admission_number || '', undefined, { numeric: true });
+                      })
+                      .map((s, i) => (
+                        <tr key={s.id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-3 text-gray-500">{i + 1}</td>
+                          <td className="px-4 py-3 text-gray-600 font-medium">{s.admission_number || '-'}</td>
+                          <td className="px-4 py-3 font-bold text-gray-900">{s.first_name} {s.last_name}</td>
+                          <td className="px-4 py-3">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${s.gender?.toLowerCase() === 'male' ? 'bg-blue-100 text-blue-700' : s.gender?.toLowerCase() === 'female' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}>
+                              {s.gender || '-'}
+                            </span>
+                          </td>
+                          {visibleColumns.includes('parent_name') && <td className="px-4 py-3 text-gray-600">{s.parent_name || '-'}</td>}
+                          {visibleColumns.includes('parent_phone') && <td className="px-4 py-3 text-gray-600">{s.parent_phone || '-'}</td>}
+                          {visibleColumns.includes('dob') && <td className="px-4 py-3 text-gray-600">{s.date_of_birth || '-'}</td>}
+                          {visibleColumns.includes('enrollment_date') && <td className="px-4 py-3 text-gray-600">{s.enrollment_date || '-'}</td>}
+                        </tr>
+                      ))
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
     </div>
