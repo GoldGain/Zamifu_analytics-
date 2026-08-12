@@ -72,18 +72,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Issue 4: Validate admission number for learners
-    if (role === "learner" && admission_number && class_id) {
+    // Issue 4: Validate admission number for learners/students
+    const effectiveAdmissionNumber = admission_number || metadata?.assessment_number || metadata?.admission_number;
+    const effectiveClassId = class_id || metadata?.class_id;
+
+    if (["learner", "student"].includes(role) && effectiveAdmissionNumber && effectiveClassId) {
       const tempAdminClient = createClient(supabaseUrl, serviceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
 
-      // Check for duplicate admission number in the same class
+      // Check for duplicate admission number in the same class only
       const { data: existingStudent, error: checkError } = await tempAdminClient
         .from("students")
         .select("id, admission_number")
-        .eq("class_id", class_id)
-        .eq("admission_number", admission_number)
+        .eq("class_id", effectiveClassId)
+        .eq("admission_number", effectiveAdmissionNumber)
         .eq("school_id", school_id || callerProfile.school_id)
         .maybeSingle();
 
@@ -97,7 +100,7 @@ Deno.serve(async (req) => {
       if (existingStudent) {
         return new Response(
           JSON.stringify({ 
-            error: `Admission number ${admission_number} already exists in this class`,
+            error: `Admission number ${effectiveAdmissionNumber} already exists in this class`,
             code: "DUPLICATE_ADMISSION_NUMBER"
           }),
           {
