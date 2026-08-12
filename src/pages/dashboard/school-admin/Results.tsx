@@ -21,6 +21,12 @@ import {
   addStudentPhotoToPDF,
   addLogoToPDF,
   drawPathwayPerformance,
+  drawStudentInfo,
+  drawResultsTable,
+  drawSummaryBox,
+  drawDeviation,
+  drawAchievements,
+  drawReportFooter,
   SUBJECT_ORDER,
   type SchoolInfo,
   type SignatureInfo,
@@ -702,6 +708,102 @@ export default function SchoolAdminResults() {
     setGeneratingPDF(false);
   };
 
+  const downloadSingleReportCard = async (s: any) => {
+    try {
+      const classObj = classes.find(c => c.id === selectedClass);
+      const band = getSchoolLevelBand(classObj);
+      const termObj = terms.find(t => t.id === selectedTerm);
+      const assessmentLabel = selectedExam ? exams.find(e => e.id === selectedExam)?.name : '';
+      
+      let teacherSigUrl: string | null = null;
+      if (classObj?.class_teacher_id) {
+        const { data: teacherData } = await supabaseUntyped.from('teachers').select('signature_url').eq('profile_id', classObj.class_teacher_id).maybeSingle();
+        teacherSigUrl = teacherData?.signature_url || null;
+      }
+      const signatures: SignatureInfo = { principal_signature_url: principalSignatureUrl, teacher_signature_url: teacherSigUrl };
+
+      const prevAvg = await fetchPreviousTermAvg(s.studentId, selectedTerm);
+      const deviation = prevAvg !== null && prevAvg !== undefined ? s.avgPct - prevAvg : null;
+      const isNew = deviation === null;
+
+      const subjectEntriesRaw = Object.entries(s.subjects).filter(([k]) => !k.endsWith('_grade') && !k.endsWith('_points')) as [string, number][];
+      const subjectEntries = subjectEntriesRaw.sort((a, b) => {
+        const indexA = SUBJECT_ORDER.findIndex(s => a[0].toLowerCase().includes(s.toLowerCase()));
+        const indexB = SUBJECT_ORDER.findIndex(s => b[0].toLowerCase().includes(s.toLowerCase()));
+        if (indexA === -1 && indexB === -1) return a[0].localeCompare(b[0]);
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+
+      const sortedBest = [...subjectEntries].sort((a, b) => b[1] - a[1]);
+      const bestSubject = sortedBest[0]?.[0] || 'all learning areas';
+      const weakestSubject = sortedBest[sortedBest.length - 1]?.[0] || 'some learning areas';
+      const studentFullName = `${s.student?.first_name || ''} ${s.student?.last_name || ''}`;
+      
+      const { data: allResults } = await supabaseUntyped.from('results').select('percentage, marks, out_of, term_id, terms(name, academic_year)').eq('student_id', s.studentId).order('terms(academic_year)', { ascending: true }).order('terms(name)', { ascending: true });
+      let trendData: { term: string; avg: number }[] = [];
+      if (allResults) {
+        const termMap: Record<string, { term: string; total: number; count: number }> = {};
+        allResults.forEach((r: any) => {
+          const tname = r.terms?.name || ''; const year = r.terms?.academic_year || '';
+          const key = `${year}-${tname}`;
+          const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
+          if (!termMap[key]) termMap[key] = { term: `${tname} ${year}`, total: 0, count: 0 };
+          termMap[key].total += pct; termMap[key].count++;
+        });
+        trendData = Object.values(termMap).map(t => ({ term: t.term, avg: t.count > 0 ? t.total / t.count : 0 }));
+      }
+
+      const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
+        name,
+        percentage: pct,
+        grade: calculateCompetencyGrade(pct, band).subLevel,
+        previousPercentage: trendData.slice(-2)[0]?.avg ?? null,
+      }));
+      const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, summaries.length, isNew, classObj, allSubjectResults);
+
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      await drawReportHeader(doc, schoolInfo);
+      
+      if (s.student?.photo_url) { 
+        try { await addStudentPhotoToPDF(doc, s.student.photo_url, 172, 4, 24); } catch (e) {} 
+      }
+
+      const cardAssessment = s.examName || assessmentLabel || '';
+      const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
+      
+      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 38, cardAssessment);
+
+      const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({
+        subjects: { name: subName },
+        marks: pct,
+        out_of: 100
+      }));
+
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63);
+      const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
+      if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
+        currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
+      }
+      currentY = drawSummaryBox(doc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${summaries.length}`, classObj, currentY + 4);
+      currentY = drawDeviation(doc, deviation, prevAvg, null, currentY);
+      
+      const bulkBestPerSubject = computeBestPerSubject(results.filter(r => r.class_id === selectedClass && r.term_id === selectedTerm), classObj);
+      const studentBests = bulkBestPerSubject.filter(b => b.studentId === s.studentId);
+      currentY = drawAchievements(doc, studentBests, currentY + 2);
+      currentY = drawAIComment(doc, aiComment, currentY + 2);
+      await addSignaturesToPDF(doc, signatures, currentY + 2, schoolInfo);
+      drawReportFooter(doc);
+
+      doc.save(`report_card_${studentFullName.replace(/\s+/g, '_')}_${termObj?.name}.pdf`);
+      toast.success(`Report card for ${studentFullName} generated!`);
+    } catch (err: any) {
+      toast.error('Failed to generate report card: ' + err.message);
+      console.error(err);
+    }
+  };
+
   const downloadBulkReportCards = async () => {
     if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingBulk(true);
@@ -953,7 +1055,8 @@ export default function SchoolAdminResults() {
                   ))}
                   <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100">Avg%</th>
                   {!isPrimary && <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100">Pts</th>}
-                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center">Grade</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100">Grade</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -979,10 +1082,15 @@ export default function SchoolAdminResults() {
                       })}
                       <td className="px-4 py-3 text-center border-r border-gray-100 font-black text-blue-600 text-xs">{s.avgPct.toFixed(1)}%</td>
                       {!isPrimary && <td className="px-4 py-3 text-center border-r border-gray-100 font-bold text-purple-600 text-xs">{s.totalPoints}</td>}
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-4 py-3 text-center border-r border-gray-100">
                         <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${gradeColor(isPrimary ? gr.grade : gr.subLevel)}`}>
                           {isPrimary ? gr.grade : gr.subLevel}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-center whitespace-nowrap">
+                        <button onClick={() => downloadSingleReportCard(s)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Download Report Card">
+                          <Download className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   );
