@@ -137,13 +137,13 @@ export default function SchoolAdminStudents() {
     e.preventDefault();
     setAdding(true);
     try {
-      // Check for duplicate admission number in this class only
+      // Check for duplicate admission number in this class only (allowing any number as long as it's not already used)
       const { data: existingStudent } = await supabaseUntyped
         .from('students')
         .select('id')
         .eq('class_id', formData.class_id)
         .eq('admission_number', formData.assessment_number)
-        .single();
+        .maybeSingle();
       
       if (existingStudent) {
         throw new Error('Admission number already exists in this class. Please use a different number.');
@@ -154,7 +154,7 @@ export default function SchoolAdminStudents() {
         .from('students')
         .select('id')
         .eq('student_email', formData.student_email)
-        .single();
+        .maybeSingle();
       
       if (emailExists) {
         throw new Error('Email already registered. Please use a different email.');
