@@ -1,0 +1,36 @@
+Live verification findings saved on 2026-08-12.
+
+1. Graduated Students page
+- URL: https://zamifu.company/school-admin/graduated-students
+- Status: loads successfully without the previous database error about students.kjsea_score.
+- Observed content: 'No graduated students found. Use Promote Grade on Grade 9 or Grade 12 / Form 4 to graduate a class.'
+- Conclusion: the missing-column error is fixed live.
+
+2. Results Upload sorting
+- Teacher account used: makau@gmail.com
+- URL verified: https://zamifu.company/teacher/results/upload?classId=c8f1b28e-d3ca-4504-8da2-8a309b07cf04&subjectId=de9c9eb5-2b2e-45e9-bb4d-b12a1545d249
+- Observed student order in manual entry table for Grade 9: admission numbers 679 then 737.
+- Conclusion: upload list is now sorted by admission number, not alphabetically by name.
+
+3. Report card PDF layout
+- School admin account used: theophillusngewa2@yahoo.com
+- Source page: https://zamifu.company/school-admin/results
+- Downloaded file: /home/ubuntu/Downloads/bulk_report_cards_Grade_7_Term_2_2026_END_TERM_2_ASSESMENT (1).pdf
+- Observed problem still present: each learner report card spans two pages.
+- Page 1 contains academic content and comments.
+- Page 2 contains only signatures and the line 'Next term begins on: August 24, 2026' plus footer, leaving most of the page blank.
+- Conclusion: report card compacting/signature placement fix is incomplete and still needs code changes.
+
+4. Next-term wording
+- Observed phrase in PDF: 'Next term begins on: August 24, 2026'
+- Placement: below signatures on the second page.
+- Conclusion: wording is correct, but placement still causes an unnecessary second page.
+
+Next action needed:
+- Inspect reportCardPdf.ts and related result/report-card generation code to keep signatures and next-term line on the same page as the rest of the content whenever possible.
+- Rebuild, redeploy, and verify with a freshly downloaded PDF.
+
+Sources:
+- Live browser checks on Zamifu production site
+- Local downloaded PDF artifact listed above
+

@@ -30,7 +30,7 @@ export interface StudentResult {
 }
 
 const REPORT_CONTENT_TOP = 18;
-const REPORT_CONTENT_BOTTOM_MARGIN = 16;
+const REPORT_CONTENT_BOTTOM_MARGIN = 8;
 
 /**
  * COMPACT (ONE-PAGE) MODE
@@ -411,11 +411,11 @@ export async function addSignaturesToPDF(
   schoolInfo?: SchoolInfo
 ) {
   // Compact mode shrinks the signature block so it fits on page 1
-  const sigBlockH = COMPACT_MODE ? 20 : 34;
-  const sigImgH = COMPACT_MODE ? 10 : 16;
-  const sigImgY = COMPACT_MODE ? 1.5 : 3;
-  const sigLabelY = COMPACT_MODE ? 14 : 22;
-  y = ensureReportCardSpace(doc, y, sigBlockH);
+  const sigBlockH = COMPACT_MODE ? 14 : 34;
+  const sigImgH = COMPACT_MODE ? 8 : 16;
+  const sigImgY = COMPACT_MODE ? 0.5 : 3;
+  const sigLabelY = COMPACT_MODE ? 9 : 22;
+  y = ensureReportCardSpace(doc, y, sigBlockH + 5);
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
   doc.setFontSize(COMPACT_MODE ? 6 : 7);
@@ -476,7 +476,7 @@ export async function addSignaturesToPDF(
   // Date
   doc.setFontSize(COMPACT_MODE ? 6 : 7);
   doc.setTextColor(80, 80, 85);
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + (COMPACT_MODE ? 21 : 27));
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + (COMPACT_MODE ? 12 : 27));
   // School stamp area
   doc.setDrawColor(180, 180, 185);
   doc.setLineDashPattern([2, 2], 0);
@@ -616,7 +616,7 @@ export function drawSummaryBox(
   doc.text(`Position: ${position}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading.grade}`, 65, startY + gap * 2);
   if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
-  return startY + boxH + 4;
+  return startY + boxH + (COMPACT_MODE ? 1 : 4);
 }
 
 // ── Draw Next Term Start Date ──────────────────────────────────────────────────
@@ -685,7 +685,7 @@ export function drawAchievements(
     const pts = b.points !== null ? ` (${b.points} pts)` : '';
     doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 18, startY + 8 + bi * rowH);
   });
-  return startY + boxHeight + (COMPACT_MODE ? 3 : 5);
+  return startY + boxHeight + (COMPACT_MODE ? 1 : 5);
 }
 
 // ── Draw AI Comment ──────────────────────────────────────────────────────────
@@ -753,7 +753,7 @@ export function drawAIComment(
     const maxLines = Math.max(3, Math.floor((availableHeight - (COMPACT_MODE ? 12 : 15)) / lineHeight));
     const chunk = remainingLines.splice(0, maxLines);
     // Box height derives from the actual wrapped line count plus the header.
-    const boxHeight = Math.max(COMPACT_MODE ? 22 : 30, (COMPACT_MODE ? 11 : 14) + chunk.length * lineHeight + 6);
+    const boxHeight = Math.max(COMPACT_MODE ? 14 : 30, (COMPACT_MODE ? 7 : 14) + chunk.length * lineHeight + 2);
 
     doc.setDrawColor(100, 120, 180);
     doc.setLineWidth(0.5);
@@ -762,7 +762,7 @@ export function drawAIComment(
     doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(26, 35, 126);
-    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + (COMPACT_MODE ? 6 : 7));
+    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + (COMPACT_MODE ? 4 : 7));
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(fontSize);
     doc.setTextColor(0, 0, 0);
@@ -770,9 +770,9 @@ export function drawAIComment(
     // Draw each wrapped line explicitly at a measured vertical step so the
     // last line can never be clipped by the box bottom.
     for (let i = 0; i < chunk.length; i++) {
-      doc.text(chunk[i], 18, y + (COMPACT_MODE ? 11 : 14) + i * lineHeight);
+      doc.text(chunk[i], 18, y + (COMPACT_MODE ? 7 : 14) + i * lineHeight);
     }
-    y += boxHeight + (COMPACT_MODE ? 3 : 5);
+    y += boxHeight + (COMPACT_MODE ? 1 : 5);
 
     if (remainingLines.length > 0) {
       doc.addPage();
