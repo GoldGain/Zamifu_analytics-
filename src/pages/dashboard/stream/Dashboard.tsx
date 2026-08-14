@@ -101,13 +101,6 @@ export default function StreamDashboard() {
         .eq('is_active', true)
         .order('first_name');
 
-      if (!students || students.length === 0) {
-        setRankings([]);
-        setSubjectSummaries([]);
-        setLoadingData(false);
-        return;
-      }
-
       // Class and term selectors are loaded from the authenticated school. Scope the
       // result query by those foreign keys directly; this matches the Results page and
       // avoids dropping valid rows when legacy results have a stale/null school_id.
@@ -121,6 +114,23 @@ export default function StreamDashboard() {
 
       const { data: results, error: resultsError } = await resultsQuery;
       if (resultsError) throw resultsError;
+
+      if (!results || results.length === 0) {
+        setRankings((students || []).map((s: any) => ({ id: s.id, first_name: s.first_name, last_name: s.last_name, admission_number: s.admission_number, avgPercentage: null, totalPoints: null, position: null, subjectResults: {} })));
+        setSubjectSummaries([]);
+        setLoadingData(false);
+        return;
+      }
+
+      // Results can outlive a learner's current class assignment. Build the ranking
+      // roster from the selected result rows so historical class results remain visible.
+      const resultStudentIds = [...new Set(results.map((r: any) => r.student_id).filter(Boolean))];
+      const { data: resultStudents, error: resultStudentsError } = await supabaseUntyped
+        .from('students')
+        .select('id, first_name, last_name, admission_number')
+        .in('id', resultStudentIds);
+      if (resultStudentsError) throw resultStudentsError;
+      const rankingStudents = resultStudents && resultStudents.length > 0 ? resultStudents : (students || []);
 
       const subjectIds = [...new Set((results || []).map((r: any) => r.subject_id).filter(Boolean))];
       const { data: subjectRows, error: subjectsError } = subjectIds.length > 0
@@ -154,7 +164,7 @@ export default function StreamDashboard() {
       });
 
       // Build rankings
-      const rankList: StudentRanking[] = students.map((s: any) => {
+      const rankList: StudentRanking[] = rankingStudents.map((s: any) => {
         const data = studentMap[s.id];
         return {
           id: s.id,
