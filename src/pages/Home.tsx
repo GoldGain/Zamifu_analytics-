@@ -1,4 +1,3 @@
-import Hero from '@/sections/Hero';
 import Features from '@/sections/Features';
 import HowItWorks from '@/sections/HowItWorks';
 import Testimonials from '@/sections/Testimonials';
@@ -55,7 +54,6 @@ export default function Home() {
       <StudentCarousel />
       
       {/* Existing sections */}
-      <Hero />
       
       {/* Interests Section */}
       <InterestsSection />
