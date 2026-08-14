@@ -143,6 +143,9 @@ export default function Hero() {
                 <Link to="/register-school" className="inline-flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-[#1d4ed8] transition-colors">
                   Get Started <ArrowRight className="w-4 h-4" />
                 </Link>
+                <Link to="/auth/login" className="inline-flex items-center gap-2 border border-gray-600 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">
+                  Login
+                </Link>
                 <a
                   href="https://wa.me/254712644205"
                   target="_blank"
@@ -154,9 +157,6 @@ export default function Hero() {
                   </svg>
                   Chat on WhatsApp
                 </a>
-                <Link to="/auth/login" className="inline-flex items-center gap-2 border border-gray-600 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">
-                  Login
-                </Link>
                 <DownloadAppButton />
               </div>
 

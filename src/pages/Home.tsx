@@ -7,6 +7,7 @@ import CTA from '@/sections/CTA';
 import { usePWA } from '@/hooks/usePWA';
 import { Smartphone, Phone, Mail } from 'lucide-react';
 import SEO from '@/components/SEO';
+import StudentCarousel from '@/components/StudentCarousel';
 import PathwayFinder from '@/components/PathwayFinder';
 import InterestsSection from '@/components/InterestsSection';
 
@@ -50,7 +51,10 @@ export default function Home() {
         </button>
       )}
       
-      {/* Single landing-page hero; the previous StudentCarousel duplicated this session. */}
+      {/* Student Image Carousel - Hero Replacement */}
+      <StudentCarousel />
+      
+      {/* Existing sections */}
       <Hero />
       
       {/* Interests Section */}
