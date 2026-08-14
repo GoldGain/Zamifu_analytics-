@@ -236,6 +236,14 @@ export default function Assessments() {
     if (!confirm('Delete this assessment? This cannot be undone.')) return;
     setDeletingId(id);
     try {
+      const { count: resultCount, error: countError } = await (supabase as any)
+        .from('results')
+        .select('id', { count: 'exact', head: true })
+        .eq('exam_id', id);
+      if (countError) throw countError;
+      if ((resultCount || 0) > 0) {
+        throw new Error('Cannot delete assessment. Results exist for this assessment. Please delete results first.');
+      }
       const { error } = await (supabase as any)
         .from('school_exams')
         .delete()

@@ -85,7 +85,9 @@ function shortName(name: string) {
   return SUBJECT_SHORT[name] || name.substring(0, 7).toUpperCase();
 }
 
-export default function SchoolAdminResults() {
+type ResultsScope = 'school' | 'dos' | 'class_teacher';
+
+export default function SchoolAdminResults({ scope = 'school' }: { scope?: ResultsScope }) {
   const { user } = useAuth();
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +101,7 @@ export default function SchoolAdminResults() {
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatingBulk, setGeneratingBulk] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [scopedClassId, setScopedClassId] = useState('');
 
   const [editingResult, setEditingResult] = useState<any | null>(null);
   const [editMarks, setEditMarks] = useState('');
@@ -122,6 +125,16 @@ export default function SchoolAdminResults() {
   const fetchAll = async () => {
     setLoading(true);
     const schoolId = user?.schoolId ?? '';
+    let resolvedScopedClassId = '';
+    if (scope === 'class_teacher' && user?.id) {
+      const { data: teacherData } = await supabaseUntyped.from('teachers').select('assigned_class_id').eq('profile_id', user.id).maybeSingle();
+      resolvedScopedClassId = teacherData?.assigned_class_id || '';
+      if (!resolvedScopedClassId) {
+        const { data: classData } = await supabaseUntyped.from('classes').select('id').eq('school_id', schoolId).eq('class_teacher_id', user.id).maybeSingle();
+        resolvedScopedClassId = classData?.id || '';
+      }
+    }
+    setScopedClassId(resolvedScopedClassId);
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
@@ -132,10 +145,15 @@ export default function SchoolAdminResults() {
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
       ]);
       setResults((resultsData[0].data as any[]) || []);
-      setClasses((resultsData[1].data as any[]) || []);
+      const loadedClasses = (resultsData[1].data as any[]) || [];
+      const visibleClasses = scope === 'class_teacher' && resolvedScopedClassId
+        ? loadedClasses.filter((c: any) => c.id === resolvedScopedClassId)
+        : loadedClasses;
+      setClasses(visibleClasses);
       setTerms((resultsData[2].data as any[]) || []);
       sch = resultsData[3].data;
       setExams((resultsData[4].data as any[]) || []);
+      if (scope === 'class_teacher' && resolvedScopedClassId) setSelectedClass(resolvedScopedClassId);
     } catch (err: any) {
       console.error('Fetch error:', err);
     }
@@ -349,7 +367,8 @@ export default function SchoolAdminResults() {
   };
 
   const fetchClassResults = async () => {
-    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level), school_exams(name, type)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    const effectiveClassId = scope === 'class_teacher' ? scopedClassId : selectedClass;
+    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level), school_exams(name, type)').eq('class_id', effectiveClassId).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
     if (error) throw error;
     return data;
   };
@@ -388,12 +407,12 @@ export default function SchoolAdminResults() {
   };
 
   const downloadClassResultsPDF = async () => {
-    if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term'); return; }
+    if (!(scope === 'class_teacher' ? scopedClassId : selectedClass) || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingPDF(true);
     try {
       const rawResults = await fetchClassResults();
       if (!rawResults || rawResults.length === 0) { toast.error('No results found'); setGeneratingPDF(false); return; }
-      const classObj = classes.find(c => c.id === selectedClass);
+      const classObj = classes.find(c => c.id === (scope === 'class_teacher' ? scopedClassId : selectedClass));
       const termObj = terms.find(t => t.id === selectedTerm);
       const assessmentLabel = resolveAssessmentLabel(rawResults);
       const band = getSchoolLevelBand(classObj);
@@ -710,7 +729,7 @@ export default function SchoolAdminResults() {
 
   const downloadSingleReportCard = async (s: any) => {
     try {
-      const classObj = classes.find(c => c.id === selectedClass);
+      const classObj = classes.find(c => c.id === (scope === 'class_teacher' ? scopedClassId : selectedClass));
       const band = getSchoolLevelBand(classObj);
       const termObj = terms.find(t => t.id === selectedTerm);
       const assessmentLabel = selectedExam ? exams.find(e => e.id === selectedExam)?.name : '';
@@ -805,12 +824,12 @@ export default function SchoolAdminResults() {
   };
 
   const downloadBulkReportCards = async () => {
-    if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term'); return; }
+    if (!(scope === 'class_teacher' ? scopedClassId : selectedClass) || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingBulk(true);
     try {
       const rawResults = await fetchClassResults();
       if (!rawResults || rawResults.length === 0) { toast.error('No results found'); setGeneratingBulk(false); return; }
-      const classObj = classes.find(c => c.id === selectedClass);
+      const classObj = classes.find(c => c.id === (scope === 'class_teacher' ? scopedClassId : selectedClass));
       const band = getSchoolLevelBand(classObj);
       const isPrimary = band === 'primary';
       const allSubjectsRaw = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
@@ -972,8 +991,8 @@ export default function SchoolAdminResults() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#111111]">Results Dashboard</h1>
-          <p className="text-sm text-[#666666]">Comprehensive academic analysis and reporting</p>
+          <h1 className="text-2xl font-bold text-[#111111]">{scope === 'dos' ? 'DoS Results Dashboard' : scope === 'class_teacher' ? 'Class Results Dashboard' : 'Results Dashboard'}</h1>
+          <p className="text-sm text-[#666666]">{scope === 'class_teacher' ? 'Results and report cards for your assigned class only' : 'Comprehensive academic analysis and reporting'}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
@@ -994,7 +1013,7 @@ export default function SchoolAdminResults() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-[#666666] mb-1">Select Class</label>
-            <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white">
+            <select value={selectedClass} disabled={scope === 'class_teacher'} onChange={e => setSelectedClass(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white disabled:bg-gray-100">
               <option value="">-- Select Class --</option>
               {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>

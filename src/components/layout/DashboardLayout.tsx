@@ -106,6 +106,8 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
     { label: 'Class Teacher Workspace', icon: <Users className="w-5 h-5" />, path: '/teacher/class-dashboard' },
     { label: 'DoS Dashboard', icon: <GraduationCap className="w-5 h-5" />, path: '/dean-of-studies' },
+    { label: 'DoS Results', icon: <FileText className="w-5 h-5" />, path: '/dean-of-studies/results' },
+    { label: 'Class Results', icon: <FileText className="w-5 h-5" />, path: '/teacher/results' },
     { label: 'Subject Teacher Workspace', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/subject-dashboard' },
     { label: 'My Learning Areas', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/my-subjects' },
     { label: 'My Personal Timetable', icon: <Calendar className="w-5 h-5" />, path: '/teacher/timetable' },
@@ -236,7 +238,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     navItems = navItems.filter(item => {
       if (item.path === '/teacher/class-dashboard' && !isClassTeacher) return false;
       if (item.path === '/teacher/subject-dashboard' && !hasSubjectAssignments) return false;
-      if (item.path === '/dean-of-studies' && !isDoS) return false;
+      if ((item.path === '/dean-of-studies' || item.path === '/dean-of-studies/results') && !isDoS) return false;
+      if (item.path === '/teacher/results' && !isClassTeacher) return false;
       return true;
     });
   }

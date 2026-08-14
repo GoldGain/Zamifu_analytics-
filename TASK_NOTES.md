@@ -1,6 +1,6 @@
 # Zamifu Analytics Fix Task — Working Notes
 
-Repo: /home/ubuntu/zamifu (origin = GoldGain/Zamifu_analytics-, backup remote added: https://GoldGain:ghp_Token@github.com/GoldGain/zamifu-backup.git)
+Repo: /home/ubuntu/zamifu (origin = GoldGain/Zamifu_analytics-, backup remote added: https://github.com/GoldGain/zamifu-backup.git (credentials must be supplied through GitHub CLI or environment))
 Backup DONE: `git push backup main --force` (backup main now = 89a3447 local main).
 Live: https://zamifu.company, deploy via Vercel MCP (server name: vercel) or vercel CLI — Vercel token/team goldgain-3350s-projects in prompt.
 Project: Vite + React + TS (src/), Supabase client via src/lib/supabase/client.ts. No api/ routes server-side; SMS sent client-side from school-admin/Results.tsx via src/lib/sms.ts (Olympus API).
@@ -27,9 +27,8 @@ Project: Vite + React + TS (src/), Supabase client via src/lib/supabase/client.t
 ## Issue 6 Policy pages — Home.tsx footer, create 5 legal pages (Privacy, Terms, Cookie, DPA, Confidentiality) (TODO)
 ## Issue 7 One-page report cards — src/lib/reportCardPdf.ts + reportCard sections (TODO): reduce fonts/margins/spacing, ensure single page
 
-## Test creds
-School Admin: muemutuku@gmail.com / SchoolAdmin@2025; Teacher: makau@gmail.com / Teacher@2025; DOS: dos@zamifu.com / Dos@2025; Reseller: martinmakau123@gmail.com / 123456789
-Supabase URL https://naihzzlszvrkxrxogsuz.supabase.co ; also MCP supabase available.
+## Test credentials
+Test credentials and service keys are intentionally not stored in this repository. Use the secure local environment or password manager.
 
 ## Remaining steps
 - Install deps + local test (pnpm or npm run dev)

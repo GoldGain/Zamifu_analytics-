@@ -49,6 +49,7 @@ export default function TeacherResultsUpload() {
   const [exams, setExams] = useState<any[]>([]);
   const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
+  const [isDoS, setIsDoS] = useState(false);
   const [outOf, setOutOf] = useState(100);
 
   const [csvData, setCsvData] = useState<ProcessedRow[]>([]);
@@ -63,6 +64,15 @@ export default function TeacherResultsUpload() {
   useEffect(() => {
     const fetchData = async () => {
       const schoolId = user?.schoolId ?? '';
+      let dosUser = false;
+      if (user?.id && schoolId) {
+        const { data: teacherRecord } = await supabaseUntyped.from('teachers').select('id, school_id').eq('profile_id', user.id).maybeSingle();
+        if (teacherRecord?.school_id === schoolId) {
+          const { data: schoolRecord } = await supabaseUntyped.from('schools').select('dean_of_studies_id').eq('id', schoolId).maybeSingle();
+          dosUser = schoolRecord?.dean_of_studies_id === teacherRecord.id;
+        }
+      }
+      setIsDoS(dosUser);
       const [{ data: c }, { data: t }, { data: ex }, assignmentResult] = await Promise.all([
         supabase.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
@@ -75,7 +85,7 @@ export default function TeacherResultsUpload() {
       setAssignmentsLoaded(true);
 
       const assignedClassIds = [...new Set(assignments.map((a) => a.class_id).filter(Boolean))];
-      const filteredClasses = (c || []).filter((cls: any) => assignedClassIds.includes(cls.id));
+      const filteredClasses = dosUser ? (c || []) : (c || []).filter((cls: any) => assignedClassIds.includes(cls.id));
       setClasses(filteredClasses);
 
       const subjectMap = new Map<string, any>();
@@ -84,7 +94,12 @@ export default function TeacherResultsUpload() {
           subjectMap.set(a.subject_id, { id: a.subject_id, name: a.subject_name || 'Learning Area' });
         }
       });
-      setSubjects(Array.from(subjectMap.values()));
+      if (dosUser) {
+        const { data: allSubjects } = await supabaseUntyped.from('subjects').select('id, name').order('name');
+        setSubjects(allSubjects || []);
+      } else {
+        setSubjects(Array.from(subjectMap.values()));
+      }
       setExams(ex || []);
 
       const qClass = searchParams.get('classId') || '';
@@ -148,12 +163,12 @@ export default function TeacherResultsUpload() {
     fetchStudents();
     setSelectedSubject((prev) => {
       if (!prev) return '';
-      const stillValid = teacherAssignments.some(
+      const stillValid = isDoS || teacherAssignments.some(
         (a) => a.class_id === selectedClass && a.subject_id === prev
       );
       return stillValid ? prev : '';
     });
-  }, [selectedClass, teacherAssignments]);
+  }, [selectedClass, teacherAssignments, isDoS]);
 
   const currentClassData = classes.find((c: any) => c.id === selectedClass);
   const currentBand = getSchoolLevelBand(currentClassData);
@@ -161,12 +176,13 @@ export default function TeacherResultsUpload() {
 
   const assignedSubjectsForClass = useMemo(() => {
     if (!selectedClass) return [] as { id: string; name: string }[];
+    if (isDoS) return subjects;
     const map = new Map<string, string>();
     teacherAssignments
       .filter((a) => a.class_id === selectedClass && a.subject_id)
       .forEach((a) => map.set(a.subject_id, a.subject_name || 'Learning Area'));
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [selectedClass, teacherAssignments]);
+  }, [selectedClass, teacherAssignments, isDoS, subjects]);
 
   const availableExams = useMemo(() => {
     if (!selectedClass) return [];
@@ -304,13 +320,14 @@ export default function TeacherResultsUpload() {
   const checkDuplicateSubject = async (): Promise<boolean> => {
     if (!selectedClass || !selectedSubject || !selectedTerm) return false;
     try {
-      const { data: existing } = await supabaseUntyped
+      let duplicateQuery = supabaseUntyped
         .from('results')
         .select('id')
         .eq('class_id', selectedClass)
         .eq('subject_id', selectedSubject)
-        .eq('term_id', selectedTerm)
-        .limit(1);
+        .eq('term_id', selectedTerm);
+      duplicateQuery = selectedExam ? duplicateQuery.eq('exam_id', selectedExam) : duplicateQuery.is('exam_id', null);
+      const { data: existing } = await duplicateQuery.limit(1);
       return (existing || []).length > 0;
     } catch {
       return false;
@@ -328,8 +345,10 @@ export default function TeacherResultsUpload() {
       return;
     }
 
-    // CRITICAL: backend verification — teacher must be assigned to this class + subject
-    const verification = await verifyTeacherSubjectAssignment(user?.id, selectedClass, selectedSubject);
+    // DoS users may enter marks for any class and learning area; ordinary teachers remain assignment-scoped.
+    const verification = isDoS
+      ? { allowed: true, teacherId: (await supabaseUntyped.from('teachers').select('id').eq('profile_id', user?.id).maybeSingle()).data?.id, reason: '' }
+      : await verifyTeacherSubjectAssignment(user?.id, selectedClass, selectedSubject);
     if (!verification.allowed || !verification.teacherId) {
       toast.error(verification.reason || 'You are not assigned to this learning area.');
       setError(verification.reason || 'Upload rejected: not assigned to this learning area.');

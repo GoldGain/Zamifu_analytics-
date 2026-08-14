@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { BarChart3, Users, Filter, Loader2, TrendingUp, Award, BookOpen, Search, ClipboardList } from 'lucide-react';
+import { BarChart3, Users, Filter, Loader2, TrendingUp, Award, BookOpen, Search, ClipboardList, Download } from 'lucide-react';
 import { getSchoolLevelBand } from '@/lib/grading';
 
 interface StudentRanking {
@@ -203,6 +203,26 @@ export default function StreamDashboard() {
     s.admission_number?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const downloadStreamRanking = () => {
+    if (rankings.length === 0) return;
+    const subjects = subjectSummaries.map(s => s.name);
+    const rows = rankings.map(s => [
+      s.position ?? '', `${s.first_name} ${s.last_name}`, s.admission_number || '',
+      s.avgPercentage ?? '', ...subjects.map(subject => s.subjectResults[subject]?.pct ?? '')
+    ]);
+    const csv = [
+      ['Position', 'Student', 'Admission Number', 'Average %', ...subjects],
+      ...rows,
+    ].map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `stream_ranking_${classInfo?.name || 'class'}_${selectedTerm || 'term'}.csv`.replace(/\\s+/g, '_');
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
 
   return (
@@ -299,8 +319,11 @@ export default function StreamDashboard() {
       {/* Rankings Tab */}
       {activeTab === 'rankings' && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-5 border-b border-gray-100">
+          <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3">
             <h3 className="font-bold text-gray-900">Student Rankings — {classInfo?.name}</h3>
+            <button onClick={downloadStreamRanking} disabled={rankings.length === 0} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
+              <Download className="w-4 h-4" /> Download Ranking
+            </button>
           </div>
           {loadingData ? (
             <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
@@ -316,7 +339,7 @@ export default function StreamDashboard() {
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Adm No</th>
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Avg %</th>
                     <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Subjects</th>
-                    {subjectSummaries.slice(0, 4).map(sub => (
+                    {subjectSummaries.map(sub => (
                       <th key={sub.id} className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">{sub.name.substring(0, 6)}</th>
                     ))}
                   </tr>
@@ -342,7 +365,7 @@ export default function StreamDashboard() {
                         return (
                           <td key={sub.id} className="py-3 px-6">
                             {sr ? (
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(sr.grade)}`}>{sr.grade || `${sr.pct}%`}</span>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(sr.grade)}`}>{sr.pct}%{sr.grade ? ` · ${sr.grade}` : ''}</span>
                             ) : <span className="text-gray-300">—</span>}
                           </td>
                         );

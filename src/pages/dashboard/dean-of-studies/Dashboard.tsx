@@ -217,6 +217,14 @@ export default function DeanOfStudiesDashboard() {
     if (!confirm('Delete this assessment?')) return;
     setDeletingExamId(id);
     try {
+      const { count: resultCount, error: countError } = await (supabase as any)
+        .from('results')
+        .select('id', { count: 'exact', head: true })
+        .eq('exam_id', id);
+      if (countError) throw countError;
+      if ((resultCount || 0) > 0) {
+        throw new Error('Cannot delete assessment. Results exist for this assessment. Please delete results first.');
+      }
       const { error } = await (supabase as any).from('school_exams').delete().eq('id', id);
       if (error) throw error;
       toast.success('Assessment deleted');
