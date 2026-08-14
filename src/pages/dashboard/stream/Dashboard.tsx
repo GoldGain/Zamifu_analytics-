@@ -113,7 +113,7 @@ export default function StreamDashboard() {
       // avoids dropping valid rows when legacy results have a stale/null school_id.
       let resultsQuery = supabaseUntyped
         .from('results')
-        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_, points_, exam_id')
+        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_844, points_844, exam_id')
         .eq('class_id', selectedClass)
         .eq('term_id', selectedTerm);
 
@@ -142,8 +142,8 @@ export default function StreamDashboard() {
         const pct = r.percentage ?? (r.out_of > 0 ? Math.round((r.marks / r.out_of) * 100) : 0);
         studentMap[r.student_id].total += pct;
         studentMap[r.student_id].count += 1;
-        studentMap[r.student_id].points += r.cbc_points ?? r.points_ ?? 0;
-        const grade = is844 ? (r.grade_ || '') : (r.cbc_sublevel || r.cbc_grade || '');
+        studentMap[r.student_id].points += r.cbc_points ?? r.points_844 ?? 0;
+        const grade = is844 ? (r.grade_844 || '') : (r.cbc_sublevel || r.cbc_grade || '');
         const subName = subjectNames.get(r.subject_id) || r.subject_id;
         studentMap[r.student_id].subjects[subName] = { pct, grade };
 
