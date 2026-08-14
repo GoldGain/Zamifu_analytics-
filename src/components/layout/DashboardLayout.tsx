@@ -119,7 +119,6 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/teacher/attendance' },
     { label: 'Homework & Papers', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/homework' },
     { label: 'Upload Papers', icon: <Upload className="w-5 h-5" />, path: '/teacher/upload-papers' },
-    { label: 'Analytics', icon: <BarChart3 className="w-5 h-5" />, path: '/teacher/analytics' },
     { label: 'My Learners', icon: <Users className="w-5 h-5" />, path: '/teacher/students' },
     { label: 'Lesson Plans', icon: <Sparkles className="w-5 h-5" />, path: '/teacher/lesson-plan' },
     { label: 'Curriculum Navigator', icon: <Brain className="w-5 h-5" />, path: '/teacher/curriculum' },
@@ -240,7 +239,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (item.path === '/teacher/subject-dashboard' && !hasSubjectAssignments) return false;
       if ((item.path === '/dean-of-studies' || item.path === '/dean-of-studies/results') && !isDoS) return false;
       if (item.path === '/teacher/results' && !isClassTeacher) return false;
-      if (item.path === '/teacher/analytics' && isClassTeacher) return false;
       return true;
     });
   }
