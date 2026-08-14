@@ -108,12 +108,12 @@ export default function StreamDashboard() {
         return;
       }
 
-      // Use the same school/class/term scope as the Results Dashboard. The previous
-      // query silently swallowed Supabase errors and could leave the dashboard at 0/0.
+      // Class and term selectors are loaded from the authenticated school. Scope the
+      // result query by those foreign keys directly; this matches the Results page and
+      // avoids dropping valid rows when legacy results have a stale/null school_id.
       let resultsQuery = supabaseUntyped
         .from('results')
         .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_, points_, exam_id')
-        .eq('school_id', user?.schoolId)
         .eq('class_id', selectedClass)
         .eq('term_id', selectedTerm);
 
