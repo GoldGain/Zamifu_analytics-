@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { BarChart3, Users, Filter, Loader2, TrendingUp, Award, BookOpen, Search, ClipboardList, Download } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { getSchoolLevelBand } from '@/lib/grading';
+import { getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
 
 interface StudentRanking {
   id: string;
