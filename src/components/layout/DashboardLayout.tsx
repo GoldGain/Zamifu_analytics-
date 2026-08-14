@@ -240,6 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (item.path === '/teacher/subject-dashboard' && !hasSubjectAssignments) return false;
       if ((item.path === '/dean-of-studies' || item.path === '/dean-of-studies/results') && !isDoS) return false;
       if (item.path === '/teacher/results' && !isClassTeacher) return false;
+      if (item.path === '/teacher/analytics' && isClassTeacher) return false;
       return true;
     });
   }

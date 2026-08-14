@@ -1046,11 +1046,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
           </button>
-          <button onClick={publishResults} disabled={publishing || !selectedClass || !selectedTerm}
-            className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
-            {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {publishing ? 'Publishing...' : 'Publish & Notify'}
-          </button>
+          {scope === 'school' && (
+            <button onClick={publishResults} disabled={publishing || !selectedClass || !selectedTerm}
+              className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
+              {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {publishing ? 'Publishing...' : 'Publish & Notify'}
+            </button>
+          )}
         </div>
       </div>
 

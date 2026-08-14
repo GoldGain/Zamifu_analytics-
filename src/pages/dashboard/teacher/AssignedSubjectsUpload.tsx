@@ -16,12 +16,25 @@ export default function AssignedSubjectsUpload() {
   const { user } = useAuth();
   const [assignments, setAssignments] = useState<(TeacherAssignment & { hasResults?: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDoS, setIsDoS] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       if (!user?.id) return;
       setLoading(true);
       try {
+        const { data: teacherRecord } = await supabaseUntyped.from('teachers').select('id, school_id').eq('profile_id', user.id).maybeSingle();
+        let dosUser = false;
+        if (teacherRecord?.school_id === user.schoolId) {
+          const { data: schoolRecord } = await supabaseUntyped.from('schools').select('dean_of_studies_id').eq('id', user.schoolId).maybeSingle();
+          dosUser = schoolRecord?.dean_of_studies_id === teacherRecord.id;
+        }
+        setIsDoS(dosUser);
+        if (dosUser) {
+          setAssignments([]);
+          return;
+        }
+
         const { assignments: rows } = await fetchTeacherAssignments(user.id);
         
         // Get current term
@@ -85,9 +98,9 @@ export default function AssignedSubjectsUpload() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#111111]">Results Upload — Assigned Learning Areas</h1>
+        <h1 className="text-2xl font-bold text-[#111111]">{isDoS ? 'Results Upload — All School' : 'Results Upload — Assigned Learning Areas'}</h1>
         <p className="text-sm text-[#666666]">
-          You can only upload marks for learning areas assigned to you by your school administrator.
+          {isDoS ? 'Dean of Studies can enter marks for all classes and learning areas.' : 'You can only upload marks for learning areas assigned to you by your school administrator.'}
         </p>
       </div>
 
@@ -102,7 +115,17 @@ export default function AssignedSubjectsUpload() {
         </div>
       </div>
 
-      {assignments.length === 0 ? (
+      {isDoS ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-blue-900 mb-1">Dean of Studies marks entry</h3>
+            <p className="text-sm text-blue-800">Enter marks for any class and any learning area in your school. Assessment-specific duplicate protection remains active.</p>
+          </div>
+          <Link to="/teacher/results/upload" className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
+            <Upload className="w-4 h-4" /> Open all-school marks entry
+          </Link>
+        </div>
+      ) : assignments.length === 0 ? (
         <div className="bg-white rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
           <BookOpen className="w-14 h-14 text-gray-200 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-gray-700 mb-2">No assignments yet</h3>

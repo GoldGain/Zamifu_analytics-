@@ -104,10 +104,10 @@ export default function TeacherResultsUpload() {
 
       const qClass = searchParams.get('classId') || '';
       const qSubject = searchParams.get('subjectId') || '';
-      if (qClass && assignedClassIds.includes(qClass)) {
+      if (qClass && (dosUser || assignedClassIds.includes(qClass))) {
         setSelectedClass(qClass);
       }
-      if (qSubject && assignments.some((a) => a.subject_id === qSubject && (!qClass || a.class_id === qClass))) {
+      if (qSubject && (dosUser || assignments.some((a) => a.subject_id === qSubject && (!qClass || a.class_id === qClass)))) {
         setSelectedSubject(qSubject);
       }
 
@@ -573,10 +573,10 @@ export default function TeacherResultsUpload() {
     <div className="space-y-6">
       <div>
         <Link to="/teacher/results/assigned" className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline mb-2">
-          <ArrowLeft className="w-4 h-4" /> Assigned learning areas
+          <ArrowLeft className="w-4 h-4" /> {isDoS ? 'Results upload hub' : 'Assigned learning areas'}
         </Link>
         <h1 className="text-2xl font-bold text-[#111111]">Upload Results</h1>
-        <p className="text-sm text-[#666666]">Enter marks only for learning areas assigned to you. Unassigned subjects are blocked.</p>
+        <p className="text-sm text-[#666666]">{isDoS ? 'As Dean of Studies, you can enter marks for every class and learning area in your school.' : 'Enter marks only for learning areas assigned to you. Unassigned subjects are blocked.'}</p>
       </div>
 
       {assignmentsLoaded && teacherAssignments.length === 0 && (
@@ -622,7 +622,7 @@ export default function TeacherResultsUpload() {
             {selectedClass && (
               <div className="flex items-center gap-1 mb-1">
                 <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full">{bandLabel}</span>
-                <span className="text-xs text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full">Assigned only</span>
+                <span className="text-xs text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded-full">{isDoS ? 'All learning areas' : 'Assigned only'}</span>
               </div>
             )}
             <select
