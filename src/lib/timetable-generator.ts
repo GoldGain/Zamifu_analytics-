@@ -9,7 +9,7 @@
  * | Level            | Total | After lunch |
  * |------------------|-------|-------------|
  * | Pre-Primary      | 6     | 0           |
- * | Lower Primary    | 7     | 1           |
+ * | Lower Primary    | 6     | 0           |
  * | Upper Primary    | 7     | 1           |
  * | Junior School    | 8     | 2           |
  * | Senior School    | 9     | 3           |
@@ -53,14 +53,14 @@ export interface LevelLessonConfig {
  */
 export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
   'pre-primary': { totalLessons: 6, afterLunch: 0 },
-  'lower-primary': { totalLessons: 7, afterLunch: 1 },
+  'lower-primary': { totalLessons: 6, afterLunch: 0 },
   'upper-primary': { totalLessons: 7, afterLunch: 1 },
   'combined-primary': { totalLessons: 7, afterLunch: 1 },
   junior: { totalLessons: 8, afterLunch: 2 },
   senior: { totalLessons: 9, afterLunch: 2 },
   'form-3-4': { totalLessons: 8, afterLunch: 3 },
   // legacy aliases
-  lower_primary: { totalLessons: 7, afterLunch: 1 },
+  lower_primary: { totalLessons: 6, afterLunch: 0 },
   upper_primary: { totalLessons: 7, afterLunch: 1 },
   junior_school: { totalLessons: 8, afterLunch: 2 },
   senior_school: { totalLessons: 9, afterLunch: 2 },

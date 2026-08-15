@@ -363,7 +363,7 @@ export default function ParentChildReportCard() {
       }
       
       currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
-      currentY = drawDeviation(doc, deviation, previousAvg, currentY + 6);
+      currentY = drawDeviation(doc, deviation, previousAvg, position, currentY + 6);
       if (trendData.length >= 2) {
         drawTrendGraph(doc, trendData, 14, currentY, 182, 40, getSchoolLevelBand(classDataForGrading));
         currentY += 42;

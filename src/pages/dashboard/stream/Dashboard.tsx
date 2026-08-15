@@ -26,11 +26,31 @@ interface SubjectSummary {
   count: number;
 }
 
+interface ClassComparison {
+  id: string;
+  name: string;
+  stream: string;
+  learnerCount: number;
+  resultsCount: number;
+  average: number | null;
+  highest: number | null;
+  lowest: number | null;
+  position: number | null;
+}
+
+interface StreamLearner extends StudentRanking {
+  className: string;
+  classPosition: number | null;
+}
+
 export default function StreamDashboard() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<any[]>([]);
+  const [selectedStream, setSelectedStream] = useState<string>('');
   const [selectedClass, setSelectedClass] = useState<string>('');
+  const [classComparisons, setClassComparisons] = useState<ClassComparison[]>([]);
+  const [streamLearners, setStreamLearners] = useState<StreamLearner[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
   const [selectedTerm, setSelectedTerm] = useState<string>('');
   const [rankings, setRankings] = useState<StudentRanking[]>([]);
@@ -41,6 +61,9 @@ export default function StreamDashboard() {
   const [classInfo, setClassInfo] = useState<any>(null);
   const [exams, setExams] = useState<any[]>([]);
   const [selectedExam, setSelectedExam] = useState<string>('');
+
+  const streamNameForClass = (classRow: any) =>
+    String(classRow?.stream || classRow?.name || 'Unassigned stream').trim() || 'Unassigned stream';
 
   useEffect(() => {
     if (user?.schoolId) fetchInitialData();
@@ -61,6 +84,8 @@ export default function StreamDashboard() {
         .order('name');
       setClasses(classesData || []);
       if (classesData && classesData.length > 0) {
+        const firstStream = streamNameForClass(classesData[0]);
+        setSelectedStream(firstStream);
         setSelectedClass(classesData[0].id);
         setClassInfo(classesData[0]);
       }
@@ -92,112 +117,108 @@ export default function StreamDashboard() {
     try {
       const cls = classes.find(c => c.id === selectedClass);
       setClassInfo(cls);
-
-      // Fetch all students in class
-      const { data: students } = await supabaseUntyped
-        .from('students')
-        .select('id, first_name, last_name, admission_number')
-        .eq('class_id', selectedClass)
-        .eq('is_active', true)
-        .order('first_name');
-
-      // Class and term selectors are loaded from the authenticated school. Scope the
-      // result query by those foreign keys directly; this matches the Results page and
-      // avoids dropping valid rows when legacy results have a stale/null school_id.
-      let resultsQuery = supabaseUntyped
-        .from('results')
-        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_844, points_844, exam_id')
-        .eq('class_id', selectedClass)
-        .eq('term_id', selectedTerm);
-
-      if (selectedExam) resultsQuery = resultsQuery.eq('exam_id', selectedExam);
-
-      const { data: results, error: resultsError } = await resultsQuery;
-      if (resultsError) throw resultsError;
-
-      if (!results || results.length === 0) {
-        setRankings((students || []).map((s: any) => ({ id: s.id, first_name: s.first_name, last_name: s.last_name, admission_number: s.admission_number, avgPercentage: null, totalPoints: null, position: null, subjectResults: {} })));
-        setSubjectSummaries([]);
-        setLoadingData(false);
+      const streamClasses = classes.filter(c => streamNameForClass(c) === selectedStream);
+      const streamClassIds = streamClasses.map(c => c.id);
+      if (!selectedClass || streamClassIds.length === 0) {
+        setRankings([]); setSubjectSummaries([]); setClassComparisons([]); setStreamLearners([]);
         return;
       }
 
-      // Results can outlive a learner's current class assignment. Build the ranking
-      // roster from the selected result rows so historical class results remain visible.
-      const resultStudentIds = [...new Set(results.map((r: any) => r.student_id).filter(Boolean))];
-      const { data: resultStudents, error: resultStudentsError } = await supabaseUntyped
-        .from('students')
-        .select('id, first_name, last_name, admission_number')
-        .in('id', resultStudentIds);
-      if (resultStudentsError) throw resultStudentsError;
-      const rankingStudents = resultStudents && resultStudents.length > 0 ? resultStudents : (students || []);
+      const { data: students, error: studentsError } = await supabaseUntyped
+        .from('students').select('id, first_name, last_name, admission_number, class_id')
+        .in('class_id', streamClassIds).eq('is_active', true).order('first_name');
+      let resultsQuery: any = supabaseUntyped
+        .from('results')
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, cbc_grade, cbc_sublevel, cbc_points, grade_844, points_844, exam_id')
+        .in('class_id', streamClassIds).eq('term_id', selectedTerm);
+      if (selectedExam) resultsQuery = resultsQuery.eq('exam_id', selectedExam);
+      const { data: results, error: resultsError } = await resultsQuery;
+      if (studentsError) throw studentsError;
+      if (resultsError) throw resultsError;
 
-      const subjectIds = [...new Set((results || []).map((r: any) => r.subject_id).filter(Boolean))];
+      const allResults = results || [];
+      const selectedResults = allResults.filter((r: any) => r.class_id === selectedClass);
+      const resultStudentIds = [...new Set(selectedResults.map((r: any) => r.student_id).filter(Boolean))];
+      let linkedStudents: any[] = [];
+      if (resultStudentIds.length > 0) {
+        const { data: linked } = await supabaseUntyped.from('students')
+          .select('id, first_name, last_name, admission_number, class_id').in('id', resultStudentIds);
+        linkedStudents = linked || [];
+      }
+      const rosterById = new Map<string, any>();
+      [...(students || []), ...linkedStudents].forEach((student: any) => rosterById.set(student.id, student));
+      const classNameById = new Map(streamClasses.map((c: any) => [c.id, c.name]));
+      const classById = new Map(streamClasses.map((c: any) => [c.id, c]));
+      const subjectIds = [...new Set(selectedResults.map((r: any) => r.subject_id).filter(Boolean))];
       const { data: subjectRows, error: subjectsError } = subjectIds.length > 0
         ? await supabaseUntyped.from('subjects').select('id, name').in('id', subjectIds)
         : { data: [], error: null };
       if (subjectsError) throw subjectsError;
       const subjectNames = new Map((subjectRows || []).map((s: any) => [s.id, s.name]));
-
-      const is844 = is844Curriculum(cls);
-
-      // Build student performance map
-      const studentMap: Record<string, { total: number; count: number; points: number; subjects: Record<string, any> }> = {};
-      const subjectMap: Record<string, { name: string; values: number[]; id: string }> = {};
-
-      (results || []).forEach((r: any) => {
-        if (!studentMap[r.student_id]) {
-          studentMap[r.student_id] = { total: 0, count: 0, points: 0, subjects: {} };
-        }
+      const studentMap: Record<string, { total: number; count: number; points: number }> = {};
+      const selectedSubjectMap: Record<string, { name: string; values: number[]; id: string }> = {};
+      allResults.forEach((r: any) => {
+        if (!studentMap[r.student_id]) studentMap[r.student_id] = { total: 0, count: 0, points: 0 };
         const pct = r.percentage ?? (r.out_of > 0 ? Math.round((r.marks / r.out_of) * 100) : 0);
         studentMap[r.student_id].total += pct;
         studentMap[r.student_id].count += 1;
         studentMap[r.student_id].points += r.cbc_points ?? r.points_844 ?? 0;
-        const grade = is844 ? (r.grade_844 || '') : (r.cbc_sublevel || r.cbc_grade || '');
-        const subName = subjectNames.get(r.subject_id) || r.subject_id;
-        studentMap[r.student_id].subjects[subName] = { pct, grade };
-
-        // Subject summary
-        const subId = r.subjects?.id || r.subject_id;
-        if (!subjectMap[subId]) subjectMap[subId] = { name: subName, values: [], id: subId };
-        subjectMap[subId].values.push(pct);
+        if (r.class_id === selectedClass) {
+          const subjectName = subjectNames.get(r.subject_id) || r.subject_id;
+          if (!selectedSubjectMap[r.subject_id]) selectedSubjectMap[r.subject_id] = { name: subjectName, values: [], id: r.subject_id };
+          selectedSubjectMap[r.subject_id].values.push(pct);
+        }
       });
 
-      // Build rankings
-      const rankList: StudentRanking[] = rankingStudents.map((s: any) => {
-        const data = studentMap[s.id];
+      const learners: StreamLearner[] = [...rosterById.values()].map((student: any) => {
+        const data = studentMap[student.id];
+        const subjectResults: Record<string, { pct: number; grade: string }> = {};
+        allResults.filter((r: any) => r.student_id === student.id && r.class_id === selectedClass).forEach((r: any) => {
+          const pct = r.percentage ?? (r.out_of > 0 ? Math.round((r.marks / r.out_of) * 100) : 0);
+          const subjectName = subjectNames.get(r.subject_id) || r.subject_id;
+          const classRow = classById.get(r.class_id);
+          subjectResults[subjectName] = { pct, grade: is844Curriculum(classRow) ? (r.grade_844 || '') : (r.cbc_sublevel || r.cbc_grade || '') };
+        });
         return {
-          id: s.id,
-          first_name: s.first_name,
-          last_name: s.last_name,
-          admission_number: s.admission_number,
-          avgPercentage: data ? Math.round(data.total / data.count) : null,
-          totalPoints: data ? data.points : null,
-          position: null,
-          subjectResults: data?.subjects || {},
+          id: student.id, first_name: student.first_name, last_name: student.last_name,
+          admission_number: student.admission_number, avgPercentage: data?.count ? Math.round(data.total / data.count) : null,
+          totalPoints: data?.points ?? null, position: null, subjectResults,
+          className: classNameById.get(student.class_id) || 'Class', classPosition: null,
         };
       });
+      const positionedLearners = learners.map(learner => {
+        const sameClass = learners.filter(other => other.className === learner.className && other.avgPercentage !== null)
+          .sort((a, b) => (b.avgPercentage ?? -1) - (a.avgPercentage ?? -1));
+        const index = sameClass.findIndex(other => other.id === learner.id);
+        return { ...learner, classPosition: index >= 0 ? index + 1 : null };
+      });
+      const selectedClassName = classNameById.get(selectedClass) || cls?.name || 'Class';
+      const selectedRankings = positionedLearners.filter(learner => learner.className === selectedClassName)
+        .map(learner => ({ ...learner, position: learner.classPosition }));
+      selectedRankings.sort((a, b) => (b.avgPercentage ?? -1) - (a.avgPercentage ?? -1));
+      setRankings(selectedRankings);
+      setStreamLearners(positionedLearners.sort((a, b) => (b.avgPercentage ?? -1) - (a.avgPercentage ?? -1)));
 
-      // Sort and assign positions
-      rankList.sort((a, b) => (b.avgPercentage ?? -1) - (a.avgPercentage ?? -1));
-      rankList.forEach((s, i) => { if (s.avgPercentage !== null) s.position = i + 1; });
-      setRankings(rankList);
-
-      // Build subject summaries
-      const summaries: SubjectSummary[] = Object.values(subjectMap).map(sub => ({
-        id: sub.id,
-        name: sub.name,
-        average: sub.values.length > 0 ? Math.round(sub.values.reduce((a, b) => a + b, 0) / sub.values.length) : 0,
-        highest: sub.values.length > 0 ? Math.max(...sub.values) : 0,
-        lowest: sub.values.length > 0 ? Math.min(...sub.values) : 0,
-        count: sub.values.length,
-      })).sort((a, b) => b.average - a.average);
-      setSubjectSummaries(summaries);
+      const comparisons = streamClasses.map((classRow: any) => {
+        const classLearners = positionedLearners.filter(learner => learner.className === classRow.name);
+        const values = classLearners.filter(learner => learner.avgPercentage !== null).map(learner => learner.avgPercentage as number);
+        return {
+          id: classRow.id, name: classRow.name, stream: streamNameForClass(classRow), learnerCount: classLearners.length,
+          resultsCount: allResults.filter((r: any) => r.class_id === classRow.id).length,
+          average: values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null,
+          highest: values.length ? Math.max(...values) : null, lowest: values.length ? Math.min(...values) : null, position: null,
+        };
+      }).sort((a, b) => (b.average ?? -1) - (a.average ?? -1));
+      comparisons.forEach((comparison, index) => { comparison.position = comparison.average === null ? null : index + 1; });
+      setClassComparisons(comparisons);
+      setSubjectSummaries(Object.values(selectedSubjectMap).map(sub => ({
+        id: sub.id, name: sub.name,
+        average: sub.values.length ? Math.round(sub.values.reduce((a, b) => a + b, 0) / sub.values.length) : 0,
+        highest: sub.values.length ? Math.max(...sub.values) : 0, lowest: sub.values.length ? Math.min(...sub.values) : 0, count: sub.values.length,
+      })).sort((a, b) => b.average - a.average));
     } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingData(false);
-    }
+      console.error(err); setRankings([]); setSubjectSummaries([]); setClassComparisons([]); setStreamLearners([]);
+    } finally { setLoadingData(false); }
   };
 
   const classAvg = rankings.filter(r => r.avgPercentage !== null).length > 0
@@ -224,26 +245,24 @@ export default function StreamDashboard() {
   );
 
   const downloadStreamRanking = () => {
-    if (rankings.length === 0) return;
-    const subjects = subjectSummaries.map(s => s.name);
-    const rows = rankings.map(s => [
-      s.position ?? '', `${s.first_name} ${s.last_name}`, s.admission_number || '',
-      s.avgPercentage ?? '', ...subjects.map(subject => s.subjectResults[subject]?.pct ?? '')
-    ]);
+    if (rankings.length === 0 && classComparisons.length === 0) return;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    doc.setFontSize(14);
-    doc.text(`Stream Ranking — ${classInfo?.name || 'Class'}`, 14, 15);
-    doc.setFontSize(9);
-    doc.text(`Term: ${terms.find(t => t.id === selectedTerm)?.name || selectedTerm}`, 14, 21);
+    doc.setFontSize(14); doc.text(`Stream Rankings — ${selectedStream || classInfo?.name || 'Stream'}`, 14, 15);
+    doc.setFontSize(9); doc.text(`Term: ${terms.find(t => t.id === selectedTerm)?.name || selectedTerm}`, 14, 21);
     autoTable(doc, {
-      startY: 26,
-      head: [['Position', 'Student', 'Admission Number', 'Average %', ...subjects]],
-      body: rows.map(row => row.map(value => String(value ?? ''))),
-      styles: { fontSize: 7, cellPadding: 2 },
-      headStyles: { fillColor: [37, 99, 235] },
-      theme: 'grid',
+      startY: 26, head: [['Position', 'Class', 'Learners', 'Results', 'Average %', 'Highest %', 'Lowest %']],
+      body: classComparisons.map(row => [row.position ?? '', row.name, row.learnerCount, row.resultsCount, row.average ?? '', row.highest ?? '', row.lowest ?? ''].map(value => String(value ?? ''))),
+      styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
     });
-    doc.save(`stream_ranking_${classInfo?.name || 'class'}_${selectedTerm || 'term'}.pdf`.replace(/\\s+/g, '_'));
+    if (streamLearners.length > 0) {
+      doc.addPage(); doc.setFontSize(12); doc.text('Learner Performance Across Stream Classes', 14, 15);
+      autoTable(doc, {
+        startY: 22, head: [['Class', 'Position', 'Learner', 'Admission Number', 'Average %', 'Subjects']],
+        body: streamLearners.map(row => [row.className, row.classPosition ?? '', `${row.first_name} ${row.last_name}`, row.admission_number || '', row.avgPercentage ?? '', Object.keys(row.subjectResults).length].map(value => String(value ?? ''))),
+        styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [16, 185, 129] }, theme: 'grid',
+      });
+    }
+    doc.save(`stream_rankings_${selectedStream || 'stream'}_${selectedTerm || 'term'}.pdf`.replace(/\s+/g, '_'));
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
@@ -260,6 +279,17 @@ export default function StreamDashboard() {
           <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200">
             <Filter className="w-4 h-4 text-gray-400" />
             <select
+              value={selectedStream}
+              onChange={e => {
+                const nextStream = e.target.value;
+                const nextClass = classes.find(c => streamNameForClass(c) === nextStream);
+                setSelectedStream(nextStream); setSelectedClass(nextClass?.id || ''); setClassInfo(nextClass || null); setSelectedExam('');
+              }}
+              className="text-sm font-medium border-none focus:ring-0 bg-transparent"
+            >
+              {[...new Set(classes.map(c => streamNameForClass(c)))].map(stream => <option key={stream} value={stream}>{stream}</option>)}
+            </select>
+            <select
               value={selectedClass}
               onChange={e => {
                 setSelectedClass(e.target.value);
@@ -267,7 +297,7 @@ export default function StreamDashboard() {
               }}
               className="text-sm font-medium border-none focus:ring-0 bg-transparent"
             >
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {classes.filter(c => streamNameForClass(c) === selectedStream).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           {terms.length > 0 && (
@@ -314,13 +344,13 @@ export default function StreamDashboard() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
-        {(['rankings', 'subjects'] as const).map(tab => (
+        {(['rankings', 'subjects', 'class-means', 'learners'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
           >
-            {tab === 'rankings' ? 'Student Rankings' : 'Subject Analysis'}
+            {tab === 'rankings' ? 'Student Rankings' : tab === 'subjects' ? 'Subject Analysis' : tab === 'class-means' ? 'Class Means' : 'Learner Performance'}
           </button>
         ))}
       </div>
@@ -345,7 +375,7 @@ export default function StreamDashboard() {
           <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3">
             <h3 className="font-bold text-gray-900">Student Rankings — {classInfo?.name}</h3>
             <button onClick={downloadStreamRanking} disabled={rankings.length === 0} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50">
-              <Download className="w-4 h-4" /> Download Ranking
+              <Download className="w-4 h-4" /> Download Stream Rankings
             </button>
           </div>
           {loadingData ? (
@@ -480,6 +510,22 @@ export default function StreamDashboard() {
           )}
         </div>
       )}
+
+
+      {activeTab === 'class-means' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-5 border-b border-gray-100"><h3 className="font-bold text-gray-900">Class Means Comparison — {selectedStream || 'Stream'}</h3><p className="text-xs text-gray-500 mt-1">Compare each class in this stream for the selected term and assessment.</p></div>
+          {classComparisons.length === 0 ? <div className="p-10 text-center text-gray-500 text-sm">No class results found for this stream and term.</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Rank</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Class</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Learners</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Results</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Mean %</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Highest</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Lowest</th></tr></thead><tbody className="divide-y divide-gray-50">{classComparisons.map(row => <tr key={row.id} className="hover:bg-gray-50"><td className="py-3 px-6 font-bold text-blue-600">{row.position ?? '—'}</td><td className="py-3 px-6 font-medium text-gray-900">{row.name}</td><td className="py-3 px-6 text-gray-600">{row.learnerCount}</td><td className="py-3 px-6 text-gray-600">{row.resultsCount}</td><td className={`py-3 px-6 font-bold ${row.average === null ? 'text-gray-300' : avgColor(row.average)}`}>{row.average === null ? '—' : `${row.average}%`}</td><td className="py-3 px-6 text-green-600">{row.highest === null ? '—' : `${row.highest}%`}</td><td className="py-3 px-6 text-red-600">{row.lowest === null ? '—' : `${row.lowest}%`}</td></tr>)}</tbody></table></div>}
+        </div>
+      )}
+
+      {activeTab === 'learners' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-5 border-b border-gray-100 flex items-center justify-between gap-3"><div><h3 className="font-bold text-gray-900">Learner Performance Across Stream Classes</h3><p className="text-xs text-gray-500 mt-1">Learners are ranked within their own class for the selected term.</p></div><button onClick={downloadStreamRanking} disabled={streamLearners.length === 0} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"><Download className="w-4 h-4" /> Download PDF</button></div>
+          {streamLearners.length === 0 ? <div className="p-10 text-center text-gray-500 text-sm">No learner results found for this stream and term.</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Class</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Pos.</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Learner</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Admission No.</th><th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Average</th></tr></thead><tbody className="divide-y divide-gray-50">{streamLearners.map(row => <tr key={`${row.className}-${row.id}`} className="hover:bg-gray-50"><td className="py-3 px-6 text-gray-600">{row.className}</td><td className="py-3 px-6 font-bold text-blue-600">{row.classPosition ?? '—'}</td><td className="py-3 px-6 font-medium text-gray-900">{row.first_name} {row.last_name}</td><td className="py-3 px-6 text-gray-500">{row.admission_number}</td><td className={`py-3 px-6 font-bold ${row.avgPercentage === null ? 'text-gray-300' : avgColor(row.avgPercentage)}`}>{row.avgPercentage === null ? '—' : `${row.avgPercentage}%`}</td></tr>)}</tbody></table></div>}
+        </div>
+      )}
+
     </div>
   );
 }
