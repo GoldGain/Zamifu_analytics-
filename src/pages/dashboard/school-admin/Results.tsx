@@ -972,10 +972,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const filteredExams = exams.filter(e => !selectedTerm || e.term_id === selectedTerm);
 
-  const totalLearners = new Set(results.map(r => r.student_id)).size;
-  const totalSubjects = new Set(results.map(r => r.subject_id)).size;
+  // Class Teachers must never see school-wide summary counts. Use the resolved
+  // assigned class as the source of truth, with selectedClass as a safe fallback.
+  const summaryClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
+  const summaryResults = summaryClassId
+    ? results.filter(r => r.class_id === summaryClassId)
+    : scope === 'class_teacher' ? [] : filtered;
+  const totalLearners = new Set(summaryResults.map(r => r.student_id).filter(Boolean)).size;
+  const totalSubjects = new Set(summaryResults.map(r => r.subject_id).filter(Boolean)).size;
 
-  const classObj = classes.find(c => c.id === selectedClass);
+  const classObj = classes.find(c => c.id === summaryClassId || c.id === selectedClass);
   const summaries = buildStudentSummary(filtered, classObj);
   const allSubjectsRaw = Array.from(new Set(filtered.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
   const allSubjects = sortSubjects(allSubjectsRaw);
