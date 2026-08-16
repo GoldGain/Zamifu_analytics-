@@ -21,6 +21,15 @@ function fmtTime(t?: string | null): string {
 
 
 // Frontend config interface (matches what timetable-generator expects)
+interface ScheduledActivity {
+  id?: string;
+  day_of_week: number;
+  activity_name: string;
+  start_time: string;
+  end_time: string;
+  target_classes?: string | null;
+}
+
 interface FrontendConfig {
   lesson_duration: number;
   school_start: string;
@@ -36,6 +45,7 @@ interface FrontendConfig {
   activities: Record<string, string>;
   lessons_per_day?: number;
   after_lunch_lessons?: number;
+  scheduledActivities?: ScheduledActivity[];
 }
 
 // Map level config DB row to frontend config
@@ -109,6 +119,7 @@ export default function TimetableGenerate() {
   const [classCount, setClassCount] = useState(0);
   const [lastGenerated, setLastGenerated] = useState<string | null>(null);
   const [selectedLevels, setSelectedLevels] = useState<Set<string>>(new Set(['lower-primary']));
+  const [scheduledActivities, setScheduledActivities] = useState<ScheduledActivity[]>([]);
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -123,18 +134,26 @@ export default function TimetableGenerate() {
       const { data: configData } = await supabase
         .from('school_timetable_config').select('*').eq('school_id', schoolId).maybeSingle();
 
-      // Fetch activities
-      const { data: activitiesData } = await supabase
-        .from('school_activities')
-        .select('day_of_week, activity_name')
+      // Fetch explicit activity schedules. The richer after_school_activities table
+      // supports day, type/name, exact time, and target class scope.
+      const { data: activityRows, error: activityError } = await supabaseUntyped
+        .from('after_school_activities')
+        .select('id, day_of_week, activity_name, start_time, end_time, target_classes')
         .eq('school_id', schoolId)
-        .order('day_of_week');
-
+        .order('day_of_week')
+        .order('start_time');
+      if (activityError) console.warn('[timetable] activities load warning:', activityError.message);
+      const loadedActivities = (activityRows || []).map((a: any) => ({
+        id: a.id,
+        day_of_week: Number(a.day_of_week),
+        activity_name: a.activity_name,
+        start_time: String(a.start_time || '').slice(0, 5),
+        end_time: String(a.end_time || '').slice(0, 5),
+        target_classes: a.target_classes || 'All',
+      }));
+      setScheduledActivities(loadedActivities);
       const activities: Record<string, string> = {};
-      (activitiesData || []).forEach((a: any) => {
-        activities[String(a.day_of_week)] = a.activity_name;
-      });
-
+      loadedActivities.forEach((a) => { activities[String(a.day_of_week)] = a.activity_name; });
       setLegacyConfig(mapDbToFrontend(configData, activities));
 
       // Fetch level-specific configs
@@ -214,11 +233,24 @@ export default function TimetableGenerate() {
         throw new Error('Classes or assignments missing. Please set up classes and teacher assignments first.');
       }
 
-      // Fetch activities
-      const { data: activitiesData } = await supabase
-        .from('school_activities').select('day_of_week, activity_name').eq('school_id', schoolId).order('day_of_week');
+      // Re-fetch activity schedules at generation time so recent Setup changes apply.
+      const { data: activityRows } = await supabaseUntyped
+        .from('after_school_activities')
+        .select('id, day_of_week, activity_name, start_time, end_time, target_classes')
+        .eq('school_id', schoolId)
+        .order('day_of_week')
+        .order('start_time');
+      const freshActivities: ScheduledActivity[] = (activityRows || []).map((a: any) => ({
+        id: a.id,
+        day_of_week: Number(a.day_of_week),
+        activity_name: a.activity_name,
+        start_time: String(a.start_time || '').slice(0, 5),
+        end_time: String(a.end_time || '').slice(0, 5),
+        target_classes: a.target_classes || 'All',
+      }));
+      setScheduledActivities(freshActivities);
       const activities: Record<string, string> = {};
-      (activitiesData || []).forEach((a: any) => { activities[String(a.day_of_week)] = a.activity_name; });
+      freshActivities.forEach((a) => { activities[String(a.day_of_week)] = a.activity_name; });
 
       // Require a saved Setup config for each selected level (prevents silent default times)
       const missingSetup = Array.from(selectedLevels).filter((k) => !freshLcMap[k]);
@@ -273,16 +305,46 @@ export default function TimetableGenerate() {
         // Generate time slots using DB lesson counts (fallback to level defaults)
         const targets = resolveLessonTargets(levelKey, config);
         const lessonCount = targets.totalLessons;
-        const slots = generateSlots(
+        const baseSlots = generateSlots(
           {
             ...config,
+            // Explicit activities replace the generic activities window. They are
+            // added below at their configured day/time instead.
+            activities_start: scheduledActivities.length ? undefined : config.activities_start,
+            activities_end: scheduledActivities.length ? undefined : config.activities_end,
             lessons_per_day: targets.totalLessons,
             after_lunch_lessons: targets.afterLunch,
           },
           lessonCount,
           levelKey
         );
-        console.info(`[timetable] ${levelKey}: ${targets.totalLessons} lessons (${targets.afterLunch} after lunch), ${slots.filter(s => s.slot_type === 'lesson').length} lesson slots generated`);
+
+        const toMinutes = (value: string) => {
+          const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
+          return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+        };
+        const activityCandidates = scheduledActivities
+          .filter(a => a.activity_name && toMinutes(a.end_time) > toMinutes(a.start_time))
+          // Lower Primary and Pre-Primary end at lunch: do not generate any
+          // activity after lunch for those levels.
+          .filter(a => !(['lower-primary', 'pre-primary'].includes(levelKey)) || toMinutes(a.start_time) < toMinutes(config.lunch_start));
+        const combinedSlots = [
+          ...baseSlots,
+          ...activityCandidates.map(a => ({
+            slot_order: 0,
+            label: `ACTIVITY: ${a.activity_name}`,
+            slot_type: 'activities' as const,
+            start_time: a.start_time,
+            end_time: a.end_time,
+            activityMeta: a,
+          })),
+        ]
+          .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time) || (a.slot_type === 'activities' ? -1 : 1))
+          .map((slot, index) => ({ ...slot, slot_order: index + 1 }));
+        const activityMetaByOrder = new Map<number, ScheduledActivity>();
+        combinedSlots.forEach((slot: any) => { if (slot.activityMeta) activityMetaByOrder.set(slot.slot_order, slot.activityMeta); });
+        const slots = combinedSlots.map(({ activityMeta: _activityMeta, ...slot }: any) => slot);
+        console.info(`[timetable] ${levelKey}: ${targets.totalLessons} lessons (${targets.afterLunch} after lunch), ${slots.filter(s => s.slot_type === 'lesson').length} lesson slots generated, ${activityMetaByOrder.size} explicit activities`);
 
         const { data: createdSlots, error: slotError } = await (supabase as any)
           .from('timetable_time_slots')
@@ -335,12 +397,25 @@ export default function TimetableGenerate() {
 
         const fixedSlots = createdSlots?.filter(s => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type)) || [];
         const lessonSlots = createdSlots?.filter(s => s.slot_type === 'lesson').sort((a, b) => a.slot_order - b.slot_order) || [];
+        const classSubjectBySlot = new Map<string, string>();
+        const matchesTarget = (activity: ScheduledActivity, cls: any) => {
+          const target = String(activity.target_classes || 'All').trim().toLowerCase();
+          if (!target || target === 'all') return true;
+          const className = String(cls.name || '').toLowerCase();
+          return target.split(',').some(part => {
+            const token = part.trim();
+            return token && (className.includes(token) || token.includes(className) || (token.match(/grade\s*\d+/)?.[0] && className.includes(token.match(/grade\s*\d+/)?.[0] as string)));
+          });
+        };
 
-        // Fill fixed slots for each class
+        // Fill breaks, lunch, generic activity windows, and explicitly scheduled activities.
         for (const cls of classesToProcess) {
           for (let day = 1; day <= 5; day++) {
             for (const slot of fixedSlots) {
               const isActivity = slot.slot_type === 'activities' || slot.slot_type === 'activity';
+              const activity = isActivity ? activityMetaByOrder.get(Number(slot.slot_order)) : undefined;
+              if (activity && activity.day_of_week !== day) continue;
+              if (activity && !matchesTarget(activity, cls)) continue;
               allEntries.push({
                 school_id: schoolId,
                 day_of_week: day,
@@ -348,38 +423,50 @@ export default function TimetableGenerate() {
                 class_id: cls.id,
                 level_group: levelKey,
                 entry_type: isActivity ? 'activity' : slot.slot_type,
-                activity_name: isActivity ? (config.activities?.[String(day)] || 'Activity') : slot.label,
+                activity_name: isActivity ? (activity?.activity_name || config.activities?.[String(day)] || 'Activity') : slot.label,
               });
             }
           }
         }
 
-        // Allocate lessons
+        // Allocate lessons. Priority assignments are processed first, so they
+        // naturally receive the earliest available morning lesson slots.
         for (const cls of classesToProcess) {
-          const classAssignments = assignments.filter(a => a.class_id === cls.id);
+          const classAssignments = assignments
+            .filter(a => a.class_id === cls.id)
+            .sort((a, b) => Number(Boolean(b.is_priority)) - Number(Boolean(a.is_priority)));
           for (const assignment of classAssignments) {
             const lessonsToSchedule = assignment.lessons_per_week || 0;
+            const subjectName = String(assignment.subjects?.name || '').toLowerCase();
+            const isMath = /mathemat/.test(subjectName);
             let scheduled = 0;
             for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
               for (const slot of lessonSlots) {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
-                if (!teacherBusy.has(teacherKey) && !classBusy.has(classKey)) {
-                  allEntries.push({
-                    school_id: schoolId,
-                    day_of_week: day,
-                    time_slot_id: slot.id,
-                    class_id: cls.id,
-                    level_group: levelKey,
-                    subject_id: assignment.subject_id,
-                    teacher_id: assignment.teacher_id,
-                    entry_type: 'lesson',
-                  });
-                  teacherBusy.add(teacherKey);
-                  classBusy.add(classKey);
-                  scheduled++;
-                  break;
-                }
+                if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
+                const earlier = lessonSlots
+                  .filter(s => s.slot_order < slot.slot_order)
+                  .sort((a, b) => b.slot_order - a.slot_order)
+                  .map(s => classSubjectBySlot.get(`${cls.id}-${day}-${s.id}`))
+                  .find(Boolean);
+                // Do not place Mathematics immediately after Science.
+                if (isMath && earlier && /science|environment/.test(earlier)) continue;
+                allEntries.push({
+                  school_id: schoolId,
+                  day_of_week: day,
+                  time_slot_id: slot.id,
+                  class_id: cls.id,
+                  level_group: levelKey,
+                  subject_id: assignment.subject_id,
+                  teacher_id: assignment.teacher_id,
+                  entry_type: 'lesson',
+                });
+                teacherBusy.add(teacherKey);
+                classBusy.add(classKey);
+                classSubjectBySlot.set(classKey, subjectName);
+                scheduled++;
+                break;
               }
             }
           }

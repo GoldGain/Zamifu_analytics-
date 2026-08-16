@@ -152,7 +152,7 @@ function resolveClassLevelGroup(cls: SchoolClass): string {
 
 const LEVEL_LABELS: Record<string, string> = {
   'pre-primary': 'Pre-Primary (6 lessons, 0 after lunch)',
-  'lower-primary': 'Lower Primary (7 lessons, 1 after lunch)',
+  'lower-primary': 'Lower Primary (6 lessons, 0 after lunch)',
   'upper-primary': 'Upper Primary (7 lessons, 1 after lunch)',
   'combined-primary': 'Combined Primary (7 lessons, 1 after lunch)',
   'junior': 'Junior School (8 lessons, 2 after lunch)',
@@ -164,7 +164,7 @@ const LEVEL_LABELS: Record<string, string> = {
 /** Expected lesson structure per level (source of truth for columns) */
 const LEVEL_LESSON_TARGETS: Record<string, { total: number; afterLunch: number }> = {
   'pre-primary': { total: 6, afterLunch: 0 },
-  'lower-primary': { total: 7, afterLunch: 1 },
+  'lower-primary': { total: 6, afterLunch: 0 },
   'upper-primary': { total: 7, afterLunch: 1 },
   'combined-primary': { total: 7, afterLunch: 1 },
   'junior': { total: 8, afterLunch: 2 },

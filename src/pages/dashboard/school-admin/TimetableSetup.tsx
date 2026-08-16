@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { Clock, Save, AlertCircle, Copy, ChevronDown, Info } from 'lucide-react';
+import { Clock, Save, AlertCircle, Copy, ChevronDown, Info, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getLevelConfig } from '@/lib/timetable-generator';
 
@@ -48,7 +48,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
-    activities_start: '12:00', activities_end: '12:50',
+    activities_start: '', activities_end: '',
   },
   'upper-primary': {
     start_time: '08:00', end_time: '15:30', period_duration: 40,
@@ -105,6 +105,15 @@ const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; not
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface ScheduledActivity {
+  id: string;
+  day_of_week: number;
+  activity_name: string;
+  start_time: string;
+  end_time: string;
+  target_classes: string;
+}
+
 interface LevelConfig {
   start_time: string;
   end_time: string;
@@ -132,6 +141,9 @@ export default function TimetableSetup() {
   const [saving, setSaving] = useState(false);
   const [copyFrom, setCopyFrom] = useState('');
   const [copyTo, setCopyTo] = useState('');
+  const [activities, setActivities] = useState<ScheduledActivity[]>([]);
+  const [activityDraft, setActivityDraft] = useState({ day_of_week: 5, activity_name: 'PPI', start_time: '08:00', end_time: '08:20', target_classes: 'Primary and Junior School' });
+  const [savingActivity, setSavingActivity] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -189,6 +201,22 @@ export default function TimetableSetup() {
       });
 
       setConfigs(configMap);
+
+      const { data: activityRows, error: activityError } = await supabaseUntyped
+        .from('after_school_activities')
+        .select('id, day_of_week, activity_name, start_time, end_time, target_classes')
+        .eq('school_id', resolvedSchoolId)
+        .order('day_of_week')
+        .order('start_time');
+      if (activityError) console.warn('Activity schedule fetch warning:', activityError.message);
+      setActivities((activityRows || []).map((a: any) => ({
+        id: a.id,
+        day_of_week: Number(a.day_of_week),
+        activity_name: a.activity_name || '',
+        start_time: String(a.start_time || '').slice(0, 5),
+        end_time: String(a.end_time || '').slice(0, 5),
+        target_classes: a.target_classes || 'All',
+      })));
     } catch (err: any) {
       console.error('fetchData error:', err);
       toast.error('Failed to load timetable setup: ' + (err?.message || 'Unknown error'));
@@ -305,6 +333,39 @@ export default function TimetableSetup() {
     }
   };
 
+  const handleAddActivity = async () => {
+    if (!schoolId) return;
+    const name = activityDraft.activity_name.trim();
+    if (!name) { toast.error('Enter an activity name'); return; }
+    if (!normalizeTime(activityDraft.start_time) || !normalizeTime(activityDraft.end_time)) { toast.error('Enter valid activity times'); return; }
+    if (activityDraft.end_time <= activityDraft.start_time) { toast.error('Activity end time must be after its start time'); return; }
+    setSavingActivity(true);
+    try {
+      const { data, error } = await supabaseUntyped.from('after_school_activities').insert({
+        school_id: schoolId,
+        day_of_week: activityDraft.day_of_week,
+        activity_name: name,
+        start_time: normalizeTime(activityDraft.start_time),
+        end_time: normalizeTime(activityDraft.end_time),
+        target_classes: activityDraft.target_classes.trim() || 'All',
+      }).select('id, day_of_week, activity_name, start_time, end_time, target_classes').single();
+      if (error) throw error;
+      if (data) setActivities(prev => [...prev, { ...data, start_time: String(data.start_time).slice(0, 5), end_time: String(data.end_time).slice(0, 5), target_classes: data.target_classes || 'All' }].sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time)));
+      toast.success(`${name} activity schedule saved.`);
+    } catch (err: any) {
+      toast.error('Failed to save activity: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSavingActivity(false);
+    }
+  };
+
+  const handleDeleteActivity = async (activity: ScheduledActivity) => {
+    const { error } = await supabaseUntyped.from('after_school_activities').delete().eq('id', activity.id).eq('school_id', schoolId);
+    if (error) { toast.error('Failed to remove activity: ' + error.message); return; }
+    setActivities(prev => prev.filter(a => a.id !== activity.id));
+    toast.success('Activity schedule removed.');
+  };
+
   const handleCopyConfig = () => {
     if (!copyFrom || !copyTo) {
       toast.error('Please select both source and destination levels');
@@ -347,7 +408,7 @@ export default function TimetableSetup() {
             Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7+] → <strong>ACTIVITIES</strong>
           </p>
           <p className="mt-1 text-xs text-blue-700">
-            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower/Upper Primary: <strong>7 lessons</strong> | Junior/8-4-4: <strong>8 lessons</strong> | Senior: <strong>9 lessons</strong>
+            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower Primary: <strong>6 lessons (ends at lunch)</strong> | Upper Primary: <strong>7 lessons</strong> | Junior/8-4-4: <strong>8 lessons</strong> | Senior: <strong>9 lessons</strong>
           </p>
         </div>
       </div>
@@ -375,11 +436,11 @@ export default function TimetableSetup() {
             <p className={`text-xs mt-1 font-semibold ${isPrePrimary ? 'text-amber-600' : 'text-blue-600'}`}>
               <Info className="w-3 h-3 inline mr-1" />
               {lessonInfo.total} lessons per day — {lessonInfo.note}
-              {isPrePrimary && (
+              {((isPrePrimary || selectedLevel === 'lower-primary') && (
                 <span className="block mt-0.5 text-amber-500 font-normal">
-                  Activities field can be left empty — Pre-Primary ends at lunch time.
+                  This level ends at lunch. Leave the generic Activities window empty; individually scheduled activities can still be added at an explicit time.
                 </span>
-              )}
+              ))}
             </p>
           )}
         </div>
@@ -416,7 +477,7 @@ export default function TimetableSetup() {
               }}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
             >
-              <option value={0}>0 — ends at lunch (Pre-Primary)</option>
+              <option value={0}>0 — ends at lunch (Pre-Primary / Lower Primary)</option>
               <option value={1}>1 — Lower / Upper Primary</option>
               <option value={2}>2 — Junior / 8-4-4</option>
               <option value={3}>3 — Senior School</option>
@@ -440,7 +501,7 @@ export default function TimetableSetup() {
           <TimeInput label="LUNCH ends" value={currentConfig.lunch_end} onChange={v => handleConfigChange('lunch_end', v)} />
           <div className="hidden md:block" />
 
-          {!isPrePrimary && (
+          {!(isPrePrimary || selectedLevel === 'lower-primary') && (
             <>
               <TimeInput label="ACTIVITIES starts" value={currentConfig.activities_start} onChange={v => handleConfigChange('activities_start', v)} />
               <TimeInput label="ACTIVITIES ends" value={currentConfig.activities_end} onChange={v => handleConfigChange('activities_end', v)} />
@@ -449,7 +510,7 @@ export default function TimetableSetup() {
           {isPrePrimary && (
             <div className="md:col-span-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
               <Info className="w-4 h-4 inline mr-1" />
-              Pre-Primary ends at lunch time — no activities configuration needed.
+              This level ends at lunch time — no generic post-lunch activities window is needed.
             </div>
           )}
         </div>
@@ -462,6 +523,42 @@ export default function TimetableSetup() {
           <Save className="w-4 h-4" />
           {saving ? 'Saving...' : 'Save Configuration'}
         </button>
+      </div>
+
+      {/* Scheduled activities */}
+      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+        <h2 className="text-lg font-bold text-[#111111] mb-2 flex items-center gap-2">
+          <Plus className="w-5 h-5 text-emerald-600" />
+          Scheduled Activities
+        </h2>
+        <p className="text-sm text-gray-600 mb-4">Add PPI, games, guidance and counselling, debate club, or any other activity at a specific day and time. Use a target such as <strong>All</strong>, <strong>Grade 1</strong>, or <strong>Primary and Junior School</strong>.</p>
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
+            <select value={activityDraft.day_of_week} onChange={e => setActivityDraft(prev => ({ ...prev, day_of_week: Number(e.target.value) }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white">
+              <option value={1}>Monday</option><option value={2}>Tuesday</option><option value={3}>Wednesday</option><option value={4}>Thursday</option><option value={5}>Friday</option>
+            </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Activity type / name</label>
+            <input value={activityDraft.activity_name} onChange={e => setActivityDraft(prev => ({ ...prev, activity_name: e.target.value }))} placeholder="e.g. PPI, Games, Debate Club" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+          </div>
+          <TimeInput label="Starts" value={activityDraft.start_time} onChange={v => setActivityDraft(prev => ({ ...prev, start_time: v }))} />
+          <TimeInput label="Ends" value={activityDraft.end_time} onChange={v => setActivityDraft(prev => ({ ...prev, end_time: v }))} />
+          <button onClick={handleAddActivity} disabled={savingActivity} className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"><Plus className="w-4 h-4" /> Add</button>
+          <div className="md:col-span-3">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Target classes</label>
+            <input value={activityDraft.target_classes} onChange={e => setActivityDraft(prev => ({ ...prev, target_classes: e.target.value }))} placeholder="All or Grade 1, Grade 2" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
+          </div>
+        </div>
+        <div className="mt-5 space-y-2">
+          {activities.length === 0 ? <p className="text-sm text-gray-500 bg-gray-50 rounded-xl p-3">No scheduled activities yet.</p> : activities.map(activity => (
+            <div key={activity.id} className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 rounded-xl px-3 py-2.5 bg-gray-50">
+              <div className="text-sm"><strong>{['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][activity.day_of_week]}</strong> · {activity.activity_name} · {activity.start_time}–{activity.end_time} · {activity.target_classes}</div>
+              <button onClick={() => handleDeleteActivity(activity)} className="text-red-600 hover:text-red-700 text-sm flex items-center gap-1"><Trash2 className="w-4 h-4" /> Remove</button>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Copy Configuration */}

@@ -208,8 +208,8 @@ export function generateSlots(
   const firstBreakEnd = (config?.first_break_end || '').toString().slice(0, 5);
   const secondBreakStart = (config?.second_break_start || '').toString().slice(0, 5);
   const secondBreakEnd = (config?.second_break_end || '').toString().slice(0, 5);
-  const lunchStart = (config?.lunch_start || '').toString().slice(0, 5);
-  const lunchEnd = (config?.lunch_end || '').toString().slice(0, 5);
+  let lunchStart = (config?.lunch_start || '').toString().slice(0, 5);
+  let lunchEnd = (config?.lunch_end || '').toString().slice(0, 5);
   if (!schoolStart || !firstBreakStart || !firstBreakEnd || !secondBreakStart || !secondBreakEnd || !lunchStart || !lunchEnd) {
     throw new Error(
       'Missing timetable times for this school level. Save Timetable Setup (start, breaks, lunch) before generating.'
@@ -263,7 +263,13 @@ export function generateSlots(
   pushLesson(5);
   pushLesson(6);
 
-  // LUNCH
+  // LUNCH. If saved times are inconsistent with the six pre-lunch lessons,
+  // move the lunch window forward rather than creating an overlap or a lesson
+  // that appears after lunch. This is especially important for Lower Primary.
+  if (afterLunch === 0 && timeToMinutes(lunchStart) < currentMinutes) {
+    lunchStart = minutesToTime(currentMinutes);
+    if (timeToMinutes(lunchEnd) <= currentMinutes) lunchEnd = minutesToTime(currentMinutes + 30);
+  }
   slots.push({
     slot_order: order++,
     label: 'LUNCH',
@@ -280,9 +286,11 @@ export function generateSlots(
     }
   }
 
-  // ACTIVITIES — skip for pre-primary style (0 after lunch) unless activities times are set
-  const hasActivityTimes = !!(config?.activities_start || config?.activities_end);
-  if (afterLunch > 0 || hasActivityTimes) {
+  // Generic activities belong after lessons. A level with zero after-lunch lessons
+  // (Pre-Primary / Lower Primary) must end at lunch unless an explicit, separately
+  // scheduled activity is supplied by the generator.
+  const hasActivityTimes = afterLunch > 0 && !!(config?.activities_start || config?.activities_end);
+  if (hasActivityTimes) {
     const activitiesStartTime = config?.activities_start
       ? String(config.activities_start).slice(0, 5)
       : minutesToTime(currentMinutes);
