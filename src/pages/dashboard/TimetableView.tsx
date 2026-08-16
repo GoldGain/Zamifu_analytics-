@@ -775,6 +775,10 @@ export default function TimetableView() {
       );
     }
 
+    const lessonSummary = countLessons(slotsForTable);
+    const hasActivitySlots = slotsForTable.some((s) => s.slot_type === 'activities' || s.slot_type === 'activity');
+    const showLegacyActivityColumn = !hasActivitySlots && lessonSummary.afterLunch > 0;
+
     return (
 
     <div id={tableId} className="bb-wrap rounded-lg overflow-hidden">
@@ -823,7 +827,12 @@ export default function TimetableView() {
                   );
                 }
                 if (slot.slot_type === 'activities' || slot.slot_type === 'activity') {
-                  return null;
+                  return (
+                    <th key={slot.id} rowSpan={2} className="tt-header" style={{ color: '#33cc33' }}>
+                      <span style={{display:'block'}}>ACTIVITY</span>
+                      <span style={{fontSize:'0.5rem'}}>{fmt(slot.start_time)}—{fmt(slot.end_time)}</span>
+                    </th>
+                  );
                 }
                 return (
                   <th key={slot.id} className="tt-header">
@@ -831,20 +840,12 @@ export default function TimetableView() {
                   </th>
                 );
               })}
-              <th rowSpan={2} className="tt-header" style={{ width: '72px', minWidth: '72px', color: '#33cc33' }}>
-                <span style={{display:'block'}}>ACTIVITIES</span>
-                {(() => {
-                  const act = slotsForTable.find((s) => s.slot_type === 'activities' || s.slot_type === 'activity');
-                  if (!act) return <span style={{display:'block', fontSize:'0.55rem', color:'#8f8'}}>AFTER SCHOOL</span>;
-                  return (
-                    <>
-                      <span style={{display:'block', fontSize:'0.5rem', color:'#8f8'}}>{fmt(act.start_time)}</span>
-                      <span style={{display:'block', fontSize:'0.5rem', color:'#8f8'}}>—</span>
-                      <span style={{display:'block', fontSize:'0.5rem', color:'#8f8'}}>{fmt(act.end_time)}</span>
-                    </>
-                  );
-                })()}
-              </th>
+              {showLegacyActivityColumn && (
+                <th rowSpan={2} className="tt-header" style={{ width: '72px', minWidth: '72px', color: '#33cc33' }}>
+                  <span style={{display:'block'}}>ACTIVITIES</span>
+                  <span style={{display:'block', fontSize:'0.55rem', color:'#8f8'}}>AFTER SCHOOL</span>
+                </th>
+              )}
             </tr>
             <tr>
               {slotsForTable.map(slot => {
@@ -896,9 +897,6 @@ export default function TimetableView() {
                         }
                         return null;
                       }
-                      if (slot.slot_type === 'activities' || slot.slot_type === 'activity') {
-                        return null;
-                      }
                       const cellEntries = getEntries(dayIdx + 1, cls.id, slot);
                       const display = getCellDisplay(cellEntries);
                       return (
@@ -907,7 +905,7 @@ export default function TimetableView() {
                         </td>
                       );
                     })}
-                    {clsIdx === 0 && (
+                    {showLegacyActivityColumn && clsIdx === 0 && (
                       <td rowSpan={classesToRender.length} className="tt-activity">
                         {getActivitiesForDay(dayIdx) || '—'}
                       </td>
