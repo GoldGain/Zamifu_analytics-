@@ -263,7 +263,9 @@ function buildDisplaySlotsForLevel(
     levelConfig?.lunch_end,
   ];
   if (!levelConfig || required.some((v) => !v)) {
-    if (candidates.length) return candidates;
+    if (candidates.length) return targets.afterLunch === 0
+      ? candidates.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity')
+      : candidates;
     return [];
   }
 
@@ -284,7 +286,7 @@ function buildDisplaySlotsForLevel(
   };
 
   const generated = generateSlots(cfg, cfg.lessons_per_day || targets.total, key);
-  return generated.map((s: TimetableSlot, i: number) => ({
+  const mapped = generated.map((s: TimetableSlot, i: number) => ({
     id: `synth-${key}-${s.slot_order}-${i}`,
     slot_order: s.slot_order,
     start_time: s.start_time.length === 5 ? s.start_time + ':00' : s.start_time,
@@ -293,6 +295,9 @@ function buildDisplaySlotsForLevel(
     label: s.label,
     level_group: key,
   }));
+  return targets.afterLunch === 0
+    ? mapped.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity')
+    : mapped;
 }
 
 /** @deprecated name kept for call sites */
