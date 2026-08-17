@@ -96,16 +96,16 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
 };
 
 // Display info for each level's lesson structure
-// Senior (Grade 10-12): 9 lessons/day, 2 after lunch
-// Form 3 & 4 (8-4-4): 8 lessons/day, 3 after lunch
+// Senior (Grade 10-12): 9 lessons/day, 3 after lunch
+// Form 3 & 4 (8-4-4): 9 lessons/day, 3 after lunch
 const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; note: string }> = {
   'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
   'lower-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'upper-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'combined-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { lessons: 9, afterLunch: 2, note: '2 lessons after lunch' },
-  'form-3-4': { lessons: 8, afterLunch: 3, note: '3 lessons after lunch' },
+  'senior': { lessons: 9, afterLunch: 3, note: '3 lessons after lunch' },
+  'form-3-4': { lessons: 9, afterLunch: 3, note: '3 lessons after lunch' },
 };
 
 export default function TimetableGenerate() {
@@ -397,6 +397,12 @@ export default function TimetableGenerate() {
 
         const fixedSlots = createdSlots?.filter(s => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type)) || [];
         const lessonSlots = createdSlots?.filter(s => s.slot_type === 'lesson').sort((a, b) => a.slot_order - b.slot_order) || [];
+        const morningPriorityScienceSlots = lessonSlots.filter((slot: any) => {
+          const lessonNumber = Number(String(slot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
+          return Number.isFinite(lessonNumber)
+            ? lessonNumber <= 4
+            : toMinutes(slot.start_time) < toMinutes(config.lunch_start);
+        });
         const classSubjectBySlot = new Map<string, string>();
         const matchesTarget = (activity: ScheduledActivity, cls: any) => {
           const target = String(activity.target_classes || 'All').trim().toLowerCase();
@@ -448,9 +454,12 @@ export default function TimetableGenerate() {
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
+            const candidateLessonSlots = assignment.is_priority && /integrated\s*science/.test(subjectName)
+              ? morningPriorityScienceSlots
+              : lessonSlots;
             let scheduled = 0;
             for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
-              for (const slot of lessonSlots) {
+              for (const slot of candidateLessonSlots) {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
                 if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
@@ -463,7 +472,8 @@ export default function TimetableGenerate() {
                 // This prevents Mathematics immediately after Science and Integrated Science immediately after Mathematics.
                 const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
                 const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
-                if ((isMath && earlierIsScience) || (isScience && earlierIsMath)) continue;
+                const isMorningSlot = toMinutes(slot.start_time) < toMinutes(config.lunch_start);
+                if (isMorningSlot && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
                 allEntries.push({
                   school_id: schoolId,
                   day_of_week: day,

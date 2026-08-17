@@ -158,7 +158,7 @@ const LEVEL_LABELS: Record<string, string> = {
   'combined-primary': 'Combined Primary (7 lessons, 1 after lunch)',
   'junior': 'Junior School (8 lessons, 2 after lunch)',
   'senior': 'Senior School (9 lessons, 3 after lunch)',
-  'form-3-4': '8-4-4 Form 3-4 (8 lessons, 2 after lunch)',
+  'form-3-4': '8-4-4 Form 3-4 (9 lessons, 3 after lunch)',
   'default': 'Legacy default',
 };
 
@@ -170,7 +170,7 @@ const LEVEL_LESSON_TARGETS: Record<string, { total: number; afterLunch: number }
   'combined-primary': { total: 7, afterLunch: 1 },
   'junior': { total: 8, afterLunch: 2 },
   'senior': { total: 9, afterLunch: 3 },
-  'form-3-4': { total: 8, afterLunch: 2 },
+  'form-3-4': { total: 9, afterLunch: 3 },
   'default': { total: 8, afterLunch: 2 },
 };
 
@@ -587,19 +587,22 @@ export default function TimetableView() {
     return dayActivities.map(a => a.activity_name.trim().toUpperCase()).join(' / ');
   };
 
-  /** Classes to display (filtered if a specific class is selected) */
+  /** Active level groups represented by the school’s active classes. */
+  const allLevelGroupsInView = useMemo(
+    () => Array.from(new Set(classes.map(resolveClassLevelGroup))).sort(),
+    [classes]
+  );
+
+  /** Classes to display (filtered if a specific class or level is selected) */
   const displayClasses = useMemo(() => {
     let list = classes;
     if (selectedClass !== 'all') {
       list = classes.filter(c => c.id === selectedClass);
     } else if (selectedLevelGroup !== 'auto') {
       list = classes.filter(c => resolveClassLevelGroup(c) === selectedLevelGroup);
-    } else if (activeLevelGroup && activeLevelGroup !== 'default') {
-      // When showing "all" with auto level, only show classes that match active level
-      // so the column structure matches their lesson count.
-      const matched = classes.filter(c => resolveClassLevelGroup(c) === activeLevelGroup);
-      list = matched.length > 0 ? matched : classes;
     }
+    // Auto + All Classes is the explicit All Levels view. The renderer below
+    // splits it into one table per level so lesson counts and clock columns never mix.
     return list;
   }, [classes, selectedClass, selectedLevelGroup, activeLevelGroup]);
 
@@ -1006,10 +1009,10 @@ export default function TimetableView() {
           <span className="font-bold text-gray-700 text-sm">Level:</span>
           <button
             type="button"
-            onClick={() => setSelectedLevelGroup('auto')}
+            onClick={() => { setSelectedLevelGroup('auto'); setSelectedClass('all'); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${selectedLevelGroup === 'auto' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
           >
-            Auto
+            All Levels
           </button>
           {availableLevelGroups.map((lg) => (
             <button
@@ -1057,9 +1060,23 @@ export default function TimetableView() {
 
       {summaryBanner}
 
-      {/* Main Timetable (full or filtered) */}
+      {/* Main Timetable (all levels or a selected level/class) */}
       <div id="timetable-print-area">
-        {renderTimetableTable(displayClasses, 'timetable-main-view')}
+        {selectedClass === 'all' && selectedLevelGroup === 'auto'
+          ? allLevelGroupsInView.map((levelGroup) => {
+              const groupClasses = classes.filter((cls) => resolveClassLevelGroup(cls) === levelGroup);
+              const groupSlots = buildDisplaySlotsForLevel(
+                timeSlots,
+                levelGroup,
+                levelConfigs[levelGroup]
+              );
+              return (
+                <div key={levelGroup} className="mb-6">
+                  {renderTimetableTable(groupClasses, `timetable-main-${levelGroup}`, groupSlots)}
+                </div>
+              );
+            })
+          : renderTimetableTable(displayClasses, 'timetable-main-view')}
       </div>
 
       {/* Hidden per-class timetables for PDF generation */}
