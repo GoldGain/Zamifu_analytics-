@@ -328,20 +328,30 @@ export default function TimetableGenerate() {
           // Lower Primary and Pre-Primary end at lunch: do not generate any
           // activity after lunch for those levels.
           .filter(a => !(['lower-primary', 'pre-primary'].includes(levelKey)) || toMinutes(a.start_time) < toMinutes(config.lunch_start));
+        // Activities are structural time slots, not one column per activity record.
+        // Group records sharing the same interval so PPI/Games/etc. at the same time
+        // occupy one column and can be displayed together in that cell.
+        const activityGroups = new Map<string, ScheduledActivity[]>();
+        activityCandidates.forEach((activity) => {
+          const key = `${activity.start_time}-${activity.end_time}`;
+          const group = activityGroups.get(key) || [];
+          group.push(activity);
+          activityGroups.set(key, group);
+        });
         const combinedSlots = [
           ...baseSlots,
-          ...activityCandidates.map(a => ({
+          ...Array.from(activityGroups.values()).map(group => ({
             slot_order: 0,
-            label: `ACTIVITY: ${a.activity_name}`,
+            label: `ACTIVITY: ${group.map(a => a.activity_name).join(' / ')}`,
             slot_type: 'activities' as const,
-            start_time: a.start_time,
-            end_time: a.end_time,
-            activityMeta: a,
+            start_time: group[0].start_time,
+            end_time: group[0].end_time,
+            activityMeta: group,
           })),
         ]
           .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time) || (a.slot_type === 'activities' ? -1 : 1))
           .map((slot, index) => ({ ...slot, slot_order: index + 1 }));
-        const activityMetaByOrder = new Map<number, ScheduledActivity>();
+        const activityMetaByOrder = new Map<number, ScheduledActivity[]>();
         combinedSlots.forEach((slot: any) => { if (slot.activityMeta) activityMetaByOrder.set(slot.slot_order, slot.activityMeta); });
         const slots = combinedSlots.map(({ activityMeta: _activityMeta, ...slot }: any) => slot);
         console.info(`[timetable] ${levelKey}: ${targets.totalLessons} lessons (${targets.afterLunch} after lunch), ${slots.filter(s => s.slot_type === 'lesson').length} lesson slots generated, ${activityMetaByOrder.size} explicit activities`);
@@ -427,9 +437,11 @@ export default function TimetableGenerate() {
           for (let day = 1; day <= 5; day++) {
             for (const slot of fixedSlots) {
               const isActivity = slot.slot_type === 'activities' || slot.slot_type === 'activity';
-              const activity = isActivity ? activityMetaByOrder.get(Number(slot.slot_order)) : undefined;
-              if (activity && activity.day_of_week !== day) continue;
-              if (activity && !matchesTarget(activity, cls)) continue;
+              const activitiesAtSlot = isActivity ? (activityMetaByOrder.get(Number(slot.slot_order)) || []) : [];
+              const matchingActivities = activitiesAtSlot.filter((activity) =>
+                activity.day_of_week === day && matchesTarget(activity, cls)
+              );
+              if (isActivity && matchingActivities.length === 0) continue;
               allEntries.push({
                 school_id: schoolId,
                 day_of_week: day,
@@ -437,7 +449,9 @@ export default function TimetableGenerate() {
                 class_id: cls.id,
                 level_group: levelKey,
                 entry_type: isActivity ? 'activity' : slot.slot_type,
-                activity_name: isActivity ? (activity?.activity_name || config.activities?.[String(day)] || 'Activity') : slot.label,
+                activity_name: isActivity
+                  ? (matchingActivities.map(a => a.activity_name.trim()).join(' / ') || config.activities?.[String(day)] || 'Activity')
+                  : slot.label,
               });
             }
           }
@@ -448,15 +462,21 @@ export default function TimetableGenerate() {
         for (const cls of classesToProcess) {
           const classAssignments = assignments
             .filter(a => a.class_id === cls.id)
-            .sort((a, b) => Number(Boolean(b.is_priority)) - Number(Boolean(a.is_priority)));
+            .sort((a, b) => {
+              const aName = String(a.subjects?.name || '').toLowerCase();
+              const bName = String(b.subjects?.name || '').toLowerCase();
+              const aSciencePriority = Boolean(a.is_priority && /integrated\s*science/.test(aName));
+              const bSciencePriority = Boolean(b.is_priority && /integrated\s*science/.test(bName));
+              return Number(bSciencePriority) - Number(aSciencePriority)
+                || Number(Boolean(b.is_priority)) - Number(Boolean(a.is_priority));
+            });
           for (const assignment of classAssignments) {
             const lessonsToSchedule = assignment.lessons_per_week || 0;
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
-            const candidateLessonSlots = assignment.is_priority && /integrated\s*science/.test(subjectName)
-              ? morningPriorityScienceSlots
-              : lessonSlots;
+            const isPriorityScience = Boolean(assignment.is_priority && /integrated\s*science/.test(subjectName));
+            const candidateLessonSlots = isPriorityScience ? morningPriorityScienceSlots : lessonSlots;
             let scheduled = 0;
             for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
               for (const slot of candidateLessonSlots) {
@@ -489,6 +509,23 @@ export default function TimetableGenerate() {
                 classSubjectBySlot.set(classKey, subjectName);
                 scheduled++;
                 break;
+              }
+            }
+            // A priority Integrated Science lesson should be in Lessons 1–4 when
+            // possible. If teacher/class conflicts exhaust those candidates, use
+            // the remaining lesson slots rather than dropping the assignment.
+            if (isPriorityScience && scheduled < lessonsToSchedule) {
+              for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+                for (const slot of lessonSlots) {
+                  if (morningPriorityScienceSlots.some((s: any) => s.id === slot.id)) continue;
+                  const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
+                  const classKey = `${cls.id}-${day}-${slot.id}`;
+                  if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
+                  allEntries.push({ school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: cls.id, level_group: levelKey, subject_id: assignment.subject_id, teacher_id: assignment.teacher_id, entry_type: 'lesson' });
+                  teacherBusy.add(teacherKey); classBusy.add(classKey);
+                  classSubjectBySlot.set(classKey, subjectName); scheduled++;
+                  break;
+                }
               }
             }
           }

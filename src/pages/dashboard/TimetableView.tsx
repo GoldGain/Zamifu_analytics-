@@ -43,6 +43,7 @@ interface TimeSlot {
   slot_type: 'lesson' | 'break' | 'lunch' | 'activities' | 'activity';
   label: string;
   level_group?: string | null;
+  sourceSlotIds?: string[];
 }
 
 interface TeacherKeyEntry {
@@ -555,10 +556,15 @@ export default function TimetableView() {
   }, [entries]);
 
   const getEntries = (day: number, classId: string, slot: TimeSlot): TimetableEntry[] => {
-    // Prefer exact time_slot_id match (real DB slots)
-    const byId = entryLookup.get(`${day}-${classId}-${slot.id}`);
-    if (byId && byId.length) return byId;
-    // Synthetic display slots: match by slot_order
+    // A merged activity column can represent multiple legacy DB slot IDs.
+    const sourceIds = slot.sourceSlotIds?.length ? slot.sourceSlotIds : [slot.id];
+    const merged: TimetableEntry[] = [];
+    sourceIds.forEach((sourceId) => {
+      const byId = entryLookup.get(`${day}-${classId}-${sourceId}`) || [];
+      merged.push(...byId);
+    });
+    if (merged.length) return merged;
+    // Synthetic display slots: match by slot_order.
     return entriesByOrder.get(`${day}-${classId}-${slot.slot_order}`) || [];
   };
 
@@ -584,7 +590,7 @@ export default function TimetableView() {
     const dayActivities = activities.filter(a => a.day_of_week === dayNum);
     if (dayActivities.length === 0) return '';
     // Return all activity names for this day, joined
-    return dayActivities.map(a => a.activity_name.trim().toUpperCase()).join(' / ');
+    return Array.from(new Set(dayActivities.map(a => a.activity_name.trim().toUpperCase()))).join(' / ');
   };
 
   /** Active level groups represented by the school’s active classes. */
@@ -619,11 +625,12 @@ export default function TimetableView() {
         : `${(schoolName || 'school').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-full-timetable.pdf`;
       await html2pdf()
         .set({
-          margin: [0.2, 0.1, 0.2, 0.1],
+          margin: [0.15, 0.15, 0.15, 0.15],
           filename,
           image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#1a1a1a' },
-          jsPDF: { unit: 'in', format: 'a3', orientation: 'landscape' },
+          pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
+          html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+          jsPDF: { unit: 'in', format: 'a3', orientation: 'landscape', compress: true },
         })
         .from(element)
         .save();
@@ -679,17 +686,19 @@ export default function TimetableView() {
 
   const timetableStyles = `
     .bb-wrap {
-      background-color: #1a1a1a;
-      color: #e0e0e0;
-      font-family: 'Courier New', Courier, monospace;
-      padding: 16px;
-      border: 8px solid #4a3728;
-      box-shadow: inset 0 0 40px rgba(0,0,0,0.5);
+      background-color: #ffffff;
+      color: #111827;
+      font-family: Arial, Helvetica, sans-serif;
+      padding: 12px;
+      border: 1px solid #cbd5e1;
+      box-sizing: border-box;
+      break-inside: avoid;
     }
     .tt-table {
       border-collapse: collapse;
       width: 100%;
-      table-layout: auto;
+      table-layout: fixed;
+      page-break-inside: avoid;
     }
     .tt-table th, .tt-table td {
       border: 1px solid #555;
@@ -786,7 +795,7 @@ export default function TimetableView() {
   `;
 
   const renderTimetableTable = (classesToRender: SchoolClass[], tableId: string, slotsOverride?: TimeSlot[]) => {
-    const slotsForTable =
+    const rawSlotsForTable =
       slotsOverride ||
       (classesToRender.length === 1
         ? buildDisplaySlotsForLevel(
@@ -795,6 +804,27 @@ export default function TimetableView() {
             levelConfigs[resolveClassLevelGroup(classesToRender[0])]
           )
         : allSlots);
+    // Defensive UI invariant: one column per shared activity interval, even if
+    // older generated data contains several activity rows at the same time.
+    const slotsForTable = rawSlotsForTable.reduce<TimeSlot[]>((merged, slot) => {
+      if (slot.slot_type !== 'activity' && slot.slot_type !== 'activities') {
+        merged.push(slot);
+        return merged;
+      }
+      const existing = merged.find((candidate) =>
+        (candidate.slot_type === 'activity' || candidate.slot_type === 'activities') &&
+        candidate.start_time === slot.start_time && candidate.end_time === slot.end_time
+      );
+      if (!existing) {
+        merged.push({ ...slot, sourceSlotIds: [slot.id] });
+      } else {
+        existing.sourceSlotIds = [...(existing.sourceSlotIds || [existing.id]), slot.id];
+        if (!existing.label.includes(slot.label.replace(/^ACTIVITY:\s*/i, ''))) {
+          existing.label = `${existing.label} / ${slot.label.replace(/^ACTIVITY:\s*/i, '')}`;
+        }
+      }
+      return merged;
+    }, []);
     if (!slotsForTable.length) {
       return (
         <div id={tableId} className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 text-sm">
