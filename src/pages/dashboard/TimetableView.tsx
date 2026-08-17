@@ -648,18 +648,28 @@ export default function TimetableView() {
 
   
   // Structure summary only. Clock times come from this school's Setup / generated slots.
+  const isAllLevelsView = selectedClass === 'all' && selectedLevelGroup === 'auto';
+  const structureTitle = isAllLevelsView
+    ? 'All Active Levels (separate structures)'
+    : (LEVEL_LABELS[activeLevelGroup] || activeLevelGroup);
   const summaryBanner = (
     <div className="mx-4 mb-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="font-semibold">Structure ({LEVEL_LABELS[activeLevelGroup] || activeLevelGroup}):</span>
-        <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
-        <span className="text-blue-300">|</span>
-        <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
-        <span className="text-blue-300">|</span>
-        <span>
-          <strong>{slotSummary.afterLunch}</strong> after lunch
-          {slotSummary.afterLunch === 0 ? ' (ends at lunch)' : ''}
-        </span>
+        <span className="font-semibold">Structure ({structureTitle}):</span>
+        {isAllLevelsView ? (
+          <span>Each active level is shown in its own timetable below.</span>
+        ) : (
+          <>
+            <span><strong>{slotSummary.totalLessons}</strong> lessons/day</span>
+            <span className="text-blue-300">|</span>
+            <span><strong>{slotSummary.beforeLunch}</strong> before lunch</span>
+            <span className="text-blue-300">|</span>
+            <span>
+              <strong>{slotSummary.afterLunch}</strong> after lunch
+              {slotSummary.afterLunch === 0 ? ' (ends at lunch)' : ''}
+            </span>
+          </>
+        )}
       </div>
       <p className="mt-1 text-xs text-blue-700">
         Break, lunch, and activities times come from Timetable Setup for this school. Edit Setup, then regenerate to refresh the grid.
@@ -1027,8 +1037,8 @@ export default function TimetableView() {
           ))}
         </div>
         <p className="text-xs text-gray-500">
-          Active structure: <strong>{LEVEL_LABELS[activeLevelGroup] || activeLevelGroup}</strong>
-          {' '}· {slotSummary.totalLessons} lessons/day · {slotSummary.afterLunch} after lunch
+          Active structure: <strong>{structureTitle}</strong>
+          {!isAllLevelsView && <> {' '}· {slotSummary.totalLessons} lessons/day · {slotSummary.afterLunch} after lunch</>}
           {availableLevelGroups.includes('default') && availableLevelGroups.length > 1 ? (
             <span className="text-amber-600"> · Tip: re-generate each level to replace legacy &quot;default&quot; slots</span>
           ) : null}
