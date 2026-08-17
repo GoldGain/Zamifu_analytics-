@@ -763,7 +763,7 @@ export default function TimetableView() {
     .tt-cell {
       min-width: 70px;
       height: 28px;
-      color: #e0e0e0;
+      color: #111827;
       font-size: 0.68rem;
     }
     .tt-activity {
