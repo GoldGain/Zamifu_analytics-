@@ -711,8 +711,10 @@ export default function TimetableView() {
     }
     .tt-table {
       border-collapse: collapse;
-      width: 100%;
-      table-layout: fixed;
+      width: max-content;
+      min-width: 100%;
+      min-width: 1040px;
+      table-layout: auto;
       page-break-inside: avoid;
     }
     .tt-table th, .tt-table td {
