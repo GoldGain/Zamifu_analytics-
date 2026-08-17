@@ -563,21 +563,6 @@ export default function TimetableView() {
       const byId = entryLookup.get(`${day}-${classId}-${sourceId}`) || [];
       merged.push(...byId);
     });
-    // Morning activities such as Friday PPI may overlap Lesson 1. They belong
-    // in that existing lesson cell, not in a second overlapping column.
-    if (slot.slot_type === 'lesson') {
-      const toMinutes = (value: string) => {
-        const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
-        return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-      };
-      timeSlots.filter((activitySlot) =>
-        (activitySlot.slot_type === 'activity' || activitySlot.slot_type === 'activities') &&
-        toMinutes(activitySlot.start_time) < toMinutes(slot.end_time) &&
-        toMinutes(activitySlot.end_time) > toMinutes(slot.start_time)
-      ).forEach((activitySlot) => {
-        merged.push(...(entryLookup.get(`${day}-${classId}-${activitySlot.id}`) || []));
-      });
-    }
     if (merged.length) return merged;
     // Synthetic display slots: match by slot_order.
     return entriesByOrder.get(`${day}-${classId}-${slot.slot_order}`) || [];
@@ -823,12 +808,6 @@ export default function TimetableView() {
           const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
           return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
         };
-        const overlapsLesson = rawSlotsForTable.some((lessonSlot) =>
-          lessonSlot.slot_type === 'lesson' &&
-          toMinutes(slot.start_time) < toMinutes(lessonSlot.end_time) &&
-          toMinutes(slot.end_time) > toMinutes(lessonSlot.start_time)
-        );
-        if (overlapsLesson) return merged;
       }
       if (slot.slot_type !== 'activity' && slot.slot_type !== 'activities') {
         merged.push(slot);

@@ -16,6 +16,7 @@ interface TeacherAssignment {
   subject_name: string;
   lessons_per_week: number;
   is_priority: boolean;
+  priority_band: 'none' | 'morning' | 'mid_morning' | 'afternoon';
   available_days: string[];
 }
 
@@ -53,7 +54,7 @@ export default function AssignTeachers() {
     class_id: '',
     subject_id: '',
     lessons_per_week: 5,
-    is_priority: false,
+    priority_band: 'none' as const,
     available_days: [...ALL_DAYS],
   });
 
@@ -108,7 +109,7 @@ export default function AssignTeachers() {
     const { data, error: ae } = await supabase
       .from('teacher_subject_assignments')
       .select(`
-        id, teacher_id, class_id, subject_id, lessons_per_week, is_priority, available_days,
+        id, teacher_id, class_id, subject_id, lessons_per_week, is_priority, priority_band, available_days,
         teachers(first_name, last_name, teacher_number),
         classes(name),
         subjects(name)
@@ -129,6 +130,7 @@ export default function AssignTeachers() {
       subject_name: a.subjects?.name || '',
       lessons_per_week: a.lessons_per_week || 5,
       is_priority: a.is_priority || false,
+      priority_band: a.priority_band || (a.is_priority ? 'morning' : 'none'),
       available_days: Array.isArray(a.available_days) && a.available_days.length > 0
         ? a.available_days
         : [...ALL_DAYS],
@@ -154,7 +156,8 @@ export default function AssignTeachers() {
           class_id: formData.class_id,
           subject_id: formData.subject_id,
           lessons_per_week: formData.lessons_per_week,
-          is_priority: formData.is_priority,
+          priority_band: formData.priority_band,
+          is_priority: formData.priority_band === 'morning',
           available_days: formData.available_days,
           assigned_by_admin: true,
           is_active: true,
@@ -164,7 +167,7 @@ export default function AssignTeachers() {
       if (insertError) throw insertError;
 
       setSuccess('Assignment saved successfully!');
-      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, is_priority: false, available_days: [...ALL_DAYS] });
+      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'none', available_days: [...ALL_DAYS] });
       await fetchAssignments();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -325,15 +328,20 @@ export default function AssignTeachers() {
                 />
               </div>
 
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.is_priority}
-                  onChange={(e) => setFormData({ ...formData, is_priority: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600"
-                />
-                <span className="text-sm font-semibold text-gray-700">Priority (Morning Slots)</span>
-              </label>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Timetable Priority Band</label>
+                <select
+                  value={formData.priority_band}
+                  onChange={(e) => setFormData({ ...formData, priority_band: e.target.value as typeof formData.priority_band })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="none">No fixed priority</option>
+                  <option value="morning">Priority Morning (Lessons 1–3)</option>
+                  <option value="mid_morning">Priority Mid-Morning (Lessons 4–6)</option>
+                  <option value="afternoon">Priority Afternoon (Lesson 7+)</option>
+                </select>
+                <p className="text-[11px] text-gray-500 mt-1">The generator prefers the selected band and only falls back when the band cannot fit all weekly lessons.</p>
+              </div>
 
               {/* Available Days */}
               <div>
@@ -436,8 +444,12 @@ export default function AssignTeachers() {
                           <td className="px-4 py-3 text-gray-700">{a.subject_name}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{a.lessons_per_week}</td>
                           <td className="px-4 py-3 text-center">
-                            {a.is_priority ? (
-                              <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full text-xs font-bold">Morning</span>
+                            {a.priority_band === 'morning' ? (
+                              <span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full text-xs font-bold">Morning · L1–3</span>
+                            ) : a.priority_band === 'mid_morning' ? (
+                              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs font-bold">Mid-Morning · L4–6</span>
+                            ) : a.priority_band === 'afternoon' ? (
+                              <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs font-bold">Afternoon · L7+</span>
                             ) : (
                               <span className="text-gray-400 text-xs">—</span>
                             )}
