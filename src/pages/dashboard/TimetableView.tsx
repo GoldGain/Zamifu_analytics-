@@ -717,18 +717,20 @@ export default function TimetableView() {
     }
     .tt-table th, .tt-table td {
       border: 1px solid #555;
-      padding: 3px 4px;
+      padding: 4px 3px;
       text-align: center;
       vertical-align: middle;
       font-size: 0.68rem;
-      line-height: 1.2;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
     }
     .tt-header {
       background-color: #222;
       color: #4da6ff;
       font-weight: bold;
-      font-size: 0.65rem;
-      white-space: nowrap;
+      font-size: 0.62rem;
+      white-space: normal;
+      line-height: 1.05;
     }
     .tt-day {
       writing-mode: vertical-lr;
@@ -749,48 +751,38 @@ export default function TimetableView() {
       min-width: 42px;
       font-size: 0.7rem;
     }
-    .tt-break {
-      writing-mode: vertical-lr;
-      text-orientation: mixed;
+    .tt-break, .tt-lunch {
+      writing-mode: horizontal-tb;
       font-weight: 900;
-      font-size: 0.85rem;
+      font-size: 0.58rem;
       background-color: #1a1a1a;
       color: #4da6ff;
-      width: 22px;
-      min-width: 22px;
-      letter-spacing: 0.05rem;
-      padding: 4px 2px;
+      width: 52px;
+      min-width: 52px;
+      padding: 4px 3px;
       text-align: center;
-    }
-    .tt-lunch {
-      writing-mode: vertical-lr;
-      text-orientation: mixed;
-      font-weight: 900;
-      font-size: 0.85rem;
-      background-color: #1a1a1a;
-      color: #4da6ff;
-      width: 22px;
-      min-width: 22px;
-      letter-spacing: 0.05rem;
-      padding: 4px 2px;
-      text-align: center;
+      white-space: nowrap;
+      line-height: 1.05;
     }
     .tt-cell {
-      min-width: 70px;
-      height: 28px;
+      min-width: 72px;
+      height: 32px;
       color: #111827;
       font-size: 0.68rem;
+      white-space: nowrap;
     }
     .tt-activity {
-      writing-mode: vertical-lr;
-      text-orientation: mixed;
+      writing-mode: horizontal-tb;
       font-weight: bold;
-      color: #33cc33;
-      width: 30px;
-      min-width: 30px;
+      color: #15803d;
+      width: 88px;
+      min-width: 88px;
       font-size: 0.62rem;
-      padding: 4px 2px;
+      padding: 4px 3px;
       text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.05;
     }
     .tt-break-header {
       background-color: #222;
@@ -798,8 +790,10 @@ export default function TimetableView() {
       font-weight: bold;
       font-size: 0.58rem;
       white-space: pre-line;
-      width: 22px;
-      min-width: 22px;
+      width: 52px;
+      min-width: 52px;
+      white-space: normal;
+      line-height: 1.05;
     }
     @media print {
       .no-print { display: none !important; }
@@ -960,10 +954,8 @@ export default function TimetableView() {
                         if (clsIdx === 0) {
                           return (
                             <td key={slot.id} rowSpan={classesToRender.length} className="tt-break">
-                              B<br/>R<br/>E<br/>A<br/>K<br/>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block',marginTop:'2px'}}>{fmt(slot.start_time)}</span>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block'}}>—</span>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block'}}>{fmt(slot.end_time)}</span>
+                              <strong>BREAK</strong>
+                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block',marginTop:'2px'}}>{fmt(slot.start_time)}–{fmt(slot.end_time)}</span>
                             </td>
                           );
                         }
@@ -973,10 +965,8 @@ export default function TimetableView() {
                         if (clsIdx === 0) {
                           return (
                             <td key={slot.id} rowSpan={classesToRender.length} className="tt-lunch">
-                              L<br/>U<br/>N<br/>C<br/>H<br/>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block',marginTop:'2px'}}>{fmt(slot.start_time)}</span>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block'}}>—</span>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block'}}>{fmt(slot.end_time)}</span>
+                              <strong>LUNCH</strong>
+                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block',marginTop:'2px'}}>{fmt(slot.start_time)}–{fmt(slot.end_time)}</span>
                             </td>
                           );
                         }
@@ -1005,7 +995,7 @@ export default function TimetableView() {
       {teacherKey.length > 0 && (
         <div className="mt-6 pt-4 border-t border-gray-700">
           <h3 className="text-blue-400 font-black text-xs uppercase mb-3 tracking-widest">Teacher Reference Key</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {teacherKey.map(t => (
               <div key={t.teacher_number} className="text-[0.65rem] flex flex-col">
                 <span className="text-blue-300 font-bold">T{t.teacher_number}: {t.teacher_name}</span>
