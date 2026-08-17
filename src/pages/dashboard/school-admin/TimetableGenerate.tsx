@@ -496,11 +496,10 @@ export default function TimetableGenerate() {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
                 if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                const earlier = lessonSlots
+                const previousLesson = lessonSlots
                   .filter(s => s.slot_order < slot.slot_order)
-                  .sort((a, b) => b.slot_order - a.slot_order)
-                  .map(s => classSubjectBySlot.get(`${cls.id}-${day}-${s.id}`))
-                  .find(Boolean);
+                  .sort((a, b) => b.slot_order - a.slot_order)[0];
+                const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
                 // Keep Mathematics and Science from being adjacent in either direction.
                 // This prevents Mathematics immediately after Science and Integrated Science immediately after Mathematics.
                 const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
@@ -534,11 +533,10 @@ export default function TimetableGenerate() {
                   const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                   const classKey = `${cls.id}-${day}-${slot.id}`;
                   if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                  const earlier = lessonSlots
+                  const previousLesson = lessonSlots
                     .filter(s => s.slot_order < slot.slot_order)
-                    .sort((a, b) => b.slot_order - a.slot_order)
-                    .map(s => classSubjectBySlot.get(`${cls.id}-${day}-${s.id}`))
-                    .find(Boolean);
+                    .sort((a, b) => b.slot_order - a.slot_order)[0];
+                  const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
                   const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
                   const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
                   if (toMinutes(slot.start_time) < toMinutes(config.lunch_start) && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
