@@ -402,9 +402,17 @@ export default function TimetableGenerate() {
           const target = String(activity.target_classes || 'All').trim().toLowerCase();
           if (!target || target === 'all') return true;
           const className = String(cls.name || '').toLowerCase();
+          const grade = Number(cls.grade_level ?? cls.level);
+          const isPrimary = (grade >= 1 && grade <= 6) || /grade\s*[1-6]\b|pp\s*[12]|pre[\s-]?primary/.test(className);
+          const isJunior = (grade >= 7 && grade <= 9) || /grade\s*[789]\b|junior|jss/.test(className);
+          const isSenior = (grade >= 10 && grade <= 12) || /grade\s*(10|11|12)\b|senior/.test(className);
+          if (target.includes('primary') && isPrimary) return true;
+          if (target.includes('junior') && isJunior) return true;
+          if (target.includes('senior') && isSenior) return true;
           return target.split(',').some(part => {
             const token = part.trim();
-            return token && (className.includes(token) || token.includes(className) || (token.match(/grade\s*\d+/)?.[0] && className.includes(token.match(/grade\s*\d+/)?.[0] as string)));
+            const gradeToken = token.match(/grade\s*\d+/)?.[0];
+            return token && (className.includes(token) || token.includes(className) || (gradeToken && className.includes(gradeToken)));
           });
         };
 

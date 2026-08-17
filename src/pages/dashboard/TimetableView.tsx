@@ -51,13 +51,14 @@ interface TeacherKeyEntry {
   subjects: string[];
 }
 
-interface SchoolActivity {
+  interface SchoolActivity {
   id: string;
   school_id: string;
   day_of_week: number;
   activity_name: string;
   start_time: string;
   end_time: string;
+  target_classes?: string | null;
 }
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
@@ -226,14 +227,22 @@ function buildDisplaySlotsForLevel(
   // Prefer DB slots only when structure is exactly correct for this level
   if (countsMatch) {
     let slots = candidates;
-    if (targets.afterLunch === 0) {
-      // Pre-primary: no post-lunch lesson columns and no activities column clutter
+      if (targets.afterLunch === 0) {
+      // Zero-after-lunch levels hide generic post-lunch activities, but retain
+      // explicitly scheduled activities that occur before lunch (for example Friday PPI).
+      const lunchStartMinutes = (() => {
+        const raw = String(levelConfig?.lunch_start || '').slice(0, 5);
+        const [hours, minutes] = raw.split(':').map(Number);
+        return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : Number.POSITIVE_INFINITY;
+      })();
       slots = slots.filter((s) => {
-        if (s.slot_type === 'lesson') {
-          // keep only first 6 lessons by order among lessons
-          return true;
+        if (s.slot_type === 'lesson') return true;
+        if (s.slot_type === 'activity') {
+          const [hours, minutes] = String(s.start_time || '').slice(0, 5).split(':').map(Number);
+          const startMinutes = Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : Number.POSITIVE_INFINITY;
+          return startMinutes < lunchStartMinutes;
         }
-        return s.slot_type !== 'activities' && s.slot_type !== 'activity';
+        return s.slot_type !== 'activities';
       });
       // Extra safety: drop any lesson after lunch if present
       const lunchOrder = slots.find((s) => s.slot_type === 'lunch')?.slot_order;
