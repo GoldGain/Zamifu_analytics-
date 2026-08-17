@@ -11,7 +11,7 @@ type ImportResult = { row: number; admission_number: string; name: string; email
 const TEMPLATE_HEADERS = [
   'admission_number', 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
   'gender', 'date_of_birth', 'birth_cert_number', 'nationality', 'county', 'sub_county',
-  'boarding_status', 'disability_status', 'parent_name', 'parent_phone', 'parent_email',
+  'boarding_status', 'disability_status', 'curriculum', 'parent_name', 'parent_phone', 'parent_email',
 ];
 
 function parseCsv(text: string): ImportRow[] {
@@ -131,6 +131,7 @@ export default function BulkStudentImport() {
         const classRow = classByName.get(row.class_name.trim().toLowerCase());
         const fallbackEmail = `${admission.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`;
         const email = (row.student_email?.trim().toLowerCase() || fallbackEmail);
+        const curriculum = row.curriculum?.trim() || 'CBE';
         const password = `${admission}@2025`;
         const name = `${row.first_name} ${row.middle_name ? `${row.middle_name} ` : ''}${row.last_name}`.trim();
         try {
@@ -160,6 +161,7 @@ export default function BulkStudentImport() {
             date_of_birth: row.date_of_birth || null,
             birth_cert_number: row.birth_cert_number || null,
             nationality: row.nationality || 'Kenyan',
+            curriculum,
             county: row.county || null,
             sub_county: row.sub_county || null,
             boarding_status: row.boarding_status || 'day',
@@ -205,9 +207,9 @@ export default function BulkStudentImport() {
         <section className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap gap-2 items-center justify-between">
             <h2 className="font-black text-gray-900 flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={18} /> Step 1: Prepare CSV</h2>
-            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS, ['ADM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', '', '', '']])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
+            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS,           ['ADM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', '', '']])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
           </div>
-          <p className="text-xs text-gray-600">Required columns are <strong>admission_number, first_name, last_name, and class_name</strong>. Email is optional; when blank, Zamifu generates a unique student email. The default temporary password is the admission number followed by <strong>@2025</strong>.</p>
+          <p className="text-xs text-gray-600">Required columns are <strong>admission_number, first_name, last_name, and class_name</strong>. Email and curriculum are optional; blank curriculum values default to <strong>CBE</strong>, while blank email values receive a unique generated student email. The default temporary password is the admission number followed by <strong>@2025</strong>.</p>
           <label className="border-2 border-dashed border-blue-200 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blue-50 transition">
             <Upload className="text-blue-600 mb-2" />
             <span className="font-bold text-blue-800">Choose CSV file</span>
