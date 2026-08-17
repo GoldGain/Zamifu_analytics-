@@ -422,11 +422,12 @@ export default function TimetableView() {
   };
 
   const fetchActivities = async () => {
-    const { data, error: err } = await supabase
-      .from('school_activities')
-      .select('*')
+      const { data, error: err } = await supabase
+      .from('after_school_activities')
+      .select('id, school_id, day_of_week, activity_name, start_time, end_time, target_classes')
       .eq('school_id', user?.schoolId)
-      .order('day_of_week');
+      .order('day_of_week')
+      .order('start_time');
     if (err) {
       console.warn('Could not fetch activities:', err);
       setActivities([]);
@@ -568,7 +569,7 @@ export default function TimetableView() {
     return parts.join(' ') || '';
   };
 
-  /** Get activities for a given day from school_activities table */
+  /** Get activities for a given day from the configured activity schedule table */
   const getActivitiesForDay = (dayIdx: number): string => {
     const dayNum = dayIdx + 1;
     const dayActivities = activities.filter(a => a.day_of_week === dayNum);

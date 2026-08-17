@@ -310,8 +310,8 @@ export default function TimetableGenerate() {
             ...config,
             // Explicit activities replace the generic activities window. They are
             // added below at their configured day/time instead.
-            activities_start: scheduledActivities.length ? undefined : config.activities_start,
-            activities_end: scheduledActivities.length ? undefined : config.activities_end,
+            activities_start: freshActivities.length ? undefined : config.activities_start,
+            activities_end: freshActivities.length ? undefined : config.activities_end,
             lessons_per_day: targets.totalLessons,
             after_lunch_lessons: targets.afterLunch,
           },
@@ -323,7 +323,7 @@ export default function TimetableGenerate() {
           const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
           return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
         };
-        const activityCandidates = scheduledActivities
+        const activityCandidates = freshActivities
           .filter(a => a.activity_name && toMinutes(a.end_time) > toMinutes(a.start_time))
           // Lower Primary and Pre-Primary end at lunch: do not generate any
           // activity after lunch for those levels.
@@ -439,6 +439,7 @@ export default function TimetableGenerate() {
             const lessonsToSchedule = assignment.lessons_per_week || 0;
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
+            const isScience = /integrated\s*science|science|environment/.test(subjectName);
             let scheduled = 0;
             for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
               for (const slot of lessonSlots) {
@@ -450,8 +451,11 @@ export default function TimetableGenerate() {
                   .sort((a, b) => b.slot_order - a.slot_order)
                   .map(s => classSubjectBySlot.get(`${cls.id}-${day}-${s.id}`))
                   .find(Boolean);
-                // Do not place Mathematics immediately after Science.
-                if (isMath && earlier && /science|environment/.test(earlier)) continue;
+                // Keep Mathematics and Science from being adjacent in either direction.
+                // This prevents Mathematics immediately after Science and Integrated Science immediately after Mathematics.
+                const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
+                const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
+                if ((isMath && earlierIsScience) || (isScience && earlierIsMath)) continue;
                 allEntries.push({
                   school_id: schoolId,
                   day_of_week: day,
