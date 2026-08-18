@@ -226,7 +226,31 @@ export const TrialCountdown: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
+                  <p className="text-xs font-semibold text-gray-700">Choose your payment period</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
+                    <button
+                      type="button"
+                      onClick={() => setBillingPeriod('term')}
+                      className={`rounded-lg border-2 p-3 transition-colors ${billingPeriod === 'term' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}
+                    >
+                      <span className="block text-xs font-bold text-gray-900">Pay per term</span>
+                      <span className="block text-[11px] text-gray-600">KES {pricePerLearner.toLocaleString()} per learner</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingPeriod('annual')}
+                      className={`rounded-lg border-2 p-3 transition-colors ${billingPeriod === 'annual' ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}`}
+                    >
+                      <span className="block text-xs font-bold text-gray-900">Pay annually</span>
+                      <span className="block text-[11px] text-gray-600">KES {annualFee} per learner per year</span>
+                      <span className="block text-[10px] font-semibold text-green-700 mt-1">Save KES {annualSavings} per learner</span>
+                    </button>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3">
+                    <span>Selected: {billingPeriod === 'annual' ? 'Annual' : 'Termly'}</span>
+                    <span className="font-bold text-gray-900">KES {(learnersCount * selectedFee).toLocaleString()}</span>
+                  </div>
                   <PaystackButton
                     learnersCount={learnersCount}
                     feePerLearner={selectedFee}
