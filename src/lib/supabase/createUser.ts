@@ -9,6 +9,8 @@ interface CreateUserInput {
   role: UserRole;
   school_id?: string | null;
   metadata?: Record<string, unknown>;
+  admission_number?: string;
+  class_id?: string;
 }
 
 interface CreateUserResult {
@@ -28,12 +30,31 @@ export async function createScopedUser(input: CreateUserInput): Promise<CreateUs
       last_name: input.last_name || '',
       role: input.role,
       school_id: input.school_id || null,
+      admission_number: input.admission_number || null,
+      class_id: input.class_id || null,
       metadata: input.metadata || {},
     },
   });
 
   if (error) {
-    throw new Error(error.message || 'Unable to create user account.');
+    let detail = error.message || 'Unable to create user account.';
+    try {
+      const response = (error as any).context;
+      if (response && typeof response.text === 'function') {
+        const raw = await response.text();
+        if (raw) {
+          try {
+            const payload = JSON.parse(raw);
+            detail = payload.error || payload.message || raw;
+          } catch {
+            detail = raw;
+          }
+        }
+      }
+    } catch {
+      // Keep the SDK message when the Edge Function response cannot be read.
+    }
+    throw new Error(detail);
   }
 
   if (!data?.user?.id) {

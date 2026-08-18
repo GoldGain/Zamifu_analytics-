@@ -11,6 +11,7 @@ interface PaystackButtonProps {
   onSuccess: () => void;
   onClose: () => void;
   feePerLearner?: number;
+  billingPeriod?: 'term' | 'annual';
 }
 
 const PAYSTACK_PUBLIC_KEY = 'pk_live_c15b4c6c95f06f7408326b14395eb727147a8935';
@@ -20,13 +21,19 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
   onSuccess,
   onClose,
   feePerLearner,
+  billingPeriod = 'term',
 }) => {
   const { user } = useAuth();
   const { handlePaymentSuccess, pricePerLearner } = useTrial();
   const [processing, setProcessing] = useState(false);
-  const [resolvedFee, setResolvedFee] = useState(feePerLearner || pricePerLearner || PRICE_PER_LEARNER);
+  const annualFee = 60;
+  const [resolvedFee, setResolvedFee] = useState(billingPeriod === 'annual' ? annualFee : (feePerLearner || pricePerLearner || PRICE_PER_LEARNER));
 
   useEffect(() => {
+    if (billingPeriod === 'annual') {
+      setResolvedFee(annualFee);
+      return;
+    }
     if (feePerLearner && feePerLearner > 0) {
       setResolvedFee(feePerLearner);
       return;
@@ -34,11 +41,11 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
     if (pricePerLearner && pricePerLearner > 0) {
       setResolvedFee(pricePerLearner);
     }
-  }, [feePerLearner, pricePerLearner]);
+  }, [billingPeriod, feePerLearner, pricePerLearner]);
 
   useEffect(() => {
     const load = async () => {
-      if (feePerLearner && feePerLearner > 0) return;
+      if (billingPeriod === 'annual' || (feePerLearner && feePerLearner > 0)) return;
       if (!user?.schoolId) return;
       const { data } = await (supabase as any)
         .from('schools')
@@ -49,7 +56,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
       if (fee > 0) setResolvedFee(fee);
     };
     load();
-  }, [user?.schoolId, feePerLearner]);
+  }, [user?.schoolId, feePerLearner, billingPeriod]);
 
   const amountKsh = learnersCount * resolvedFee;
   const amount = amountKsh * 100; // kobo for Paystack
@@ -97,7 +104,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
         fee_per_learner: resolvedFee,
         amount: amountKsh,
         currency: 'KES',
-        term_label: 'One Term',
+        term_label: billingPeriod === 'annual' ? 'Annual' : 'One Term',
         payment_reference: reference,
         payment_method: 'paystack',
         status: 'success',
@@ -143,7 +150,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
             {
               display_name: 'Period',
               variable_name: 'period',
-              value: 'One Term',
+              value: billingPeriod === 'annual' ? 'Annual' : 'One Term',
             },
           ],
         },
@@ -154,7 +161,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
         // a plain synchronous function so the payment flow works.
         callback: (response: any) => {
           const ref = response?.reference || reference;
-          handlePaymentSuccess(learnersCount, ref);
+          handlePaymentSuccess(learnersCount, ref, resolvedFee);
           recordSubscriptionPayment(ref).then(() => {
             toast.success(
               `Payment successful! KES ${amountKsh.toLocaleString()} paid for ${learnersCount} learners.`,
@@ -193,8 +200,8 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
           <span className="text-sm font-medium text-blue-800">Secure Payment</span>
         </div>
         <div className="text-2xl font-bold text-gray-900">KES {amountKsh.toLocaleString()}</div>
-        <p className="text-sm text-gray-600 mt-1">
-          for {learnersCount} learner{learnersCount !== 1 ? 's' : ''} per term
+          <p className="text-sm text-gray-600 mt-1">
+          for {learnersCount} learner{learnersCount !== 1 ? 's' : ''} {billingPeriod === 'annual' ? 'per year' : 'per term'}
         </p>
         <div className="mt-2 text-xs text-gray-500">
           KES {resolvedFee.toLocaleString()} × {learnersCount} learners = KES {amountKsh.toLocaleString()}
@@ -214,7 +221,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
         ) : (
           <>
             <CreditCard className="w-4 h-4" />
-            Pay KES {amountKsh.toLocaleString()} with Paystack
+            Pay KES {amountKsh.toLocaleString()} {billingPeriod === 'annual' ? 'annually' : 'for one term'} with Paystack
           </>
         )}
       </button>

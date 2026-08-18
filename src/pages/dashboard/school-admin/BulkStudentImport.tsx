@@ -146,7 +146,9 @@ export default function BulkStudentImport() {
             last_name: row.last_name,
             role: 'student',
             school_id: user.schoolId,
-            metadata: { assessment_number: admission, class_id: classRow.id },
+            admission_number: admission,
+            class_id: classRow.id,
+            metadata: { assessment_number: admission, admission_number: admission, class_id: classRow.id },
           });
           const { error } = await supabaseUntyped.from('students').insert({
             profile_id: authData.user.id,

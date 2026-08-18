@@ -20,7 +20,7 @@ interface TrialContextType {
   isLoading: boolean;
   refreshTrialStatus: () => void;
   updateLearnersCount: (count: number) => void;
-  handlePaymentSuccess: (learnersCount: number, reference: string) => void;
+  handlePaymentSuccess: (learnersCount: number, reference: string, feePerLearner?: number) => void;
   paymentAmount: number;
   resetTrialPeriod: () => void;
   simulateExpiry: () => void;
@@ -100,9 +100,9 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
     refreshTrialStatus();
   }, [schoolId, refreshTrialStatus]);
 
-  const handlePaymentSuccess = useCallback((learnersCount: number, reference: string) => {
+  const handlePaymentSuccess = useCallback((learnersCount: number, reference: string, feePerLearner?: number) => {
     if (!schoolId) return;
-    markTrialAsPaid(schoolId, learnersCount, reference, pricePerLearner);
+    markTrialAsPaid(schoolId, learnersCount, reference, feePerLearner || pricePerLearner);
     refreshTrialStatus();
   }, [schoolId, refreshTrialStatus, pricePerLearner]);
 
