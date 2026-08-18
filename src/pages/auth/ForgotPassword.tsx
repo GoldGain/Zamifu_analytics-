@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
-import { requestPasswordResetOTP, verifyPasswordResetOTP, resetPasswordWithOTP } from '@/lib/sms';
+import { requestPasswordResetOTP, verifyPasswordResetOTP, resetPasswordWithOTP, type PasswordResetAccountSummary } from '@/lib/sms';
 import { Loader2, ArrowLeft, Check, Mail, User, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -12,6 +12,7 @@ export default function ForgotPassword() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [foundEmail, setFoundEmail] = useState('');
+  const [matchedAccount, setMatchedAccount] = useState<PasswordResetAccountSummary | null>(null);
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -30,6 +31,7 @@ export default function ForgotPassword() {
           setError(result.message || 'We could not send the reset code. Please try again.');
           return;
         }
+        setMatchedAccount(result.account || null);
         setOtpSent(true);
         toast.success('A password reset code has been sent to your phone.');
       } else {
@@ -155,6 +157,13 @@ export default function ForgotPassword() {
             </Link>
             <h1 className="text-2xl font-bold text-[#111111]">Verify OTP</h1>
             <p className="text-sm text-[#666666] mt-1">Enter the 6-digit code sent to your phone</p>
+            {matchedAccount && (
+              <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs text-blue-900">
+                <p className="font-semibold">Account matched</p>
+                <p>{matchedAccount.display_name} · {matchedAccount.role.replace(/_/g, ' ')}</p>
+                {matchedAccount.masked_email && <p className="text-blue-700">{matchedAccount.masked_email}</p>}
+              </div>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
@@ -213,7 +222,7 @@ export default function ForgotPassword() {
             </form>
 
             <button
-              onClick={() => { setOtpSent(false); setOtp(''); setGeneratedOtp(''); }}
+              onClick={() => { setOtpSent(false); setOtp(''); setMatchedAccount(null); setError(''); }}
               className="w-full mt-4 text-sm text-[#2563EB] hover:underline"
             >
               Didn&apos;t receive OTP? Try again
@@ -253,7 +262,7 @@ export default function ForgotPassword() {
           <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-xl">
             <button
               type="button"
-              onClick={() => setResetMethod('email')}
+              onClick={() => { setResetMethod('email'); setMatchedAccount(null); setError(''); }}
               className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
                 resetMethod === 'email' 
                   ? 'bg-[#2563EB] text-white' 
@@ -264,7 +273,7 @@ export default function ForgotPassword() {
             </button>
             <button
               type="button"
-              onClick={() => setResetMethod('admission')}
+              onClick={() => { setResetMethod('admission'); setMatchedAccount(null); setError(''); }}
               className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
                 resetMethod === 'admission' 
                   ? 'bg-[#2563EB] text-white' 
@@ -275,7 +284,7 @@ export default function ForgotPassword() {
             </button>
             <button
               type="button"
-              onClick={() => setResetMethod('phone')}
+              onClick={() => { setResetMethod('phone'); setMatchedAccount(null); setError(''); }}
               className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
                 resetMethod === 'phone' 
                   ? 'bg-[#2563EB] text-white' 

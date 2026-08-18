@@ -11,6 +11,13 @@ const OLYMPUS_API_TOKEN = "3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbef70cf"
 const OLYMPUS_SENDER_ID = "PROCALL";
 
 type SmsResult = { success: boolean; messageId?: string; error?: string };
+type ResetAccount = {
+  id: string;
+  school_id: string | null;
+  display_name: string;
+  role: string;
+  masked_email: string | null;
+};
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -84,34 +91,54 @@ async function sendViaAfricasTalking(
   return { success: false, error: recipient?.status || "SMS send failed" };
 }
 
-async function findResetUser(adminClient: any, phone: string) {
+function maskEmail(email: string | null | undefined): string | null {
+  if (!email || !email.includes("@")) return null;
+  const [local, domain] = email.split("@");
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
+function displayName(firstName?: string | null, lastName?: string | null): string {
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+  return name || "Account holder";
+}
+
+async function findResetUser(adminClient: any, phone: string): Promise<ResetAccount | null> {
   const candidates = phoneCandidates(phone);
   const { data: profile } = await adminClient
     .from("profiles")
-    .select("id, school_id")
+    .select("id, school_id, first_name, last_name, email, role")
     .in("phone", candidates)
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (profile) return profile;
+  if (profile) {
+    return {
+      id: profile.id,
+      school_id: profile.school_id,
+      display_name: displayName(profile.first_name, profile.last_name),
+      role: profile.role || "account",
+      masked_email: maskEmail(profile.email),
+    };
+  }
 
   const { data: teacher } = await adminClient
     .from("teachers")
-    .select("profile_id, school_id")
+    .select("profile_id, school_id, first_name, last_name, email")
     .in("phone", candidates)
     .limit(1)
     .maybeSingle();
-  if (teacher?.profile_id) return { id: teacher.profile_id, school_id: teacher.school_id };
+  if (teacher?.profile_id) {
+    return {
+      id: teacher.profile_id,
+      school_id: teacher.school_id,
+      display_name: displayName(teacher.first_name, teacher.last_name),
+      role: "teacher",
+      masked_email: maskEmail(teacher.email),
+    };
+  }
 
-  // A learner account uses the email/profile link; parent_phone is accepted only
-  // when it maps to a profile email, preventing the students.id/profile.id mix-up.
-  const { data: student } = await adminClient
-    .from("students")
-    .select("profile_id, school_id")
-    .in("parent_phone", candidates)
-    .limit(1)
-    .maybeSingle();
-  if (student?.profile_id) return { id: student.profile_id, school_id: student.school_id };
-
+  // Never use a learner's parent_phone or emergency phone to reset a learner
+  // account. Those numbers belong to a contact, not necessarily to the login owner.
   return null;
 }
 
@@ -141,7 +168,15 @@ async function handleResetAction(adminClient: any, action: string, body: any) {
       await adminClient.from("password_reset_otps").delete().eq("phone", phone);
       return json({ error: "We could not send the SMS. Please try again or use email reset." }, 400);
     }
-    return json({ success: true, message: "Reset code sent successfully." });
+    return json({
+      success: true,
+      message: "Reset code sent successfully.",
+      account: {
+        display_name: user.display_name,
+        role: user.role,
+        masked_email: user.masked_email,
+      },
+    });
   }
 
   const otp = String(body.otp || "").trim();

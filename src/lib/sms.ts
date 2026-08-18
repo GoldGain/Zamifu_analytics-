@@ -384,7 +384,17 @@ export function getDefaultPassword(role: string, admissionNumber?: string): stri
 /**
  * Request a password reset OTP via SMS
  */
-export async function requestPasswordResetOTP(phone: string): Promise<{ success: boolean; message: string }> {
+export interface PasswordResetAccountSummary {
+  display_name: string;
+  role: string;
+  masked_email: string | null;
+}
+
+export async function requestPasswordResetOTP(phone: string): Promise<{
+  success: boolean;
+  message: string;
+  account?: PasswordResetAccountSummary;
+}> {
   const { supabase } = await import('@/lib/supabase/client');
   const { data: { session } } = await supabase.auth.getSession();
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
