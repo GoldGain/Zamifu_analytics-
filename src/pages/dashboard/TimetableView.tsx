@@ -630,7 +630,7 @@ export default function TimetableView() {
           image: { type: 'jpeg', quality: 0.98 },
           pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
           html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 1600 },
-          jsPDF: { unit: 'in', format: 'a3', orientation: 'landscape', compress: true },
+          jsPDF: { unit: 'in', format: classId ? 'a4' : 'a3', orientation: 'landscape', compress: true },
         })
         .from(element)
         .save();
