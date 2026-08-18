@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
-import { sendSMS } from '@/lib/sms';
+import { requestPasswordResetOTP, verifyPasswordResetOTP, resetPasswordWithOTP } from '@/lib/sms';
 import { Loader2, ArrowLeft, Check, Mail, User, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -16,13 +16,6 @@ export default function ForgotPassword() {
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  const [resetUserId, setResetUserId] = useState('');
-
-  // Generate a 6-digit OTP
-  const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,79 +24,14 @@ export default function ForgotPassword() {
 
     try {
       if (resetMethod === 'phone') {
-        // Phone number-based reset using Olympus SMS
-        let phone = identifier.trim();
-        
-        // Normalize phone number
-        if (phone.startsWith('0')) {
-          phone = '254' + phone.slice(1);
-        }
-        if (phone.startsWith('+')) {
-          phone = phone.slice(1);
-        }
-
-        // Find user by phone number - check in profiles, students, teachers, parents
-        let foundUser = null;
-        
-        // Check profiles table
-        const { data: profileData } = await supabaseUntyped
-          .from('profiles')
-          .select('id, phone, first_name, last_name, role')
-          .or(`phone.eq.${phone},phone.eq.0${phone.slice(3)}`)
-          .maybeSingle();
-        
-        if (profileData) {
-          foundUser = profileData;
-        }
-
-        // Check students table
-        if (!foundUser) {
-          const { data: studentData } = await supabaseUntyped
-            .from('students')
-            .select('id, parent_phone, first_name, last_name')
-            .or(`parent_phone.eq.${phone},parent_phone.eq.0${phone.slice(3)}`)
-            .maybeSingle();
-          
-          if (studentData) {
-            foundUser = { ...studentData, phone: studentData.parent_phone, role: 'student' };
-          }
-        }
-
-        // Check teachers table
-        if (!foundUser) {
-          const { data: teacherData } = await supabaseUntyped
-            .from('teachers')
-            .select('id, phone, first_name, last_name')
-            .or(`phone.eq.${phone},phone.eq.0${phone.slice(3)}`)
-            .maybeSingle();
-          
-          if (teacherData) {
-            foundUser = { ...teacherData, role: 'teacher' };
-          }
-        }
-
-        if (!foundUser) {
-          setError('No account found with this phone number. Please check and try again.');
-          setLoading(false);
+        const phone = identifier.trim();
+        const result = await requestPasswordResetOTP(phone);
+        if (!result.success) {
+          setError(result.message || 'We could not send the reset code. Please try again.');
           return;
         }
-
-        // Generate and send OTP
-        const newOtp = generateOTP();
-        setGeneratedOtp(newOtp);
-        setResetUserId(foundUser.id);
-
-        const message = `Your Zamifu Analytics password reset code is: ${newOtp}. This code will expire in 15 minutes. Do not share this code with anyone.`;
-        
-        const result = await sendSMS(phone, message);
-        
-        if (result.success) {
-          setOtpSent(true);
-          toast.success('OTP sent to your phone via SMS!');
-        } else {
-          setError('Failed to send SMS. Please try again or use email method.');
-          toast.error('SMS delivery failed');
-        }
+        setOtpSent(true);
+        toast.success('A password reset code has been sent to your phone.');
       } else {
         let email = identifier;
 
@@ -157,10 +85,6 @@ export default function ForgotPassword() {
     e.preventDefault();
     setError('');
 
-    if (otp !== generatedOtp) {
-      setError('Invalid OTP. Please check and try again.');
-      return;
-    }
 
     if (!newPassword || newPassword.length < 6) {
       setError('Password must be at least 6 characters');
@@ -174,15 +98,14 @@ export default function ForgotPassword() {
 
     setLoading(true);
     try {
-      // Update password using admin auth or direct update
-      // For phone reset, we need to find the user's auth account
-      // Since we can't directly set password without session, we need to use admin functions
-      // or create a magic link. For now, we'll show success and instruct user.
-      
-      toast.success('OTP verified! Please contact your school admin to complete password reset.');
+      // Verify and reset through the server-side Edge Function. The OTP is
+      // never trusted from browser state and the password is never changed client-side.
+      await verifyPasswordResetOTP(identifier.trim(), otp.trim());
+      await resetPasswordWithOTP(identifier.trim(), otp.trim(), newPassword);
+      toast.success('Password reset successfully. You can now sign in.');
       setSuccess(true);
     } catch (err: any) {
-      setError(err.message || 'Failed to reset password');
+      setError(err.message || 'Failed to reset password. Please request a new code.');
     } finally {
       setLoading(false);
     }
@@ -196,11 +119,11 @@ export default function ForgotPassword() {
             <Check className="w-8 h-8 text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-[#111111] mb-2">
-            {resetMethod === 'phone' ? 'Password Reset Request Submitted' : 'Check Your Email'}
+            {resetMethod === 'phone' ? 'Password Reset Complete' : 'Check Your Email'}
           </h2>
           <p className="text-sm text-[#666666] mb-4">
             {resetMethod === 'phone' 
-              ? 'Your identity has been verified. Please contact your school administrator to set a new password.'
+              ? 'Your password has been changed successfully. You can now sign in with the new password.'
               : `We sent a password reset link to ${foundEmail || identifier}`
             }
           </p>

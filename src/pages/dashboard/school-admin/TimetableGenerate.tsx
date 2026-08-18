@@ -417,6 +417,8 @@ export default function TimetableGenerate() {
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
         const classSubjectBySlot = new Map<string, string>();
+        const overlaps = (startA: string, endA: string, startB: string, endB: string) =>
+          toMinutes(startA) < toMinutes(endB) && toMinutes(endA) > toMinutes(startB);
         const matchesTarget = (activity: ScheduledActivity, cls: any) => {
           const target = String(activity.target_classes || 'All').trim().toLowerCase();
           if (!target || target === 'all') return true;
@@ -445,6 +447,11 @@ export default function TimetableGenerate() {
                 activity.day_of_week === day && matchesTarget(activity, cls)
               );
               if (isActivity && matchingActivities.length === 0) continue;
+              // An explicitly scheduled activity owns this class/time slot. Mark it
+              // busy before lesson allocation so no lesson can be placed over it.
+              if (isActivity) {
+                classBusy.add(`${cls.id}-${day}-${slot.id}`);
+              }
               allEntries.push({
                 school_id: schoolId,
                 day_of_week: day,
@@ -496,6 +503,10 @@ export default function TimetableGenerate() {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
                 if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
+                const matchingClassActivities = freshActivities.filter((activity) =>
+                  activity.day_of_week === day && matchesTarget(activity, cls)
+                );
+                if (matchingClassActivities.some((activity) => overlaps(slot.start_time, slot.end_time, activity.start_time, activity.end_time))) continue;
                 const previousLesson = lessonSlots
                   .filter(s => s.slot_order < slot.slot_order)
                   .sort((a, b) => b.slot_order - a.slot_order)[0];
@@ -533,6 +544,10 @@ export default function TimetableGenerate() {
                   const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                   const classKey = `${cls.id}-${day}-${slot.id}`;
                   if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
+                  const matchingClassActivities = freshActivities.filter((activity) =>
+                    activity.day_of_week === day && matchesTarget(activity, cls)
+                  );
+                  if (matchingClassActivities.some((activity) => overlaps(slot.start_time, slot.end_time, activity.start_time, activity.end_time))) continue;
                   const previousLesson = lessonSlots
                     .filter(s => s.slot_order < slot.slot_order)
                     .sort((a, b) => b.slot_order - a.slot_order)[0];

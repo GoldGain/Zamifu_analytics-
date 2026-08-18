@@ -38,7 +38,8 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 8;
  * (header + student info + 13-subject table + summary + trend + comment +
  * signatures) fits on a single A4 page.
  */
-export const COMPACT_MODE = true;
+// Readable multi-section layout: allow safe pagination instead of squeezing text into overlapping rows.
+export const COMPACT_MODE = false;
 const ROW = COMPACT_MODE ? 3.2 : 5;   // vertical row step for student info (further reduced)
 const HDR_H = COMPACT_MODE ? 22 : 28; // header band height (further reduced)
 
@@ -366,7 +367,8 @@ export async function addStudentPhotoToPDF(
   try {
     let dataUrl = imageCache[photoUrl];
     if (!dataUrl) {
-      dataUrl = await compressImage(photoUrl, 200, 0.6);
+      // Keep enough source resolution for a clear report-card photo while avoiding oversized PDF payloads.
+      dataUrl = await compressImage(photoUrl, 800, 0.92);
       imageCache[photoUrl] = dataUrl;
     }
     

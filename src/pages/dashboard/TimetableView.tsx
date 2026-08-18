@@ -625,11 +625,11 @@ export default function TimetableView() {
         : `${(schoolName || 'school').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-full-timetable.pdf`;
       await html2pdf()
         .set({
-          margin: [0.15, 0.15, 0.15, 0.15],
+          margin: [0.05, 0.05, 0.05, 0.05],
           filename,
           image: { type: 'jpeg', quality: 0.98 },
           pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
-          html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 1600 },
           jsPDF: { unit: 'in', format: 'a3', orientation: 'landscape', compress: true },
         })
         .from(element)
@@ -689,7 +689,7 @@ export default function TimetableView() {
       background-color: #ffffff;
       color: #111827;
       font-family: Arial, Helvetica, sans-serif;
-      padding: 12px;
+      padding: 18px;
       border: 1px solid #cbd5e1;
       box-sizing: border-box;
       break-inside: avoid;
@@ -698,16 +698,16 @@ export default function TimetableView() {
       border-collapse: collapse;
       width: max-content;
       min-width: 100%;
-      min-width: 1040px;
+      min-width: 1450px;
       table-layout: auto;
       page-break-inside: avoid;
     }
-    .tt-table th, .tt-table td {
+      .tt-table th, .tt-table td {
       border: 1px solid #555;
-      padding: 4px 3px;
+      padding: 6px 5px;
       text-align: center;
       vertical-align: middle;
-      font-size: 0.68rem;
+      font-size: 0.78rem;
       line-height: 1.15;
       overflow-wrap: anywhere;
     }
@@ -752,10 +752,10 @@ export default function TimetableView() {
       line-height: 1.05;
     }
     .tt-cell {
-      min-width: 72px;
-      height: 32px;
+      min-width: 92px;
+      height: 40px;
       color: #111827;
-      font-size: 0.68rem;
+      font-size: 0.78rem;
       white-space: nowrap;
     }
     .tt-activity {

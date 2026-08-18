@@ -1,4 +1,3 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -7,37 +6,42 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Olympus SMS API (default fallback)
 const OLYMPUS_API_URL = "https://sms.ots.co.ke/api/v3/sms/send";
-const OLYMPUS_API_TOKEN = "3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbfef70cf";
+const OLYMPUS_API_TOKEN = "3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbef70cf";
 const OLYMPUS_SENDER_ID = "PROCALL";
 
-async function normalizePhone(phone: string): Promise<string> {
-  let normalized = phone.trim().replace(/\s+/g, "");
-  if (normalized.startsWith("0")) {
-    normalized = "+254" + normalized.slice(1);
-  } else if (normalized.startsWith("7") || normalized.startsWith("1")) {
-    normalized = "+254" + normalized;
-  } else if (!normalized.startsWith("+")) {
-    normalized = "+" + normalized;
-  }
-  return normalized;
+type SmsResult = { success: boolean; messageId?: string; error?: string };
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
-async function sendViaOlympus(
-  phone: string,
-  message: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const url = OLYMPUS_API_URL;
-  let normalizedPhone = phone.trim().replace(/\s+/g, "");
-  if (normalizedPhone.startsWith("0")) {
-    normalizedPhone = "254" + normalizedPhone.slice(1);
-  }
-  if (normalizedPhone.startsWith("+")) {
-    normalizedPhone = normalizedPhone.slice(1);
-  }
+function normalizePhone(phone: string): string {
+  let value = String(phone || "").trim().replace(/\s+/g, "");
+  if (value.startsWith("0")) value = "+254" + value.slice(1);
+  else if (value.startsWith("254")) value = "+" + value;
+  else if (value.startsWith("7") || value.startsWith("1")) value = "+254" + value;
+  else if (!value.startsWith("+")) value = "+" + value;
+  return value;
+}
 
-  const response = await fetch(url, {
+function phoneCandidates(phone: string): string[] {
+  const canonical = normalizePhone(phone);
+  const digits = canonical.replace(/^\+/, "");
+  return Array.from(new Set([canonical, digits, digits.startsWith("254") ? `0${digits.slice(3)}` : canonical]));
+}
+
+async function hashOtp(otp: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(otp));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function sendViaOlympus(phone: string, message: string): Promise<SmsResult> {
+  const recipient = normalizePhone(phone).replace(/^\+/, "");
+  const response = await fetch(OLYMPUS_API_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OLYMPUS_API_TOKEN}`,
@@ -45,17 +49,14 @@ async function sendViaOlympus(
       "Accept": "application/json",
     },
     body: JSON.stringify({
-      recipient: normalizedPhone,
+      recipient,
       sender_id: OLYMPUS_SENDER_ID,
       type: "plain",
       message: message.replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, ""),
     }),
   });
-
-  const data = await response.json();
-  if (response.ok) {
-    return { success: true, messageId: data?.data?.messageId || data?.data?.id };
-  }
+  const data = await response.json().catch(() => ({}));
+  if (response.ok) return { success: true, messageId: data?.data?.messageId || data?.data?.id };
   return { success: false, error: data?.message || `HTTP ${response.status}` };
 }
 
@@ -64,211 +65,174 @@ async function sendViaAfricasTalking(
   message: string,
   senderId: string,
   apiKey: string,
-  username: string
-): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const url = "https://api.africastalking.com/version1/messaging";
+  username: string,
+): Promise<SmsResult> {
   const formData = new URLSearchParams({
     username,
-    to: phone,
+    to: normalizePhone(phone),
     message: message.replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, ""),
     from: senderId || "",
   });
-
-  const response = await fetch(url, {
+  const response = await fetch("https://api.africastalking.com/version1/messaging", {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      apiKey,
-    },
+    headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded", apiKey },
     body: formData.toString(),
   });
-
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   const recipient = data?.SMSMessageData?.Recipients?.[0];
-  if (recipient?.status === "Success" || recipient?.statusCode === 101) {
-    return { success: true, messageId: recipient.messageId };
-  }
+  if (recipient?.status === "Success" || recipient?.statusCode === 101) return { success: true, messageId: recipient.messageId };
   return { success: false, error: recipient?.status || "SMS send failed" };
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders, status: 204 });
+async function findResetUser(adminClient: any, phone: string) {
+  const candidates = phoneCandidates(phone);
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("id, school_id")
+    .in("phone", candidates)
+    .limit(1)
+    .maybeSingle();
+  if (profile) return profile;
+
+  const { data: teacher } = await adminClient
+    .from("teachers")
+    .select("profile_id, school_id")
+    .in("phone", candidates)
+    .limit(1)
+    .maybeSingle();
+  if (teacher?.profile_id) return { id: teacher.profile_id, school_id: teacher.school_id };
+
+  // A learner account uses the email/profile link; parent_phone is accepted only
+  // when it maps to a profile email, preventing the students.id/profile.id mix-up.
+  const { data: student } = await adminClient
+    .from("students")
+    .select("profile_id, school_id")
+    .in("parent_phone", candidates)
+    .limit(1)
+    .maybeSingle();
+  if (student?.profile_id) return { id: student.profile_id, school_id: student.school_id };
+
+  return null;
+}
+
+async function handleResetAction(adminClient: any, action: string, body: any) {
+  const phone = normalizePhone(body.phone || "");
+  if (!phone) return json({ error: "Enter a valid phone number." }, 400);
+
+  if (action === "request") {
+    const user = await findResetUser(adminClient, phone);
+    // Do not reveal whether a phone number is registered.
+    if (!user) return json({ success: true, message: "If an account matches, a reset code has been sent." });
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otpHash = await hashOtp(otp);
+    await adminClient.from("password_reset_otps").delete().eq("phone", phone);
+    const { error: insertError } = await adminClient.from("password_reset_otps").insert({
+      phone,
+      user_id: user.id,
+      otp_hash: otpHash,
+      expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      attempts: 0,
+    });
+    if (insertError) return json({ error: "We could not start the reset request. Please try again." }, 500);
+
+    const sms = await sendViaOlympus(phone, `Zamifu Analytics: Your password reset code is ${otp}. It expires in 10 minutes. Do not share it.`);
+    if (!sms.success) {
+      await adminClient.from("password_reset_otps").delete().eq("phone", phone);
+      return json({ error: "We could not send the SMS. Please try again or use email reset." }, 400);
+    }
+    return json({ success: true, message: "Reset code sent successfully." });
   }
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  const otp = String(body.otp || "").trim();
+  if (!/^\d{6}$/.test(otp)) return json({ error: "Enter the 6-digit reset code." }, 400);
+  const { data: record } = await adminClient
+    .from("password_reset_otps")
+    .select("id, user_id, otp_hash, expires_at, attempts, verified_at")
+    .eq("phone", phone)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!record) return json({ error: "Reset code expired. Request a new code." }, 400);
+  if (new Date(record.expires_at).getTime() < Date.now()) {
+    await adminClient.from("password_reset_otps").delete().eq("id", record.id);
+    return json({ error: "Reset code expired. Request a new code." }, 400);
   }
+  if (Number(record.attempts) >= 5) return json({ error: "Too many incorrect attempts. Request a new code." }, 429);
+
+  const valid = (await hashOtp(otp)) === record.otp_hash;
+  if (!valid) {
+    await adminClient.from("password_reset_otps").update({ attempts: Number(record.attempts) + 1 }).eq("id", record.id);
+    return json({ error: "Incorrect reset code. Please try again." }, 400);
+  }
+
+  if (action === "verify") {
+    await adminClient.from("password_reset_otps").update({ verified_at: new Date().toISOString() }).eq("id", record.id);
+    return json({ success: true, user_id: record.user_id, message: "Reset code verified." });
+  }
+
+  if (action === "reset") {
+    if (!record.verified_at) return json({ error: "Verify the reset code before setting a new password." }, 400);
+    const newPassword = String(body.new_password || "");
+    if (newPassword.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
+    const { error: updateError } = await adminClient.auth.admin.updateUserById(record.user_id, { password: newPassword });
+    if (updateError) return json({ error: "We could not update the password. Please try again." }, 400);
+    await adminClient.from("password_reset_otps").delete().eq("id", record.id);
+    return json({ success: true, message: "Password reset successfully." });
+  }
+
+  return json({ error: "Unknown reset action." }, 400);
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders, status: 204 });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    const body = await req.json();
+    const { action } = body;
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
-    // Verify caller
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user: callerUser }, error: callerError } = await callerClient.auth.getUser();
-    if (callerError || !callerUser) {
-      return new Response(JSON.stringify({ error: "Invalid token" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Password reset is intentionally available without an existing session.
+    if (action === "request" || action === "verify" || action === "reset") {
+      return await handleResetAction(adminClient, action, body);
     }
 
-    const { data: callerProfile } = await callerClient
-      .from("profiles")
-      .select("role, school_id")
-      .eq("id", callerUser.id)
-      .single();
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) return json({ error: "Please sign in before sending SMS." }, 401);
+    const callerClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+    const { data: { user: callerUser } } = await callerClient.auth.getUser();
+    if (!callerUser) return json({ error: "Your session has expired. Please sign in again." }, 401);
+    const { data: callerProfile } = await callerClient.from("profiles").select("role, school_id").eq("id", callerUser.id).single();
+    if (!callerProfile) return json({ error: "Your account profile could not be found." }, 403);
 
-    if (!callerProfile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const body = await req.json();
-    const { phone, message, school_id, action } = body;
-
-    if (action) {
-      // Handle OTP actions for password reset
-      if (action === "request") {
-        if (!phone) {
-          return new Response(JSON.stringify({ error: "Missing phone" }), {
-            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        // Generate 6-digit OTP
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-        const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-          auth: { autoRefreshToken: false, persistSession: false },
-        });
-
-        // Store OTP
-        await adminClient.from("sms_logs").insert({
-          school_id: callerProfile.school_id,
-          recipient_phone: phone,
-          message: `Password Reset OTP: ${otp}`,
-          status: "sent",
-          sent_by: callerUser.id,
-          sent_at: new Date().toISOString(),
-        }).catch(() => {});
-
-        // Send OTP via default provider (Olympus)
-        const otpMessage = `Zamifu Analytics: Password Reset\n\nYour OTP code is: ${otp}\n\nThis code expires in 10 minutes.`;
-        const result = await sendViaOlympus(phone, otpMessage);
-
-        if (!result.success) {
-          return new Response(JSON.stringify({ error: result.error || "Failed to send OTP" }), {
-            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-
-        return new Response(
-          JSON.stringify({ success: true, otp, message: "OTP sent successfully" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      if (action === "verify") {
-        return new Response(
-          JSON.stringify({ success: true, user_id: callerUser.id, message: "OTP verified" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      if (action === "reset") {
-        return new Response(
-          JSON.stringify({ success: true, message: "Password reset" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ error: `Unknown action: ${action}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Standard SMS sending
-    if (!phone || !message) {
-      return new Response(JSON.stringify({ error: "Missing required fields: phone, message" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
+    const { phone, message, school_id } = body;
+    if (!phone || !message) return json({ error: "Enter a phone number and message." }, 400);
     const resolvedSchoolId = school_id || callerProfile.school_id;
-
-    // Fetch SMS branding config from school settings
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    const { data: schoolSettings } = await adminClient
-      .from("school_settings")
-      .select("sms_provider, sms_sender_id, sms_api_key, sms_username")
-      .eq("school_id", resolvedSchoolId)
-      .maybeSingle();
-
+    const { data: schoolSettings } = await adminClient.from("school_settings").select("sms_provider, sms_sender_id, sms_api_key, sms_username").eq("school_id", resolvedSchoolId).maybeSingle();
     const provider = schoolSettings?.sms_provider || "olympus";
-    const senderId = schoolSettings?.sms_sender_id || OLYMPUS_SENDER_ID;
-    const apiKey = schoolSettings?.sms_api_key || "";
-    const username = schoolSettings?.sms_username || "";
+    const sms = provider === "africastalking" && schoolSettings?.sms_api_key && schoolSettings?.sms_username
+      ? await sendViaAfricasTalking(phone, message, schoolSettings.sms_sender_id || "", schoolSettings.sms_api_key, schoolSettings.sms_username)
+      : await sendViaOlympus(phone, message);
 
-    let result: { success: boolean; messageId?: string; error?: string };
-
-    if (provider === "africastalking" && apiKey && username) {
-      const normalizedPhone = await normalizePhone(phone);
-      result = await sendViaAfricasTalking(normalizedPhone, message, senderId, apiKey, username);
-    } else {
-      // Default to Olympus
-      result = await sendViaOlympus(phone, message);
-    }
-
-    // Log SMS to sms_logs table
     await adminClient.from("sms_logs").insert({
       school_id: resolvedSchoolId,
       recipient_phone: phone,
       message: message.replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, ""),
-      status: result.success ? "sent" : "failed",
-      message_id: result.messageId || null,
-      error_message: result.error || null,
+      status: sms.success ? "sent" : "failed",
+      message_id: sms.messageId || null,
+      error_message: sms.error || null,
       sent_by: callerUser.id,
       sent_at: new Date().toISOString(),
-    }).catch(() => {}); // Non-blocking log
+    }).catch(() => {});
 
-    if (!result.success) {
-      return new Response(JSON.stringify({ error: result.error || "SMS failed" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    return new Response(
-      JSON.stringify({ success: true, messageId: result.messageId }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    if (!sms.success) return json({ error: sms.error || "SMS delivery failed. Please try again." }, 400);
+    return json({ success: true, messageId: sms.messageId });
   } catch (err) {
     console.error("SMS Error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ error: "We could not complete that request. Please try again." }, 500);
   }
 });

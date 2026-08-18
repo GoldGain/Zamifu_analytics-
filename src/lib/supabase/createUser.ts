@@ -64,6 +64,12 @@ export async function createScopedUser(input: CreateUserInput): Promise<CreateUs
     } catch {
       // Keep the SDK message when the Edge Function response cannot be read.
     }
+    const normalizedDetail = detail.toLowerCase();
+    if (normalizedDetail.includes('already exists') || normalizedDetail.includes('already registered') || normalizedDetail.includes('duplicate') || normalizedDetail.includes('already captured')) {
+      detail = 'The details are already captured. Please use a different admission number or email.';
+    } else if (normalizedDetail.includes('non-2xx') || normalizedDetail.includes('invalid token') || normalizedDetail.includes('jwt')) {
+      detail = 'Your session has expired. Refresh the page and sign in again before trying again.';
+    }
     throw new Error(detail);
   }
 
