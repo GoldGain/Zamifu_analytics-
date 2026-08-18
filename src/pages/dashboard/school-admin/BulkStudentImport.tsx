@@ -132,6 +132,8 @@ export default function BulkStudentImport() {
         const fallbackEmail = `${admission.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`;
         const email = (row.student_email?.trim().toLowerCase() || fallbackEmail);
         const curriculum = row.curriculum?.trim() || 'CBE';
+        const genderValue = row.gender?.trim().toLowerCase();
+        const gender = ['male', 'female', 'other'].includes(genderValue || '') ? genderValue : null;
         const password = `${admission}@2025`;
         const name = `${row.first_name} ${row.middle_name ? `${row.middle_name} ` : ''}${row.last_name}`.trim();
         try {
@@ -159,7 +161,7 @@ export default function BulkStudentImport() {
             last_name: row.last_name,
             class_id: classRow.id,
             student_email: email,
-            gender: row.gender || null,
+            gender,
             date_of_birth: row.date_of_birth || null,
             birth_cert_number: row.birth_cert_number || null,
             nationality: row.nationality || 'Kenyan',
