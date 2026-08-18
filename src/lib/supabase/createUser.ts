@@ -22,6 +22,19 @@ interface CreateUserResult {
 }
 
 export async function createScopedUser(input: CreateUserInput): Promise<CreateUserResult> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const session = sessionData.session;
+  if (!session) {
+    throw new Error('Your school-admin session has expired. Please sign in again before importing learners.');
+  }
+  const expiresSoon = Boolean(session.expires_at && session.expires_at * 1000 < Date.now() + 60_000);
+  if (expiresSoon) {
+    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshed.session) {
+      throw new Error('Your school-admin session could not be refreshed. Please sign in again before importing learners.');
+    }
+  }
+
   const { data, error } = await supabase.functions.invoke<CreateUserResult>('create-user', {
     body: {
       email: input.email.trim().toLowerCase(),
