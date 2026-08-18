@@ -302,27 +302,44 @@ export default function TimetableGenerate() {
           }
         }
 
-        // Generate time slots using DB lesson counts (fallback to level defaults)
+        // Generate time slots using DB lesson counts (fallback to level defaults).
+        // If an explicit activity starts at the school start (for example 08:00–09:00),
+        // reserve that interval before generating lessons so Lesson 1 does not occupy
+        // the activity window and the first lesson begins at the activity end.
         const targets = resolveLessonTargets(levelKey, config);
         const lessonCount = targets.totalLessons;
-        const baseSlots = generateSlots(
-          {
-            ...config,
-            // Explicit activities replace the generic activities window. They are
-            // added below at their configured day/time instead.
-            activities_start: freshActivities.length ? undefined : config.activities_start,
-            activities_end: freshActivities.length ? undefined : config.activities_end,
-            lessons_per_day: targets.totalLessons,
-            after_lunch_lessons: targets.afterLunch,
-          },
-          lessonCount,
-          levelKey
-        );
-
         const toMinutes = (value: string) => {
           const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
           return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
         };
+        const minutesToTime = (minutes: number) => {
+          const safe = Math.max(0, Math.round(minutes));
+          return `${String(Math.floor(safe / 60) % 24).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+        };
+        const schoolStartMinutes = toMinutes(config.school_start);
+        const earlyActivity = freshActivities
+          .filter((activity) => toMinutes(activity.start_time) <= schoolStartMinutes && toMinutes(activity.end_time) > schoolStartMinutes)
+          .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time))[0];
+        const earlyActivityShift = earlyActivity ? Math.max(0, toMinutes(earlyActivity.end_time) - schoolStartMinutes) : 0;
+        const shiftIfNeeded = (value: string) => earlyActivityShift > 0 ? minutesToTime(toMinutes(value) + earlyActivityShift) : value;
+        const generationConfig = {
+          ...config,
+          school_start: earlyActivity ? earlyActivity.end_time : config.school_start,
+          first_break_start: shiftIfNeeded(config.first_break_start),
+          first_break_end: shiftIfNeeded(config.first_break_end),
+          second_break_start: shiftIfNeeded(config.second_break_start),
+          second_break_end: shiftIfNeeded(config.second_break_end),
+          lunch_start: shiftIfNeeded(config.lunch_start),
+          lunch_end: shiftIfNeeded(config.lunch_end),
+          // Explicit activities replace the generic activities window. They are
+          // added below at their configured day/time instead.
+          activities_start: freshActivities.length ? undefined : config.activities_start,
+          activities_end: freshActivities.length ? undefined : config.activities_end,
+          lessons_per_day: targets.totalLessons,
+          after_lunch_lessons: targets.afterLunch,
+        };
+        const baseSlots = generateSlots(generationConfig, lessonCount, levelKey);
+
         const activityCandidates = freshActivities
           .filter(a => a.activity_name && toMinutes(a.end_time) > toMinutes(a.start_time))
           // Lower Primary and Pre-Primary end at lunch: do not generate any
