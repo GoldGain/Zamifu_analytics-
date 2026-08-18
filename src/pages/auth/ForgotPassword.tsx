@@ -76,8 +76,8 @@ export default function ForgotPassword() {
         setSuccess(true);
         toast.success('Password reset link sent! Check your email.');
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'We could not process the request. Please try again.');
     } finally {
       setLoading(false);
     }

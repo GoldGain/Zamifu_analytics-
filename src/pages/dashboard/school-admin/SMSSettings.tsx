@@ -107,7 +107,7 @@ export default function SMSSettings() {
             onChange={e => setForm(f => ({ ...f, sms_provider: e.target.value }))}
             className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 bg-white"
           >
-            <option value="olympus">Olympus SMS (Built-in - No setup required)</option>
+            <option value="olympus">Olympus SMS (requires platform credential)</option>
             <option value="africastalking">Africa's Talking</option>
           </select>
         </div>
@@ -115,8 +115,8 @@ export default function SMSSettings() {
         {/* Olympus Info */}
         {form.sms_provider === 'olympus' && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-            <p className="font-medium mb-1">Olympus SMS is configured and ready to use.</p>
-            <p className="text-green-700">No additional setup needed. Messages are sent via our integrated provider with sender ID "PROCALL".</p>
+            <p className="font-medium mb-1">Olympus SMS requires a valid platform credential.</p>
+            <p className="text-amber-700">Password-reset SMS will not be sent until the school’s Olympus credential has been configured and tested.</p>
           </div>
         )}
 
@@ -235,9 +235,9 @@ export default function SMSSettings() {
 
       {/* Status indicator */}
       {form.sms_provider === 'olympus' ? (
-        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
-          <CheckCircle className="w-4 h-4" />
-          SMS is ready. Olympus SMS is configured by default. You can send SMS from Bulk SMS, and welcome SMS will be sent when adding teachers.
+        <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <AlertCircle className="w-4 h-4" />
+          Olympus is selected, but delivery requires a valid platform SMS credential. Test the provider before relying on password-reset SMS.
         </div>
       ) : form.sms_api_key ? (
         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">
@@ -247,7 +247,7 @@ export default function SMSSettings() {
       ) : (
         <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
           <AlertCircle className="w-4 h-4" />
-          Africa's Talking API key not set. Please add your API key above, or switch to Olympus SMS for instant use.
+          Africa's Talking API key not set. Add a valid API key and username before using password-reset SMS.
         </div>
       )}
     </div>

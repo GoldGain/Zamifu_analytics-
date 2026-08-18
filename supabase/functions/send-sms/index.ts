@@ -7,8 +7,8 @@ const corsHeaders = {
 };
 
 const OLYMPUS_API_URL = "https://sms.ots.co.ke/api/v3/sms/send";
-const OLYMPUS_API_TOKEN = "3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbef70cf";
-const OLYMPUS_SENDER_ID = "PROCALL";
+const OLYMPUS_API_TOKEN = Deno.env.get("OLYMPUS_API_TOKEN") || "";
+const OLYMPUS_SENDER_ID = Deno.env.get("OLYMPUS_SENDER_ID") || "PROCALL";
 
 type SmsResult = { success: boolean; messageId?: string; error?: string };
 type ResetAccount = {
@@ -47,6 +47,7 @@ async function hashOtp(otp: string): Promise<string> {
 }
 
 async function sendViaOlympus(phone: string, message: string): Promise<SmsResult> {
+  if (!OLYMPUS_API_TOKEN) return { success: false, error: "SMS provider authentication failed. Please configure a valid SMS API token." };
   const recipient = normalizePhone(phone).replace(/^\+/, "");
   const response = await fetch(OLYMPUS_API_URL, {
     method: "POST",
@@ -63,8 +64,21 @@ async function sendViaOlympus(phone: string, message: string): Promise<SmsResult
     }),
   });
   const data = await response.json().catch(() => ({}));
-  if (response.ok) return { success: true, messageId: data?.data?.messageId || data?.data?.id };
-  return { success: false, error: data?.message || `HTTP ${response.status}` };
+  const providerStatus = String(data?.status || '').toLowerCase();
+  const providerMessage = String(data?.message || data?.remarks || '').trim();
+  const providerFailure = providerStatus === 'error'
+    || data?.success === false
+    || /unauthenticated|unauthorized|invalid token|authentication failed|insufficient balance|failed/i.test(providerMessage);
+  if (response.ok && !providerFailure) {
+    return {
+      success: true,
+      messageId: data?.message_id || data?.messageId || data?.data?.messageId || data?.data?.id,
+    };
+  }
+  const error = providerFailure && /unauthenticated|unauthorized|invalid token|authentication failed/i.test(providerMessage)
+    ? 'SMS provider authentication failed. Please configure a valid SMS API token.'
+    : providerMessage || `HTTP ${response.status}`;
+  return { success: false, error };
 }
 
 async function sendViaAfricasTalking(
@@ -142,14 +156,31 @@ async function findResetUser(adminClient: any, phone: string): Promise<ResetAcco
   return null;
 }
 
+async function sendResetSms(adminClient: any, user: ResetAccount, phone: string, message: string): Promise<SmsResult> {
+  if (!user.school_id) return { success: false, error: "SMS provider is not configured for this school." };
+  const { data: settings } = await adminClient
+    .from("school_settings")
+    .select("sms_provider, sms_sender_id, sms_api_key, sms_username")
+    .eq("school_id", user.school_id)
+    .maybeSingle();
+  const provider = settings?.sms_provider;
+  if (provider === "africastalking") {
+    if (!settings.sms_api_key || !settings.sms_username) {
+      return { success: false, error: "SMS provider credentials are missing." };
+    }
+    return sendViaAfricasTalking(phone, message, settings.sms_sender_id || "", settings.sms_api_key, settings.sms_username);
+  }
+  if (provider === "olympus") return sendViaOlympus(phone, message);
+  return { success: false, error: "SMS provider is not configured for this school." };
+}
+
 async function handleResetAction(adminClient: any, action: string, body: any) {
   const phone = normalizePhone(body.phone || "");
   if (!phone) return json({ error: "Enter a valid phone number." }, 400);
 
   if (action === "request") {
     const user = await findResetUser(adminClient, phone);
-    // Do not reveal whether a phone number is registered.
-    if (!user) return json({ success: true, message: "If an account matches, a reset code has been sent." });
+    if (!user) return json({ success: false, error: "No account is registered with this phone number." }, 404);
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const otpHash = await hashOtp(otp);
@@ -163,10 +194,18 @@ async function handleResetAction(adminClient: any, action: string, body: any) {
     });
     if (insertError) return json({ error: "We could not start the reset request. Please try again." }, 500);
 
-    const sms = await sendViaOlympus(phone, `Zamifu Analytics: Your password reset code is ${otp}. It expires in 10 minutes. Do not share it.`);
+    const sms = await sendResetSms(
+      adminClient,
+      user,
+      phone,
+      `Zamifu Analytics: Your password reset code is ${otp}. It expires in 10 minutes. Do not share it.`,
+    );
     if (!sms.success) {
       await adminClient.from("password_reset_otps").delete().eq("phone", phone);
-      return json({ error: "We could not send the SMS. Please try again or use email reset." }, 400);
+      const safeMessage = sms.error?.includes('authentication')
+        ? 'SMS service is not configured correctly. Please contact the school administrator.'
+        : 'We could not send the SMS. Please try again or use email reset.';
+      return json({ error: safeMessage }, 400);
     }
     return json({
       success: true,
