@@ -387,8 +387,8 @@ export function getDefaultPassword(role: string, admissionNumber?: string): stri
 export async function requestPasswordResetOTP(phone: string): Promise<{ success: boolean; message: string }> {
   const { supabase } = await import('@/lib/supabase/client');
   const { data: { session } } = await supabase.auth.getSession();
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXAiLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXQAJ1hkCiE9NldaoqNO3oid8CV7xUgTM';
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
     method: 'POST',
@@ -412,8 +412,8 @@ export async function verifyPasswordResetOTP(
   phone: string,
   otp: string
 ): Promise<{ success: boolean; user_id: string; message: string }> {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXAiLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXQAJ1hkCiE9NldaoqNO3oid8CV7xUgTM';
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
     method: 'POST',
@@ -437,8 +437,8 @@ export async function resetPasswordWithOTP(
   otp: string,
   newPassword: string
 ): Promise<{ success: boolean; message: string }> {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
+  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXAiLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXQAJ1hkCiE9NldaoqNO3oid8CV7xUgTM';
 
   const response = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
     method: 'POST',
