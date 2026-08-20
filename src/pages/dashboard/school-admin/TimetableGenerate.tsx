@@ -6,6 +6,7 @@ import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-reac
 import { toast } from 'sonner';
 import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
+import { shiftSlotsAroundActivities as shiftActivitySlots } from '@/lib/timetable-activity';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -47,6 +48,12 @@ interface FrontendConfig {
   after_lunch_lessons?: number;
   scheduledActivities?: ScheduledActivity[];
 }
+
+const timeToMinutes = (value: string | null | undefined): number => {
+  const [hours, minutes] = String(value || '').slice(0, 5).split(':').map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+};
+const toMinutes = timeToMinutes;
 
 // Map level config DB row to frontend config
 const mapLevelConfigToFrontend = (dbConfig: any, dbActivities: Record<string, string>): FrontendConfig => ({
@@ -302,35 +309,13 @@ export default function TimetableGenerate() {
           }
         }
 
-        // Generate time slots using DB lesson counts (fallback to level defaults).
-        // If an explicit activity starts at the school start (for example 08:00–09:00),
-        // reserve that interval before generating lessons so Lesson 1 does not occupy
-        // the activity window and the first lesson begins at the activity end.
+        // Generate the normal base slots once. Explicit activities are not folded
+        // into this global clock: each day/class receives its own shifted copy so
+        // Friday PPI cannot move Monday–Thursday or overwrite the first lesson.
         const targets = resolveLessonTargets(levelKey, config);
         const lessonCount = targets.totalLessons;
-        const toMinutes = (value: string) => {
-          const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
-          return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-        };
-        const minutesToTime = (minutes: number) => {
-          const safe = Math.max(0, Math.round(minutes));
-          return `${String(Math.floor(safe / 60) % 24).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
-        };
-        const schoolStartMinutes = toMinutes(config.school_start);
-        const earlyActivity = freshActivities
-          .filter((activity) => toMinutes(activity.start_time) <= schoolStartMinutes && toMinutes(activity.end_time) > schoolStartMinutes)
-          .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time))[0];
-        const earlyActivityShift = earlyActivity ? Math.max(0, toMinutes(earlyActivity.end_time) - schoolStartMinutes) : 0;
-        const shiftIfNeeded = (value: string) => earlyActivityShift > 0 ? minutesToTime(toMinutes(value) + earlyActivityShift) : value;
         const generationConfig = {
           ...config,
-          school_start: earlyActivity ? earlyActivity.end_time : config.school_start,
-          first_break_start: shiftIfNeeded(config.first_break_start),
-          first_break_end: shiftIfNeeded(config.first_break_end),
-          second_break_start: shiftIfNeeded(config.second_break_start),
-          second_break_end: shiftIfNeeded(config.second_break_end),
-          lunch_start: shiftIfNeeded(config.lunch_start),
-          lunch_end: shiftIfNeeded(config.lunch_end),
           // Explicit activities replace the generic activities window. They are
           // added below at their configured day/time instead.
           activities_start: freshActivities.length ? undefined : config.activities_start,
@@ -454,9 +439,23 @@ export default function TimetableGenerate() {
           });
         };
 
+        const getDaySlotTiming = (day: number, cls: any) => {
+          const matchingActivities = freshActivities.filter((activity) =>
+            activity.day_of_week === day && matchesTarget(activity, cls)
+          );
+          const shiftedBase = shiftActivitySlots(baseSlots, matchingActivities);
+          const times = new Map<number, { start_time: string; end_time: string }>();
+          shiftedBase.forEach((slot: any) => times.set(Number(slot.slot_order), {
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+          }));
+          return { matchingActivities, times };
+        };
+
         // Fill breaks, lunch, generic activity windows, and explicitly scheduled activities.
         for (const cls of classesToProcess) {
           for (let day = 1; day <= 5; day++) {
+            const { matchingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
             for (const slot of fixedSlots) {
               const isActivity = slot.slot_type === 'activities' || slot.slot_type === 'activity';
               const activitiesAtSlot = isActivity ? (activityMetaByOrder.get(Number(slot.slot_order)) || []) : [];
@@ -464,6 +463,9 @@ export default function TimetableGenerate() {
                 activity.day_of_week === day && matchesTarget(activity, cls)
               );
               if (isActivity && matchingActivities.length === 0) continue;
+              const effectiveTiming = isActivity
+                ? { start_time: slot.start_time, end_time: slot.end_time }
+                : (daySlotTimes.get(Number(slot.slot_order)) || { start_time: slot.start_time, end_time: slot.end_time });
               // An explicitly scheduled activity owns this class/time slot. Mark it
               // busy before lesson allocation so no lesson can be placed over it.
               if (isActivity) {
@@ -475,6 +477,8 @@ export default function TimetableGenerate() {
                 time_slot_id: slot.id,
                 class_id: cls.id,
                 level_group: levelKey,
+                effective_start_time: effectiveTiming.start_time,
+                effective_end_time: effectiveTiming.end_time,
                 entry_type: isActivity ? 'activity' : slot.slot_type,
                 activity_name: isActivity
                   ? (matchingActivities.map(a => a.activity_name.trim()).join(' / ') || config.activities?.[String(day)] || 'Activity')
@@ -516,14 +520,13 @@ export default function TimetableGenerate() {
             const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
             let scheduled = 0;
             for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+              const { matchingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
               for (const slot of candidateLessonSlots) {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
                 if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                const matchingClassActivities = freshActivities.filter((activity) =>
-                  activity.day_of_week === day && matchesTarget(activity, cls)
-                );
-                if (matchingClassActivities.some((activity) => overlaps(slot.start_time, slot.end_time, activity.start_time, activity.end_time))) continue;
+                const effectiveTiming = daySlotTimes.get(Number(slot.slot_order)) || { start_time: slot.start_time, end_time: slot.end_time };
+                if (dayActivities.some((activity) => overlaps(effectiveTiming.start_time, effectiveTiming.end_time, activity.start_time, activity.end_time))) continue;
                 const previousLesson = lessonSlots
                   .filter(s => s.slot_order < slot.slot_order)
                   .sort((a, b) => b.slot_order - a.slot_order)[0];
@@ -532,7 +535,7 @@ export default function TimetableGenerate() {
                 // This prevents Mathematics immediately after Science and Integrated Science immediately after Mathematics.
                 const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
                 const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
-                const isMorningSlot = toMinutes(slot.start_time) < toMinutes(config.lunch_start);
+                const isMorningSlot = toMinutes(effectiveTiming.start_time) < toMinutes(config.lunch_start);
                 if (isMorningSlot && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
                 allEntries.push({
                   school_id: schoolId,
@@ -540,6 +543,8 @@ export default function TimetableGenerate() {
                   time_slot_id: slot.id,
                   class_id: cls.id,
                   level_group: levelKey,
+                  effective_start_time: effectiveTiming.start_time,
+                  effective_end_time: effectiveTiming.end_time,
                   subject_id: assignment.subject_id,
                   teacher_id: assignment.teacher_id,
                   entry_type: 'lesson',
@@ -555,24 +560,24 @@ export default function TimetableGenerate() {
             // teacher/class conflicts, fill remaining lessons in the other slots
             // instead of silently dropping the subject.
             if (scheduled < lessonsToSchedule) {
-              for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+                              for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+                const { matchingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of lessonSlots) {
                   if (preferredLessonSlots.some((s: any) => s.id === slot.id)) continue;
                   const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                   const classKey = `${cls.id}-${day}-${slot.id}`;
                   if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                  const matchingClassActivities = freshActivities.filter((activity) =>
-                    activity.day_of_week === day && matchesTarget(activity, cls)
-                  );
-                  if (matchingClassActivities.some((activity) => overlaps(slot.start_time, slot.end_time, activity.start_time, activity.end_time))) continue;
+                  const effectiveTiming = daySlotTimes.get(Number(slot.slot_order)) || { start_time: slot.start_time, end_time: slot.end_time };
+                  if (dayActivities.some((activity) => overlaps(effectiveTiming.start_time, effectiveTiming.end_time, activity.start_time, activity.end_time))) continue;
+
                   const previousLesson = lessonSlots
                     .filter(s => s.slot_order < slot.slot_order)
                     .sort((a, b) => b.slot_order - a.slot_order)[0];
                   const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
                   const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
                   const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
-                  if (toMinutes(slot.start_time) < toMinutes(config.lunch_start) && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
-                  allEntries.push({ school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: cls.id, level_group: levelKey, subject_id: assignment.subject_id, teacher_id: assignment.teacher_id, entry_type: 'lesson' });
+                  if (toMinutes(effectiveTiming.start_time) < toMinutes(config.lunch_start) && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
+                  allEntries.push({ school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: cls.id, level_group: levelKey, effective_start_time: effectiveTiming.start_time, effective_end_time: effectiveTiming.end_time, subject_id: assignment.subject_id, teacher_id: assignment.teacher_id, entry_type: 'lesson' });
                   teacherBusy.add(teacherKey); classBusy.add(classKey);
                   classSubjectBySlot.set(classKey, subjectName); scheduled++;
                   break;

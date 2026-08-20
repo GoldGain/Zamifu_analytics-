@@ -10,6 +10,7 @@ import {
   type TimetableConfig,
   type TimetableSlot,
 } from '@/lib/timetable-generator';
+import { shiftSlotsAroundActivities } from '@/lib/timetable-activity';
 
 interface SchoolClass {
   id: string;
@@ -28,6 +29,8 @@ interface TimetableEntry {
   subject_id: string | null;
   entry_type: 'lesson' | 'break' | 'lunch' | 'activities' | 'activity';
   activity_name: string | null;
+  effective_start_time?: string | null;
+  effective_end_time?: string | null;
   teacher_number?: number;
   teacher_first_name?: string;
   teacher_last_name?: string;
@@ -61,6 +64,74 @@ interface TeacherKeyEntry {
   end_time: string;
   target_classes?: string | null;
 }
+
+type TimelineSegment = {
+  id: string;
+  start_time: string;
+  end_time: string;
+  slot_type: TimeSlot['slot_type'];
+  label: string;
+  activity?: SchoolActivity;
+};
+
+const timeToMinutesView = (value: string | null | undefined): number => {
+  const [hours, minutes] = String(value || '').slice(0, 5).split(':').map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+};
+
+const minutesToTimeView = (minutes: number): string => {
+  const safe = Math.max(0, Math.round(minutes));
+  return `${String(Math.floor(safe / 60) % 24).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+};
+
+const activityMatchesClass = (activity: SchoolActivity, cls: SchoolClass): boolean => {
+  const target = String(activity.target_classes || 'All').trim().toLowerCase();
+  if (!target || target === 'all') return true;
+  const className = String(cls.name || '').toLowerCase();
+  const grade = Number(cls.grade_level ?? cls.level);
+  const isPrimary = (grade >= 1 && grade <= 6) || /grade\s*[1-6]\b|pp\s*[12]|pre[\s-]?primary/.test(className);
+  const isJunior = (grade >= 7 && grade <= 9) || /grade\s*[789]\b|junior|jss/.test(className);
+  const isSenior = (grade >= 10 && grade <= 12) || /grade\s*(10|11|12)\b|senior/.test(className);
+  if (target.includes('primary') && isPrimary) return true;
+  if (target.includes('junior') && isJunior) return true;
+  if (target.includes('senior') && isSenior) return true;
+  return target.split(',').some((part) => {
+    const token = part.trim();
+    const gradeToken = token.match(/grade\s*\d+/)?.[0];
+    return Boolean(token && (className.includes(token) || token.includes(className) || (gradeToken && className.includes(gradeToken))));
+  });
+};
+
+const shiftBaseSlotsForActivities = (baseSlots: TimeSlot[], dayActivities: SchoolActivity[]): TimeSlot[] =>
+  shiftSlotsAroundActivities(
+    baseSlots.filter((slot) => slot.slot_type !== 'activity' && slot.slot_type !== 'activities'),
+    dayActivities,
+  );
+
+const buildTimelineSegments = (
+  baseSlots: TimeSlot[],
+  dayActivities: SchoolActivity[],
+): TimelineSegment[] => {
+  const shifted = shiftBaseSlotsForActivities(baseSlots, dayActivities).map((slot) => ({
+    id: slot.id,
+    start_time: slot.start_time,
+    end_time: slot.end_time,
+    slot_type: slot.slot_type,
+    label: slot.label,
+  }));
+  const activities = dayActivities.map((activity) => ({
+    id: `activity-${activity.id}`,
+    start_time: String(activity.start_time).slice(0, 5),
+    end_time: String(activity.end_time).slice(0, 5),
+    slot_type: 'activity' as const,
+    label: activity.activity_name,
+    activity,
+  }));
+  return [...shifted, ...activities].sort((a, b) =>
+    timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time) ||
+    timeToMinutesView(a.end_time) - timeToMinutesView(b.end_time)
+  );
+};
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
 
@@ -408,7 +479,7 @@ export default function TimetableView() {
     const { data, error: err } = await supabase
       .from('timetable_entries')
       .select(
-        `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name, level_group,
+        `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name, level_group, effective_start_time, effective_end_time,
         teachers(teacher_number, first_name, last_name), subjects(name, code)`
       )
       .eq('school_id', user?.schoolId);
@@ -422,6 +493,8 @@ export default function TimetableView() {
       subject_id: entry.subject_id,
       entry_type: entry.entry_type,
       activity_name: entry.activity_name,
+      effective_start_time: entry.effective_start_time,
+      effective_end_time: entry.effective_end_time,
       teacher_number: entry.teachers?.teacher_number,
       teacher_first_name: entry.teachers?.first_name,
       teacher_last_name: entry.teachers?.last_name,
@@ -838,6 +911,108 @@ export default function TimetableView() {
     const lessonSummary = countLessons(slotsForTable);
     const hasActivitySlots = slotsForTable.some((s) => s.slot_type === 'activities' || s.slot_type === 'activity');
     const showLegacyActivityColumn = !hasActivitySlots && lessonSummary.afterLunch > 0;
+
+    const hasTimedActivities = activities.some((activity) =>
+      classesToRender.some((cls) => activityMatchesClass(activity, cls))
+    );
+
+    if (hasTimedActivities) {
+      return (
+        <div id={tableId} className="bb-wrap rounded-lg overflow-hidden">
+          <div className="mb-4 text-center">
+            <h2 className="text-2xl font-black tracking-tighter text-blue-400 uppercase">
+              {schoolName || 'School'} — SCHOOL TIMETABLE
+            </h2>
+            <p className="text-green-400 font-bold text-sm mt-1">
+              {classesToRender.length === 1
+                ? `Class: ${displayClassName(classesToRender[0])}`
+                : `${classesToRender.length} classes`}
+            </p>
+            <p className="text-blue-300 text-xs mt-1">
+              Fixed activities use exact times; lessons and breaks move only on the affected day/class.
+            </p>
+            <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
+          </div>
+          <div className="space-y-5">
+            {DAYS.map((day, dayIdx) => classesToRender.map((cls) => {
+              const dayActivities = activities.filter((activity) =>
+                activity.day_of_week === dayIdx + 1 && activityMatchesClass(activity, cls)
+              );
+              const segments = buildTimelineSegments(rawSlotsForTable, dayActivities);
+              return (
+                <div key={`${day}-${cls.id}`} className="rounded-xl border border-gray-600 overflow-x-auto">
+                  <div className="px-3 py-2 bg-gray-900 text-blue-300 font-black text-xs uppercase tracking-wide">
+                    {day} · {displayClassName(cls)}
+                    {dayActivities.length > 0 && (
+                      <span className="ml-2 text-green-300 font-semibold normal-case">
+                        {dayActivities.map((activity) => `${activity.activity_name} ${fmt(activity.start_time)}–${fmt(activity.end_time)}`).join(' · ')}
+                      </span>
+                    )}
+                  </div>
+                  <table className="tt-table tt-day-table">
+                    <thead>
+                      <tr>
+                        <th className="tt-header">DAY</th>
+                        <th className="tt-header">CLASS</th>
+                        {segments.map((segment) => (
+                          <th key={segment.id} className={segment.slot_type === 'activity' ? 'tt-header' : segment.slot_type === 'break' || segment.slot_type === 'lunch' ? 'tt-break-header' : 'tt-header'} style={segment.slot_type === 'activity' ? { color: '#33cc33' } : undefined}>
+                            <span style={{ display: 'block' }}>{segment.slot_type === 'activity' ? 'ACTIVITY' : segment.slot_type === 'break' ? 'BREAK' : segment.slot_type === 'lunch' ? 'LUNCH' : fmt(segment.start_time) + '–' + fmt(segment.end_time) }</span>
+                            {segment.slot_type === 'lesson' && <span style={{ fontSize: '0.55rem', color: '#aaa', display: 'block' }}>{segment.label}</span>}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="tt-day">{day}</td>
+                        <td className="tt-class">{displayClassName(cls)}</td>
+                        {segments.map((segment) => {
+                          if (segment.slot_type === 'activity') {
+                            return (
+                              <td key={segment.id} className="tt-activity">
+                                <strong>{segment.activity?.activity_name?.toUpperCase() || segment.label.toUpperCase()}</strong>
+                                <span style={{ fontSize: '0.45rem', color: '#8f8', display: 'block', marginTop: '2px' }}>{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
+                              </td>
+                            );
+                          }
+                          if (segment.slot_type === 'break' || segment.slot_type === 'lunch') {
+                            return (
+                              <td key={segment.id} className={segment.slot_type === 'lunch' ? 'tt-lunch' : 'tt-break'}>
+                                <strong>{segment.slot_type === 'lunch' ? 'LUNCH' : 'BREAK'}</strong>
+                                <span style={{ fontSize: '0.45rem', color: '#aaa', display: 'block', marginTop: '2px' }}>{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
+                              </td>
+                            );
+                          }
+                          const segmentEntries = getEntries(dayIdx + 1, cls.id, segment as TimeSlot);
+                          return (
+                            <td key={segment.id} className="tt-cell">
+                              {getCellDisplay(segmentEntries)}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              );
+            }))}
+          </div>
+          {teacherKey.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-gray-700">
+              <h3 className="text-blue-400 font-black text-xs uppercase mb-3 tracking-widest">Teacher Reference Key</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {teacherKey.map(t => (
+                  <div key={t.teacher_number} className="text-[0.65rem] flex flex-col">
+                    <span className="text-blue-300 font-bold">T{t.teacher_number}: {t.teacher_name}</span>
+                    <span className="text-gray-500 italic">({t.subjects.join(', ')})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
 
     return (
 

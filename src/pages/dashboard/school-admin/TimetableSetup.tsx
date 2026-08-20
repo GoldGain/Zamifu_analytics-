@@ -338,7 +338,21 @@ export default function TimetableSetup() {
     const name = activityDraft.activity_name.trim();
     if (!name) { toast.error('Enter an activity name'); return; }
     if (!normalizeTime(activityDraft.start_time) || !normalizeTime(activityDraft.end_time)) { toast.error('Enter valid activity times'); return; }
-    if (activityDraft.end_time <= activityDraft.start_time) { toast.error('Activity end time must be after its start time'); return; }
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = value.slice(0, 5).split(':').map(Number);
+      return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+    };
+    const startMinutes = toMinutes(activityDraft.start_time);
+    const endMinutes = toMinutes(activityDraft.end_time);
+    if (endMinutes <= startMinutes) { toast.error('Activity end time must be after its start time'); return; }
+    const overlapsExisting = activities.some((activity) =>
+      activity.day_of_week === activityDraft.day_of_week &&
+      startMinutes < toMinutes(activity.end_time) && endMinutes > toMinutes(activity.start_time)
+    );
+    if (overlapsExisting) {
+      toast.error('This activity overlaps another activity on the same day. Choose a different time so activities never share an interval.');
+      return;
+    }
     setSavingActivity(true);
     try {
       const { data, error } = await supabaseUntyped.from('after_school_activities').insert({
@@ -531,7 +545,7 @@ export default function TimetableSetup() {
           <Plus className="w-5 h-5 text-emerald-600" />
           Scheduled Activities
         </h2>
-        <p className="text-sm text-gray-600 mb-4">Add PPI, games, guidance and counselling, debate club, or any other activity at a specific day and time. Use a target such as <strong>All</strong>, <strong>Grade 1</strong>, or <strong>Primary and Junior School</strong>.</p>
+        <p className="text-sm text-gray-600 mb-4">Add one or more activities for each day using exact start and end times. Activities may be any duration, including Friday morning PPI, and the timetable will block lessons and other activities during the interval. Use a target such as <strong>All</strong>, <strong>Grade 1</strong>, or <strong>Primary and Junior School</strong>.</p>
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
