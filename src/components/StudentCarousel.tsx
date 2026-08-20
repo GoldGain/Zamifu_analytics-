@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, ArrowRight, Compass, LogIn } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight, Compass, LogIn, FileText } from 'lucide-react';
 import { Link } from 'react-router';
 
 interface Slide {
@@ -129,6 +129,14 @@ export default function StudentCarousel() {
                 Get Started <ArrowRight className="w-5 h-5" />
               </span>
             </Link>
+            <a
+              href="/zamifu-quick-startup-guide.pdf"
+              download="Zamifu_Quick_Startup_Guide.pdf"
+              className="inline-flex items-center gap-2 bg-black/30 backdrop-blur-md border border-[#E6F24B]/80 text-[#E6F24B] px-5 py-3 rounded-full text-sm font-bold hover:bg-[#E6F24B] hover:text-[#1A1A1A] transition-colors cursor-pointer"
+              aria-label="Download the Zamifu Quick Startup Guide"
+            >
+              <FileText className="w-4 h-4" /> Quick Startup
+            </a>
           </div>
 
           {/* WhatsApp contact action */}
