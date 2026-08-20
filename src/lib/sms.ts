@@ -389,18 +389,13 @@ export function getDefaultPassword(role: string, admissionNumber?: string): stri
  * Request a password reset OTP via SMS
  */
 export interface PasswordResetAccountSummary {
+  id: string;
   display_name: string;
   role: string;
   masked_email: string | null;
 }
 
-export async function requestPasswordResetOTP(phone: string): Promise<{
-  success: boolean;
-  message: string;
-  account?: PasswordResetAccountSummary;
-}> {
-  const { supabase } = await import('@/lib/supabase/client');
-  const { data: { session } } = await supabase.auth.getSession();
+async function callPhoneResetFunction(body: Record<string, unknown>): Promise<any> {
   const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
   const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXAiLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXQAJ1hkCiE9NldaoqNO3oid8CV7xUgTM';
 
@@ -409,14 +404,29 @@ export async function requestPasswordResetOTP(phone: string): Promise<{
     headers: {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_ANON_KEY,
-      ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
     },
-    body: JSON.stringify({ action: 'request', phone }),
+    body: JSON.stringify(body),
   });
 
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Failed to send OTP');
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Phone reset request failed');
   return result;
+}
+
+export async function lookupPasswordResetAccounts(phone: string): Promise<{
+  success: boolean;
+  message: string;
+  accounts: PasswordResetAccountSummary[];
+}> {
+  return callPhoneResetFunction({ action: 'lookup', phone });
+}
+
+export async function requestPasswordResetOTP(phone: string, accountId: string): Promise<{
+  success: boolean;
+  message: string;
+  account?: PasswordResetAccountSummary;
+}> {
+  return callPhoneResetFunction({ action: 'request', phone, account_id: accountId });
 }
 
 /**
@@ -424,23 +434,10 @@ export async function requestPasswordResetOTP(phone: string): Promise<{
  */
 export async function verifyPasswordResetOTP(
   phone: string,
-  otp: string
+  otp: string,
+  accountId: string
 ): Promise<{ success: boolean; user_id: string; message: string }> {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXAiLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXQAJ1hkCiE9NldaoqNO3oid8CV7xUgTM';
-
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ action: 'verify', phone, otp }),
-  });
-
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'OTP verification failed');
-  return result;
+  return callPhoneResetFunction({ action: 'verify', phone, otp, account_id: accountId });
 }
 
 /**
@@ -449,21 +446,14 @@ export async function verifyPasswordResetOTP(
 export async function resetPasswordWithOTP(
   phone: string,
   otp: string,
-  newPassword: string
+  newPassword: string,
+  accountId: string
 ): Promise<{ success: boolean; message: string }> {
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
-  const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXAiLCJpYXQiOjE3NzkzMTI1NDIsImV4cCI6MjA5NDg4ODU0Mn0.aMqkjlgMAWxXQAJ1hkCiE9NldaoqNO3oid8CV7xUgTM';
-
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ action: 'reset', phone, otp, new_password: newPassword }),
+  return callPhoneResetFunction({
+    action: 'reset',
+    phone,
+    otp,
+    account_id: accountId,
+    new_password: newPassword,
   });
-
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'Password reset failed');
-  return result;
 }

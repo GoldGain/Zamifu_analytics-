@@ -8,9 +8,9 @@ const corsHeaders = {
 
 const OLYMPUS_API_URL = "https://sms.ots.co.ke/api/v3/sms/send";
 // Reuse the credential used by the existing results-notification SMS path.
-// Prefer a Supabase secret when present; the server-side fallback preserves the
-// current working production configuration without exposing it to the browser.
-const OLYMPUS_API_TOKEN = Deno.env.get("OLYMPUS_API_TOKEN") || "3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbef70cf";
+// The token is supplied only through Supabase Edge Function secrets and is never
+// embedded in the browser bundle or committed source.
+const OLYMPUS_API_TOKEN = Deno.env.get("OLYMPUS_API_TOKEN") || "";
 const OLYMPUS_SENDER_ID = Deno.env.get("OLYMPUS_SENDER_ID") || "PROCALL";
 
 type SmsResult = { success: boolean; messageId?: string; error?: string };
@@ -31,6 +31,7 @@ function json(body: unknown, status = 200) {
 
 function normalizePhone(phone: string): string {
   let value = String(phone || "").trim().replace(/\s+/g, "");
+  if (!value) return "";
   if (value.startsWith("0")) value = "+254" + value.slice(1);
   else if (value.startsWith("254")) value = "+" + value;
   else if (value.startsWith("7") || value.startsWith("1")) value = "+254" + value;
@@ -119,54 +120,60 @@ function displayName(firstName?: string | null, lastName?: string | null): strin
   return name || "Account holder";
 }
 
-async function findResetUser(adminClient: any, phone: string): Promise<ResetAccount | null> {
+async function findResetUsers(adminClient: any, phone: string): Promise<ResetAccount[]> {
   const candidates = phoneCandidates(phone);
-  const { data: profile } = await adminClient
+  const accounts: ResetAccount[] = [];
+
+  const { data: profiles } = await adminClient
     .from("profiles")
-    .select("id, school_id, first_name, last_name, email, role")
+    .select("id, school_id, first_name, last_name, email, role, is_active, created_at")
     .in("phone", candidates)
     .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (profile) {
-    return {
+    .limit(50);
+
+  for (const profile of profiles || []) {
+    if (!profile?.id || profile.is_active === false) continue;
+    accounts.push({
       id: profile.id,
       school_id: profile.school_id,
       display_name: displayName(profile.first_name, profile.last_name),
       role: profile.role || "account",
       masked_email: maskEmail(profile.email),
-    };
+    });
   }
 
-  const { data: teacher } = await adminClient
+  // Some teacher records retain the phone number even when the corresponding
+  // profile row does not. Include those login owners, but never include a
+  // learner's parent_phone or emergency phone as a reset target.
+  const { data: teachers } = await adminClient
     .from("teachers")
-    .select("profile_id, school_id, first_name, last_name, email")
+    .select("profile_id, school_id, first_name, last_name, email, is_active")
     .in("phone", candidates)
-    .limit(1)
-    .maybeSingle();
-  if (teacher?.profile_id) {
-    return {
+    .limit(50);
+
+  for (const teacher of teachers || []) {
+    if (!teacher?.profile_id || teacher.is_active === false) continue;
+    if (accounts.some((account) => account.id === teacher.profile_id)) continue;
+    accounts.push({
       id: teacher.profile_id,
       school_id: teacher.school_id,
       display_name: displayName(teacher.first_name, teacher.last_name),
       role: "teacher",
       masked_email: maskEmail(teacher.email),
-    };
+    });
   }
 
-  // Never use a learner's parent_phone or emergency phone to reset a learner
-  // account. Those numbers belong to a contact, not necessarily to the login owner.
-  return null;
+  return accounts;
 }
 
 async function sendResetSms(adminClient: any, user: ResetAccount, phone: string, message: string): Promise<SmsResult> {
-  if (!user.school_id) return { success: false, error: "SMS provider is not configured for this school." };
+  if (!user.school_id) return sendViaOlympus(phone, message);
   const { data: settings } = await adminClient
     .from("school_settings")
     .select("sms_provider, sms_sender_id, sms_api_key, sms_username")
     .eq("school_id", user.school_id)
     .maybeSingle();
-  const provider = settings?.sms_provider;
+  const provider = settings?.sms_provider || "olympus";
   if (provider === "africastalking") {
     if (!settings.sms_api_key || !settings.sms_username) {
       return { success: false, error: "SMS provider credentials are missing." };
@@ -179,12 +186,24 @@ async function sendResetSms(adminClient: any, user: ResetAccount, phone: string,
 
 async function handleResetAction(adminClient: any, action: string, body: any) {
   const phone = normalizePhone(body.phone || "");
-  if (!phone) return json({ error: "Enter a valid phone number." }, 400);
+  if (!/^\+254[17]\d{8}$/.test(phone)) return json({ error: "Enter a valid Kenyan phone number, for example 0712345678." }, 400);
+
+  const accountId = String(body.account_id || "").trim();
+  const users = await findResetUsers(adminClient, phone);
+  if (!users.length) return json({ success: false, error: "No account is registered with this phone number." }, 404);
+
+  if (action === "lookup") {
+    return json({
+      success: true,
+      message: users.length === 1 ? "Account found. Select it to receive a reset code." : "Select the account you want to reset.",
+      accounts: users.map(({ id, display_name, role, masked_email }) => ({ id, display_name, role, masked_email })),
+    });
+  }
+
+  const user = users.find((account) => account.id === accountId);
+  if (!user) return json({ error: "Select a valid account for this phone number." }, 400);
 
   if (action === "request") {
-    const user = await findResetUser(adminClient, phone);
-    if (!user) return json({ success: false, error: "No account is registered with this phone number." }, 404);
-
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const otpHash = await hashOtp(otp);
     await adminClient.from("password_reset_otps").delete().eq("phone", phone);
@@ -214,6 +233,7 @@ async function handleResetAction(adminClient: any, action: string, body: any) {
       success: true,
       message: "Reset code sent successfully.",
       account: {
+        id: user.id,
         display_name: user.display_name,
         role: user.role,
         masked_email: user.masked_email,
@@ -223,10 +243,13 @@ async function handleResetAction(adminClient: any, action: string, body: any) {
 
   const otp = String(body.otp || "").trim();
   if (!/^\d{6}$/.test(otp)) return json({ error: "Enter the 6-digit reset code." }, 400);
+  if (action !== "verify" && action !== "reset") return json({ error: "Unknown reset action." }, 400);
+
   const { data: record } = await adminClient
     .from("password_reset_otps")
     .select("id, user_id, otp_hash, expires_at, attempts, verified_at")
     .eq("phone", phone)
+    .eq("user_id", accountId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -274,7 +297,7 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
     // Password reset is intentionally available without an existing session.
-    if (action === "request" || action === "verify" || action === "reset") {
+    if (action === "lookup" || action === "request" || action === "verify" || action === "reset") {
       return await handleResetAction(adminClient, action, body);
     }
 
