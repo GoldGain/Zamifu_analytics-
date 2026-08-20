@@ -759,17 +759,22 @@ export default function TimetableView() {
       const filename = classId
         ? `${(schoolName || 'school').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${(className || classId).replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-timetable.pdf`
         : `${(schoolName || 'school').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-full-timetable.pdf`;
-      await html2pdf()
-        .set({
-          margin: [0.05, 0.05, 0.05, 0.05],
-          filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: 1600 },
-          jsPDF: { unit: 'in', format: classId ? 'a4' : 'a3', orientation: 'landscape', compress: true },
-        })
-        .from(element)
-        .save();
+      if (classId) element.classList.add('pdf-class-export');
+      try {
+        await html2pdf()
+          .set({
+            margin: [0.05, 0.05, 0.05, 0.05],
+            filename,
+            image: { type: 'jpeg', quality: 0.98 },
+            pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: classId ? 1200 : 1600 },
+            jsPDF: { unit: 'in', format: classId ? 'a4' : 'a3', orientation: 'landscape', compress: true },
+          })
+          .from(element)
+          .save();
+      } finally {
+        if (classId) element.classList.remove('pdf-class-export');
+      }
     } finally {
       setDownloadingClass(null);
     }
@@ -1058,6 +1063,36 @@ export default function TimetableView() {
       white-space: normal;
       line-height: 1.05;
     }
+    .pdf-class-export {
+      width: 1080px !important;
+      max-width: 1080px !important;
+      padding: 10px !important;
+    }
+    .pdf-class-export .tt-table {
+      width: 100% !important;
+      min-width: 0 !important;
+      table-layout: fixed !important;
+    }
+    .pdf-class-export .tt-table th,
+    .pdf-class-export .tt-table td {
+      padding: 3px 2px !important;
+      font-size: 0.56rem !important;
+      line-height: 1.05 !important;
+    }
+    .pdf-class-export .tt-cell {
+      min-width: 0 !important;
+      height: 34px !important;
+      font-size: 0.56rem !important;
+    }
+    .pdf-class-export .tt-break,
+    .pdf-class-export .tt-lunch {
+      width: auto !important;
+      min-width: 0 !important;
+      font-size: 0.48rem !important;
+    }
+    .pdf-class-export .tt-subtime {
+      font-size: 0.37rem !important;
+    }
     @media print {
       .no-print { display: none !important; }
       .bb-wrap { border: none; box-shadow: none; background: white; color: black; }
@@ -1115,6 +1150,35 @@ export default function TimetableView() {
     const hasActivitySlots = slotsForTable.some((s) => s.slot_type === 'activities' || s.slot_type === 'activity');
     const showLegacyActivityColumn = !hasActivitySlots && lessonSummary.afterLunch > 0;
 
+    // Generated entries carry effective per-day times because an exact-time
+    // activity can shift the rest of that day without changing the shared
+    // slot-order columns. Prefer those persisted times so the matrix never
+    // suggests that a lesson overlaps an activity, break, or lunch. Empty
+    // cells use the same shared helper as the generator as a safe fallback.
+    const effectiveSlotsByDayClass = new Map<string, TimeSlot>();
+    DAYS.forEach((_, dayIdx) => {
+      classesToRender.forEach((cls) => {
+        const dayActivities = activities.filter(
+          (activity) => activity.day_of_week === dayIdx + 1 && activityMatchesClass(activity, cls),
+        );
+        shiftBaseSlotsForActivities(slotsForTable, dayActivities).forEach((shiftedSlot) => {
+          effectiveSlotsByDayClass.set(`${dayIdx + 1}-${cls.id}-${shiftedSlot.id}`, shiftedSlot);
+        });
+      });
+    });
+
+    const getCellTime = (
+      entriesForCell: TimetableEntry[],
+      slot: TimeSlot,
+      day: number,
+      cls: SchoolClass,
+    ): string => {
+      const timedEntry = entriesForCell.find((entry) => entry.effective_start_time && entry.effective_end_time);
+      const fallbackSlot = effectiveSlotsByDayClass.get(`${day}-${cls.id}-${slot.id}`) || slot;
+      const start = timedEntry?.effective_start_time || fallbackSlot.start_time;
+      const end = timedEntry?.effective_end_time || fallbackSlot.end_time;
+      return `${fmt(start)}–${fmt(end)}`;
+    };
 
     return (
 
@@ -1133,6 +1197,9 @@ export default function TimetableView() {
                 <p className="text-blue-300 text-xs mt-1">
           {countLessons(slotsForTable).total} lessons/day · {countLessons(slotsForTable).afterLunch} after lunch
           {countLessons(slotsForTable).afterLunch === 0 ? ' · ends at lunch (no post-lunch lesson columns)' : ''}
+        </p>
+        <p className="text-slate-500 text-[0.65rem] mt-1">
+          Cell times show the exact day-specific schedule after any timed activity shifts.
         </p>
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
@@ -1213,7 +1280,7 @@ export default function TimetableView() {
                           return (
                             <td key={slot.id} rowSpan={classesToRender.length} className="tt-break">
                               <strong>BREAK</strong>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block',marginTop:'2px'}}>{fmt(slot.start_time)}–{fmt(slot.end_time)}</span>
+                              <span className="tt-subtime">{getCellTime(getEntries(dayIdx + 1, cls.id, slot), slot, dayIdx + 1, cls)}</span>
                             </td>
                           );
                         }
@@ -1224,7 +1291,7 @@ export default function TimetableView() {
                           return (
                             <td key={slot.id} rowSpan={classesToRender.length} className="tt-lunch">
                               <strong>LUNCH</strong>
-                              <span style={{fontSize:'0.45rem',color:'#aaa',display:'block',marginTop:'2px'}}>{fmt(slot.start_time)}–{fmt(slot.end_time)}</span>
+                              <span className="tt-subtime">{getCellTime(getEntries(dayIdx + 1, cls.id, slot), slot, dayIdx + 1, cls)}</span>
                             </td>
                           );
                         }
@@ -1232,9 +1299,13 @@ export default function TimetableView() {
                       }
                       const cellEntries = getEntries(dayIdx + 1, cls.id, slot);
                       const display = getCellDisplay(cellEntries);
+                      const effectiveTime = getCellTime(cellEntries, slot, dayIdx + 1, cls);
                       return (
                         <td key={slot.id} className="tt-cell">
-                          {display}
+                          {display && <strong>{display}</strong>}
+                          {(display || slot.slot_type === 'lesson') && (
+                            <span className="tt-subtime">{effectiveTime}</span>
+                          )}
                         </td>
                       );
                     })}
