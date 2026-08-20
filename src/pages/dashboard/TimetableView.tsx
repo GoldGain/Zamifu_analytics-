@@ -110,14 +110,22 @@ const normalizeBaseSlotsAroundAnchors = (baseSlots: TimeSlot[]): TimeSlot[] => {
   const lessons = slots
     .filter((slot) => slot.slot_type === 'lesson')
     .sort((a, b) => (a.slot_order ?? 0) - (b.slot_order ?? 0));
+  const lunchAnchor = anchors.find((slot) => slot.slot_type === 'lunch');
+  const zeroAfterLunch = Boolean(
+    lunchAnchor && lessons.every((lesson) => (lesson.slot_order ?? 0) < (lunchAnchor.slot_order ?? 0))
+  );
+  // For zero-after-lunch levels, an older saved lunch clock may overlap
+  // Lessons 5–6. Move lunch after the last pre-lunch lesson instead of
+  // incorrectly moving those lessons into the afternoon.
+  const lessonAnchors = zeroAfterLunch ? anchors.filter((slot) => slot.slot_type !== 'lunch') : anchors;
   let cursor = -Infinity;
   const normalizedLessons = lessons.map((slot) => {
     const duration = Math.max(1, timeToMinutesView(slot.end_time) - timeToMinutesView(slot.start_time));
     let start = Math.max(timeToMinutesView(slot.start_time), cursor);
     let guard = 0;
-    while (guard++ < anchors.length + 2) {
+    while (guard++ < lessonAnchors.length + 2) {
       const end = start + duration;
-      const overlap = anchors.find((anchor) =>
+      const overlap = lessonAnchors.find((anchor) =>
         start < timeToMinutesView(anchor.end_time) && end > timeToMinutesView(anchor.start_time)
       );
       if (!overlap) break;
@@ -131,7 +139,20 @@ const normalizeBaseSlotsAroundAnchors = (baseSlots: TimeSlot[]): TimeSlot[] => {
     };
   });
 
-  return [...anchors, ...normalizedLessons].sort((a, b) =>
+  const normalizedAnchors = zeroAfterLunch && lunchAnchor && normalizedLessons.length > 0
+    ? anchors.map((anchor) => {
+        if (anchor.id !== lunchAnchor.id) return anchor;
+        const originalDuration = Math.max(30, timeToMinutesView(anchor.end_time) - timeToMinutesView(anchor.start_time));
+        const lunchStart = Math.max(timeToMinutesView(anchor.start_time), cursor);
+        return {
+          ...anchor,
+          start_time: minutesToTimeView(lunchStart),
+          end_time: minutesToTimeView(lunchStart + originalDuration),
+        };
+      })
+    : anchors;
+
+  return [...normalizedAnchors, ...normalizedLessons].sort((a, b) =>
     timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time) ||
     (a.slot_order ?? 0) - (b.slot_order ?? 0)
   );
