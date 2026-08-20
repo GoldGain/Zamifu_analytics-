@@ -17,6 +17,7 @@ interface TeacherAssignment {
   lessons_per_week: number;
   is_priority: boolean;
   priority_band: 'none' | 'morning' | 'mid_morning' | 'afternoon';
+  is_double_lesson: boolean;
   available_days: string[];
 }
 
@@ -55,6 +56,7 @@ export default function AssignTeachers() {
     subject_id: '',
     lessons_per_week: 5,
     priority_band: 'none' as const,
+    is_double_lesson: false,
     available_days: [...ALL_DAYS],
   });
 
@@ -131,6 +133,7 @@ export default function AssignTeachers() {
       lessons_per_week: a.lessons_per_week || 5,
       is_priority: a.is_priority || false,
       priority_band: a.priority_band || (a.is_priority ? 'morning' : 'none'),
+      is_double_lesson: a.is_double_lesson || false,
       available_days: Array.isArray(a.available_days) && a.available_days.length > 0
         ? a.available_days
         : [...ALL_DAYS],
@@ -142,6 +145,10 @@ export default function AssignTeachers() {
     e.preventDefault();
     if (!formData.teacher_id || !formData.class_id || !formData.subject_id) {
       setError('Please fill in all required fields.');
+      return;
+    }
+    if (formData.is_double_lesson && formData.lessons_per_week % 2 !== 0) {
+      setError('Double Lesson requires an even Lessons / Week total (for example, 4 periods = two practical blocks).');
       return;
     }
     try {
@@ -158,6 +165,7 @@ export default function AssignTeachers() {
           lessons_per_week: formData.lessons_per_week,
           priority_band: formData.priority_band,
           is_priority: formData.priority_band === 'morning',
+          is_double_lesson: formData.is_double_lesson,
           available_days: formData.available_days,
           assigned_by_admin: true,
           is_active: true,
@@ -167,7 +175,7 @@ export default function AssignTeachers() {
       if (insertError) throw insertError;
 
       setSuccess('Assignment saved successfully!');
-      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'none', available_days: [...ALL_DAYS] });
+      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'none', is_double_lesson: false, available_days: [...ALL_DAYS] });
       await fetchAssignments();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -343,6 +351,21 @@ export default function AssignTeachers() {
                 <p className="text-[11px] text-gray-500 mt-1">The generator prefers the selected band and only falls back when the band cannot fit all weekly lessons.</p>
               </div>
 
+              <label className="flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-3 text-sm text-purple-900">
+                <input
+                  type="checkbox"
+                  checked={formData.is_double_lesson}
+                  onChange={(e) => setFormData({ ...formData, is_double_lesson: e.target.checked })}
+                  className="h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span>
+                  <span className="font-semibold">Double Lesson</span>
+                  <span className="block text-xs text-purple-700">
+                    Consecutive 2-period practical block; never split by a break, lunch, or activity. Use an even weekly total.
+                  </span>
+                </span>
+              </label>
+
               {/* Available Days */}
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide flex items-center gap-1">
@@ -419,6 +442,7 @@ export default function AssignTeachers() {
                     <th className="px-4 py-3 text-left text-xs font-black text-gray-600 uppercase">Learning Area</th>
                     <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Lessons</th>
                     <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Priority</th>
+                    <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Lesson Format</th>
                     <th className="px-4 py-3 text-left text-xs font-black text-gray-600 uppercase">Available Days</th>
                     <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Del</th>
                   </tr>
@@ -426,7 +450,7 @@ export default function AssignTeachers() {
                 <tbody>
                   {assignments.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400 text-sm">
+                      <td colSpan={9} className="px-4 py-10 text-center text-gray-400 text-sm">
                         No assignments yet. Add one using the form.
                       </td>
                     </tr>
@@ -452,6 +476,13 @@ export default function AssignTeachers() {
                               <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-full text-xs font-bold">Afternoon · L7+</span>
                             ) : (
                               <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {a.is_double_lesson ? (
+                              <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">2× consecutive</span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">Single</span>
                             )}
                           </td>
                           <td className="px-4 py-3">

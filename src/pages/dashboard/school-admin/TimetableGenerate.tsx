@@ -414,8 +414,17 @@ export default function TimetableGenerate() {
             .in('class_id', classIds);
         }
 
-        const fixedSlots = createdSlots?.filter(s => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type)) || [];
-        const lessonSlots = createdSlots?.filter(s => s.slot_type === 'lesson').sort((a, b) => a.slot_order - b.slot_order) || [];
+        const orderedSlots = (createdSlots || []).slice().sort((a: any, b: any) => a.slot_order - b.slot_order);
+        const fixedSlots = orderedSlots.filter((s: any) => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type));
+        const lessonSlots = orderedSlots.filter((s: any) => s.slot_type === 'lesson');
+        const nextLessonById = new Map<string, any>();
+        for (let index = 0; index < orderedSlots.length - 1; index++) {
+          const current = orderedSlots[index];
+          const next = orderedSlots[index + 1];
+          if (current.slot_type === 'lesson' && next.slot_type === 'lesson') {
+            nextLessonById.set(String(current.id), next);
+          }
+        }
         const lessonNumberOf = (slot: any) => {
           const parsed = Number(String(slot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
           return Number.isFinite(parsed) ? parsed : lessonSlots.indexOf(slot) + 1;
@@ -515,7 +524,8 @@ export default function TimetableGenerate() {
                 || (bandOrder[aBand] ?? 3) - (bandOrder[bBand] ?? 3);
             });
           for (const assignment of classAssignments) {
-            const lessonsToSchedule = assignment.lessons_per_week || 0;
+            const lessonsToSchedule = Number(assignment.lessons_per_week || 0);
+            const isDoubleLesson = assignment.is_double_lesson === true;
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
@@ -529,71 +539,82 @@ export default function TimetableGenerate() {
                   : lessonSlots;
             const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
             let scheduled = 0;
-            for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
-              const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
-              for (const slot of candidateLessonSlots) {
-                const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
-                const classKey = `${cls.id}-${day}-${slot.id}`;
-                if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                const effectiveTiming = daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
-                if (dayActivities.some((activity) => overlaps(effectiveTiming.start_time, effectiveTiming.end_time, activity.start_time, activity.end_time))) continue;
-                const previousLesson = lessonSlots
-                  .filter(s => s.slot_order < slot.slot_order)
-                  .sort((a, b) => b.slot_order - a.slot_order)[0];
-                const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
-                // Keep Mathematics and Science from being adjacent in either direction.
-                // This prevents Mathematics immediately after Science and Integrated Science immediately after Mathematics.
-                const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
-                const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
-                const isMorningSlot = toMinutes(effectiveTiming.start_time) < toMinutes(config.lunch_start);
-                if (isMorningSlot && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
+
+            // A double lesson is an atomic unit. We validate the whole pair before
+            // mutating either busy set or adding either entry, so a conflict can
+            // never leave a half-scheduled practical block behind.
+            const tryPlaceUnit = (
+              startSlot: any,
+              day: number,
+              dayActivities: ScheduledActivity[],
+              daySlotTimes: Map<string, { start_time: string; end_time: string }>,
+              unitSize: 1 | 2,
+            ): number => {
+              const secondSlot = unitSize === 2 ? nextLessonById.get(String(startSlot.id)) : null;
+              if (unitSize === 2 && !secondSlot) return 0;
+              const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
+              const timings = unitSlots.map((slot: any) =>
+                daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
+              );
+
+              const keys = unitSlots.map((slot: any) => ({
+                teacherKey: `${assignment.teacher_id}-${day}-${slot.id}`,
+                classKey: `${cls.id}-${day}-${slot.id}`,
+              }));
+              if (keys.some(({ teacherKey, classKey }) => teacherBusy.has(teacherKey) || classBusy.has(classKey))) return 0;
+              if (dayActivities.some((activity) => timings.some((timing) =>
+                overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time)))) return 0;
+
+              const previousLesson = lessonSlots
+                .filter((slot: any) => slot.slot_order < startSlot.slot_order)
+                .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
+              const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
+              const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
+              const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
+              const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(config.lunch_start);
+              if (startsInMorning && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) return 0;
+
+              unitSlots.forEach((slot: any, index: number) => {
+                const timing = timings[index];
                 allEntries.push({
                   school_id: schoolId,
                   day_of_week: day,
                   time_slot_id: slot.id,
                   class_id: cls.id,
                   level_group: levelKey,
-                  effective_start_time: effectiveTiming.start_time,
-                  effective_end_time: effectiveTiming.end_time,
+                  effective_start_time: timing.start_time,
+                  effective_end_time: timing.end_time,
                   subject_id: assignment.subject_id,
                   teacher_id: assignment.teacher_id,
-                  entry_type: 'lesson',
+                  entry_type: unitSize === 2 ? 'lesson_double' : 'lesson',
                 });
-                teacherBusy.add(teacherKey);
-                classBusy.add(classKey);
-                classSubjectBySlot.set(classKey, subjectName);
-                scheduled++;
-                break;
-              }
-            }
-            // If the preferred band cannot fit all weekly lessons because of
-            // teacher/class conflicts, fill remaining lessons in the other slots
-            // instead of silently dropping the subject.
-            if (scheduled < lessonsToSchedule) {
-                              for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
-                const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
-                for (const slot of lessonSlots) {
-                  if (preferredLessonSlots.some((s: any) => s.id === slot.id)) continue;
-                  const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
-                  const classKey = `${cls.id}-${day}-${slot.id}`;
-                  if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                  const effectiveTiming = daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
-                  if (dayActivities.some((activity) => overlaps(effectiveTiming.start_time, effectiveTiming.end_time, activity.start_time, activity.end_time))) continue;
+                teacherBusy.add(keys[index].teacherKey);
+                classBusy.add(keys[index].classKey);
+                classSubjectBySlot.set(keys[index].classKey, subjectName);
+              });
+              return unitSize;
+            };
 
-                  const previousLesson = lessonSlots
-                    .filter(s => s.slot_order < slot.slot_order)
-                    .sort((a, b) => b.slot_order - a.slot_order)[0];
-                  const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
-                  const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
-                  const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
-                  if (toMinutes(effectiveTiming.start_time) < toMinutes(config.lunch_start) && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) continue;
-                  allEntries.push({ school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: cls.id, level_group: levelKey, effective_start_time: effectiveTiming.start_time, effective_end_time: effectiveTiming.end_time, subject_id: assignment.subject_id, teacher_id: assignment.teacher_id, entry_type: 'lesson' });
-                  teacherBusy.add(teacherKey); classBusy.add(classKey);
-                  classSubjectBySlot.set(classKey, subjectName); scheduled++;
-                  break;
+            const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean) => {
+              for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+                const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
+                for (const slot of slotsToTry) {
+                  if (skipPreferredStarts && preferredLessonSlots.some((preferred: any) => preferred.id === slot.id)) continue;
+                  const unitSize: 1 | 2 = isDoubleLesson && scheduled + 1 < lessonsToSchedule ? 2 : 1;
+                  const placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, unitSize);
+                  if (placed > 0) {
+                    scheduled += placed;
+                    break;
+                  }
                 }
               }
-            }
+            };
+
+            schedulePass(candidateLessonSlots, false);
+            // If the preferred band cannot fit all weekly lessons because of
+            // teacher/class conflicts, fill remaining units in other slots rather
+            // than silently dropping the subject.
+            if (scheduled < lessonsToSchedule) schedulePass(lessonSlots, true);
           }
         }
       }

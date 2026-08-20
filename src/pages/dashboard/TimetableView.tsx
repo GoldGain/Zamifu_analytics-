@@ -27,7 +27,7 @@ interface TimetableEntry {
   time_slot_id: string;
   teacher_id: string | null;
   subject_id: string | null;
-  entry_type: 'lesson' | 'break' | 'lunch' | 'activities' | 'activity';
+  entry_type: 'lesson' | 'lesson_double' | 'break' | 'lunch' | 'activities' | 'activity';
   activity_name: string | null;
   effective_start_time?: string | null;
   effective_end_time?: string | null;
@@ -713,7 +713,7 @@ export default function TimetableView() {
       if (!entry.subject_name && !entry.subject_code) return;
       const code = getSubjectCode(entry.subject_name || '', entry.subject_code || '');
       const teacherNum = entry.teacher_number ? String(entry.teacher_number) : '';
-      parts.push(`${code}${teacherNum}`);
+      parts.push(`${code}${teacherNum}${entry.entry_type === 'lesson_double' ? ' ×2' : ''}`);
     });
     return parts.join(' ') || '';
   };
