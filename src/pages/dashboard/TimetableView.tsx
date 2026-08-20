@@ -1029,6 +1029,68 @@ export default function TimetableView() {
     .tt-flex-activity strong { color: #15803d; }
     .tt-flex-activity span { color: #166534; }
     .tt-flex-gap { background: #f8fafc; border-right-style: dashed; }
+    .tt-readable-table {
+      width: 100%;
+      min-width: 620px;
+      border-collapse: separate;
+      border-spacing: 0;
+      color: #0f172a;
+      background: #ffffff;
+      font-size: 0.78rem;
+    }
+    .tt-readable-table th {
+      background: #eff6ff;
+      color: #1e3a8a;
+      border-bottom: 1px solid #bfdbfe;
+      padding: 0.65rem 0.75rem;
+      text-align: left;
+      font-size: 0.66rem;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+    }
+    .tt-readable-table td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 0.58rem 0.75rem;
+      vertical-align: middle;
+    }
+    .tt-readable-table tbody tr:last-child td { border-bottom: none; }
+    .tt-readable-table tbody tr:hover td { background: #f8fafc; }
+    .tt-readable-day {
+      width: 112px;
+      min-width: 112px;
+      background: #f8fafc;
+      color: #1e293b;
+      font-weight: 900;
+      vertical-align: top !important;
+      padding-top: 0.75rem !important;
+    }
+    .tt-readable-day strong { display: block; font-size: 0.78rem; }
+    .tt-readable-day small { display: block; margin-top: 0.22rem; color: #64748b; font-size: 0.62rem; font-weight: 600; }
+    .tt-readable-time { width: 132px; min-width: 132px; color: #334155; font-weight: 800; white-space: nowrap; }
+    .tt-readable-detail { min-width: 170px; font-weight: 800; color: #0f172a; }
+    .tt-readable-subject { min-width: 160px; color: #475569; font-weight: 700; }
+    .tt-readable-type {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0.22rem 0.55rem;
+      font-size: 0.62rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .tt-readable-type.lesson { background: #dbeafe; color: #1d4ed8; }
+    .tt-readable-type.break { background: #f1f5f9; color: #475569; }
+    .tt-readable-type.lunch { background: #fef3c7; color: #a16207; }
+    .tt-readable-type.activity { background: #dcfce7; color: #15803d; }
+    .tt-readable-empty { color: #94a3b8; font-style: italic; }
+    @media (max-width: 700px) {
+      .tt-readable-table { min-width: 560px; font-size: 0.72rem; }
+      .tt-readable-table th, .tt-readable-table td { padding: 0.5rem 0.55rem; }
+      .tt-readable-day { width: 92px; min-width: 92px; }
+      .tt-readable-time { width: 116px; min-width: 116px; }
+    }
     .tt-activity {
       writing-mode: horizontal-tb;
       font-weight: bold;
@@ -1115,11 +1177,10 @@ export default function TimetableView() {
     );
 
     if (hasTimedActivities) {
-      // Activities are fixed intervals, while lessons/breaks are shifted only on
-      // the affected day. Render one weekly time board per class. Each row uses
-      // proportional widths, so exact intervals remain readable without creating
-      // dozens of tiny cross-day columns.
-      const renderTimedClassBoard = (cls: SchoolClass) => {
+      // Use one readable, day-grouped table per class. This keeps the exact
+      // activity intervals and shifted lesson times while avoiding dozens of
+      // narrow proportional cells that become unreadable on phones and PDFs.
+      const renderTimedClassTable = (cls: SchoolClass) => {
         const dayRows = DAYS.map((day, dayIdx) => ({
           day,
           dayIdx,
@@ -1128,129 +1189,76 @@ export default function TimetableView() {
           ),
           segments: buildTimelineSegments(rawSlotsForTable, activities.filter((activity) =>
             activity.day_of_week === dayIdx + 1 && activityMatchesClass(activity, cls)
-          )),
+          )).sort((a, b) => timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time)),
         }));
 
-        const allSegments = dayRows.flatMap((row) => row.segments);
-        const boardStart = Math.min(...allSegments.map((segment) => timeToMinutesView(segment.start_time)));
-        const boardEnd = Math.max(...allSegments.map((segment) => timeToMinutesView(segment.end_time)));
-        const boardDuration = Math.max(1, boardEnd - boardStart);
-        const hourlyMarks: number[] = [];
-        for (let mark = Math.ceil(boardStart / 60) * 60; mark <= boardEnd; mark += 60) hourlyMarks.push(mark);
-        if (hourlyMarks[0] !== boardStart) hourlyMarks.unshift(boardStart);
-        if (hourlyMarks[hourlyMarks.length - 1] !== boardEnd) hourlyMarks.push(boardEnd);
-
-        const renderSegment = (segment: TimelineSegment, dayIdx: number) => {
-          const startMinutes = timeToMinutesView(segment.start_time);
-          const endMinutes = timeToMinutesView(segment.end_time);
-          const duration = Math.max(1, endMinutes - startMinutes);
-          const segmentEntries = segment.slot_type === 'lesson'
-            ? getEntries(dayIdx + 1, cls.id, segment as TimeSlot)
-            : [];
-          const segmentClass = segment.slot_type === 'activity'
-            ? 'tt-flex-segment tt-flex-activity'
-            : segment.slot_type === 'lunch'
-              ? 'tt-flex-segment tt-flex-lunch'
-              : segment.slot_type === 'break'
-                ? 'tt-flex-segment tt-flex-break'
-                : 'tt-flex-segment tt-flex-lesson';
-
-          return (
-            <div
-              key={`segment-${dayIdx}-${segment.id}-${startMinutes}`}
-              className={segmentClass}
-              style={{ flexGrow: duration, flexBasis: 0 }}
-              title={`${segment.label}: ${fmt(segment.start_time)}–${fmt(segment.end_time)}`}
-            >
-              {segment.slot_type === 'activity' ? (
-                <>
-                  <strong>{segment.activity?.activity_name?.toUpperCase() || segment.label.toUpperCase()}</strong>
-                  <span>{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
-                </>
-              ) : segment.slot_type === 'break' || segment.slot_type === 'lunch' ? (
-                <>
-                  <strong>{segment.slot_type === 'lunch' ? 'LUNCH' : 'BREAK'}</strong>
-                  <span>{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
-                </>
-              ) : (
-                <>
-                  <strong>{getCellDisplay(segmentEntries) || '—'}</strong>
-                  <span>{segment.label}</span>
-                  <small>{fmt(segment.start_time)}–{fmt(segment.end_time)}</small>
-                </>
-              )}
-            </div>
-          );
-        };
-
-        const renderDayTimeline = (row: { day: string; dayIdx: number; segments: TimelineSegment[] }) => {
-          const ordered = [...row.segments].sort((a, b) =>
-            timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time)
-          );
-          const children: React.ReactNode[] = [];
-          let cursor = boardStart;
-          ordered.forEach((segment) => {
-            const segmentStart = timeToMinutesView(segment.start_time);
-            if (segmentStart > cursor) {
-              children.push(
-                <div
-                  key={`gap-${row.day}-${cursor}`}
-                  className="tt-flex-gap"
-                  style={{ flexGrow: segmentStart - cursor, flexBasis: 0 }}
-                  aria-hidden="true"
-                />
-              );
-            }
-            children.push(renderSegment(segment, row.dayIdx));
-            cursor = Math.max(cursor, timeToMinutesView(segment.end_time));
-          });
-          if (cursor < boardEnd) {
-            children.push(
-              <div
-                key={`tail-${row.day}`}
-                className="tt-flex-gap"
-                style={{ flexGrow: boardEnd - cursor, flexBasis: 0 }}
-                aria-hidden="true"
-              />
-            );
-          }
-          return children;
-        };
-
         return (
-          <div key={cls.id} className="timed-class-weekly rounded-xl border border-gray-300 overflow-hidden bg-white">
-            <div className="px-4 py-3 bg-gray-900 text-white flex flex-wrap items-center justify-between gap-2">
+          <div key={cls.id} className="timed-class-table rounded-xl border border-slate-300 overflow-hidden bg-white shadow-sm">
+            <div className="px-4 py-3 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-base font-black tracking-wide">{displayClassName(cls)}</h3>
-                <p className="text-[0.68rem] text-blue-200">Weekly timetable · exact activity intervals</p>
+                <p className="text-[0.72rem] text-blue-200">Weekly timetable · clear daily intervals</p>
               </div>
-              <div className="text-[0.65rem] text-green-300 font-semibold">
-                {dayRows.flatMap((row) => row.dayActivities).map((activity) =>
-                  `${DAYS[activity.day_of_week - 1]} · ${activity.activity_name} ${fmt(activity.start_time)}–${fmt(activity.end_time)}`
-                ).join(' · ') || 'No fixed activities'}
+              <div className="flex flex-wrap gap-1.5 text-[0.65rem] text-green-200 font-semibold">
+                {dayRows.flatMap((row) => row.dayActivities).map((activity) => (
+                  <span key={activity.id} className="rounded-full border border-green-300/40 bg-green-400/10 px-2 py-1">
+                    {DAYS[activity.day_of_week - 1]} · {activity.activity_name} {fmt(activity.start_time)}–{fmt(activity.end_time)}
+                  </span>
+                ))}
               </div>
             </div>
-            <div className="tt-weekly-board" style={{ '--board-duration': boardDuration } as React.CSSProperties}>
-              <div className="tt-flex-ruler-row">
-                <div className="tt-flex-ruler-day">TIME</div>
-                <div className="tt-flex-ruler">
-                  {hourlyMarks.map((mark) => (
-                    <span
-                      key={`mark-${mark}`}
-                      className="tt-flex-ruler-mark"
-                      style={{ left: `${((mark - boardStart) / boardDuration) * 100}%` }}
-                    >
-                      {fmt(minutesToTimeView(mark))}
-                    </span>
+            <div className="overflow-x-auto">
+              <table className="tt-readable-table">
+                <thead>
+                  <tr>
+                    <th>DAY</th>
+                    <th>TIME</th>
+                    <th>TYPE</th>
+                    <th>INTERVAL / ACTIVITY</th>
+                    <th>LEARNING AREA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayRows.map((row) => (
+                    row.segments.length > 0 ? row.segments.map((segment, segmentIndex) => {
+                      const segmentEntries = segment.slot_type === 'lesson'
+                        ? getEntries(row.dayIdx + 1, cls.id, segment as TimeSlot)
+                        : [];
+                      const isActivity = segment.slot_type === 'activity';
+                      const isBreak = segment.slot_type === 'break';
+                      const isLunch = segment.slot_type === 'lunch';
+                      const typeLabel = isActivity ? 'ACTIVITY' : isLunch ? 'LUNCH' : isBreak ? 'BREAK' : 'LESSON';
+                      const typeClass = isActivity ? 'tt-readable-type activity' : isLunch ? 'tt-readable-type lunch' : isBreak ? 'tt-readable-type break' : 'tt-readable-type lesson';
+                      const detail = isActivity
+                        ? segment.activity?.activity_name || segment.label.replace(/^ACTIVITY:\s*/i, '')
+                        : isLunch
+                          ? 'Lunch break'
+                          : isBreak
+                            ? 'Break'
+                            : segment.label;
+                      return (
+                        <tr key={'timed-' + cls.id + '-' + row.day + '-' + segment.id + '-' + segmentIndex}>
+                          {segmentIndex === 0 && (
+                            <td rowSpan={row.segments.length} className="tt-readable-day">
+                              <strong>{row.day}</strong>
+                              {row.dayActivities.length > 0 && <small>{row.dayActivities.length} fixed activit{row.dayActivities.length === 1 ? 'y' : 'ies'}</small>}
+                            </td>
+                          )}
+                          <td className="tt-readable-time">{fmt(segment.start_time)}–{fmt(segment.end_time)}</td>
+                          <td><span className={typeClass}>{typeLabel}</span></td>
+                          <td className="tt-readable-detail">{detail}</td>
+                          <td className="tt-readable-subject">{segment.slot_type === 'lesson' ? (getCellDisplay(segmentEntries) || '—') : '—'}</td>
+                        </tr>
+                      );
+                    }) : (
+                      <tr key={'timed-empty-' + cls.id + '-' + row.day}>
+                        <td className="tt-readable-day"><strong>{row.day}</strong></td>
+                        <td colSpan={4} className="tt-readable-empty">No scheduled entries</td>
+                      </tr>
+                    )
                   ))}
-                </div>
-              </div>
-              {dayRows.map((row) => (
-                <div key={row.day} className="tt-flex-row">
-                  <div className="tt-flex-day">{row.day}</div>
-                  <div className="tt-flex-timeline">{renderDayTimeline(row)}</div>
-                </div>
-              ))}
+                </tbody>
+              </table>
             </div>
           </div>
         );
@@ -1266,12 +1274,12 @@ export default function TimetableView() {
               {classesToRender.length === 1 ? 'Class: ' + displayClassName(classesToRender[0]) : classesToRender.length + ' classes'}
             </p>
             <p className="text-blue-300 text-xs mt-1">
-              One weekly time board per class. Fixed activities use exact times; lessons and breaks move only on the affected day.
+              One readable weekly table per class. Each day is grouped clearly; activities use exact times and lessons move only on the affected day.
             </p>
             <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
           </div>
           <div className="space-y-5">
-            {classesToRender.map(renderTimedClassBoard)}
+            {classesToRender.map(renderTimedClassTable)}
           </div>
           {teacherKey.length > 0 && (
             <div className="mt-6 pt-4 border-t border-gray-700">
