@@ -93,11 +93,15 @@ async function sendViaOlympus(phone: string, message: string): Promise<SMSRespon
 
   const data = await response.json();
 
-  if (response.ok) {
+  const providerStatus = String(data?.status || '').toLowerCase();
+  const providerMessage = String(data?.message || data?.remarks || '').trim();
+  const providerFailure = providerStatus === 'error'
+    || data?.success === false
+    || /unauthenticated|unauthorized|invalid token|authentication failed|insufficient balance|failed/i.test(providerMessage);
+  if (response.ok && !providerFailure) {
     return { success: true, message: 'SMS sent successfully', data };
-  } else {
-    return { success: false, error: data.message || `HTTP ${response.status}` };
   }
+  return { success: false, error: providerMessage || `HTTP ${response.status}` };
 }
 
 /**

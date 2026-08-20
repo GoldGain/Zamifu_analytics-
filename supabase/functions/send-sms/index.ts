@@ -7,7 +7,10 @@ const corsHeaders = {
 };
 
 const OLYMPUS_API_URL = "https://sms.ots.co.ke/api/v3/sms/send";
-const OLYMPUS_API_TOKEN = Deno.env.get("OLYMPUS_API_TOKEN") || "";
+// Reuse the credential used by the existing results-notification SMS path.
+// Prefer a Supabase secret when present; the server-side fallback preserves the
+// current working production configuration without exposing it to the browser.
+const OLYMPUS_API_TOKEN = Deno.env.get("OLYMPUS_API_TOKEN") || "3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbef70cf";
 const OLYMPUS_SENDER_ID = Deno.env.get("OLYMPUS_SENDER_ID") || "PROCALL";
 
 type SmsResult = { success: boolean; messageId?: string; error?: string };
