@@ -48,22 +48,27 @@ export function shiftSlotsAroundActivities<T extends TimedSlot>(
 ): T[] {
   if (activities.length === 0) return baseSlots;
   const orderedActivities = [...activities].sort((a, b) => timeToMinutes(a.start_time) - timeToMinutes(b.start_time));
-  let shift = 0;
+  let cursor = -Infinity;
+
   return baseSlots.map((slot) => {
     const duration = Math.max(1, timeToMinutes(slot.end_time) - timeToMinutes(slot.start_time));
-    let start = timeToMinutes(slot.start_time) + shift;
+    let start = Math.max(timeToMinutes(slot.start_time), cursor);
     let end = start + duration;
     let guard = 0;
+
+    // Preserve the exact activity interval by moving the whole slot after it.
+    // The cursor also prevents a shifted break/lunch from overlapping the next
+    // lesson when the original clock contains fixed anchors.
     while (guard++ < orderedActivities.length + 2) {
       const overlapping = orderedActivities.find((activity) =>
         start < timeToMinutes(activity.end_time) && end > timeToMinutes(activity.start_time)
       );
       if (!overlapping) break;
-      const delta = Math.max(1, timeToMinutes(overlapping.end_time) - start);
-      shift += delta;
-      start += delta;
-      end += delta;
+      start = Math.max(start, timeToMinutes(overlapping.end_time));
+      end = start + duration;
     }
+
+    cursor = end;
     return { ...slot, start_time: minutesToTime(start), end_time: minutesToTime(end) };
   });
 }
