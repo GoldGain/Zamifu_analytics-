@@ -1,7 +1,24 @@
 export interface ActivityInterval {
   start_time: string;
   end_time: string;
+  target_level_group?: string | null;
+  blocks_lessons?: boolean | null;
   [key: string]: unknown;
+}
+
+/** Return true when an activity applies to the requested timetable level. */
+export function activityMatchesLevel(
+  targetLevelGroup: string | null | undefined,
+  levelKey: string,
+): boolean {
+  const target = String(targetLevelGroup || 'all').trim().toLowerCase().replace(/_/g, '-');
+  const level = String(levelKey || '').trim().toLowerCase().replace(/_/g, '-');
+  return !target || target === 'all' || target === 'all-levels' || target === level;
+}
+
+/** Existing rows default to blocking mode; only an explicit false opts out. */
+export function activityBlocksLessons(activity: Pick<ActivityInterval, 'blocks_lessons'>): boolean {
+  return activity.blocks_lessons !== false;
 }
 
 export interface TimedSlot {

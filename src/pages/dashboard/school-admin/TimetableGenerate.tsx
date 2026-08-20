@@ -6,7 +6,7 @@ import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-reac
 import { toast } from 'sonner';
 import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
-import { shiftSlotsAroundActivities as shiftActivitySlots } from '@/lib/timetable-activity';
+import { activityBlocksLessons, activityMatchesLevel, shiftSlotsAroundActivities as shiftActivitySlots } from '@/lib/timetable-activity';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -29,6 +29,8 @@ interface ScheduledActivity {
   start_time: string;
   end_time: string;
   target_classes?: string | null;
+  target_level_group?: string | null;
+  blocks_lessons?: boolean | null;
 }
 
 interface FrontendConfig {
@@ -145,7 +147,7 @@ export default function TimetableGenerate() {
       // supports day, type/name, exact time, and target class scope.
       const { data: activityRows, error: activityError } = await supabaseUntyped
         .from('after_school_activities')
-        .select('id, day_of_week, activity_name, start_time, end_time, target_classes')
+        .select('id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons')
         .eq('school_id', schoolId)
         .order('day_of_week')
         .order('start_time');
@@ -157,6 +159,8 @@ export default function TimetableGenerate() {
         start_time: String(a.start_time || '').slice(0, 5),
         end_time: String(a.end_time || '').slice(0, 5),
         target_classes: a.target_classes || 'All',
+        target_level_group: a.target_level_group || 'all',
+        blocks_lessons: a.blocks_lessons !== false,
       }));
       setScheduledActivities(loadedActivities);
       const activities: Record<string, string> = {};
@@ -243,7 +247,7 @@ export default function TimetableGenerate() {
       // Re-fetch activity schedules at generation time so recent Setup changes apply.
       const { data: activityRows } = await supabaseUntyped
         .from('after_school_activities')
-        .select('id, day_of_week, activity_name, start_time, end_time, target_classes')
+        .select('id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons')
         .eq('school_id', schoolId)
         .order('day_of_week')
         .order('start_time');
@@ -254,6 +258,8 @@ export default function TimetableGenerate() {
         start_time: String(a.start_time || '').slice(0, 5),
         end_time: String(a.end_time || '').slice(0, 5),
         target_classes: a.target_classes || 'All',
+        target_level_group: a.target_level_group || 'all',
+        blocks_lessons: a.blocks_lessons !== false,
       }));
       setScheduledActivities(freshActivities);
       const activities: Record<string, string> = {};
@@ -326,6 +332,7 @@ export default function TimetableGenerate() {
         const baseSlots = generateSlots(generationConfig, lessonCount, levelKey);
 
         const activityCandidates = freshActivities
+          .filter(a => activityMatchesLevel(a.target_level_group, levelKey))
           .filter(a => a.activity_name && toMinutes(a.end_time) > toMinutes(a.start_time))
           // Lower Primary and Pre-Primary end at lunch: do not generate any
           // activity after lunch for those levels.
@@ -441,21 +448,24 @@ export default function TimetableGenerate() {
 
         const getDaySlotTiming = (day: number, cls: any) => {
           const matchingActivities = freshActivities.filter((activity) =>
-            activity.day_of_week === day && matchesTarget(activity, cls)
+            activity.day_of_week === day &&
+            activityMatchesLevel(activity.target_level_group, levelKey) &&
+            matchesTarget(activity, cls)
           );
-          const shiftedBase = shiftActivitySlots(baseSlots, matchingActivities);
+          const blockingActivities = matchingActivities.filter(activityBlocksLessons);
+          const shiftedBase = shiftActivitySlots(baseSlots, blockingActivities);
           const times = new Map<number, { start_time: string; end_time: string }>();
           shiftedBase.forEach((slot: any) => times.set(Number(slot.slot_order), {
             start_time: slot.start_time,
             end_time: slot.end_time,
           }));
-          return { matchingActivities, times };
+          return { matchingActivities, blockingActivities, times };
         };
 
         // Fill breaks, lunch, generic activity windows, and explicitly scheduled activities.
         for (const cls of classesToProcess) {
           for (let day = 1; day <= 5; day++) {
-            const { matchingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
+            const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
             for (const slot of fixedSlots) {
               const isActivity = slot.slot_type === 'activities' || slot.slot_type === 'activity';
               const activitiesAtSlot = isActivity ? (activityMetaByOrder.get(Number(slot.slot_order)) || []) : [];
@@ -520,7 +530,7 @@ export default function TimetableGenerate() {
             const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
             let scheduled = 0;
             for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
-              const { matchingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
+              const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
               for (const slot of candidateLessonSlots) {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
@@ -561,7 +571,7 @@ export default function TimetableGenerate() {
             // instead of silently dropping the subject.
             if (scheduled < lessonsToSchedule) {
                               for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
-                const { matchingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
+                const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of lessonSlots) {
                   if (preferredLessonSlots.some((s: any) => s.id === slot.id)) continue;
                   const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;

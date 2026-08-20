@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../../lib/supabase/client';
+import { supabase, supabaseUntyped } from '../../lib/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { AlertCircle, Download, Printer, RefreshCw } from 'lucide-react';
 import {
@@ -10,7 +10,7 @@ import {
   type TimetableConfig,
   type TimetableSlot,
 } from '@/lib/timetable-generator';
-import { shiftSlotsAroundActivities } from '@/lib/timetable-activity';
+import { activityBlocksLessons, activityMatchesLevel, shiftSlotsAroundActivities } from '@/lib/timetable-activity';
 
 interface SchoolClass {
   id: string;
@@ -63,6 +63,8 @@ interface TeacherKeyEntry {
   start_time: string;
   end_time: string;
   target_classes?: string | null;
+  target_level_group?: string | null;
+  blocks_lessons?: boolean | null;
 }
 
 type TimelineSegment = {
@@ -87,6 +89,7 @@ const minutesToTimeView = (minutes: number): string => {
 };
 
 const activityMatchesClass = (activity: SchoolActivity, cls: SchoolClass): boolean => {
+  if (!activityMatchesLevel(activity.target_level_group, resolveClassLevelGroup(cls))) return false;
   const target = String(activity.target_classes || 'All').trim().toLowerCase();
   if (!target || target === 'all') return true;
   const className = String(cls.name || '').toLowerCase();
@@ -161,7 +164,7 @@ const normalizeBaseSlotsAroundAnchors = (baseSlots: TimeSlot[]): TimeSlot[] => {
 const shiftBaseSlotsForActivities = (baseSlots: TimeSlot[], dayActivities: SchoolActivity[]): TimeSlot[] =>
   shiftSlotsAroundActivities(
     normalizeBaseSlotsAroundAnchors(baseSlots),
-    dayActivities,
+    dayActivities.filter(activityBlocksLessons),
   );
 
 const buildTimelineSegments = (
@@ -563,9 +566,9 @@ export default function TimetableView() {
   };
 
   const fetchActivities = async () => {
-      const { data, error: err } = await supabase
+      const { data, error: err } = await supabaseUntyped
       .from('after_school_activities')
-      .select('id, school_id, day_of_week, activity_name, start_time, end_time, target_classes')
+      .select('id, school_id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons')
       .eq('school_id', user?.schoolId)
       .order('day_of_week')
       .order('start_time');
@@ -716,9 +719,11 @@ export default function TimetableView() {
   };
 
   /** Get activities for a given day from the configured activity schedule table */
-  const getActivitiesForDay = (dayIdx: number): string => {
+  const getActivitiesForDay = (dayIdx: number, classesForTable: SchoolClass[]): string => {
     const dayNum = dayIdx + 1;
-    const dayActivities = activities.filter(a => a.day_of_week === dayNum);
+    const dayActivities = activities.filter(a =>
+      a.day_of_week === dayNum && classesForTable.some(cls => activityMatchesClass(a, cls))
+    );
     if (dayActivities.length === 0) return '';
     // Return all activity names for this day, joined
     return Array.from(new Set(dayActivities.map(a => a.activity_name.trim().toUpperCase()))).join(' / ');
@@ -1235,7 +1240,7 @@ export default function TimetableView() {
                     })}
                     {showLegacyActivityColumn && clsIdx === 0 && (
                       <td rowSpan={classesToRender.length} className="tt-activity">
-                        {getActivitiesForDay(dayIdx) || '—'}
+                        {getActivitiesForDay(dayIdx, classesToRender) || '—'}
                       </td>
                     )}
                   </tr>

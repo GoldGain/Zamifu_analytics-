@@ -112,6 +112,8 @@ interface ScheduledActivity {
   start_time: string;
   end_time: string;
   target_classes: string;
+  target_level_group: string;
+  blocks_lessons: boolean;
 }
 
 interface LevelConfig {
@@ -142,7 +144,15 @@ export default function TimetableSetup() {
   const [copyFrom, setCopyFrom] = useState('');
   const [copyTo, setCopyTo] = useState('');
   const [activities, setActivities] = useState<ScheduledActivity[]>([]);
-  const [activityDraft, setActivityDraft] = useState({ day_of_week: 5, activity_name: 'PPI', start_time: '08:00', end_time: '08:20', target_classes: 'Primary and Junior School' });
+  const [activityDraft, setActivityDraft] = useState({
+    day_of_week: 5,
+    activity_name: 'PPI',
+    start_time: '08:00',
+    end_time: '09:00',
+    target_classes: 'All',
+    target_level_group: 'all',
+    blocks_lessons: true,
+  });
   const [savingActivity, setSavingActivity] = useState(false);
 
   useEffect(() => {
@@ -204,7 +214,7 @@ export default function TimetableSetup() {
 
       const { data: activityRows, error: activityError } = await supabaseUntyped
         .from('after_school_activities')
-        .select('id, day_of_week, activity_name, start_time, end_time, target_classes')
+        .select('id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons')
         .eq('school_id', resolvedSchoolId)
         .order('day_of_week')
         .order('start_time');
@@ -216,6 +226,8 @@ export default function TimetableSetup() {
         start_time: String(a.start_time || '').slice(0, 5),
         end_time: String(a.end_time || '').slice(0, 5),
         target_classes: a.target_classes || 'All',
+        target_level_group: a.target_level_group || 'all',
+        blocks_lessons: a.blocks_lessons !== false,
       })));
     } catch (err: any) {
       console.error('fetchData error:', err);
@@ -345,10 +357,14 @@ export default function TimetableSetup() {
     const startMinutes = toMinutes(activityDraft.start_time);
     const endMinutes = toMinutes(activityDraft.end_time);
     if (endMinutes <= startMinutes) { toast.error('Activity end time must be after its start time'); return; }
-    const overlapsExisting = activities.some((activity) =>
-      activity.day_of_week === activityDraft.day_of_week &&
-      startMinutes < toMinutes(activity.end_time) && endMinutes > toMinutes(activity.start_time)
-    );
+    const targetLevel = String(activityDraft.target_level_group || 'all').trim().toLowerCase();
+    const overlapsExisting = activities.some((activity) => {
+      const existingLevel = String(activity.target_level_group || 'all').trim().toLowerCase();
+      const sameLevelScope = targetLevel === 'all' || existingLevel === 'all' || targetLevel === existingLevel;
+      return activity.day_of_week === activityDraft.day_of_week &&
+        sameLevelScope &&
+        startMinutes < toMinutes(activity.end_time) && endMinutes > toMinutes(activity.start_time);
+    });
     if (overlapsExisting) {
       toast.error('This activity overlaps another activity on the same day. Choose a different time so activities never share an interval.');
       return;
@@ -362,9 +378,18 @@ export default function TimetableSetup() {
         start_time: normalizeTime(activityDraft.start_time),
         end_time: normalizeTime(activityDraft.end_time),
         target_classes: activityDraft.target_classes.trim() || 'All',
-      }).select('id, day_of_week, activity_name, start_time, end_time, target_classes').single();
+        target_level_group: activityDraft.target_level_group || 'all',
+        blocks_lessons: activityDraft.blocks_lessons,
+      }).select('id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons').single();
       if (error) throw error;
-      if (data) setActivities(prev => [...prev, { ...data, start_time: String(data.start_time).slice(0, 5), end_time: String(data.end_time).slice(0, 5), target_classes: data.target_classes || 'All' }].sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time)));
+      if (data) setActivities(prev => [...prev, {
+        ...data,
+        start_time: String(data.start_time).slice(0, 5),
+        end_time: String(data.end_time).slice(0, 5),
+        target_classes: data.target_classes || 'All',
+        target_level_group: data.target_level_group || 'all',
+        blocks_lessons: data.blocks_lessons !== false,
+      }].sort((a, b) => a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time)));
       toast.success(`${name} activity schedule saved.`);
     } catch (err: any) {
       toast.error('Failed to save activity: ' + (err.message || 'Unknown error'));
@@ -545,8 +570,8 @@ export default function TimetableSetup() {
           <Plus className="w-5 h-5 text-emerald-600" />
           Scheduled Activities
         </h2>
-        <p className="text-sm text-gray-600 mb-4">Add one or more activities for each day using exact start and end times. Activities may be any duration, including Friday morning PPI, and the timetable will block lessons and other activities during the interval. Use a target such as <strong>All</strong>, <strong>Grade 1</strong>, or <strong>Primary and Junior School</strong>.</p>
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+        <p className="text-sm text-gray-600 mb-4">Add an activity for a specific day and exact time. Choose the level it applies to, then keep <strong>Exact-time block</strong> enabled so no lesson can occupy that interval for that level.</p>
+        <div className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
             <select value={activityDraft.day_of_week} onChange={e => setActivityDraft(prev => ({ ...prev, day_of_week: Number(e.target.value) }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white">
@@ -557,18 +582,29 @@ export default function TimetableSetup() {
             <label className="block text-xs font-medium text-gray-700 mb-1">Activity type / name</label>
             <input value={activityDraft.activity_name} onChange={e => setActivityDraft(prev => ({ ...prev, activity_name: e.target.value }))} placeholder="e.g. PPI, Games, Debate Club" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
           </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Applies to level</label>
+            <select value={activityDraft.target_level_group} onChange={e => setActivityDraft(prev => ({ ...prev, target_level_group: e.target.value }))} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm bg-white">
+              <option value="all">All active levels</option>
+              {LEVEL_GROUPS.map(({ key, label }) => <option key={key} value={key}>{label}</option>)}
+            </select>
+          </div>
           <TimeInput label="Starts" value={activityDraft.start_time} onChange={v => setActivityDraft(prev => ({ ...prev, start_time: v }))} />
           <TimeInput label="Ends" value={activityDraft.end_time} onChange={v => setActivityDraft(prev => ({ ...prev, end_time: v }))} />
           <button onClick={handleAddActivity} disabled={savingActivity} className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"><Plus className="w-4 h-4" /> Add</button>
-          <div className="md:col-span-3">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Target classes</label>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Target classes (optional)</label>
             <input value={activityDraft.target_classes} onChange={e => setActivityDraft(prev => ({ ...prev, target_classes: e.target.value }))} placeholder="All or Grade 1, Grade 2" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm" />
           </div>
+          <label className="md:col-span-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-900 cursor-pointer">
+            <input type="checkbox" checked={activityDraft.blocks_lessons} onChange={e => setActivityDraft(prev => ({ ...prev, blocks_lessons: e.target.checked }))} className="h-4 w-4 accent-emerald-600" />
+            <span><strong>Exact-time block</strong><br />No lesson may occupy this interval.</span>
+          </label>
         </div>
         <div className="mt-5 space-y-2">
           {activities.length === 0 ? <p className="text-sm text-gray-500 bg-gray-50 rounded-xl p-3">No scheduled activities yet.</p> : activities.map(activity => (
-            <div key={activity.id} className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 rounded-xl px-3 py-2.5 bg-gray-50">
-              <div className="text-sm"><strong>{['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][activity.day_of_week]}</strong> · {activity.activity_name} · {activity.start_time}–{activity.end_time} · {activity.target_classes}</div>
+              <div key={activity.id} className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 rounded-xl px-3 py-2.5 bg-gray-50">
+              <div className="text-sm"><strong>{['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'][activity.day_of_week]}</strong> · {activity.activity_name} · {activity.start_time}–{activity.end_time} · {LEVEL_GROUPS.find(level => level.key === activity.target_level_group)?.label || 'All active levels'} · {activity.target_classes} · <span className={activity.blocks_lessons ? 'font-semibold text-emerald-700' : 'text-gray-500'}>{activity.blocks_lessons ? 'Exact-time block' : 'Marker only'}</span></div>
               <button onClick={() => handleDeleteActivity(activity)} className="text-red-600 hover:text-red-700 text-sm flex items-center gap-1"><Trash2 className="w-4 h-4" /> Remove</button>
             </div>
           ))}
