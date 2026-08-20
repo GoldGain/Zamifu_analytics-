@@ -104,9 +104,42 @@ const activityMatchesClass = (activity: SchoolActivity, cls: SchoolClass): boole
   });
 };
 
+const normalizeBaseSlotsAroundAnchors = (baseSlots: TimeSlot[]): TimeSlot[] => {
+  const slots = baseSlots.filter((slot) => slot.slot_type !== 'activity' && slot.slot_type !== 'activities');
+  const anchors = slots.filter((slot) => slot.slot_type === 'break' || slot.slot_type === 'lunch');
+  const lessons = slots
+    .filter((slot) => slot.slot_type === 'lesson')
+    .sort((a, b) => (a.slot_order ?? 0) - (b.slot_order ?? 0));
+  let cursor = -Infinity;
+  const normalizedLessons = lessons.map((slot) => {
+    const duration = Math.max(1, timeToMinutesView(slot.end_time) - timeToMinutesView(slot.start_time));
+    let start = Math.max(timeToMinutesView(slot.start_time), cursor);
+    let guard = 0;
+    while (guard++ < anchors.length + 2) {
+      const end = start + duration;
+      const overlap = anchors.find((anchor) =>
+        start < timeToMinutesView(anchor.end_time) && end > timeToMinutesView(anchor.start_time)
+      );
+      if (!overlap) break;
+      start = timeToMinutesView(overlap.end_time);
+    }
+    cursor = start + duration;
+    return {
+      ...slot,
+      start_time: minutesToTimeView(start),
+      end_time: minutesToTimeView(cursor),
+    };
+  });
+
+  return [...anchors, ...normalizedLessons].sort((a, b) =>
+    timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time) ||
+    (a.slot_order ?? 0) - (b.slot_order ?? 0)
+  );
+};
+
 const shiftBaseSlotsForActivities = (baseSlots: TimeSlot[], dayActivities: SchoolActivity[]): TimeSlot[] =>
   shiftSlotsAroundActivities(
-    baseSlots.filter((slot) => slot.slot_type !== 'activity' && slot.slot_type !== 'activities'),
+    normalizeBaseSlotsAroundAnchors(baseSlots),
     dayActivities,
   );
 
