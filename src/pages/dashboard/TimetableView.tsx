@@ -71,6 +71,8 @@ type TimelineSegment = {
   end_time: string;
   slot_type: TimeSlot['slot_type'];
   label: string;
+  slot_order?: number;
+  sourceSlotIds?: string[];
   activity?: SchoolActivity;
 };
 
@@ -118,6 +120,8 @@ const buildTimelineSegments = (
     end_time: slot.end_time,
     slot_type: slot.slot_type,
     label: slot.label,
+    slot_order: slot.slot_order,
+    sourceSlotIds: slot.sourceSlotIds,
   }));
   const activities = dayActivities.map((activity) => ({
     id: `activity-${activity.id}`,
@@ -831,6 +835,50 @@ export default function TimetableView() {
       font-size: 0.78rem;
       white-space: nowrap;
     }
+    .tt-weekly-table {
+      width: 100%;
+      min-width: 760px;
+      table-layout: fixed;
+    }
+    .tt-weekly-table .tt-time-header {
+      min-width: 72px;
+      padding: 5px 3px;
+      font-size: 0.6rem;
+      white-space: nowrap;
+    }
+    .tt-day-week-header,
+    .tt-day-week {
+      width: 56px;
+      min-width: 56px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+    }
+    .tt-day-week {
+      background: #1f2937;
+      color: #bfdbfe;
+      text-align: center;
+      font-size: 0.72rem;
+    }
+    .tt-empty {
+      min-width: 72px;
+      height: 40px;
+      color: #cbd5e1;
+      background: #f8fafc;
+      text-align: center;
+      font-size: 0.7rem;
+    }
+    .tt-subtime,
+    .tt-slot-label {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.48rem;
+      line-height: 1.05;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .tt-activity .tt-subtime { color: #166534; }
+    .tt-break .tt-subtime,
+    .tt-lunch .tt-subtime { color: #64748b; }
     .tt-activity {
       writing-mode: horizontal-tb;
       font-weight: bold;
@@ -917,6 +965,122 @@ export default function TimetableView() {
     );
 
     if (hasTimedActivities) {
+      // Activities are fixed intervals, while lessons/breaks are shifted only on
+      // the affected day. Render one weekly grid per class so the timetable is
+      // never split into five separate day tables.
+      const renderTimedClassTable = (cls: SchoolClass) => {
+        const dayRows = DAYS.map((day, dayIdx) => {
+          const dayActivities = activities.filter((activity) =>
+            activity.day_of_week === dayIdx + 1 && activityMatchesClass(activity, cls)
+          );
+          return {
+            day,
+            dayIdx,
+            dayActivities,
+            segments: buildTimelineSegments(rawSlotsForTable, dayActivities),
+          };
+        });
+
+        // Use the union of all weekly boundaries so a Friday activity can have
+        // a different length without creating misaligned or overlapping cells.
+        const boundarySet = new Set<number>();
+        dayRows.forEach(({ segments }) => segments.forEach((segment) => {
+          boundarySet.add(timeToMinutesView(segment.start_time));
+          boundarySet.add(timeToMinutesView(segment.end_time));
+        }));
+        const boundaries = Array.from(boundarySet).sort((a, b) => a - b);
+        const intervalCount = Math.max(0, boundaries.length - 1);
+
+        const renderCells = (segments: TimelineSegment[], rowKey: string) => {
+          const cells: React.ReactNode[] = [];
+          let cursor = 0;
+          while (cursor < intervalCount) {
+            const intervalStart = boundaries[cursor];
+            const intervalEnd = boundaries[cursor + 1];
+            const segment = segments.find((candidate) =>
+              timeToMinutesView(candidate.start_time) <= intervalStart &&
+              timeToMinutesView(candidate.end_time) >= intervalEnd
+            );
+
+            if (!segment) {
+              cells.push(
+                <td key={`empty-${rowKey}-${cursor}`} className="tt-empty">—</td>
+              );
+              cursor += 1;
+              continue;
+            }
+
+            const segmentEnd = timeToMinutesView(segment.end_time);
+            const endIndex = boundaries.findIndex((boundary) => boundary === segmentEnd);
+            const span = Math.max(1, endIndex > cursor ? endIndex - cursor : 1);
+
+            if (segment.slot_type === 'activity') {
+              cells.push(
+                <td key={`activity-${rowKey}-${segment.id}`} colSpan={span} className="tt-activity">
+                  <strong>{segment.activity?.activity_name?.toUpperCase() || segment.label.toUpperCase()}</strong>
+                  <span className="tt-subtime">{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
+                </td>
+              );
+            } else if (segment.slot_type === 'break' || segment.slot_type === 'lunch') {
+              cells.push(
+                <td key={`fixed-${rowKey}-${segment.id}`} colSpan={span} className={segment.slot_type === 'lunch' ? 'tt-lunch' : 'tt-break'}>
+                  <strong>{segment.slot_type === 'lunch' ? 'LUNCH' : 'BREAK'}</strong>
+                  <span className="tt-subtime">{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
+                </td>
+              );
+            } else {
+              const segmentEntries = getEntries(dayRows.find((row) => row.day === rowKey.split('-')[0])?.dayIdx + 1 || 1, cls.id, segment as TimeSlot);
+              cells.push(
+                <td key={`lesson-${rowKey}-${segment.id}`} colSpan={span} className="tt-cell">
+                  <strong>{getCellDisplay(segmentEntries) || '—'}</strong>
+                  <span className="tt-slot-label">{segment.label}</span>
+                </td>
+              );
+            }
+            cursor += span;
+          }
+          return cells;
+        };
+
+        return (
+          <div key={cls.id} className="timed-class-weekly rounded-xl border border-gray-300 overflow-hidden bg-white">
+            <div className="px-4 py-3 bg-gray-900 text-white flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-black tracking-wide">{displayClassName(cls)}</h3>
+                <p className="text-[0.68rem] text-blue-200">Weekly timetable · exact activity intervals</p>
+              </div>
+              <div className="text-[0.65rem] text-green-300 font-semibold">
+                {dayRows.flatMap((row) => row.dayActivities).map((activity) =>
+                  `${DAYS[activity.day_of_week - 1]} · ${activity.activity_name} ${fmt(activity.start_time)}–${fmt(activity.end_time)}`
+                ).join(' · ') || 'No fixed activities'}
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="tt-table tt-weekly-table">
+                <thead>
+                  <tr>
+                    <th className="tt-header tt-day-week-header">DAY</th>
+                    {boundaries.slice(0, -1).map((start, index) => (
+                      <th key={`time-${start}-${boundaries[index + 1]}`} className="tt-header tt-time-header">
+                        {fmt(minutesToTimeView(start))}–{fmt(minutesToTimeView(boundaries[index + 1]))}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dayRows.map((row) => (
+                    <tr key={row.day}>
+                      <td className="tt-day-week">{row.day}</td>
+                      {renderCells(row.segments, row.day)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      };
+
       return (
         <div id={tableId} className="bb-wrap rounded-lg overflow-hidden">
           <div className="mb-4 text-center">
@@ -924,78 +1088,15 @@ export default function TimetableView() {
               {schoolName || 'School'} — SCHOOL TIMETABLE
             </h2>
             <p className="text-green-400 font-bold text-sm mt-1">
-              {classesToRender.length === 1
-                ? `Class: ${displayClassName(classesToRender[0])}`
-                : `${classesToRender.length} classes`}
+              {classesToRender.length === 1 ? 'Class: ' + displayClassName(classesToRender[0]) : classesToRender.length + ' classes'}
             </p>
             <p className="text-blue-300 text-xs mt-1">
-              Fixed activities use exact times; lessons and breaks move only on the affected day/class.
+              One weekly grid per class. Fixed activities use exact times; lessons and breaks move only on the affected day.
             </p>
             <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
           </div>
           <div className="space-y-5">
-            {DAYS.map((day, dayIdx) => classesToRender.map((cls) => {
-              const dayActivities = activities.filter((activity) =>
-                activity.day_of_week === dayIdx + 1 && activityMatchesClass(activity, cls)
-              );
-              const segments = buildTimelineSegments(rawSlotsForTable, dayActivities);
-              return (
-                <div key={`${day}-${cls.id}`} className="rounded-xl border border-gray-600 overflow-x-auto">
-                  <div className="px-3 py-2 bg-gray-900 text-blue-300 font-black text-xs uppercase tracking-wide">
-                    {day} · {displayClassName(cls)}
-                    {dayActivities.length > 0 && (
-                      <span className="ml-2 text-green-300 font-semibold normal-case">
-                        {dayActivities.map((activity) => `${activity.activity_name} ${fmt(activity.start_time)}–${fmt(activity.end_time)}`).join(' · ')}
-                      </span>
-                    )}
-                  </div>
-                  <table className="tt-table tt-day-table">
-                    <thead>
-                      <tr>
-                        <th className="tt-header">DAY</th>
-                        <th className="tt-header">CLASS</th>
-                        {segments.map((segment) => (
-                          <th key={segment.id} className={segment.slot_type === 'activity' ? 'tt-header' : segment.slot_type === 'break' || segment.slot_type === 'lunch' ? 'tt-break-header' : 'tt-header'} style={segment.slot_type === 'activity' ? { color: '#33cc33' } : undefined}>
-                            <span style={{ display: 'block' }}>{segment.slot_type === 'activity' ? 'ACTIVITY' : segment.slot_type === 'break' ? 'BREAK' : segment.slot_type === 'lunch' ? 'LUNCH' : fmt(segment.start_time) + '–' + fmt(segment.end_time) }</span>
-                            {segment.slot_type === 'lesson' && <span style={{ fontSize: '0.55rem', color: '#aaa', display: 'block' }}>{segment.label}</span>}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td className="tt-day">{day}</td>
-                        <td className="tt-class">{displayClassName(cls)}</td>
-                        {segments.map((segment) => {
-                          if (segment.slot_type === 'activity') {
-                            return (
-                              <td key={segment.id} className="tt-activity">
-                                <strong>{segment.activity?.activity_name?.toUpperCase() || segment.label.toUpperCase()}</strong>
-                                <span style={{ fontSize: '0.45rem', color: '#8f8', display: 'block', marginTop: '2px' }}>{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
-                              </td>
-                            );
-                          }
-                          if (segment.slot_type === 'break' || segment.slot_type === 'lunch') {
-                            return (
-                              <td key={segment.id} className={segment.slot_type === 'lunch' ? 'tt-lunch' : 'tt-break'}>
-                                <strong>{segment.slot_type === 'lunch' ? 'LUNCH' : 'BREAK'}</strong>
-                                <span style={{ fontSize: '0.45rem', color: '#aaa', display: 'block', marginTop: '2px' }}>{fmt(segment.start_time)}–{fmt(segment.end_time)}</span>
-                              </td>
-                            );
-                          }
-                          const segmentEntries = getEntries(dayIdx + 1, cls.id, segment as TimeSlot);
-                          return (
-                            <td key={segment.id} className="tt-cell">
-                              {getCellDisplay(segmentEntries)}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              );
-            }))}
+            {classesToRender.map(renderTimedClassTable)}
           </div>
           {teacherKey.length > 0 && (
             <div className="mt-6 pt-4 border-t border-gray-700">

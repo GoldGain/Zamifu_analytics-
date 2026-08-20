@@ -39,7 +39,7 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 8;
  * signatures) fits on a single A4 page.
  */
 // Readable multi-section layout: allow safe pagination instead of squeezing text into overlapping rows.
-export const COMPACT_MODE = false;
+export const COMPACT_MODE = true;
 const ROW = COMPACT_MODE ? 3.2 : 5;   // vertical row step for student info (further reduced)
 const HDR_H = COMPACT_MODE ? 22 : 28; // header band height (further reduced)
 
@@ -49,7 +49,13 @@ const HDR_H = COMPACT_MODE ? 22 : 28; // header band height (further reduced)
  */
 export function ensureReportCardSpace(doc: jsPDF, y: number, requiredHeight: number): number {
   const pageHeight = doc.internal.pageSize.getHeight();
+  const safeY = pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - requiredHeight;
   if (y + requiredHeight <= pageHeight - REPORT_CONTENT_BOTTOM_MARGIN) return y;
+  // Report cards are intentionally one-page documents. In compact mode, keep
+  // the drawing cursor on page one instead of silently creating a continuation
+  // page; callers use the compact dimensions and content caps below to remain
+  // readable within the safe area.
+  if (COMPACT_MODE) return Math.max(REPORT_CONTENT_TOP, safeY);
   doc.addPage();
   return REPORT_CONTENT_TOP;
 }
@@ -564,6 +570,8 @@ export function drawResultsTable(
     startY,
     head: [tableHead],
     body: tableBody,
+    pageBreak: COMPACT_MODE ? 'avoid' : 'auto',
+    rowPageBreak: 'avoid',
     styles: { fontSize: COMPACT_MODE ? 6.8 : 8, cellPadding: COMPACT_MODE ? 0.6 : 1.5 },
     headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: COMPACT_MODE ? 7.2 : 8, cellPadding: 0.8 },
     alternateRowStyles: { fillColor: [232, 234, 246] }, margin: { left: 14, right: 14 },
@@ -683,13 +691,14 @@ export function drawAchievements(
   startY: number
 ): number {
   if (bestSubjects.length === 0) return startY;
+  const visibleBestSubjects = COMPACT_MODE ? bestSubjects.slice(0, 3) : bestSubjects;
   const rowH = COMPACT_MODE ? 4.5 : 5;
-  const boxHeight = 4 + bestSubjects.length * rowH;
+  const boxHeight = 4 + visibleBestSubjects.length * rowH;
   startY = ensureReportCardSpace(doc, startY, boxHeight + (COMPACT_MODE ? 4 : 6));
   doc.setFillColor(255, 248, 225); doc.rect(14, startY, 182, boxHeight, 'F');
   doc.setFontSize(COMPACT_MODE ? 6.5 : 7); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
   doc.text('ACHIEVEMENT:', 18, startY + 3.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
-  bestSubjects.forEach((b, bi) => {
+  visibleBestSubjects.forEach((b, bi) => {
     const pts = b.points !== null ? ` (${b.points} pts)` : '';
     doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 18, startY + 8 + bi * rowH);
   });
@@ -741,53 +750,68 @@ export function drawAIComment(
   comment: string,
   startY: number
 ): number {
-  // Set the drawing font FIRST so all width measurements match the draw font.
   const fontSize = COMPACT_MODE ? 7 : 7.5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(fontSize);
-
   const commentLines = wrapCommentText(doc, (comment || 'No class teacher comment provided.').trim());
-  // Measured line step: font size + small gap for readability.
   const lineHeight = COMPACT_MODE ? fontSize * 0.55 + 0.6 : fontSize * 0.62 + 0.8;
   const pageHeight = doc.internal.pageSize.getHeight();
-  let remainingLines = [...commentLines];
-  let y = startY;
-  let isContinuation = false;
 
-  while (remainingLines.length > 0) {
-    const minBlockH = COMPACT_MODE ? 26 : 35;
-    y = ensureReportCardSpace(doc, y, minBlockH);
-    const availableHeight = pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - y;
-    const maxLines = Math.max(3, Math.floor((availableHeight - (COMPACT_MODE ? 12 : 15)) / lineHeight));
-    const chunk = remainingLines.splice(0, maxLines);
-    // Box height derives from the actual wrapped line count plus the header.
-    const boxHeight = Math.max(COMPACT_MODE ? 14 : 30, (COMPACT_MODE ? 7 : 14) + chunk.length * lineHeight + 2);
+  if (COMPACT_MODE) {
+    const availableHeight = Math.max(18, pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - startY);
+    const headerHeight = 7;
+    const maxLines = Math.max(2, Math.floor((availableHeight - headerHeight - 3) / lineHeight));
+    const visibleLines = commentLines.slice(0, maxLines);
+    if (commentLines.length > visibleLines.length && visibleLines.length > 0) {
+      const last = visibleLines.length - 1;
+      visibleLines[last] = visibleLines[last].replace(/[.,;:!?]?$/, '') + '…';
+    }
+    const boxHeight = Math.min(availableHeight, headerHeight + visibleLines.length * lineHeight + 3);
+    const y = Math.max(REPORT_CONTENT_TOP, Math.min(startY, pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - boxHeight));
 
     doc.setDrawColor(100, 120, 180);
     doc.setLineWidth(0.5);
     doc.setFillColor(232, 234, 246);
     doc.rect(14, y, 182, boxHeight, 'FD');
-    doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(26, 35, 126);
-    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + (COMPACT_MODE ? 4 : 7));
+    doc.text("Class Teacher's Comment:", 18, y + 4);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(fontSize);
     doc.setTextColor(0, 0, 0);
+    visibleLines.forEach((line, index) => doc.text(line, 18, y + 7 + index * lineHeight));
+    return y + boxHeight + 1;
+  }
 
-    // Draw each wrapped line explicitly at a measured vertical step so the
-    // last line can never be clipped by the box bottom.
-    for (let i = 0; i < chunk.length; i++) {
-      doc.text(chunk[i], 18, y + (COMPACT_MODE ? 7 : 14) + i * lineHeight);
-    }
-    y += boxHeight + (COMPACT_MODE ? 1 : 5);
-
+  let remainingLines = [...commentLines];
+  let y = startY;
+  let isContinuation = false;
+  while (remainingLines.length > 0) {
+    const minBlockH = 35;
+    y = ensureReportCardSpace(doc, y, minBlockH);
+    const availableHeight = pageHeight - REPORT_CONTENT_BOTTOM_MARGIN - y;
+    const maxLines = Math.max(3, Math.floor((availableHeight - 15) / lineHeight));
+    const chunk = remainingLines.splice(0, maxLines);
+    const boxHeight = Math.max(30, 14 + chunk.length * lineHeight + 2);
+    doc.setDrawColor(100, 120, 180);
+    doc.setLineWidth(0.5);
+    doc.setFillColor(232, 234, 246);
+    doc.rect(14, y, 182, boxHeight, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(26, 35, 126);
+    doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + 7);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(fontSize);
+    doc.setTextColor(0, 0, 0);
+    chunk.forEach((line, index) => doc.text(line, 18, y + 14 + index * lineHeight));
+    y += boxHeight + 5;
     if (remainingLines.length > 0) {
       doc.addPage();
       y = REPORT_CONTENT_TOP;
       isContinuation = true;
     }
   }
-
   return y;
 }

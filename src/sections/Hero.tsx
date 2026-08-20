@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { ArrowRight, Sparkles, Smartphone, Compass } from 'lucide-react';
+import { ArrowRight, Sparkles, Smartphone, Compass, FileText } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { usePWA } from '@/hooks/usePWA';
 
@@ -158,6 +158,14 @@ export default function Hero() {
                   Chat on WhatsApp
                 </a>
                 <DownloadAppButton />
+                <a
+                  href="/zamifu-quick-startup-guide.pdf"
+                  download="Zamifu_Quick_Startup_Guide.pdf"
+                  className="inline-flex items-center gap-2 border border-[#E6F24B]/70 text-[#E6F24B] px-4 py-2.5 rounded-full text-sm font-semibold hover:bg-[#E6F24B] hover:text-[#1A1A1A] transition-colors"
+                  aria-label="Download the Zamifu Quick Startup Guide"
+                >
+                  <FileText className="w-4 h-4" /> Quick Startup Guide
+                </a>
               </div>
 
               {/* Pathway Finder — prominent button */}
