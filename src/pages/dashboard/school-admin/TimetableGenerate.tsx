@@ -535,7 +535,7 @@ export default function TimetableGenerate() {
                 const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                 const classKey = `${cls.id}-${day}-${slot.id}`;
                 if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                const effectiveTiming = daySlotTimes.get(Number(slot.slot_order)) || { start_time: slot.start_time, end_time: slot.end_time };
+                const effectiveTiming = daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
                 if (dayActivities.some((activity) => overlaps(effectiveTiming.start_time, effectiveTiming.end_time, activity.start_time, activity.end_time))) continue;
                 const previousLesson = lessonSlots
                   .filter(s => s.slot_order < slot.slot_order)
@@ -577,7 +577,7 @@ export default function TimetableGenerate() {
                   const teacherKey = `${assignment.teacher_id}-${day}-${slot.id}`;
                   const classKey = `${cls.id}-${day}-${slot.id}`;
                   if (teacherBusy.has(teacherKey) || classBusy.has(classKey)) continue;
-                  const effectiveTiming = daySlotTimes.get(Number(slot.slot_order)) || { start_time: slot.start_time, end_time: slot.end_time };
+                  const effectiveTiming = daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
                   if (dayActivities.some((activity) => overlaps(effectiveTiming.start_time, effectiveTiming.end_time, activity.start_time, activity.end_time))) continue;
 
                   const previousLesson = lessonSlots
