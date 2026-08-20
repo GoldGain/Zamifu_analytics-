@@ -454,8 +454,8 @@ export default function TimetableGenerate() {
           );
           const blockingActivities = matchingActivities.filter(activityBlocksLessons);
           const shiftedBase = shiftActivitySlots(baseSlots, blockingActivities);
-          const times = new Map<number, { start_time: string; end_time: string }>();
-          shiftedBase.forEach((slot: any) => times.set(Number(slot.slot_order), {
+          const times = new Map<string, { start_time: string; end_time: string }>();
+          shiftedBase.forEach((slot: any) => times.set(String(slot.label), {
             start_time: slot.start_time,
             end_time: slot.end_time,
           }));
@@ -475,7 +475,7 @@ export default function TimetableGenerate() {
               if (isActivity && matchingActivities.length === 0) continue;
               const effectiveTiming = isActivity
                 ? { start_time: slot.start_time, end_time: slot.end_time }
-                : (daySlotTimes.get(Number(slot.slot_order)) || { start_time: slot.start_time, end_time: slot.end_time });
+                : (daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time });
               // An explicitly scheduled activity owns this class/time slot. Mark it
               // busy before lesson allocation so no lesson can be placed over it.
               if (isActivity) {
