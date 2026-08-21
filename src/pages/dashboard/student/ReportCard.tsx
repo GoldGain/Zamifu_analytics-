@@ -19,8 +19,6 @@ import {
   drawNextTermStartDate,
   getPercentage,
   formatPosition,
-  addStudentPhotoToPDF,
-  drawStudentPhotoPlaceholder,
   type SchoolInfo,
   type SignatureInfo,
 } from '@/lib/reportCardPdf';
@@ -296,11 +294,10 @@ export default function StudentReportCard() {
         position, totalStudents || 0, isNew, classDataForGrading, subjectScores
       );
 
-      await drawReportHeader(doc, schoolInfo);
-
-      const photoUrl = student.photo_url || null;
-      const photoAdded = photoUrl ? await addStudentPhotoToPDF(doc, photoUrl, 170, 27, 24) : false;
-      if (!photoAdded) drawStudentPhotoPlaceholder(doc, studentFullName, 170, 27, 24);
+      await drawReportHeader(doc, schoolInfo, {
+        name: studentFullName,
+        photoUrl: student.photo_url || null,
+      });
 
       drawStudentInfo(
         doc,

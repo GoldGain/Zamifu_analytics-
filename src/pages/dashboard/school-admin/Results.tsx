@@ -18,8 +18,6 @@ import {
   drawTrendGraph,
   addSignaturesToPDF,
   drawReportHeader,
-  addStudentPhotoToPDF,
-  drawStudentPhotoPlaceholder,
   addLogoToPDF,
   drawPathwayPerformance,
   drawStudentInfo,
@@ -784,13 +782,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, summaries.length, isNew, classObj, allSubjectResults);
 
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-      await drawReportHeader(doc, schoolInfo);
+      await drawReportHeader(doc, schoolInfo, {
+        name: studentFullName,
+        photoUrl: s.student?.photo_url,
+      });
       
       const cardAssessment = s.examName || assessmentLabel || '';
-      const photoAdded = s.student?.photo_url
-        ? await addStudentPhotoToPDF(doc, s.student.photo_url, 170, 27, 24)
-        : false;
-      if (!photoAdded) drawStudentPhotoPlaceholder(doc, studentFullName, 170, 27, 24);
       const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
       
       drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 38, cardAssessment);
@@ -904,14 +901,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         if (addedFirstPage) mainDoc.addPage();
         addedFirstPage = true;
 
-        await drawReportHeader(mainDoc, schoolInfo);
+        await drawReportHeader(mainDoc, schoolInfo, {
+          name: studentFullName,
+          photoUrl: s.student?.photo_url,
+        });
         
-        // Keep the photo area visible even when a legacy URL is broken or missing.
         const cardAssessment = s.examName || assessmentLabel || '';
-        const photoAdded = s.student?.photo_url
-          ? await addStudentPhotoToPDF(mainDoc, s.student.photo_url, 170, 27, 24)
-          : false;
-        if (!photoAdded) drawStudentPhotoPlaceholder(mainDoc, studentFullName, 170, 27, 24);
         const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`;
         
         drawStudentInfo(

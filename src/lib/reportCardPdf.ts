@@ -21,6 +21,11 @@ export interface SignatureInfo {
   teacher_signature_url?: string | null;
 }
 
+export interface ReportCardLearnerIdentity {
+  name: string;
+  photoUrl?: string | null;
+}
+
 export interface StudentResult {
   subjects?: { name?: string } | null;
   marks?: number;
@@ -41,7 +46,12 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 8;
 // Readable multi-section layout: allow safe pagination instead of squeezing text into overlapping rows.
 export const COMPACT_MODE = true;
 const ROW = COMPACT_MODE ? 3.2 : 5;   // vertical row step for student info (further reduced)
-const HDR_H = COMPACT_MODE ? 22 : 28; // header band height (further reduced)
+const HDR_H = COMPACT_MODE ? 26 : 28; // enough room for matching corner identity squares
+
+export const REPORT_CARD_CORNER_SIZE = 22;
+export const REPORT_CARD_CORNER_Y = 3;
+export const REPORT_CARD_LOGO_X = 14;
+export const REPORT_CARD_PHOTO_X = 174;
 
 /**
  * Starts a clean continuation page when a report-card block cannot fit in the
@@ -458,17 +468,37 @@ export async function addStudentPhotoToPDF(
 }
 
 // ── Draw Report Header ───────────────────────────────────────────────────────
-export async function drawReportHeader(doc: jsPDF, school: SchoolInfo) {
-  doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, HDR_H, 'F');
-  const logoAdded = school.logo_url ? await addLogoToPDF(doc, school.logo_url, 14, 3, 22, 22) : false;
-  doc.setTextColor(26, 35, 126); doc.setFontSize(COMPACT_MODE ? 14 : 16); doc.setFont('helvetica', 'bold');
-  doc.text(school.name || 'School Name', logoAdded ? 40 : 105, 10, { align: logoAdded ? 'left' : 'center' });
-  doc.setFontSize(COMPACT_MODE ? 8 : 9); doc.setFont('helvetica', 'normal');
-  doc.text(school.motto || '', logoAdded ? 40 : 105, 15.5, { align: logoAdded ? 'left' : 'center' });
+export async function drawReportHeader(
+  doc: jsPDF,
+  school: SchoolInfo,
+  learner?: ReportCardLearnerIdentity,
+) {
+  doc.setFillColor(245, 166, 35);
+  doc.rect(0, 0, 210, HDR_H, 'F');
+
+  // Keep both identity images in matching 22mm squares at the same height.
+  // The school logo is always on the left and the learner photo/initials on the right.
+  await addLogoToPDF(doc, school.logo_url, REPORT_CARD_LOGO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE, REPORT_CARD_CORNER_SIZE);
+  const photoAdded = learner?.photoUrl
+    ? await addStudentPhotoToPDF(doc, learner.photoUrl, REPORT_CARD_PHOTO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE)
+    : false;
+  if (!photoAdded && learner?.name) {
+    drawStudentPhotoPlaceholder(doc, learner.name, REPORT_CARD_PHOTO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE);
+  }
+
+  // Center school identity between the two corner squares so long school contact
+  // text cannot collide with either the logo or the learner image.
+  const centerX = 105;
+  doc.setTextColor(26, 35, 126);
+  doc.setFontSize(COMPACT_MODE ? 13 : 16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(school.name || 'School Name', centerX, 10, { align: 'center', maxWidth: 132 });
+  doc.setFontSize(COMPACT_MODE ? 7.5 : 9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(school.motto || '', centerX, 15.5, { align: 'center', maxWidth: 132 });
   const contactLine = `${school.address || ''} | ${school.phone || ''} | ${school.email || ''}`;
-  const maxContactW = Math.min(160, 210 - (logoAdded ? 40 : 105) - 14);
-  const contactLines = doc.splitTextToSize(contactLine, maxContactW);
-  doc.text(contactLines, logoAdded ? 40 : 105, 21, { align: logoAdded ? 'left' : 'center' });
+  const contactLines = doc.splitTextToSize(contactLine, 132);
+  doc.text(contactLines, centerX, 21, { align: 'center' });
 }
 
 // ── Add Signatures to PDF ────────────────────────────────────────────────────

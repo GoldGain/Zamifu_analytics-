@@ -17,8 +17,6 @@ import {
   drawAIComment,
   getPercentage,
   formatPosition,
-  addStudentPhotoToPDF,
-  drawStudentPhotoPlaceholder,
   drawPathwayPerformance,
   type SchoolInfo,
   type SignatureInfo,
@@ -351,10 +349,10 @@ export default function ParentChildReportCard() {
         position, totalStudents || 0, isNew, classDataForGrading, subjectScores
       );
 
-      await drawReportHeader(doc, schoolInfo);
-      const photoUrl = selectedChild.photo_url || null;
-      const photoAdded = photoUrl ? await addStudentPhotoToPDF(doc, photoUrl, 168, 26, 26) : false;
-      if (!photoAdded) drawStudentPhotoPlaceholder(doc, `${selectedChild.first_name} ${selectedChild.last_name}`, 168, 26, 26);
+      await drawReportHeader(doc, schoolInfo, {
+        name: studentFullName,
+        photoUrl: selectedChild.photo_url || null,
+      });
       drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr, 34, results[0]?.school_exams?.name || undefined);
       let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
       
