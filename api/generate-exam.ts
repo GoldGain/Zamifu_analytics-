@@ -10,7 +10,7 @@ import {
   type ExamBlueprint,
   type QuestionType,
 } from '../src/lib/exam-schema.js';
-import { withRenderedExamVisual } from '../src/lib/exam-visuals.js';
+import { filterUnnecessaryExamVisual, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
 
 const allowedQuestionTypes = new Set<QuestionType>([
@@ -265,7 +265,9 @@ async function handleExamGeneration(
     generationJobId = generationJob?.id || null;
     const vetted = await loadVettedContext(supabase, parsedRequest);
     const draftPaper = await generateExamWithDeepSeek(parsedRequest, vetted.context);
-    const renderedQuestions = draftPaper.questions.map(withRenderedExamVisual);
+    const renderedQuestions = draftPaper.questions
+      .map(filterUnnecessaryExamVisual)
+      .map(withRenderedExamVisual);
     const validation = validateGeneratedExam(parsedRequest, renderedQuestions);
     if (!validation.passed) {
       throw new DeepSeekResponseError(`The generated paper needs repair before it can be saved: ${validation.issues.filter((issue) => issue.severity === 'critical').map((issue) => issue.message).slice(0, 3).join(' ')}`);

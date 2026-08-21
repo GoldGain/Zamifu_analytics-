@@ -152,6 +152,32 @@ function renderTable(spec: ExamVisualSpec): string {
   return `${header}${body}`;
 }
 
+const EXPLICIT_VISUAL_REFERENCE = /\b(?:diagram|figure|map|graph|chart|table|illustration|picture|image|photograph|flowchart|number\s+line)\b|\b(?:shown\s+(?:below|above)|as\s+(?:shown|illustrated)|study\s+(?:it|the)|observe\s+(?:it|the)|refer\s+to|look\s+at|use\s+the)\b/i;
+
+/**
+ * Keep generated visuals only when the learner is explicitly asked to use one.
+ * This prevents a provider from turning every ordinary question into a generic
+ * three-shape placeholder while preserving real diagram/map/chart questions.
+ */
+export function shouldKeepExamVisual(question: GeneratedExamQuestion): boolean {
+  if (!question.visual_spec) return false;
+  const spec = question.visual_spec as ExamVisualSpec;
+  const descriptor = [
+    question.question_text,
+    spec.title,
+    spec.prompt,
+    spec.caption,
+    ...(spec.labels || []),
+    ...(spec.map_regions || []),
+  ].filter(Boolean).join(' ');
+  return EXPLICIT_VISUAL_REFERENCE.test(descriptor);
+}
+
+export function filterUnnecessaryExamVisual(question: GeneratedExamQuestion): GeneratedExamQuestion {
+  if (!question.visual_spec || shouldKeepExamVisual(question)) return question;
+  return { ...question, image_url: null, visual_spec: null };
+}
+
 export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string | null {
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   const assetType = String(spec.asset_type || '').toLowerCase();
