@@ -1202,9 +1202,9 @@ export default function TimetableView() {
             levelConfigs[resolveClassLevelGroup(classesToRender[0])]
           )
         : allSlots);
-    // Activities never become grid columns. In-lesson activity entries are
-    // rendered in their owning lesson cell; post-school activities are listed
-    // in a compact note beneath the level grid.
+    // Keep only genuine post-school activity periods as structural columns.
+    // Activities that overlap a normal lesson are rendered in that lesson cell,
+    // while activities after the final lesson retain a dedicated final column.
     const mergedSlotsForTable = rawSlotsForTable.reduce<TimeSlot[]>((merged, slot) => {
       if (slot.slot_type !== 'activity' && slot.slot_type !== 'activities') {
         merged.push(slot);
@@ -1224,12 +1224,15 @@ export default function TimetableView() {
       }
       return merged;
     }, []);
+    const isActivitySlot = (slot: TimeSlot) =>
+      slot.slot_type === 'activity' || slot.slot_type === 'activities';
     const postSchoolActivitySlots = mergedSlotsForTable.filter((slot) =>
-      slot.slot_type === 'activity' || slot.slot_type === 'activities'
+      isActivitySlot(slot) && isPostLessonActivity(mergedSlotsForTable, slot)
     );
-    const slotsForTable = mergedSlotsForTable.filter((slot) =>
-      slot.slot_type !== 'activity' && slot.slot_type !== 'activities'
-    );
+    const slotsForTable = [
+      ...mergedSlotsForTable.filter((slot) => !isActivitySlot(slot)),
+      ...postSchoolActivitySlots,
+    ];
     if (!slotsForTable.length) {
       return (
         <div id={tableId} className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 text-sm">
@@ -1287,7 +1290,7 @@ export default function TimetableView() {
           Cell times use the saved level clock; activities occupy only their configured slot and never shift breaks or lunch.
         </p>
         <p className="text-emerald-700 text-[0.65rem] mt-1 font-semibold">
-          Optional activities appear only on their configured day, time, and selected level/class. An exact-time activity fills its existing slot; empty activity cells are not added as a separate column.
+          Optional activities appear only on their configured day, time, and selected level/class. An in-lesson activity fills its existing lesson slot; after-school activities retain a dedicated final column because no lesson is scheduled in that period.
         </p>
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
@@ -1321,8 +1324,8 @@ export default function TimetableView() {
                 if (slot.slot_type === 'activities' || slot.slot_type === 'activity') {
                   return (
                     <th key={slot.id} rowSpan={2} className="tt-header" style={{ color: '#33cc33' }}>
-                      <span style={{display:'block'}}>ACTIVITY</span>
-                      <span style={{fontSize:'0.45rem', color:'#8f8'}}>DAY-SPECIFIC</span>
+                      <span style={{display:'block'}}>ACTIVITIES</span>
+                      <span style={{fontSize:'0.45rem', color:'#8f8'}}>{fmt(slot.start_time)}–{fmt(slot.end_time)}</span>
                     </th>
                   );
                 }
@@ -1380,6 +1383,16 @@ export default function TimetableView() {
                         }
                         return null;
                       }
+                      if (slot.slot_type === 'activities' || slot.slot_type === 'activity') {
+                        const activityEntries = getEntries(dayIdx + 1, cls.id, slot);
+                        const activityDisplay = getCellDisplay(activityEntries);
+                        return (
+                          <td key={slot.id} className="tt-activity">
+                            {activityDisplay && <strong>{activityDisplay}</strong>}
+                            <span className="tt-subtime">{getCellTime(activityEntries, slot, dayIdx + 1, cls)}</span>
+                          </td>
+                        );
+                      }
                       const cellEntries = getEntries(dayIdx + 1, cls.id, slot);
                       const display = getCellDisplay(cellEntries);
                       const effectiveTime = getCellTime(cellEntries, slot, dayIdx + 1, cls);
@@ -1400,14 +1413,7 @@ export default function TimetableView() {
           </tbody>
         </table>
       </div>
-      {postSchoolActivitySlots.length > 0 && (
-        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[0.68rem] text-emerald-900">
-          <strong>After-school activities:</strong>{' '}
-          {postSchoolActivitySlots.map((slot) =>
-            `${slot.label.replace(/^ACTIVITY:\s*/i, '')} ${fmt(slot.start_time)}–${fmt(slot.end_time)}`
-          ).join(' · ')}
-        </div>
-      )}
+
       {teacherKey.length > 0 && (
         <div className="mt-6 pt-4 border-t border-gray-700">
           <h3 className="text-blue-400 font-black text-xs uppercase mb-3 tracking-widest">Teacher Reference Key</h3>
