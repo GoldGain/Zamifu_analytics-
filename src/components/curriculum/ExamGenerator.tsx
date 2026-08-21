@@ -18,6 +18,7 @@ import {
   type QuestionType,
   type ExamPdfMode,
 } from '@/lib/exam-generator';
+import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
 
 export interface CurriculumTopicOption {
   id: string;
@@ -177,7 +178,7 @@ export default function ExamGenerator({
         if (!row) throw new Error(`Question ${index + 1} could not be loaded from the saved paper.`);
         const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
         const visualSpec = metadata.visual_spec && typeof metadata.visual_spec === 'object' ? metadata.visual_spec : null;
-        return {
+        const loadedQuestion = {
           id: row.id,
           question_number: index + 1,
           question_type: row.question_type,
@@ -193,10 +194,19 @@ export default function ExamGenerator({
           learning_outcome: row.learning_outcome || undefined,
           competency: row.competency || undefined,
           cognitive_level: row.cognitive_level || undefined,
-          image_url: row.image_url || (typeof visualSpec?.rendered_data_url === 'string' ? visualSpec.rendered_data_url : null),
+          // A non-null database image_url is a teacher-attached school-owned
+          // image and must remain authoritative. Automatic SVGs are rebuilt
+          // from their structured visual_spec so old cached data URLs cannot
+          // survive renderer fixes.
+          image_url: row.image_url || null,
           visual_spec: visualSpec,
           review_status: row.review_status || 'draft',
         } as GeneratedExamQuestion;
+        if (!loadedQuestion.image_url && loadedQuestion.visual_spec) {
+          const rendered = renderExamVisualDataUrl(loadedQuestion);
+          if (rendered) loadedQuestion.image_url = rendered;
+        }
+        return loadedQuestion;
       });
       const instructions = typeof saved.instructions === 'string'
         ? saved.instructions.split(/\r?\n/).map((item: string) => item.trim()).filter(Boolean)

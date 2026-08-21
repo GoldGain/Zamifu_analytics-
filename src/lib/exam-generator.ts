@@ -277,8 +277,10 @@ function ensureRoom(doc: jsPDF, paper: BrandedPaper, y: number, needed: number, 
 }
 
 async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: GeneratedExamQuestion, y: number, subtitle?: string): Promise<number> {
-  if (!question.image_url) return y;
-  const visual = await rasterizeForPdf(question.image_url);
+  const automaticVisual = question.visual_spec ? renderExamVisualDataUrl(question) : null;
+  const source = automaticVisual || question.image_url;
+  if (!source) return y;
+  const visual = await rasterizeForPdf(source);
   y = ensureRoom(doc, paper, y, 68, subtitle);
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7.5);
@@ -382,7 +384,7 @@ async function renderMarkingScheme(doc: jsPDF, paper: BrandedPaper): Promise<voi
     columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 28 }, 3: { cellWidth: 116 }, 4: { cellWidth: 12, halign: 'center' } },
   });
   const finalY = Number((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y + 20);
-  const visualQuestions = paper.questions.filter((question) => question.image_url);
+  const visualQuestions = paper.questions.filter((question) => question.image_url || question.visual_spec);
   if (visualQuestions.length) {
     doc.addPage();
     y = addPageHeader(doc, paper, false, 'MARKING SCHEME — VISUAL REFERENCES');
@@ -424,7 +426,7 @@ async function renderAnswerKey(doc: jsPDF, paper: BrandedPaper): Promise<void> {
     headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: 'bold' },
     columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 128 }, 2: { cellWidth: 18, halign: 'center' }, 3: { cellWidth: 30 } },
   });
-  const visualQuestions = paper.questions.filter((question) => question.image_url);
+  const visualQuestions = paper.questions.filter((question) => question.image_url || question.visual_spec);
   if (visualQuestions.length) {
     doc.addPage();
     y = addPageHeader(doc, paper, false, 'ANSWER KEY — VISUAL REFERENCES');
