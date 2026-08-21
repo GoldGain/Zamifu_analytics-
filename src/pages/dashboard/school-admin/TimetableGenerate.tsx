@@ -521,7 +521,10 @@ export default function TimetableGenerate() {
               const bandOrder: Record<string, number> = { morning: 0, mid_morning: 1, afternoon: 2, none: 3 };
               const aSciencePriority = Boolean(aBand === 'morning' && /integrated\s*science/.test(aName));
               const bSciencePriority = Boolean(bBand === 'morning' && /integrated\s*science/.test(bName));
-              return Number(bSciencePriority) - Number(aSciencePriority)
+              const aDoublePriority = a.is_double_lesson === true;
+              const bDoublePriority = b.is_double_lesson === true;
+              return Number(bDoublePriority) - Number(aDoublePriority)
+                || Number(bSciencePriority) - Number(aSciencePriority)
                 || (bandOrder[aBand] ?? 3) - (bandOrder[bBand] ?? 3);
             });
           for (const assignment of classAssignments) {
