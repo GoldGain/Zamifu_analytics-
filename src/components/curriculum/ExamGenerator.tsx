@@ -113,6 +113,7 @@ export default function ExamGenerator({
   const [recentPapers, setRecentPapers] = useState<SavedPaperSummary[]>([]);
   const [exportMode, setExportMode] = useState<ExamPdfMode>('student');
   const [approvingPaper, setApprovingPaper] = useState(false);
+  const [openingPaper, setOpeningPaper] = useState<string | null>(null);
 
   const availableSubStrands = useMemo(() => strands
     .filter((strand) => selectedStrands.size === 0 || selectedStrands.has(strand.id))
@@ -150,6 +151,83 @@ export default function ExamGenerator({
       .order('created_at', { ascending: false })
       .limit(5);
     setRecentPapers((data || []) as SavedPaperSummary[]);
+  }
+
+  async function openSavedPaper(paperId: string) {
+    setOpeningPaper(paperId);
+    try {
+      const { data: saved, error: paperError } = await supabaseUntyped
+        .from('exam_papers')
+        .select('id, title, school_id, grade_level, subject, term, year, duration_minutes, total_marks, instructions, marking_scheme, format, created_at, status, version_number, blueprint, validation_results, questions')
+        .eq('id', paperId)
+        .single();
+      if (paperError || !saved) throw paperError || new Error('The saved paper could not be found.');
+
+      const questionIds = Array.isArray(saved.questions) ? saved.questions.filter((id): id is string => typeof id === 'string') : [];
+      if (!questionIds.length) throw new Error('The saved paper has no questions to open.');
+      const { data: questionRows, error: questionError } = await supabaseUntyped
+        .from('exam_questions')
+        .select('id, question_type, question_text, options, correct_answer, marking_scheme, marks, difficulty, strand, sub_strand, topic, learning_outcome, competency, cognitive_level, image_url, metadata, review_status')
+        .in('id', questionIds)
+        .limit(200);
+      if (questionError) throw questionError;
+      const byId = new Map((questionRows || []).map((row: any) => [row.id, row]));
+      const questions = questionIds.map((id, index) => {
+        const row: any = byId.get(id);
+        if (!row) throw new Error(`Question ${index + 1} could not be loaded from the saved paper.`);
+        const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+        const visualSpec = metadata.visual_spec && typeof metadata.visual_spec === 'object' ? metadata.visual_spec : null;
+        return {
+          id: row.id,
+          question_number: index + 1,
+          question_type: row.question_type,
+          question_text: row.question_text,
+          options: Array.isArray(row.options) ? row.options : [],
+          correct_answer: row.correct_answer || '',
+          marking_scheme: row.marking_scheme || '',
+          marks: Number(row.marks || 1),
+          difficulty: row.difficulty || 'medium',
+          strand: row.strand || undefined,
+          sub_strand: row.sub_strand || undefined,
+          topic: row.topic || undefined,
+          learning_outcome: row.learning_outcome || undefined,
+          competency: row.competency || undefined,
+          cognitive_level: row.cognitive_level || undefined,
+          image_url: row.image_url || (typeof visualSpec?.rendered_data_url === 'string' ? visualSpec.rendered_data_url : null),
+          visual_spec: visualSpec,
+          review_status: row.review_status || 'draft',
+        } as GeneratedExamQuestion;
+      });
+      const instructions = typeof saved.instructions === 'string'
+        ? saved.instructions.split(/\r?\n/).map((item: string) => item.trim()).filter(Boolean)
+        : Array.isArray(saved.instructions) ? saved.instructions : [];
+      const loadedPaper: ExamPaper = {
+        id: saved.id,
+        title: saved.title,
+        school_name: schoolName,
+        grade_level: saved.grade_level,
+        subject: saved.subject,
+        term: saved.term || undefined,
+        year: Number(saved.year || new Date().getFullYear()),
+        duration_minutes: Number(saved.duration_minutes || 60),
+        total_marks: Number(saved.total_marks || 0),
+        instructions,
+        questions,
+        marking_scheme: saved.marking_scheme || undefined,
+        format: saved.format as ExamFormat,
+        generated_at: saved.created_at,
+        status: saved.status || 'draft',
+        version_number: saved.version_number || 1,
+        blueprint: saved.blueprint || undefined,
+        validation_results: Array.isArray(saved.validation_results) ? saved.validation_results : [],
+      };
+      setPaper(loadedPaper);
+      toast.success('Saved assessment opened for review.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'The saved paper could not be opened.');
+    } finally {
+      setOpeningPaper(null);
+    }
   }
 
   async function generate() {
@@ -464,7 +542,7 @@ export default function ExamGenerator({
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between"><div className="flex items-center gap-2"><RefreshCw className="h-4 w-4 text-slate-500" /><h3 className="text-sm font-semibold text-slate-900">Recent papers</h3></div><button type="button" onClick={() => void loadRecentPapers()} className="text-xs font-semibold text-red-600 hover:text-red-700">Refresh</button></div>
-            {recentPapers.length ? <div className="mt-3 divide-y divide-slate-100">{recentPapers.map((savedPaper) => <div key={savedPaper.id} className="flex items-center justify-between gap-3 py-2.5"><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-700">{savedPaper.title}</p><p className="mt-0.5 text-[11px] text-slate-400">{savedPaper.total_marks} marks · {new Date(savedPaper.created_at).toLocaleDateString()}</p></div><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" /></div>)}</div> : <p className="mt-3 text-xs text-slate-500">No papers have been saved for this grade and subject yet.</p>}
+            {recentPapers.length ? <div className="mt-3 divide-y divide-slate-100">{recentPapers.map((savedPaper) => <button type="button" key={savedPaper.id} onClick={() => void openSavedPaper(savedPaper.id)} disabled={openingPaper === savedPaper.id} className="flex w-full items-center justify-between gap-3 py-2.5 text-left transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60"><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-700">{savedPaper.title}</p><p className="mt-0.5 text-[11px] text-slate-400">{savedPaper.total_marks} marks · {new Date(savedPaper.created_at).toLocaleDateString()}</p></div><div className="flex shrink-0 items-center gap-2">{savedPaper.status && <PaperStatusBadge status={savedPaper.status} />} {openingPaper === savedPaper.id ? <Loader2 className="h-4 w-4 animate-spin text-red-500" /> : <CheckCircle2 className="h-4 w-4 text-emerald-500" />}</div></button>)}</div> : <p className="mt-3 text-xs text-slate-500">No papers have been saved for this grade and subject yet.</p>}
           </div>
         </div>
       </div>
