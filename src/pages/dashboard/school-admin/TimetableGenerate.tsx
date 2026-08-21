@@ -727,7 +727,7 @@ export default function TimetableGenerate() {
                 effective_start_time: timing.start_time,
                 effective_end_time: timing.end_time,
                 entry_type: 'activity',
-                activity_name: 'SELF-STUDY / REVISION',
+                activity_name: 'REVISION',
               });
               classBusy.add(classKey);
             }
