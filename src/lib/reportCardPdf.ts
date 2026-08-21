@@ -411,7 +411,25 @@ export async function addLogoToPDF(
   }
 }
 
-// ── Add Student Photo to PDF ──────────────────────────────────────────────────
+// ── Corner identity fallbacks ──────────────────────────────────────────────────
+export function drawLogoPlaceholder(
+  doc: jsPDF,
+  label: string,
+  x: number,
+  y: number,
+  size: number,
+) {
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(106, 27, 154);
+  doc.setLineWidth(0.6);
+  doc.roundedRect(x, y, size, size, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(Math.max(8, size * 0.34));
+  doc.setTextColor(106, 27, 154);
+  doc.text(label, x + size / 2, y + size / 2 + size * 0.12, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+}
+
 export function drawStudentPhotoPlaceholder(
   doc: jsPDF,
   studentName: string,
@@ -478,7 +496,15 @@ export async function drawReportHeader(
 
   // Keep both identity images in matching 22mm squares at the same height.
   // The school logo is always on the left and the learner photo/initials on the right.
-  await addLogoToPDF(doc, school.logo_url, REPORT_CARD_LOGO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE, REPORT_CARD_CORNER_SIZE);
+  const logoAdded = await addLogoToPDF(
+    doc,
+    school.logo_url || '/logo.png',
+    REPORT_CARD_LOGO_X,
+    REPORT_CARD_CORNER_Y,
+    REPORT_CARD_CORNER_SIZE,
+    REPORT_CARD_CORNER_SIZE,
+  );
+  if (!logoAdded) drawLogoPlaceholder(doc, 'ZA', REPORT_CARD_LOGO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE);
   const photoAdded = learner?.photoUrl
     ? await addStudentPhotoToPDF(doc, learner.photoUrl, REPORT_CARD_PHOTO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE)
     : false;
