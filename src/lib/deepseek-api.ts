@@ -8,7 +8,8 @@ import {
 } from './exam-schema.js';
 
 interface DeepSeekChoice {
-  message?: { content?: string | null };
+  message?: { content?: unknown; reasoning_content?: string | null };
+  text?: unknown;
 }
 
 interface DeepSeekResponse {
@@ -18,6 +19,25 @@ interface DeepSeekResponse {
 
 export class DeepSeekConfigurationError extends Error {}
 export class DeepSeekResponseError extends Error {}
+
+function readMessageContent(payload: DeepSeekResponse): string {
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => typeof part === 'string' ? part : part && typeof part === 'object' && 'text' in part && typeof (part as { text?: unknown }).text === 'string' ? (part as { text: string }).text : '')
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+  if (typeof choice?.text === 'string') return choice.text.trim();
+  return '';
+}
+
+function waitBeforeRetry(attempt: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+}
 
 function toSafeString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value.trim() : fallback;
@@ -176,54 +196,74 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
   console.log('[exam-gen] model:', modelName);
   console.log('[exam-gen] key type:', apiKey.startsWith('eyJ') ? 'jwt' : apiKey.startsWith('sk-') ? 'sk-key' : `other(${apiKey.length}chars)`);
 
-  const body = JSON.stringify({
-    model: modelName,
-    messages: [
-      { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
-      { role: 'user', content: buildExamPrompt(request, knowledgeContext) },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.45,
-    max_tokens: 7000,
-    stream: false,
-  });
+  const prompt = buildExamPrompt(request, knowledgeContext);
+  let parsed: Record<string, unknown> | null = null;
 
-  console.log('[exam-gen] request body length:', body.length);
+  for (let attempt = 0; attempt < 3 && !parsed; attempt += 1) {
+    const retryInstruction = attempt === 0
+      ? ''
+      : '\n\nRETRY REQUIREMENT: The previous provider response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return an empty message, do not use markdown fences, and keep each question field concise enough to fit the requested paper.';
+    const requestPayload: Record<string, unknown> = {
+      model: modelName,
+      messages: [
+        { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
+        { role: 'user', content: `${prompt}${retryInstruction}` },
+      ],
+      temperature: attempt === 0 ? 0.45 : 0.25,
+      max_tokens: attempt === 0 ? 7000 : 6000,
+      stream: false,
+    };
+    // DeepSeek supports json_object, but omitting it on retries gives the provider
+    // a second compatible path when a transient structured-output response is empty.
+    if (attempt === 0) requestPayload.response_format = { type: 'json_object' };
+    const body = JSON.stringify(requestPayload);
+    console.log('[exam-gen] attempt:', attempt + 1, 'request body length:', body.length);
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body,
-  });
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body,
+      });
+      const rawText = await response.text().catch(() => '');
+      console.log('[exam-gen] attempt:', attempt + 1, 'status:', response.status, 'response length:', rawText.length);
+      if (!rawText.trim()) {
+        throw new DeepSeekResponseError(`The AI service returned an empty response on attempt ${attempt + 1} (status ${response.status}).`);
+      }
 
-  const rawText = await response.text().catch(() => '');
-  console.log('[exam-gen] status:', response.status, 'response length:', rawText.length);
-  if (!rawText.trim()) {
-    throw new DeepSeekResponseError(`The AI service returned an empty response (status ${response.status}). Please try again.`);
+      let payload: DeepSeekResponse;
+      try {
+        payload = JSON.parse(rawText) as DeepSeekResponse;
+      } catch {
+        throw new DeepSeekResponseError(`The AI service returned an invalid response (status ${response.status}).`);
+      }
+      if (!response.ok) {
+        const providerMessage = payload.error?.message || `The AI service returned status ${response.status}.`;
+        throw new DeepSeekResponseError(providerMessage);
+      }
+
+      const content = readMessageContent(payload);
+      console.log('[exam-gen] attempt:', attempt + 1, 'content preview:', content.slice(0, 200));
+      if (!content) throw new DeepSeekResponseError(`The AI service returned an empty response on attempt ${attempt + 1}.`);
+      const candidate = parseJsonObject(content);
+      const candidateQuestions = Array.isArray(candidate.questions)
+        ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter(Boolean)
+        : [];
+      if (!candidateQuestions.length) throw new DeepSeekResponseError('The AI service did not provide any valid questions.');
+      parsed = candidate;
+    } catch {
+      if (attempt < 2) {
+        await waitBeforeRetry(attempt);
+      }
+    }
   }
 
-  let payload: DeepSeekResponse;
-  try {
-    payload = JSON.parse(rawText) as DeepSeekResponse;
-  } catch {
-    throw new DeepSeekResponseError(`The AI service returned an invalid response (status ${response.status}). Response: ${rawText.slice(0, 200)}`);
+  if (!parsed) {
+    throw new DeepSeekResponseError('The AI service did not return a usable exam response after three attempts. Please retry; your selected blueprint and curriculum choices were not lost.');
   }
-
-  if (!response.ok) {
-    const providerMessage = payload.error?.message || `The AI service returned status ${response.status}.`;
-    throw new DeepSeekResponseError(providerMessage);
-  }
-
-  // Log the full response for debugging
-  console.log('[exam-gen] choices:', JSON.stringify(payload.choices?.[0]?.message?.content || '')?.slice(0, 200));
-
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) throw new DeepSeekResponseError('The AI service returned an empty response. Please try again.');
-
-  const parsed = parseJsonObject(content);
   const fallbackType = request.questionTypes[0] || 'multiple_choice';
   const normalizedQuestions = Array.isArray(parsed.questions)
     ? parsed.questions.map((entry) => normalizeQuestion(entry, fallbackType, fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))

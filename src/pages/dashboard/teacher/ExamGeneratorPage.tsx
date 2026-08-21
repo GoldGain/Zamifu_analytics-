@@ -50,12 +50,13 @@ export default function ExamGeneratorPage() {
       .from('curriculum_grades')
       .select('*')
       .order('grade_number');
-    const junior = (data || []).filter((g: Grade) => g.grade_number >= 7 && g.grade_number <= 9);
-    const availableGrades = junior.length ? junior : [
-      { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
-      { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
-      { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
-    ];
+    const availableGrades = (data || []).length
+      ? [...(data || [])].sort((a: Grade, b: Grade) => a.grade_number - b.grade_number)
+      : [
+        { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
+        { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
+        { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
+      ];
     setGrades(availableGrades);
     const requested = requestedGrade.toLowerCase().replace(/\s+/g, '');
     if (requested) {
@@ -77,20 +78,17 @@ export default function ExamGeneratorPage() {
       .eq('grade_id', selectedGrade)
       .order('subject_name')
       .then(({ data }) => {
-        if (data && data.length) {
-          setSubjects(data);
-        } else {
-          setSubjects(
-            juniorExamSubjects().map((name, idx) => ({
-              id: `local-${selectedGrade}-${idx}`,
-              subject_name: name,
-              subject_code: name.slice(0, 4).toUpperCase(),
-            }))
-          );
-        }
+        const availableSubjects: Subject[] = data && data.length
+          ? data as Subject[]
+          : juniorExamSubjects().map((name, idx) => ({
+            id: `local-${selectedGrade}-${idx}`,
+            subject_name: name,
+            subject_code: name.slice(0, 4).toUpperCase(),
+          }));
+        setSubjects(availableSubjects);
         const requested = requestedSubject.toLowerCase().replace(/\s+/g, '');
         if (requested) {
-          const match = (data || []).find((subject: Subject) =>
+          const match = availableSubjects.find((subject: Subject) =>
             subject.subject_name.toLowerCase().replace(/\s+/g, '') === requested
           );
           if (match) setSelectedSubject(match.id);

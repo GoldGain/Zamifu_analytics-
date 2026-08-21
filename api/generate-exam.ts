@@ -12,6 +12,7 @@ import {
 } from '../src/lib/exam-schema.js';
 import { filterUnnecessaryExamVisual, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
+import { getStrandPacks } from '../src/lib/kicd-knowledge.js';
 
 const allowedQuestionTypes = new Set<QuestionType>([
   'multiple_choice', 'multiple_response', 'modified_true_false', 'completion',
@@ -140,6 +141,34 @@ function checkRateLimit(key: string): boolean {
   return true;
 }
 
+function normalizeContextKey(value: unknown): string {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function embeddedCurriculumContext(request: ExamGenerationRequest): { context: string; sourceSummary: string[] } {
+  const packs = getStrandPacks(request.subject);
+  const requestedStrands = new Set(request.strands.map(normalizeContextKey));
+  const requestedSubStrands = new Set(request.subStrands.map(normalizeContextKey));
+  const requestedTopics = new Set(request.topics.map(normalizeContextKey));
+  const lines: string[] = [];
+  for (const pack of packs) {
+    if (requestedStrands.size && !requestedStrands.has(normalizeContextKey(pack.strand))) continue;
+    for (const subStrand of pack.subStrands) {
+      if (requestedSubStrands.size && !requestedSubStrands.has(normalizeContextKey(subStrand.name))) continue;
+      const topics = requestedTopics.size
+        ? subStrand.topics.filter((topic) => requestedTopics.has(normalizeContextKey(topic)))
+        : subStrand.topics;
+      if (!topics.length && requestedTopics.size) continue;
+      const outcomes = subStrand.slos.slice(0, 3).join('; ');
+      lines.push([pack.strand, subStrand.name, topics.slice(0, 8).join(', '), outcomes].filter(Boolean).join(': '));
+    }
+  }
+  return {
+    context: lines.slice(0, 18).join('\n'),
+    sourceSummary: lines.length ? [`Embedded KICD-aligned curriculum pack for ${request.subject}`] : [],
+  };
+}
+
 async function loadVettedContext(
   supabase: ReturnType<typeof createClient>,
   request: ExamGenerationRequest,
@@ -149,13 +178,19 @@ async function loadVettedContext(
     .select('content_summary, subject, grade_level, strand, sub_strand, source_name')
     .eq('is_approved', true)
     .eq('subject', request.subject)
-    .limit(12);
+    .limit(24);
 
-  if (error || !data?.length) return { context: '', sourceSummary: [] };
-  const matching = data.filter((row: any) => !row.grade_level || row.grade_level === request.gradeLevel).slice(0, 8);
+  const requestedGrade = normalizeContextKey(request.gradeLevel);
+  const matching = (error ? [] : (data || []))
+    .filter((row: any) => !row.grade_level || normalizeContextKey(row.grade_level) === requestedGrade)
+    .slice(0, 10);
+  const databaseContext = matching.map((row: any) => [row.strand, row.sub_strand, row.content_summary].filter(Boolean).join(': ')).join('\n');
+  const databaseSources = matching.map((row: any) => row.source_name).filter(Boolean);
+  const embedded = embeddedCurriculumContext(request);
+  const context = [databaseContext, embedded.context].filter(Boolean).join('\n');
   return {
-    context: matching.map((row: any) => [row.strand, row.sub_strand, row.content_summary].filter(Boolean).join(': ')).join('\n'),
-    sourceSummary: matching.map((row: any) => row.source_name).filter(Boolean),
+    context,
+    sourceSummary: Array.from(new Set([...databaseSources, ...embedded.sourceSummary])).slice(0, 12),
   };
 }
 
@@ -169,60 +204,16 @@ type ExamProfile = {
   email?: string;
 };
 
-function normalizeKey(value: unknown): string {
-  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-function gradeMatches(requestedGrade: string, values: unknown[]): boolean {
-  const requested = normalizeKey(requestedGrade);
-  const requestedNumber = requested.match(/\d+/)?.[0] || '';
-  return values.some((value) => {
-    const candidate = normalizeKey(value);
-    if (!candidate) return false;
-    if (candidate === requested) return true;
-    return Boolean(requestedNumber && candidate.match(/\d+/)?.[0] === requestedNumber);
-  });
-}
-
-function subjectMatches(requestedSubject: string, values: unknown[]): boolean {
-  const requested = normalizeKey(requestedSubject);
-  return values.some((value) => {
-    const candidate = normalizeKey(value);
-    return Boolean(candidate && (candidate === requested || candidate.includes(requested) || requested.includes(candidate)));
-  });
-}
-
-async function assertGenerationAccess(
-  supabase: ReturnType<typeof createClient>,
-  profile: ExamProfile,
-  user: { id: string },
-  request: ExamGenerationRequest,
-): Promise<string | null> {
+function assertGenerationAccess(profile: ExamProfile): string | null {
   if (!profile.school_id) return 'Your account is not linked to a school.';
   if (!['teacher', 'school_admin'].includes(profile.role)) {
     return 'Only teachers and school administrators can generate assessment papers.';
   }
-  if (profile.role === 'school_admin') return null;
-
-  const { data: teacher, error: teacherError } = await supabase
-    .from('teachers')
-    .select('id')
-    .eq('profile_id', user.id)
-    .eq('school_id', profile.school_id)
-    .maybeSingle();
-  if (teacherError || !teacher?.id) return 'Your teacher profile could not be verified for this school.';
-
-  const { data: assignments, error: assignmentError } = await supabase
-    .from('teacher_subject_assignments')
-    .select('subject_id, subjects(name), classes(name, level)')
-    .eq('school_id', profile.school_id)
-    .eq('teacher_id', teacher.id)
-    .eq('is_active', true);
-  if (assignmentError) return 'Your teaching assignments could not be verified. Please try again.';
-
-  const allowed = (assignments || []).some((assignment: any) => subjectMatches(request.subject, [assignment.subjects?.name])
-    && gradeMatches(request.gradeLevel, [assignment.classes?.name, assignment.classes?.level]));
-  return allowed ? null : 'You can generate papers only for subjects and grades assigned to you.';
+  // Exam Generator is an authoring tool for the school, not a marks-entry tool.
+  // Keep authentication, school linkage, role checks, rate limits, review, and
+  // school-scoped persistence, but do not require the teacher to be assigned the
+  // selected learning area before drafting an original assessment paper.
+  return null;
 }
 
 async function handleExamGeneration(
@@ -237,7 +228,7 @@ async function handleExamGeneration(
     jsonError(response, 400, 'Invalid exam-generation request.');
     return;
   }
-  const accessError = await assertGenerationAccess(supabase, profile, user, parsedRequest);
+  const accessError = assertGenerationAccess(profile);
   if (accessError) {
     jsonError(response, 403, accessError);
     return;
