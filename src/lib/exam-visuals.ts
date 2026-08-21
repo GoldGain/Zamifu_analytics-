@@ -91,6 +91,33 @@ function renderMap(spec: ExamVisualSpec): string {
   return `${polygon}${labels}<path d="M410 65 L410 35 L400 48 L420 48 Z" fill="#111827"/><text x="410" y="25" text-anchor="middle" class="small">N</text><line x1="70" y1="285" x2="150" y2="285" stroke="#111827" stroke-width="3"/><text x="160" y="289" class="small">schematic scale</text>`;
 }
 
+function renderNurseryBedDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || ['Shade', 'Seed drill', 'Nursery bed', 'Watering can']).map(String);
+  const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
+  const seedRows = [0, 1, 2].map((row) => {
+    const y = 182 + row * 12;
+    return `<line x1="125" y1="${y}" x2="315" y2="${y}" stroke="#6b7280" stroke-width="2"/>${[0, 1, 2, 3, 4, 5].map((seed) => `<circle cx="${140 + seed * 34}" cy="${y - 4}" r="2.5" fill="#111827"/>`).join('')}`;
+  }).join('');
+  return `<g>
+    <path d="M82 83 Q220 34 358 83 L342 108 Q220 70 98 108 Z" fill="#d1d5db" stroke="#111827" stroke-width="3"/>
+    <path d="M98 91 Q220 58 342 91 M105 101 Q220 74 335 101" fill="none" stroke="#4b5563" stroke-width="2"/>
+    <line x1="108" y1="94" x2="108" y2="165" stroke="#111827" stroke-width="4"/><line x1="332" y1="94" x2="332" y2="165" stroke="#111827" stroke-width="4"/>
+    <path d="M92 168 L348 168 L330 226 L110 226 Z" fill="#9ca3af" stroke="#111827" stroke-width="3"/>
+    <path d="M110 226 L330 226 L314 242 L126 242 Z" fill="#6b7280" stroke="#111827" stroke-width="2"/>
+    ${seedRows}
+    <text x="222" y="56" text-anchor="middle" class="body">${label(0, 'Shade')}</text>
+    <line x1="222" y1="61" x2="222" y2="78" stroke="#111827" stroke-width="1.5"/>
+    <text x="220" y="263" text-anchor="middle" class="body">${label(2, 'Nursery bed')}</text>
+    <line x1="220" y1="248" x2="220" y2="230" stroke="#111827" stroke-width="1.5"/>
+    <path d="M42 214 L72 214 L80 229 L46 229 Z M72 217 Q92 215 99 228" fill="none" stroke="#111827" stroke-width="3"/>
+    <line x1="54" y1="229" x2="45" y2="245" stroke="#111827" stroke-width="2"/><line x1="72" y1="229" x2="80" y2="245" stroke="#111827" stroke-width="2"/>
+    <text x="66" y="278" text-anchor="middle" class="small">${label(1, 'Seed drill')}</text>
+    <path d="M390 214 Q407 204 421 214 L421 238 L390 238 Z M421 220 Q440 217 443 228 Q440 238 421 233" fill="none" stroke="#111827" stroke-width="3"/>
+    <line x1="396" y1="214" x2="404" y2="204" stroke="#111827" stroke-width="2"/>
+    <text x="414" y="263" text-anchor="middle" class="small">${label(3, 'Watering can')}</text>
+  </g>`;
+}
+
 function renderTable(spec: ExamVisualSpec): string {
   const sourceHeaders = (spec.labels || ['Item', 'Value']).map(String).slice(0, 4);
   const sourceRows = (spec.x_labels || ['Item 1', 'Item 2', 'Item 3', 'Item 4']).map(String).slice(0, 6);
@@ -136,7 +163,12 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   else if (assetType === 'table') body = renderTable(spec);
   else if (assetType === 'number_line') body = renderNumberLine(spec);
   else if (assetType === 'shape' || assetType === 'diagram') {
-    body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';
+    const descriptor = `${question.question_text} ${spec.title || ''} ${spec.prompt || ''} ${spec.caption || ''} ${(spec.labels || []).join(' ')}`.toLowerCase();
+    if (assetType === 'diagram' && /nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) {
+      body = renderNurseryBedDiagram(spec);
+    } else {
+      body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';
+    }
   } else if (assetType === 'flowchart') {
     const labels = (spec.labels || ['Start', 'Process', 'Decision', 'End']).slice(0, 4);
     const yPositions = [45, 105, 165, 225];
