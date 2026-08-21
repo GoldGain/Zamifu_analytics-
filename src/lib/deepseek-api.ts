@@ -80,7 +80,7 @@ function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: strin
   const selectedSubStrands = request.subStrands.length ? request.subStrands.join('; ') : 'Not separately constrained.';
   const selectedTopics = request.topics.length ? request.topics.join('; ') : 'Not separately constrained.';
   const imageDirection = request.includeImages
-    ? 'For every question that benefits from a visual, return a structured visual_spec object with asset_type (diagram, map, chart, graph, shape, flowchart, illustration, table, or number_line), title, prompt, caption, labels, and any map_regions or x_labels. Do not invent an image URL. Prefer precise schematic visuals and static map specifications suitable for a printable exam.'
+    ? 'Visual questions are enabled. You MUST include at least one question with a complete structured visual_spec object. For every question that benefits from a visual, return visual_spec with asset_type (diagram, map, chart, graph, shape, flowchart, illustration, table, or number_line), title, prompt, caption, labels, and any map_regions or x_labels. Do not invent an image URL. Prefer precise schematic visuals and static map specifications suitable for a printable exam.'
     : 'Do not require any images, but preserve a visual_spec only when a visual is essential to answer the question.';
   const outcomes = request.learningOutcomes?.length ? request.learningOutcomes.join('; ') : 'Not separately constrained.';
   const competencies = request.competencies?.length ? request.competencies.join('; ') : 'Use suitable CBC core competencies.';

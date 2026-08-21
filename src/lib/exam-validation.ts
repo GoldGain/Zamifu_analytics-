@@ -47,6 +47,9 @@ export function validateGeneratedExam(request: ExamGenerationRequest, questions:
   if (actualMarks !== expectedMarks) {
     issues.push({ code: 'TOTAL_MARKS_MISMATCH', severity: 'critical', message: `The generated questions total ${actualMarks} marks instead of ${expectedMarks}.` });
   }
+  if (request.includeImages && questions.length > 0 && !questions.some((question) => question.visual_spec)) {
+    issues.push({ code: 'VISUAL_REQUIRED', severity: 'critical', message: 'Visual questions are enabled, but the paper contains no structured visual specification.' });
+  }
 
   const seen = new Map<string, number>();
   questions.forEach((question, index) => {
