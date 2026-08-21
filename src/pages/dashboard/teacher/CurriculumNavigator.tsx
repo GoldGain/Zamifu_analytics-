@@ -7,7 +7,7 @@ import {
   Circle, Loader2, Brain, Upload, X, Plus, AlertCircle, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
-import ExamGenerator from '@/components/curriculum/ExamGenerator';
+import { Link } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -1689,17 +1689,23 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
                   </div>
                 )}
 
-                {/* ── SECTION 4: Exam Generator ── */}
+                {/* ── SECTION 4: Canonical Assessment Studio ── */}
                 {activeSection === 'exam' && (
-                  <ExamGenerator
-                    gradeLevel={gradeName}
-                    subject={subjectName}
-                    schoolName={schoolName}
-                    schoolId={user?.schoolId || ''}
-                    strands={strands}
-                    topics={allTopics}
-                    onGenerated={() => setExamBlueprint(null)}
-                  />
+                  <div className="rounded-2xl border border-red-100 bg-gradient-to-br from-white via-white to-red-50 p-6 shadow-sm">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-600">Assessment Studio</p>
+                        <h3 className="mt-1 text-lg font-bold text-slate-900">Open the full paper-building workspace</h3>
+                        <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Your selected grade, subject, and topic will be carried into the canonical generator so there is one secure place to design, review, validate, approve, and export papers.</p>
+                      </div>
+                      <Link
+                        to={`/teacher/exam-generator?grade=${encodeURIComponent(gradeName)}&subject=${encodeURIComponent(subjectName)}${selectedTopic ? `&topic=${encodeURIComponent(selectedTopic.topic_name)}` : ''}`}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
+                      >
+                        <FileText className="h-4 w-4" /> Open Assessment Studio
+                      </Link>
+                    </div>
+                  </div>
                 )}
               </>
             )}

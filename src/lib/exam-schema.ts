@@ -13,6 +13,26 @@ export const CBC_QUESTION_TYPES = [
 export type QuestionType = (typeof CBC_QUESTION_TYPES)[number]['value'];
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'mixed';
 export type ExamFormat = 'cbe' | 'kpsea' | 'kjsea' | 'custom';
+export type AssessmentLevel = 'pre_primary' | 'lower_primary' | 'upper_primary' | 'junior_secondary' | 'senior_secondary';
+
+export interface ExamBlueprintSection {
+  id: string;
+  title?: string;
+  question_type: QuestionType;
+  count: number;
+  marks_per_question: number;
+  difficulty: Difficulty;
+  strand?: string;
+  sub_strand?: string;
+  topic?: string;
+  competency?: string;
+}
+
+export interface ExamBlueprint {
+  sections: ExamBlueprintSection[];
+  total_marks: number;
+  estimated_minutes?: number;
+}
 
 export interface GeneratedExamQuestion {
   id?: string;
@@ -27,8 +47,13 @@ export interface GeneratedExamQuestion {
   strand?: string;
   sub_strand?: string;
   topic?: string;
+  learning_outcome?: string;
+  competency?: string;
+  cognitive_level?: string;
   image_url?: string | null;
   source_website?: string | null;
+  visual_spec?: Record<string, unknown> | null;
+  review_status?: 'draft' | 'approved' | 'flagged';
 }
 
 export interface ExamPaper {
@@ -46,6 +71,10 @@ export interface ExamPaper {
   marking_scheme?: string;
   format: ExamFormat;
   generated_at?: string;
+  status?: 'draft' | 'reviewed' | 'approved' | 'archived';
+  version_number?: number;
+  blueprint?: ExamBlueprint;
+  validation_results?: Array<{ code: string; severity: 'critical' | 'warning' | 'info'; message: string; questionIndex?: number }>;
 }
 
 export interface ExamGenerationRequest {
@@ -64,6 +93,12 @@ export interface ExamGenerationRequest {
   format: ExamFormat;
   term?: string;
   schoolName?: string;
+  level?: AssessmentLevel;
+  curriculumVersion?: string;
+  learningOutcomes?: string[];
+  competencies?: string[];
+  blueprint?: ExamBlueprint;
+  preset?: string;
 }
 
 export interface ExamGenerationResponse {
@@ -93,10 +128,23 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   if (!request.questionTypes.length) errors.push('Select at least one question type.');
   if (request.totalMarks < 5 || request.totalMarks > 200) errors.push('Total marks must be between 5 and 200.');
   if (request.durationMinutes < 10 || request.durationMinutes > 240) errors.push('Duration must be between 10 and 240 minutes.');
+  if (request.blueprint) {
+    if (!request.blueprint.sections.length) errors.push('Add at least one blueprint section.');
+    const blueprintTotal = request.blueprint.sections.reduce((sum, section) => sum + section.count * section.marks_per_question, 0);
+    if (blueprintTotal !== request.totalMarks) errors.push(`Blueprint marks (${blueprintTotal}) must equal the requested total (${request.totalMarks}).`);
+    if (request.blueprint.sections.some((section) => section.count < 1 || section.marks_per_question < 1)) errors.push('Blueprint sections must have positive item counts and marks.');
+  }
   return errors;
 }
 
 export function allocateQuestionBlueprint(request: ExamGenerationRequest): Array<{ type: QuestionType; count: number; marks: number }> {
+  if (request.blueprint?.sections.length) {
+    return request.blueprint.sections.map((section) => ({
+      type: section.question_type,
+      count: section.count,
+      marks: section.count * section.marks_per_question,
+    }));
+  }
   const selected: QuestionType[] = request.questionTypes.length ? [...request.questionTypes] : ['multiple_choice'];
   const markWeights = selected.map((type) => CBC_QUESTION_TYPES.find((item) => item.value === type)?.defaultMarks || 1);
   const totalWeight = markWeights.reduce((sum, weight) => sum + weight, 0);

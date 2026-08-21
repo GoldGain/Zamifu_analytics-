@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BookOpenCheck, CheckCircle2, ChevronDown, Download, FileImage, FileText,
-  ImagePlus, Loader2, RefreshCw, ShieldCheck, Sparkles, X,
+  AlertTriangle, BadgeCheck, BookOpenCheck, Check, CheckCircle2, ChevronDown,
+  Download, Edit3, Eye, FileImage, FileKey2, FileText, Flag, ImagePlus,
+  Loader2, RefreshCw, Save, ShieldCheck, Sparkles, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
@@ -15,6 +16,7 @@ import {
   type ExamPaper,
   type GeneratedExamQuestion,
   type QuestionType,
+  type ExamPdfMode,
 } from '@/lib/exam-generator';
 
 export interface CurriculumTopicOption {
@@ -40,6 +42,8 @@ interface SavedPaperSummary {
   grade_level: string;
   total_marks: number;
   created_at: string;
+  status?: 'draft' | 'reviewed' | 'approved' | 'archived';
+  version_number?: number;
 }
 
 interface ExamGeneratorProps {
@@ -49,6 +53,7 @@ interface ExamGeneratorProps {
   schoolId?: string;
   strands: CurriculumStrandOption[];
   topics: CurriculumTopicOption[];
+  initialTopic?: string;
   onGenerated?: (paper: ExamPaper) => void;
 }
 
@@ -84,6 +89,7 @@ export default function ExamGenerator({
   schoolId,
   strands,
   topics,
+  initialTopic,
   onGenerated,
 }: ExamGeneratorProps) {
   const [title, setTitle] = useState('');
@@ -105,6 +111,8 @@ export default function ExamGenerator({
   const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null);
   const [paper, setPaper] = useState<ExamPaper | null>(null);
   const [recentPapers, setRecentPapers] = useState<SavedPaperSummary[]>([]);
+  const [exportMode, setExportMode] = useState<ExamPdfMode>('student');
+  const [approvingPaper, setApprovingPaper] = useState(false);
 
   const availableSubStrands = useMemo(() => strands
     .filter((strand) => selectedStrands.size === 0 || selectedStrands.has(strand.id))
@@ -120,6 +128,13 @@ export default function ExamGenerator({
   }, [gradeLevel, subject]);
 
   useEffect(() => {
+    if (!initialTopic || !topics.length) return;
+    const requested = initialTopic.toLowerCase().trim();
+    const match = topics.find((topic) => topic.topic_name.toLowerCase().trim() === requested);
+    if (match) setSelectedTopics(new Set([match.id]));
+  }, [initialTopic, topics]);
+
+  useEffect(() => {
     if (!schoolId) return;
     void loadRecentPapers();
   }, [schoolId, subject, gradeLevel]);
@@ -128,7 +143,7 @@ export default function ExamGenerator({
     if (!schoolId) return;
     const { data } = await supabaseUntyped
       .from('exam_papers')
-      .select('id, title, subject, grade_level, total_marks, created_at')
+      .select('id, title, subject, grade_level, total_marks, created_at, status, version_number')
       .eq('school_id', schoolId)
       .eq('subject', subject)
       .eq('grade_level', gradeLevel)
@@ -187,14 +202,105 @@ export default function ExamGenerator({
 
   async function downloadPaper() {
     if (!paper) return;
+    const critical = (paper.validation_results || []).filter((issue) => issue.severity === 'critical');
+    if (critical.length) {
+      toast.error('Resolve all critical validation issues before exporting this paper.');
+      return;
+    }
     setDownloading(true);
     try {
-      await downloadExamPdf(paper, includeMarkingScheme);
-      toast.success('Professional PDF paper downloaded.');
+      await downloadExamPdf(paper, exportMode);
+      toast.success(`${exportMode === 'student' ? 'Student paper' : exportMode === 'marking_scheme' ? 'Marking scheme' : 'Answer key'} PDF downloaded.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The PDF could not be created.');
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function getAccessToken(): Promise<string> {
+    const { data: sessionData } = await supabaseUntyped.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) throw new Error('Your session has expired. Please sign in again.');
+    return token;
+  }
+
+  async function updateQuestion(question: GeneratedExamQuestion, patch: Record<string, unknown>) {
+    if (!question.id) throw new Error('This question is not linked to a saved paper.');
+    const { error } = await (supabaseUntyped as any).from('exam_questions').update(patch).eq('id', question.id);
+    if (error) throw error;
+    setPaper((current) => current ? { ...current, questions: current.questions.map((entry) => entry.id === question.id ? { ...entry, ...patch } as GeneratedExamQuestion : entry) } : current);
+  }
+
+  async function reviewQuestion(question: GeneratedExamQuestion, status: 'approved' | 'flagged' | 'draft') {
+    try {
+      await updateQuestion(question, { review_status: status, reviewed_at: new Date().toISOString() });
+      toast.success(status === 'approved' ? 'Question approved.' : status === 'flagged' ? 'Question flagged for revision.' : 'Question returned to draft.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Question review could not be saved.');
+    }
+  }
+
+  async function editQuestion(question: GeneratedExamQuestion, questionText: string) {
+    const cleaned = questionText.trim();
+    if (!cleaned) { toast.error('Question text cannot be empty.'); return; }
+    try {
+      await updateQuestion(question, { question_text: cleaned, review_status: 'draft', reviewed_at: null });
+      toast.success('Question edited and returned to draft review.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Question edit could not be saved.');
+    }
+  }
+
+  async function regenerateQuestion(question: GeneratedExamQuestion) {
+    try {
+      const token = await getAccessToken();
+      const response = await fetch('/api/generate-exam', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          title: `${paper?.title || subject} — replacement question`, gradeLevel, subject,
+          strands: question.strand ? [question.strand] : [], subStrands: question.sub_strand ? [question.sub_strand] : [],
+          topics: question.topic ? [question.topic] : [], questionTypes: [question.question_type],
+          totalMarks: question.marks, durationMinutes: Math.max(10, Math.min(30, durationMinutes)), difficulty: question.difficulty,
+          includeImages: Boolean(question.visual_spec), includeMarkingScheme: true, format, term, schoolName,
+          blueprint: { total_marks: question.marks, sections: [{ id: `replacement-${Date.now()}`, question_type: question.question_type, count: 1, marks_per_question: question.marks, difficulty: question.difficulty, strand: question.strand, sub_strand: question.sub_strand, topic: question.topic }] },
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(apiErrorMessage(payload));
+      const replacement = payload?.paper?.questions?.[0] as GeneratedExamQuestion | undefined;
+      if (!replacement) throw new Error('The regeneration service returned no replacement question.');
+      await updateQuestion(question, {
+        question_text: replacement.question_text, options: replacement.options || [], correct_answer: replacement.correct_answer,
+        marking_scheme: replacement.marking_scheme, marks: replacement.marks, difficulty: replacement.difficulty,
+        strand: replacement.strand || null, sub_strand: replacement.sub_strand || null, topic: replacement.topic || null,
+        learning_outcome: replacement.learning_outcome || null, competency: replacement.competency || null, cognitive_level: replacement.cognitive_level || null,
+        image_url: replacement.image_url || null, metadata: { visual_spec: replacement.visual_spec || null }, review_status: 'draft', reviewed_at: null,
+      });
+      toast.success('Question regenerated and returned to draft review.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Question regeneration failed.');
+    }
+  }
+
+  async function approvePaper() {
+    if (!paper?.id) return;
+    const critical = (paper.validation_results || []).filter((issue) => issue.severity === 'critical');
+    if (critical.length) { toast.error('Resolve all critical validation issues before approving.'); return; }
+    setApprovingPaper(true);
+    try {
+      const { data: sessionData } = await supabaseUntyped.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      const { error } = await (supabaseUntyped as any).from('exam_papers').update({ status: 'approved', approved_by: userId, approved_at: new Date().toISOString() }).eq('id', paper.id);
+      if (error) throw error;
+      setPaper((current) => current ? { ...current, status: 'approved' } : current);
+      await loadRecentPapers();
+      toast.success('Paper approved and ready for controlled distribution.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Paper approval failed.');
+    } finally {
+      setApprovingPaper(false);
     }
   }
 
@@ -239,6 +345,10 @@ export default function ExamGenerator({
       setUploadingQuestionId(null);
     }
   }
+
+  const validationIssues = paper?.validation_results || [];
+  const criticalIssueCount = validationIssues.filter((issue) => issue.severity === 'critical').length;
+  const warningIssueCount = validationIssues.filter((issue) => issue.severity === 'warning').length;
 
   return (
     <section className="space-y-5" aria-label="CBC exam generator">
@@ -338,15 +448,16 @@ export default function ExamGenerator({
 
         <div className="space-y-5">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div><h3 className="font-semibold text-slate-900">Generated paper</h3><p className="mt-1 text-xs leading-5 text-slate-500">Review the generated questions before sharing with learners.</p></div>
-              {paper && <button type="button" onClick={() => void downloadPaper()} disabled={downloading} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60">{downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Export PDF</button>}
+            <div className="mb-3 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">Generated paper</h3><p className="mt-1 text-xs leading-5 text-slate-500">Review every question, validate the blueprint, then approve before sharing with learners.</p></div>{paper && <PaperStatusBadge status={paper.status || 'draft'} />}</div>
+              {paper && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-slate-700">Quality gate:</span><span className="rounded-full bg-red-100 px-2 py-1 font-semibold text-red-700">{criticalIssueCount} critical</span><span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-700">{warningIssueCount} warnings</span>{criticalIssueCount === 0 ? <span className="font-medium text-emerald-700">Ready for review</span> : <span className="font-medium text-red-700">Export and approval locked</span>}</div>{validationIssues.length > 0 && <div className="mt-2 space-y-1">{validationIssues.slice(0, 4).map((issue, issueIndex) => <p key={`${issue.code}-${issueIndex}`} className={`text-[11px] leading-4 ${issue.severity === 'critical' ? 'text-red-700' : issue.severity === 'warning' ? 'text-amber-700' : 'text-blue-700'}`}>{issue.severity === 'critical' ? 'Critical' : issue.severity === 'warning' ? 'Warning' : 'Info'}: {issue.message}</p>)}</div>}</div>}
+              {paper && <div className="flex flex-wrap items-center gap-2"><select value={exportMode} onChange={(event) => setExportMode(event.target.value as ExamPdfMode)} disabled={criticalIssueCount > 0} className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"><option value="student">Student paper PDF</option><option value="marking_scheme">Marking scheme PDF</option><option value="answer_key">Compact answer key PDF</option><option value="combined">Student paper + marking scheme</option></select><button type="button" onClick={() => void downloadPaper()} disabled={downloading || criticalIssueCount > 0} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">{downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Export</button><button type="button" onClick={() => void approvePaper()} disabled={approvingPaper || criticalIssueCount > 0 || paper.status === 'approved'} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{approvingPaper ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BadgeCheck className="h-3.5 w-3.5" />}{paper.status === 'approved' ? 'Approved' : 'Approve paper'}</button></div>}
             </div>
 
             {!paper ? <div className="flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center"><FileText className="h-10 w-10 text-slate-300" /><p className="mt-3 text-sm font-medium text-slate-600">Your paper preview will appear here.</p><p className="mt-1 max-w-sm text-xs leading-5 text-slate-400">Choose the curriculum focus and question types, then generate a structured CBC assessment.</p></div> : <>
               <div className="mb-3 rounded-xl bg-slate-50 p-3"><p className="text-sm font-semibold text-slate-800">{paper.title}</p><p className="mt-1 text-xs text-slate-500">{paper.questions.length} questions · {paper.total_marks} marks · {paper.duration_minutes} minutes</p></div>
               <div className="max-h-[660px] space-y-3 overflow-y-auto pr-1">
-                {paper.questions.map((question, index) => <QuestionPreview key={question.id || `${question.question_text}-${index}`} question={question} index={index} includeImages={includeImages} uploading={uploadingQuestionId === question.id} onAttach={(file) => void attachImage(question, file)} />)}
+                {paper.questions.map((question, index) => <QuestionPreview key={question.id || `${question.question_text}-${index}`} question={question} index={index} includeImages={includeImages} uploading={uploadingQuestionId === question.id} onAttach={(file) => void attachImage(question, file)} validationIssues={validationIssues.filter((issue) => issue.questionIndex === index)} onReview={(status) => void reviewQuestion(question, status)} onEdit={(text) => void editQuestion(question, text)} onRegenerate={() => void regenerateQuestion(question)} />)}
               </div>
             </>}
           </div>
@@ -371,8 +482,42 @@ function SelectableRow({ checked, label, onChange }: { checked: boolean; label: 
 
 function EmptySelection({ label }: { label: string }) { return <p className="px-1 py-2 text-[11px] leading-4 text-slate-400">{label}</p>; }
 
-function QuestionPreview({ question, index, includeImages, uploading, onAttach }: { question: GeneratedExamQuestion; index: number; includeImages: boolean; uploading: boolean; onAttach: (file: File | undefined) => void }) {
+function PaperStatusBadge({ status }: { status: 'draft' | 'reviewed' | 'approved' | 'archived' }) {
+  const styles = status === 'approved' ? 'bg-emerald-100 text-emerald-700' : status === 'reviewed' ? 'bg-blue-100 text-blue-700' : status === 'archived' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700';
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${styles}`}><BadgeCheck className="h-3.5 w-3.5" />{status}</span>;
+}
+
+function QuestionPreview({ question, index, includeImages, uploading, onAttach, validationIssues, onReview, onEdit, onRegenerate }: {
+  question: GeneratedExamQuestion;
+  index: number;
+  includeImages: boolean;
+  uploading: boolean;
+  onAttach: (file: File | undefined) => void;
+  validationIssues: Array<{ code: string; severity: 'critical' | 'warning' | 'info'; message: string }>;
+  onReview: (status: 'approved' | 'flagged' | 'draft') => void;
+  onEdit: (text: string) => void;
+  onRegenerate: () => void;
+}) {
   const [showMarking, setShowMarking] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftStem, setDraftStem] = useState(question.question_text);
+  const [busy, setBusy] = useState(false);
   const options = Array.isArray(question.options) ? question.options : [];
-  return <article className="rounded-xl border border-slate-200 bg-white p-3.5"><div className="flex items-start justify-between gap-3"><p className="text-sm leading-6 text-slate-800"><span className="mr-1 font-bold">{index + 1}.</span>{question.question_text}</p><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${questionBadgeClass(question.question_type)}`}>{question.marks}m</span></div>{options.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{options.map((option, optionIndex) => <p key={`${option}-${optionIndex}`} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">{String.fromCharCode(65 + optionIndex)}. {option}</p>)}</div>}{question.image_url ? <img src={question.image_url} alt="Question visual" className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain" /> : includeImages && <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:border-red-300 hover:bg-red-50"><input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(event) => onAttach(event.target.files?.[0])} />{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}{uploading ? 'Attaching image…' : 'Attach school-owned visual'}</label>}<div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5"><span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${questionBadgeClass(question.question_type)}`}>{questionTypeLabel(question.question_type)}</span><button type="button" onClick={() => setShowMarking((current) => !current)} className="text-[11px] font-semibold text-red-600 hover:text-red-700">{showMarking ? 'Hide marking' : 'View marking'}</button></div>{showMarking && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5 text-xs leading-5 text-emerald-900"><p className="font-semibold">Expected response</p><p>{question.marking_scheme || question.correct_answer}</p></div>}</article>;
+  const visualSpec = question.visual_spec || {};
+  const visualCaption = typeof visualSpec.caption === 'string' ? visualSpec.caption : '';
+  async function handleRegenerate() {
+    setBusy(true);
+    try { await onRegenerate(); } finally { setBusy(false); }
+  }
+  return <article className="rounded-xl border border-slate-200 bg-white p-3.5">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">{editing ? <textarea value={draftStem} onChange={(event) => setDraftStem(event.target.value)} rows={3} className="w-full rounded-lg border border-red-200 px-2.5 py-2 text-sm leading-6 text-slate-800 outline-none focus:ring-2 focus:ring-red-100" /> : <p className="text-sm leading-6 text-slate-800"><span className="mr-1 font-bold">{index + 1}.</span>{question.question_text}</p>}</div>
+      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${questionBadgeClass(question.question_type)}`}>{question.marks}m</span>
+    </div>
+    {validationIssues.length > 0 && <div className="mt-2 space-y-1">{validationIssues.map((issue) => <p key={issue.code} className={`flex items-start gap-1 text-[11px] leading-4 ${issue.severity === 'critical' ? 'text-red-700' : issue.severity === 'warning' ? 'text-amber-700' : 'text-blue-700'}`}>{issue.severity === 'critical' ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> : <Eye className="mt-0.5 h-3 w-3 shrink-0" />}{issue.message}</p>)}</div>}
+    {options.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{options.map((option, optionIndex) => <p key={`${option}-${optionIndex}`} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">{String.fromCharCode(65 + optionIndex)}. {option}</p>)}</div>}
+    {question.image_url ? <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2"><img src={question.image_url} alt={visualCaption || `Automatically rendered visual for question ${index + 1}`} className="max-h-48 w-full rounded object-contain" />{visualCaption && <p className="mt-1 text-center text-[11px] italic text-slate-500">{visualCaption}</p>}</div> : includeImages ? <div className="mt-3 space-y-2"><div className="rounded-lg border border-dashed border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">Automatic visual pending or not required for this question.</div><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:border-red-300 hover:bg-red-50"><input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(event) => onAttach(event.target.files?.[0])} />{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}{uploading ? 'Attaching image…' : 'Attach school-owned visual as a fallback'}</label></div> : null}
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5"><div className="flex flex-wrap items-center gap-1.5"><span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${questionBadgeClass(question.question_type)}`}>{questionTypeLabel(question.question_type)}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${question.review_status === 'approved' ? 'bg-emerald-100 text-emerald-700' : question.review_status === 'flagged' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{question.review_status || 'draft'}</span></div><div className="flex flex-wrap items-center gap-1.5"><button type="button" onClick={() => setShowMarking((current) => !current)} className="text-[11px] font-semibold text-red-600 hover:text-red-700">{showMarking ? 'Hide marking' : 'View marking'}</button>{editing ? <><button type="button" onClick={() => { onEdit(draftStem); setEditing(false); }} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white"><Save className="h-3 w-3" />Save</button><button type="button" onClick={() => { setDraftStem(question.question_text); setEditing(false); }} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600"><X className="h-3 w-3" />Cancel</button></> : <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600"><Edit3 className="h-3 w-3" />Edit</button>}<button type="button" onClick={() => void handleRegenerate()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-violet-200 px-2 py-1 text-[11px] font-semibold text-violet-700 disabled:opacity-60"><RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} />Regenerate</button><button type="button" onClick={() => onReview('approved')} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-2 py-1 text-[11px] font-semibold text-emerald-700"><Check className="h-3 w-3" />Approve</button><button type="button" onClick={() => onReview('flagged')} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700"><Flag className="h-3 w-3" />Flag</button></div></div>
+    {showMarking && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5 text-xs leading-5 text-emerald-900"><p className="font-semibold">Expected response</p><p>{question.marking_scheme || question.correct_answer}</p>{question.learning_outcome && <p className="mt-1"><strong>Learning outcome:</strong> {question.learning_outcome}</p>}{question.competency && <p><strong>Competency:</strong> {question.competency}</p>}</div>}
+  </article>;
 }

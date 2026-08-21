@@ -7,8 +7,11 @@ import {
 import {
   validateExamRequest,
   type ExamGenerationRequest,
+  type ExamBlueprint,
   type QuestionType,
 } from '../src/lib/exam-schema.js';
+import { withRenderedExamVisual } from '../src/lib/exam-visuals.js';
+import { validateGeneratedExam } from '../src/lib/exam-validation.js';
 
 const allowedQuestionTypes = new Set<QuestionType>([
   'multiple_choice', 'multiple_response', 'modified_true_false', 'completion',
@@ -55,6 +58,41 @@ function stringArray(value: unknown, limit = 20): string[] {
     : [];
 }
 
+function parseBlueprint(value: unknown): ExamBlueprint | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as { sections?: unknown; total_marks?: unknown; estimated_minutes?: unknown };
+  if (!Array.isArray(raw.sections)) return undefined;
+  const sections = raw.sections.slice(0, 20).flatMap((entry, index) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const section = entry as Record<string, unknown>;
+    const allowedTypes: QuestionType[] = ['multiple_choice', 'multiple_response', 'modified_true_false', 'completion', 'matching', 'short_answer', 'numeric_response', 'case_study', 'essay'];
+    const type = allowedTypes.includes(section.question_type as QuestionType) ? section.question_type as QuestionType : null;
+    const count = Number(section.count);
+    const marks = Number(section.marks_per_question);
+    if (!type || !Number.isFinite(count) || !Number.isFinite(marks) || count < 1 || marks < 1) return [];
+    return [{
+      id: typeof section.id === 'string' ? section.id.slice(0, 80) : `section-${index + 1}`,
+      title: typeof section.title === 'string' ? section.title.slice(0, 160) : undefined,
+      question_type: type,
+      count: Math.min(60, Math.round(count)),
+      marks_per_question: Math.min(30, Math.round(marks)),
+      difficulty: section.difficulty === 'easy' || section.difficulty === 'medium' || section.difficulty === 'hard' || section.difficulty === 'mixed' ? section.difficulty : 'mixed',
+      strand: typeof section.strand === 'string' ? section.strand.slice(0, 180) : undefined,
+      sub_strand: typeof section.sub_strand === 'string' ? section.sub_strand.slice(0, 180) : undefined,
+      topic: typeof section.topic === 'string' ? section.topic.slice(0, 180) : undefined,
+      competency: typeof section.competency === 'string' ? section.competency.slice(0, 180) : undefined,
+    }];
+  });
+  if (!sections.length) return undefined;
+  const totalMarks = Number(raw.total_marks);
+  const estimatedMinutes = Number(raw.estimated_minutes);
+  return {
+    sections,
+    total_marks: Number.isFinite(totalMarks) ? Math.round(totalMarks) : sections.reduce((sum, section) => sum + section.count * section.marks_per_question, 0),
+    estimated_minutes: Number.isFinite(estimatedMinutes) ? Math.round(estimatedMinutes) : undefined,
+  };
+}
+
 function parseExamRequest(raw: unknown): ExamGenerationRequest | null {
   if (!raw || typeof raw !== 'object') return null;
   const body = raw as Record<string, unknown>;
@@ -81,6 +119,12 @@ function parseExamRequest(raw: unknown): ExamGenerationRequest | null {
     format,
     term: typeof body.term === 'string' ? body.term.trim().slice(0, 30) : undefined,
     schoolName: typeof body.schoolName === 'string' ? body.schoolName.trim().slice(0, 255) : undefined,
+    level: body.level === 'pre_primary' || body.level === 'lower_primary' || body.level === 'upper_primary' || body.level === 'junior_secondary' || body.level === 'senior_secondary' ? body.level : undefined,
+    curriculumVersion: typeof body.curriculumVersion === 'string' ? body.curriculumVersion.trim().slice(0, 80) : undefined,
+    learningOutcomes: stringArray(body.learningOutcomes, 30),
+    competencies: stringArray(body.competencies, 20),
+    blueprint: parseBlueprint(body.blueprint),
+    preset: typeof body.preset === 'string' ? body.preset.trim().slice(0, 80) : undefined,
   };
 }
 
@@ -115,33 +159,118 @@ async function loadVettedContext(
   };
 }
 
+type ExamProfile = {
+  id: string;
+  school_id: string | null;
+  role: string;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+};
+
+function normalizeKey(value: unknown): string {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function gradeMatches(requestedGrade: string, values: unknown[]): boolean {
+  const requested = normalizeKey(requestedGrade);
+  const requestedNumber = requested.match(/\d+/)?.[0] || '';
+  return values.some((value) => {
+    const candidate = normalizeKey(value);
+    if (!candidate) return false;
+    if (candidate === requested) return true;
+    return Boolean(requestedNumber && candidate.match(/\d+/)?.[0] === requestedNumber);
+  });
+}
+
+function subjectMatches(requestedSubject: string, values: unknown[]): boolean {
+  const requested = normalizeKey(requestedSubject);
+  return values.some((value) => {
+    const candidate = normalizeKey(value);
+    return Boolean(candidate && (candidate === requested || candidate.includes(requested) || requested.includes(candidate)));
+  });
+}
+
+async function assertGenerationAccess(
+  supabase: ReturnType<typeof createClient>,
+  profile: ExamProfile,
+  user: { id: string },
+  request: ExamGenerationRequest,
+): Promise<string | null> {
+  if (!profile.school_id) return 'Your account is not linked to a school.';
+  if (!['teacher', 'school_admin'].includes(profile.role)) {
+    return 'Only teachers and school administrators can generate assessment papers.';
+  }
+  if (profile.role === 'school_admin') return null;
+
+  const { data: teacher, error: teacherError } = await supabase
+    .from('teachers')
+    .select('id')
+    .eq('profile_id', user.id)
+    .eq('school_id', profile.school_id)
+    .maybeSingle();
+  if (teacherError || !teacher?.id) return 'Your teacher profile could not be verified for this school.';
+
+  const { data: assignments, error: assignmentError } = await supabase
+    .from('teacher_subject_assignments')
+    .select('subject_id, subjects(name), classes(name, level)')
+    .eq('school_id', profile.school_id)
+    .eq('teacher_id', teacher.id)
+    .eq('is_active', true);
+  if (assignmentError) return 'Your teaching assignments could not be verified. Please try again.';
+
+  const allowed = (assignments || []).some((assignment: any) => subjectMatches(request.subject, [assignment.subjects?.name])
+    && gradeMatches(request.gradeLevel, [assignment.classes?.name, assignment.classes?.level]));
+  return allowed ? null : 'You can generate papers only for subjects and grades assigned to you.';
+}
+
 async function handleExamGeneration(
   response: ResponseLike,
   supabase: ReturnType<typeof createClient>,
-  profile: { id: string; school_id: string | null; role: string; full_name?: string; first_name?: string; last_name?: string; email?: string },
+  profile: ExamProfile,
   user: { id: string; email?: string; user_metadata?: Record<string, unknown> },
   request: RequestLike,
 ): Promise<void> {
+  const parsedRequest = parseExamRequest(parseBody(request.body));
+  if (!parsedRequest) {
+    jsonError(response, 400, 'Invalid exam-generation request.');
+    return;
+  }
+  const accessError = await assertGenerationAccess(supabase, profile, user, parsedRequest);
+  if (accessError) {
+    jsonError(response, 403, accessError);
+    return;
+  }
   const rateKey = `${user.id}:${request.socket?.remoteAddress || 'unknown'}`;
   if (!checkRateLimit(rateKey)) {
     jsonError(response, 429, 'Generation limit reached. Please wait a few minutes before trying again.');
     return;
   }
 
-  const parsedRequest = parseExamRequest(parseBody(request.body));
-  if (!parsedRequest) {
-    jsonError(response, 400, 'Invalid exam-generation request.');
-    return;
-  }
   const validationErrors = validateExamRequest(parsedRequest);
   if (validationErrors.length) {
     jsonError(response, 400, validationErrors.join(' '));
     return;
   }
 
+  let generationJobId: string | null = null;
   try {
+    const { data: generationJob, error: generationJobError } = await supabase
+      .from('exam_generation_jobs')
+      .insert({ school_id: profile.school_id, created_by: user.id, status: 'generating', request_payload: parsedRequest, provider: 'deepseek', model: 'deepseek-chat' })
+      .select('id')
+      .single();
+    if (generationJobError) throw new Error(`Could not start the generation job: ${generationJobError.message}`);
+    generationJobId = generationJob?.id || null;
     const vetted = await loadVettedContext(supabase, parsedRequest);
-    const paper = await generateExamWithDeepSeek(parsedRequest, vetted.context);
+    const draftPaper = await generateExamWithDeepSeek(parsedRequest, vetted.context);
+    const renderedQuestions = draftPaper.questions.map(withRenderedExamVisual);
+    const validation = validateGeneratedExam(parsedRequest, renderedQuestions);
+    if (!validation.passed) {
+      throw new DeepSeekResponseError(`The generated paper needs repair before it can be saved: ${validation.issues.filter((issue) => issue.severity === 'critical').map((issue) => issue.message).slice(0, 3).join(' ')}`);
+    }
+    const paper = { ...draftPaper, questions: renderedQuestions, total_marks: renderedQuestions.reduce((sum, question) => sum + question.marks, 0) };
     const { data: storedQuestions, error: questionError } = await supabase
       .from('exam_questions')
       .insert(paper.questions.map((question) => ({
@@ -162,7 +291,11 @@ async function handleExamGeneration(
         difficulty: question.difficulty,
         marks: question.marks,
         topic: question.topic || null,
-        metadata: { generated_at: paper.generated_at, format: paper.format },
+        learning_outcome: question.learning_outcome || null,
+        competency: question.competency || null,
+        cognitive_level: question.cognitive_level || null,
+        review_status: 'draft',
+        metadata: { generated_at: paper.generated_at, format: paper.format, visual_spec: question.visual_spec || null },
       })))
       .select('id');
 
@@ -190,16 +323,41 @@ async function handleExamGeneration(
         total_marks: paper.total_marks,
         format: paper.format,
         source_summary: vetted.sourceSummary,
+        status: 'draft',
+        version_number: 1,
+        blueprint: parsedRequest.blueprint || { sections: [], total_marks: parsedRequest.totalMarks },
+        validation_results: validation.issues,
       })
       .select('id')
       .single();
 
     if (paperError) throw new Error(`Could not save the exam paper: ${paperError.message}`);
+    const paperId = storedPaper?.id;
+    const { error: snapshotError } = await supabase.from('exam_paper_question_snapshots').insert(persistedQuestions.map((question, index) => ({
+      paper_id: paperId, question_id: question.id, question_order: index + 1, payload: question,
+    })));
+    if (snapshotError) throw new Error(`Could not save immutable question snapshots: ${snapshotError.message}`);
+    const visualQuestions = persistedQuestions.filter((question) => question.image_url && question.visual_spec);
+    if (visualQuestions.length && paperId) {
+      const { error: visualError } = await supabase.from('exam_visual_assets').insert(visualQuestions.map((question) => ({
+        school_id: profile.school_id, question_id: question.id, paper_id: paperId, asset_type: ['diagram', 'map', 'chart', 'graph', 'shape', 'flowchart', 'illustration', 'table', 'number_line'].includes(String(question.visual_spec?.asset_type || '').toLowerCase()) ? String(question.visual_spec?.asset_type || '').toLowerCase() : 'illustration', source_kind: 'generated', visual_spec: question.visual_spec, alt_text: `Generated visual for ${paper.subject} question`, caption: typeof question.visual_spec?.caption === 'string' ? question.visual_spec.caption : null, approval_status: 'draft', created_by: user.id,
+      })));
+      if (visualError) throw new Error(`Could not save generated visual metadata: ${visualError.message}`);
+    }
+    if (generationJobId) {
+      await supabase.from('exam_generation_jobs').update({ status: 'ready', result_paper_id: paperId, updated_at: new Date().toISOString() }).eq('id', generationJobId);
+    }
+    if (paperId) {
+      await supabase.from('exam_audit_events').insert({ school_id: profile.school_id, actor_id: user.id, event_type: 'paper_generated', entity_type: 'exam_paper', entity_id: paperId, payload: { question_count: persistedQuestions.length, total_marks: paper.total_marks, validation: validation.issues } });
+    }
     response.status(200).json({
-      paper: { ...paper, id: storedPaper?.id, questions: persistedQuestions },
+      paper: { ...paper, id: paperId, status: 'draft', version_number: 1, validation_results: validation.issues, questions: persistedQuestions },
       sourceSummary: vetted.sourceSummary,
     });
   } catch (error) {
+    if (generationJobId) {
+      await supabase.from('exam_generation_jobs').update({ status: 'failed', error_message: error instanceof Error ? error.message : 'Unknown generation failure', updated_at: new Date().toISOString() }).eq('id', generationJobId);
+    }
     const message = error instanceof DeepSeekConfigurationError || error instanceof DeepSeekResponseError
       ? error.message
       : error instanceof Error ? error.message : 'The exam could not be generated at this time.';
@@ -242,44 +400,19 @@ export default async function handler(request: RequestLike, response: ResponseLi
     return;
   }
 
-  // Get profile — service role key bypasses RLS
-  const { data: profile } = await supabase
+  // Get the authoritative profile. Do not create or infer a profile in a paid/content-generation path.
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('id, school_id, role, full_name, first_name, last_name, email')
     .eq('id', user.id)
     .maybeSingle();
-
-  // If no profile, create one with upsert
-  if (!profile) {
-    const meta = user.user_metadata || {};
-    const { data: inserted, error: insertError } = await supabase
-      .from('profiles')
-      .upsert({
-        id: user.id,
-        email: user.email,
-        role: meta.role || 'teacher',
-        first_name: meta.first_name || meta.full_name || user.email?.split('@')[0] || '',
-        last_name: meta.last_name || '',
-        school_id: meta.school_id || null,
-      }, { onConflict: 'id' })
-      .select('id, school_id, role, full_name, first_name, last_name')
-      .single();
-
-    if (insertError || !inserted) {
-      // Fallback: use auth user data directly
-      const fallbackProfile = {
-        id: user.id,
-        school_id: meta.school_id || null,
-        role: meta.role || 'teacher',
-        email: user.email,
-      };
-    await handleExamGeneration(response, supabase as any, fallbackProfile as any, user, request);
+  if (profileError || !profile) {
+    jsonError(response, 403, 'Your school profile could not be verified for Exam Generator access.');
     return;
   }
-  await handleExamGeneration(response, supabase as any, inserted as any, user, request);
-  return;
-}
-
-// No role restriction — any authenticated user can generate exams
-await handleExamGeneration(response, supabase as any, profile as any, user, request);
+  if (!['teacher', 'school_admin'].includes(profile.role) || !profile.school_id) {
+    jsonError(response, 403, 'Only school teachers and school administrators with an active school profile can generate exams.');
+    return;
+  }
+  await handleExamGeneration(response, supabase as any, profile as ExamProfile, user, request);
 }

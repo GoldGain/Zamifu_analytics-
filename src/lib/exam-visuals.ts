@@ -1,0 +1,104 @@
+import type { GeneratedExamQuestion } from './exam-schema';
+
+export interface ExamVisualSpec {
+  asset_type?: string;
+  title?: string;
+  prompt?: string;
+  caption?: string;
+  labels?: string[];
+  values?: number[];
+  x_labels?: string[];
+  legend?: string[];
+  map_regions?: string[];
+}
+
+function escapeXml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function dataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function textLines(text: string, x: number, y: number, width: number): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > Math.max(12, Math.floor(width / 8)) && line) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines.slice(0, 4).map((entry, index) => `<text x="${x}" y="${y + index * 18}" class="body">${escapeXml(entry)}</text>`).join('');
+}
+
+function visualTitle(spec: ExamVisualSpec, question: GeneratedExamQuestion): string {
+  return spec.title || spec.caption || `${question.question_type.replace(/_/g, ' ')} visual`;
+}
+
+function renderGraph(spec: ExamVisualSpec): string {
+  const values = (spec.values || [2, 4, 3, 6]).slice(0, 8).map((value) => Math.max(0, Number(value) || 0));
+  const labels = (spec.x_labels || spec.labels || values.map((_, index) => `P${index + 1}`)).slice(0, values.length);
+  const max = Math.max(1, ...values);
+  const bars = values.map((value, index) => {
+    const height = Math.round((value / max) * 150);
+    const x = 60 + index * 45;
+    return `<rect x="${x}" y="${205 - height}" width="26" height="${height}" rx="3" fill="#b91c1c"/><text x="${x + 13}" y="${220}" text-anchor="middle" class="small">${escapeXml(labels[index])}</text><text x="${x + 13}" y="${195 - height}" text-anchor="middle" class="small">${value}</text>`;
+  }).join('');
+  return `<line x1="50" y1="205" x2="430" y2="205" class="axis"/><line x1="50" y1="45" x2="50" y2="205" class="axis"/>${bars}`;
+}
+
+function renderNumberLine(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || ['0', '1', '2', '3', '4', '5']).slice(0, 10);
+  const step = 360 / Math.max(1, labels.length - 1);
+  return `<line x1="60" y1="150" x2="420" y2="150" class="axis"/>${labels.map((label, index) => {
+    const x = 60 + index * step;
+    return `<line x1="${x}" y1="140" x2="${x}" y2="160" class="axis"/><text x="${x}" y="185" text-anchor="middle" class="body">${escapeXml(label)}</text>`;
+  }).join('')}`;
+}
+
+function renderMap(spec: ExamVisualSpec): string {
+  const regions = (spec.map_regions || spec.labels || ['Region A', 'Region B', 'Region C']).slice(0, 6);
+  const polygon = '<path d="M105 55 L235 42 L335 85 L390 160 L338 245 L230 268 L130 232 L75 150 Z" fill="#fee2e2" stroke="#991b1b" stroke-width="4"/>';
+  const labels = regions.map((label, index) => {
+    const positions = [[150, 110], [260, 90], [315, 155], [245, 190], [145, 190], [205, 135]];
+    const [x, y] = positions[index] || [200, 150];
+    return `<circle cx="${x}" cy="${y}" r="5" fill="#1d4ed8"/><text x="${x + 9}" y="${y + 4}" class="small">${escapeXml(label)}</text>`;
+  }).join('');
+  return `${polygon}${labels}<path d="M410 65 L410 35 L400 48 L420 48 Z" fill="#111827"/><text x="410" y="25" text-anchor="middle" class="small">N</text><line x1="70" y1="285" x2="150" y2="285" stroke="#111827" stroke-width="3"/><text x="160" y="289" class="small">schematic scale</text>`;
+}
+
+export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string | null {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  const assetType = String(spec.asset_type || '').toLowerCase();
+  if (!assetType && !question.image_url) return null;
+  const title = visualTitle(spec, question);
+  let body = '';
+  if (assetType === 'map') body = renderMap(spec);
+  else if (assetType === 'graph' || assetType === 'chart') body = renderGraph(spec);
+  else if (assetType === 'number_line') body = renderNumberLine(spec);
+  else if (assetType === 'shape' || assetType === 'diagram') {
+    body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';
+  } else if (assetType === 'flowchart') {
+    body = '<rect x="145" y="60" width="140" height="42" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="3"/><path d="M215 104 L215 145" class="axis"/><path d="M205 135 L215 150 L225 135" fill="none" class="axis"/><rect x="145" y="155" width="140" height="42" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="3"/>';
+  } else {
+    body = textLines(spec.prompt || 'Teacher-approved educational visual', 55, 110, 340);
+  }
+  const caption = spec.caption || (assetType === 'map' ? 'Schematic map for interpretation; verify labels before approval.' : 'Teacher-approved visual');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/><text x="240" y="28" text-anchor="middle" class="title">${escapeXml(title)}</text>${body}<text x="240" y="310" text-anchor="middle" class="small">${escapeXml(caption)}</text></svg>`;
+  return dataUrl(svg);
+}
+
+export function withRenderedExamVisual(question: GeneratedExamQuestion): GeneratedExamQuestion {
+  if (question.image_url || !question.visual_spec) return question;
+  const rendered = renderExamVisualDataUrl(question);
+  return rendered ? { ...question, image_url: rendered } : question;
+}

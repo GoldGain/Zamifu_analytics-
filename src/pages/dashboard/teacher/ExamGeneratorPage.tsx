@@ -11,7 +11,7 @@ import {
   getStrandPacks,
 } from '@/lib/kicd-knowledge';
 import { Loader2, ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 interface Grade { id: string; grade_number: number; grade_name: string; }
 interface Subject { id: string; subject_name: string; subject_code: string; }
@@ -21,6 +21,10 @@ interface Topic { id: string; topic_name: string; topic_description: string; lea
 
 export default function ExamGeneratorPage() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const requestedGrade = searchParams.get('grade') || '';
+  const requestedSubject = searchParams.get('subject') || '';
+  const requestedTopic = searchParams.get('topic') || '';
   const [grades, setGrades] = useState<Grade[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedGrade, setSelectedGrade] = useState('');
@@ -47,14 +51,18 @@ export default function ExamGeneratorPage() {
       .select('*')
       .order('grade_number');
     const junior = (data || []).filter((g: Grade) => g.grade_number >= 7 && g.grade_number <= 9);
-    if (junior.length) {
-      setGrades(junior);
-    } else {
-      setGrades([
-        { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
-        { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
-        { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
-      ]);
+    const availableGrades = junior.length ? junior : [
+      { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
+      { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
+      { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
+    ];
+    setGrades(availableGrades);
+    const requested = requestedGrade.toLowerCase().replace(/\s+/g, '');
+    if (requested) {
+      const match = availableGrades.find((grade) =>
+        grade.id === requestedGrade || grade.grade_name.toLowerCase().replace(/\s+/g, '') === requested
+      );
+      if (match) setSelectedGrade(match.id);
     }
     setLoadingGrades(false);
   };
@@ -79,6 +87,13 @@ export default function ExamGeneratorPage() {
               subject_code: name.slice(0, 4).toUpperCase(),
             }))
           );
+        }
+        const requested = requestedSubject.toLowerCase().replace(/\s+/g, '');
+        if (requested) {
+          const match = (data || []).find((subject: Subject) =>
+            subject.subject_name.toLowerCase().replace(/\s+/g, '') === requested
+          );
+          if (match) setSelectedSubject(match.id);
         }
         setLoadingSubjects(false);
       });
@@ -267,6 +282,7 @@ export default function ExamGeneratorPage() {
           schoolId={user?.schoolId || ''}
           strands={strands}
           topics={topics}
+          initialTopic={requestedTopic}
         />
       )}
 
