@@ -713,7 +713,8 @@ export default function TimetableView() {
       if (!entry.subject_name && !entry.subject_code) return;
       const code = getSubjectCode(entry.subject_name || '', entry.subject_code || '');
       const teacherNum = entry.teacher_number ? String(entry.teacher_number) : '';
-      parts.push(`${code}${teacherNum}${entry.entry_type === 'lesson_double' ? ' ×2' : ''}`);
+      // Double lessons remain two consecutive timetable cells; no extra symbol is needed.
+      parts.push(`${code}${teacherNum}`);
     });
     return parts.join(' ') || '';
   };
@@ -1201,6 +1202,9 @@ export default function TimetableView() {
         <p className="text-slate-500 text-[0.65rem] mt-1">
           Cell times show the exact day-specific schedule after any timed activity shifts.
         </p>
+        <p className="text-emerald-700 text-[0.65rem] mt-1 font-semibold">
+          Activities appear only on their configured day, time, and selected level/class. Empty activity cells are intentionally blank, and lessons are blocked only in that exact interval.
+        </p>
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
       <div className="overflow-x-auto">
@@ -1234,7 +1238,7 @@ export default function TimetableView() {
                   return (
                     <th key={slot.id} rowSpan={2} className="tt-header" style={{ color: '#33cc33' }}>
                       <span style={{display:'block'}}>ACTIVITY</span>
-                      <span style={{fontSize:'0.5rem'}}>{fmt(slot.start_time)}—{fmt(slot.end_time)}</span>
+                      <span style={{fontSize:'0.45rem', color:'#8f8'}}>DAY-SPECIFIC</span>
                     </th>
                   );
                 }
