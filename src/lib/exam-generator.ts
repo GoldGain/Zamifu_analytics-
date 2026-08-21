@@ -48,42 +48,75 @@ export type ExamPdfMode = 'student' | 'marking_scheme' | 'answer_key' | 'combine
 
 type BrandedPaper = ExamPaper & { school_logo_url?: string | null };
 
+function formatLabel(format: ExamFormat): string {
+  if (format === 'kpsea') return 'KPSEA-STYLE SCHOOL PRACTICE PAPER';
+  if (format === 'kjsea') return 'KJSEA-STYLE SCHOOL PRACTICE PAPER';
+  if (format === 'cbe') return 'CBE SCHOOL-BASED ASSESSMENT';
+  return 'CUSTOM SCHOOL ASSESSMENT';
+}
+
+function internalPaperCode(paper: BrandedPaper): string {
+  const subjectCode = paper.subject.replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase() || 'PAPER';
+  return `ZAS-${paper.year}-${subjectCode}-${String(paper.version_number || 1).padStart(2, '0')}`;
+}
+
+function groupedQuestions(paper: BrandedPaper): Array<{ type: QuestionType; questions: GeneratedExamQuestion[]; marks: number }> {
+  const order = [...new Set(paper.questions.map((question) => question.question_type))];
+  return order.map((type) => {
+    const questions = paper.questions.filter((question) => question.question_type === type);
+    return { type, questions, marks: questions.reduce((sum, question) => sum + question.marks, 0) };
+  });
+}
+
+function isFormalPracticeFormat(paper: BrandedPaper): boolean {
+  return paper.format === 'kpsea' || paper.format === 'kjsea';
+}
+
 function addPageHeader(doc: jsPDF, paper: BrandedPaper, continuation = false, subtitle?: string): number {
-  doc.setFillColor(185, 28, 28);
-  doc.rect(0, 0, 210, 24, 'F');
-  doc.setTextColor(255, 255, 255);
+  doc.setFillColor(248, 250, 252);
+  doc.rect(0, 0, 210, 35, 'F');
+  doc.setDrawColor(17, 24, 39);
+  doc.setLineWidth(0.6);
+  doc.line(14, 35, 196, 35);
+  doc.setTextColor(17, 24, 39);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text((paper.school_name || 'ZAMIFU ANALYTICS').toUpperCase(), 105, 10, { align: 'center' });
-  doc.setFontSize(10);
+  doc.setFontSize(9);
+  doc.text((paper.school_name || 'SCHOOL ASSESSMENT').toUpperCase(), 14, 9);
+  doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text(continuation ? `${paper.title.toUpperCase()} — CONTINUED` : paper.title.toUpperCase(), 105, 17, { align: 'center' });
-  doc.setTextColor(31, 41, 55);
-  doc.setFontSize(8.5);
-  doc.text(`Subject: ${paper.subject}    |    Grade: ${paper.grade_level}    |    Time: ${paper.duration_minutes} minutes    |    Total: ${paper.total_marks} marks`, 105, 31, { align: 'center' });
+  doc.text('ZAMIFU ANALYTICS ASSESSMENT STUDIO', 196, 9, { align: 'right' });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(continuation ? `${paper.title.toUpperCase()} — CONTINUED` : paper.title.toUpperCase(), 105, 18, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text(`${formatLabel(paper.format)}  |  ${paper.subject.toUpperCase()}  |  GRADE ${paper.grade_level}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, 25, { align: 'center' });
+  doc.setFontSize(7);
+  doc.text(`Internal paper code: ${internalPaperCode(paper)}  |  Time: ${paper.duration_minutes} minutes  |  Total: ${paper.total_marks} marks`, 105, 31, { align: 'center' });
   if (subtitle) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.setTextColor(153, 27, 27);
-    doc.text(subtitle.toUpperCase(), 105, 36, { align: 'center' });
-    doc.setTextColor(31, 41, 55);
+    doc.text(subtitle.toUpperCase(), 105, 42, { align: 'center' });
+    doc.setDrawColor(107, 114, 128);
+    doc.line(14, 45, 196, 45);
+    return 52;
   }
-  doc.setDrawColor(229, 231, 235);
-  doc.line(14, subtitle ? 39 : 35, 196, subtitle ? 39 : 35);
-  return subtitle ? 46 : 42;
+  return 42;
 }
 
-function addFooter(doc: jsPDF): void {
+function addFooter(doc: jsPDF, paper: BrandedPaper): void {
   const pageCount = doc.getNumberOfPages();
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
     doc.setPage(pageNumber);
-    doc.setDrawColor(229, 231, 235);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
     doc.line(14, 286, 196, 286);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(107, 114, 128);
-    doc.text('Generated securely by Zamifu Analytics Assessment Studio', 14, 291);
+    doc.setFontSize(6.5);
+    doc.setTextColor(75, 85, 99);
+    doc.text(`${(paper.school_name || 'School assessment').slice(0, 42)}  |  ${internalPaperCode(paper)}  |  School-owned practice paper`, 14, 291);
     doc.text(`Page ${pageNumber} of ${pageCount}`, 196, 291, { align: 'right' });
+    if (pageNumber < pageCount) doc.text('Turn over', 196, 296, { align: 'right' });
   }
   doc.setTextColor(0, 0, 0);
 }
@@ -136,20 +169,111 @@ function normalizeOptions(question: GeneratedExamQuestion): string[] {
   return Array.isArray(question.options) ? question.options.filter(Boolean).slice(0, 8) : [];
 }
 
-function addCandidateFields(doc: jsPDF, y: number): number {
+function addCandidateTable(doc: jsPDF, y: number): number {
+  autoTable(doc, {
+    startY: y,
+    margin: { left: 14, right: 14 },
+    theme: 'grid',
+    body: [
+      ['Candidate name', '', 'Assessment number', ''],
+      ['School name', '', 'School code', ''],
+      ["Candidate's signature", '', 'Date', ''],
+    ],
+    styles: { fontSize: 8, cellPadding: 2.5, lineColor: [31, 41, 55], lineWidth: 0.25, minCellHeight: 8 },
+    columnStyles: { 0: { cellWidth: 36, fontStyle: 'bold' }, 1: { cellWidth: 55 }, 2: { cellWidth: 36, fontStyle: 'bold' }, 3: { cellWidth: 55 } },
+  });
+  return Number((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y + 32) + 7;
+}
+
+function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): number {
+  doc.setTextColor(17, 24, 39);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text((paper.school_name || 'SCHOOL ASSESSMENT').toUpperCase(), 105, 12, { align: 'center' });
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.text('ZAMIFU ANALYTICS ASSESSMENT STUDIO', 105, 17, { align: 'center' });
+  doc.setDrawColor(17, 24, 39);
+  doc.setLineWidth(0.5);
+  doc.line(14, 21, 196, 21);
+  let y = addCandidateTable(doc, 27);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(paper.title.toUpperCase(), 105, y, { align: 'center' });
+  y += 6;
+  doc.setFontSize(9);
+  doc.text(formatLabel(paper.format), 105, y, { align: 'center' });
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`${paper.subject.toUpperCase()}  |  GRADE ${paper.grade_level}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, y, { align: 'center' });
+  y += 5;
+  doc.setFontSize(7.5);
+  doc.text(`Internal paper code: ${internalPaperCode(paper)}  |  Time: ${paper.duration_minutes} minutes  |  Total: ${paper.total_marks} marks`, 105, y, { align: 'center' });
+  y += 9;
+  doc.setFillColor(248, 250, 252);
+  doc.rect(14, y - 4, 182, 9, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text(subtitle.toUpperCase(), 105, y + 1.5, { align: 'center' });
+  y += 12;
+  doc.setFontSize(9);
+  doc.text('INSTRUCTIONS TO CANDIDATES', 14, y);
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  const instructions = (paper.instructions.length ? paper.instructions : ['Answer all questions.', 'Write your name and class clearly.', 'Read every question carefully before answering.']).slice(0, 8);
+  instructions.forEach((instruction, index) => {
+    const lines = doc.splitTextToSize(`${index + 1}. ${instruction}`, 178);
+    doc.text(lines, 16, y);
+    y += lines.length * 4.2 + 1.5;
+  });
+  y += 3;
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
-  doc.text('Candidate name: ____________________________________________', 14, y);
-  doc.text('Admission no.: ____________________', 14, y + 7);
-  doc.text('Stream: __________________________', 125, y + 7);
-  doc.line(14, y + 11, 196, y + 11);
-  return y + 18;
+  doc.text('PAPER STRUCTURE', 14, y);
+  y += 3;
+  const groups = groupedQuestions(paper);
+  autoTable(doc, {
+    startY: y,
+    margin: { left: 14, right: 14 },
+    theme: 'grid',
+    head: [['Section', 'Question type', 'Number of questions', 'Maximum score']],
+    body: groups.map((group, index) => [
+      `Section ${String.fromCharCode(65 + index)}`,
+      questionTypeLabel(group.type),
+      String(group.questions.length),
+      String(group.marks),
+    ]),
+    styles: { fontSize: 7.5, cellPadding: 2, lineColor: [107, 114, 128], lineWidth: 0.25, valign: 'middle' },
+    headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 78 }, 2: { cellWidth: 38, halign: 'center' }, 3: { cellWidth: 36, halign: 'center' } },
+  });
+  y = Number((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y + 18) + 8;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7);
+  doc.text('School-owned practice assessment. This document is not an official KNEC examination paper.', 105, Math.min(y, 270), { align: 'center' });
+  return Math.min(y, 270);
+}
+
+function addWorkingSpaceColumn(doc: jsPDF, paper: BrandedPaper): void {
+  if (!isFormalPracticeFormat(paper)) return;
+  doc.setDrawColor(107, 114, 128);
+  doc.setLineWidth(0.35);
+  doc.line(112, 52, 112, 282);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(75, 85, 99);
+  doc.text('WORKING SPACE', 154, 49, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
 }
 
 function ensureRoom(doc: jsPDF, paper: BrandedPaper, y: number, needed: number, subtitle?: string): number {
   if (y + needed <= 272) return y;
   doc.addPage();
-  return addPageHeader(doc, paper, true, subtitle);
+  const nextY = addPageHeader(doc, paper, true, subtitle);
+  addWorkingSpaceColumn(doc, paper);
+  return nextY;
 }
 
 async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: GeneratedExamQuestion, y: number, subtitle?: string): Promise<number> {
@@ -167,79 +291,95 @@ async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: Gene
 }
 
 async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void> {
+  addFormalCoverPage(doc, paper, 'STUDENT PAPER');
+  doc.addPage();
   let y = addPageHeader(doc, paper, false, 'STUDENT PAPER');
-  y = addCandidateFields(doc, y);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.text('INSTRUCTIONS', 14, y);
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  const instructions = paper.instructions.length ? paper.instructions : ['Answer all questions.', 'Write your name and class clearly.', 'Read every question carefully before answering.'];
-  instructions.forEach((instruction, index) => {
-    const lines = doc.splitTextToSize(`${index + 1}. ${instruction}`, 178);
-    y = ensureRoom(doc, paper, y, lines.length * 4.5 + 3, 'STUDENT PAPER');
-    doc.text(lines, 16, y);
-    y += lines.length * 4.5 + 1.5;
-  });
-  y += 3;
-  const groupOrder = [...new Set(paper.questions.map((question) => question.question_type))];
+  addWorkingSpaceColumn(doc, paper);
+  const formal = isFormalPracticeFormat(paper);
+  const groups = groupedQuestions(paper);
   let sequence = 1;
-  for (const type of groupOrder) {
-    const questions = paper.questions.filter((question) => question.question_type === type);
-    if (!questions.length) continue;
+  for (const [groupIndex, group] of groups.entries()) {
     y = ensureRoom(doc, paper, y, 18, 'STUDENT PAPER');
-    doc.setFillColor(254, 242, 242);
-    doc.roundedRect(14, y - 4, 182, 8, 1.5, 1.5, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(153, 27, 27);
-    doc.text(sectionTitles[type] || questionTypeLabel(type).toUpperCase(), 17, y + 1.5);
+    doc.setFontSize(formal ? 8.5 : 9);
+    doc.setTextColor(formal ? 17 : 153, formal ? 24 : 27, formal ? 39 : 27);
+    const sectionHeading = `SECTION ${String.fromCharCode(65 + groupIndex)}: ${questionTypeLabel(group.type).toUpperCase()} (${group.marks} MARK${group.marks === 1 ? '' : 'S'})`;
+    if (formal) {
+      doc.text(sectionHeading, 14, y);
+      doc.setDrawColor(107, 114, 128);
+      doc.setLineWidth(0.3);
+      doc.line(14, y + 2, 105, y + 2);
+      y += 8;
+    } else {
+      doc.setFillColor(254, 242, 242);
+      doc.roundedRect(14, y - 4, 182, 8, 1.5, 1.5, 'F');
+      doc.text(sectionTitles[group.type] || questionTypeLabel(group.type).toUpperCase(), 17, y + 1.5);
+      y += 9;
+    }
     doc.setTextColor(0, 0, 0);
-    y += 9;
-    for (const question of questions) {
-      const stem = doc.splitTextToSize(`${sequence}. ${question.question_text}  [${question.marks} mark${question.marks === 1 ? '' : 's'}]`, 176);
+    for (const question of group.questions) {
+      const textWidth = formal ? 91 : 176;
+      const stem = doc.splitTextToSize(`${sequence}. ${question.question_text}${formal ? '' : `  [${question.marks} mark${question.marks === 1 ? '' : 's'}]`}`, textWidth);
       y = ensureRoom(doc, paper, y, stem.length * 4.6 + 10, 'STUDENT PAPER');
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
+      doc.setFontSize(formal ? 8.5 : 9.5);
       doc.text(stem, 14, y);
       doc.setFont('helvetica', 'normal');
       y += stem.length * 4.6 + 2;
       const options = normalizeOptions(question);
       if (options.length) {
         options.forEach((option, optionIndex) => {
-          const lines = doc.splitTextToSize(`${String.fromCharCode(65 + optionIndex)}. ${option}`, 168);
+          const lines = doc.splitTextToSize(`${String.fromCharCode(65 + optionIndex)}. ${option}`, formal ? 86 : 168);
           y = ensureRoom(doc, paper, y, lines.length * 4.2 + 2, 'STUDENT PAPER');
           doc.text(lines, 19, y);
           y += lines.length * 4.2 + 1;
         });
+        if (formal) {
+          doc.setFontSize(8);
+          doc.text('Answer: ____________________', 19, y + 1);
+          y += 5;
+        }
       }
       y = await addQuestionVisual(doc, paper, { ...question, question_number: sequence }, y, 'STUDENT PAPER');
-      y += 4;
+      y += formal ? 6 : 4;
       sequence += 1;
     }
   }
 }
 
 async function renderMarkingScheme(doc: jsPDF, paper: BrandedPaper): Promise<void> {
-  let y = addPageHeader(doc, paper, false, 'MARKING SCHEME');
+  let y = addPageHeader(doc, paper, false, 'MARKING SCHEME — TEACHER COPY');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('MARKING SCHEME', 105, y, { align: 'center' });
-  y += 7;
+  doc.setFontSize(11);
+  doc.text('MARKING SCHEME AND SCORING GUIDANCE', 105, y, { align: 'center' });
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text('Use this school-owned marking scheme with the matching student paper. Award only the marks shown.', 105, y, { align: 'center' });
+  y += 6;
+  const groups = groupedQuestions(paper);
+  const rows: string[][] = [];
+  let sequence = 1;
+  groups.forEach((group, groupIndex) => {
+    group.questions.forEach((question) => {
+      rows.push([
+        `Section ${String.fromCharCode(65 + groupIndex)}`,
+        String(sequence),
+        questionTypeLabel(question.question_type),
+        question.marking_scheme || question.correct_answer || 'Teacher to assess according to the stated learning outcome.',
+        String(question.marks),
+      ]);
+      sequence += 1;
+    });
+  });
   autoTable(doc, {
     startY: y,
     margin: { left: 12, right: 12 },
-    head: [['No.', 'Question type', 'Expected answer / marking guidance', 'Marks']],
-    body: paper.questions.map((question, index) => [
-      String(index + 1),
-      questionTypeLabel(question.question_type),
-      question.marking_scheme || question.correct_answer || 'Teacher to assess according to the stated learning outcome.',
-      String(question.marks),
-    ]),
-    styles: { fontSize: 7.5, cellPadding: 2, valign: 'top', overflow: 'linebreak' },
-    headStyles: { fillColor: [185, 28, 28], textColor: 255, fontStyle: 'bold' },
-    columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 30 }, 2: { cellWidth: 125 }, 3: { cellWidth: 15, halign: 'center' } },
+    head: [['Section', 'No.', 'Question type', 'Expected answer / marking guidance', 'Marks']],
+    body: rows,
+    styles: { fontSize: 7.2, cellPadding: 2, valign: 'top', overflow: 'linebreak', lineColor: [107, 114, 128], lineWidth: 0.25 },
+    headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 10, halign: 'center' }, 2: { cellWidth: 28 }, 3: { cellWidth: 116 }, 4: { cellWidth: 12, halign: 'center' } },
   });
   const finalY = Number((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y + 20);
   const visualQuestions = paper.questions.filter((question) => question.image_url);
@@ -312,7 +452,7 @@ export async function downloadExamPdf(paper: ExamPaper, modeOrInclude: ExamPdfMo
     doc.addPage();
     await renderMarkingScheme(doc, brandedPaper);
   }
-  addFooter(doc);
+  addFooter(doc, brandedPaper);
   const suffix = mode === 'combined' ? 'student_and_marking_scheme' : mode;
   const safeName = paper.title.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'cbc_exam';
   doc.save(`${safeName}_${suffix}.pdf`);
