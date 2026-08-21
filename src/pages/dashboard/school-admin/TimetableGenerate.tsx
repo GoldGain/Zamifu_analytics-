@@ -603,7 +603,20 @@ export default function TimetableGenerate() {
             };
 
             const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean) => {
-              for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+              // Reserve the configured double-lesson weekdays for pair placement
+              // before using other available weekdays for single lessons. Without
+              // this ordering, an early single lesson can consume the weekly
+              // count before a later selected double day is reached.
+              const dayOrder = [1, 2, 3, 4, 5].sort((a, b) => {
+                const aName = TIMETABLE_DAYS[a - 1];
+                const bName = TIMETABLE_DAYS[b - 1];
+                const aDoubleDay = isDoubleLesson && configuredDoubleDays.includes(aName);
+                const bDoubleDay = isDoubleLesson && configuredDoubleDays.includes(bName);
+                return Number(bDoubleDay) - Number(aDoubleDay) || a - b;
+              });
+
+              for (const day of dayOrder) {
+                if (scheduled >= lessonsToSchedule) break;
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
