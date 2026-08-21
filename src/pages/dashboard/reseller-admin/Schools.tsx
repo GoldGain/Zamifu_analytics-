@@ -3,7 +3,12 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Edit, RefreshCw, Trash2, Lock, Unlock, Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { DEFAULT_FEE_PER_LEARNER, feeOrDefault, getResellerForUser } from '@/lib/reseller';
+import {
+  DEFAULT_ANNUAL_FEE_PER_LEARNER,
+  DEFAULT_FEE_PER_LEARNER,
+  feeOrDefault,
+  getResellerForUser,
+} from '@/lib/reseller';
 
 interface SchoolForm {
   name: string;
@@ -14,6 +19,7 @@ interface SchoolForm {
   phone: string;
   email: string;
   fee_per_learner_per_term: number;
+  fee_per_learner_per_year: number;
 }
 
 const defaultForm: SchoolForm = {
@@ -25,6 +31,7 @@ const defaultForm: SchoolForm = {
   phone: '',
   email: '',
   fee_per_learner_per_term: DEFAULT_FEE_PER_LEARNER,
+  fee_per_learner_per_year: DEFAULT_ANNUAL_FEE_PER_LEARNER,
 };
 
 export default function ResellerSchools() {
@@ -35,6 +42,10 @@ export default function ResellerSchools() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<SchoolForm>(defaultForm);
+  const [resellerDefaults, setResellerDefaults] = useState({
+    term: DEFAULT_FEE_PER_LEARNER,
+    annual: DEFAULT_ANNUAL_FEE_PER_LEARNER,
+  });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -56,7 +67,13 @@ export default function ResellerSchools() {
     if (reseller) {
       setResellerId(reseller.id);
       const defaultFee = feeOrDefault(reseller.default_fee_per_learner);
-      setForm((f) => ({ ...f, fee_per_learner_per_term: f.fee_per_learner_per_term || defaultFee }));
+      const defaultAnnualFee = feeOrDefault(reseller.default_fee_per_learner_per_year, DEFAULT_ANNUAL_FEE_PER_LEARNER);
+      setResellerDefaults({ term: defaultFee, annual: defaultAnnualFee });
+      setForm((f) => ({
+        ...f,
+        fee_per_learner_per_term: f.fee_per_learner_per_term || defaultFee,
+        fee_per_learner_per_year: f.fee_per_learner_per_year || defaultAnnualFee,
+      }));
       // Load portfolio for per-school counts
       try {
         const { loadResellerPortfolio } = await import('@/lib/reseller-dashboard');
@@ -99,8 +116,8 @@ export default function ResellerSchools() {
         email: form.email,
         reseller_id: resellerId,
         status: 'active',
-        subscription_plan: 'basic',
         fee_per_learner_per_term: feeOrDefault(form.fee_per_learner_per_term),
+        fee_per_learner_per_year: feeOrDefault(form.fee_per_learner_per_year, DEFAULT_ANNUAL_FEE_PER_LEARNER),
       };
       if (editingId) {
         const { error } = await supabase.from('schools').update(payload).eq('id', editingId);
@@ -109,6 +126,7 @@ export default function ResellerSchools() {
       } else {
         const { error } = await supabase.from('schools').insert({
           ...payload,
+          subscription_plan: 'basic',
           admin_portal_locked: false,
           dos_portal_locked: false,
         });
@@ -136,6 +154,10 @@ export default function ResellerSchools() {
       phone: s.phone || '',
       email: s.email || '',
       fee_per_learner_per_term: feeOrDefault(s.fee_per_learner_per_term),
+      fee_per_learner_per_year: feeOrDefault(
+        s.fee_per_learner_per_year,
+        feeOrDefault(s.fee_per_learner_per_term) * 3,
+      ),
     });
     setEditingId(s.id);
     setShowForm(true);
@@ -210,7 +232,7 @@ export default function ResellerSchools() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Schools</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Create schools, set fee per learner per term, and lock School Admin or DoS portals
+            Create schools, set term and annual fees per learner, and lock School Admin or DoS portals
           </p>
         </div>
         <div className="flex gap-2">
@@ -221,7 +243,11 @@ export default function ResellerSchools() {
             onClick={() => {
               setShowForm(true);
               setEditingId(null);
-              setForm(defaultForm);
+              setForm({
+                ...defaultForm,
+                fee_per_learner_per_term: resellerDefaults.term,
+                fee_per_learner_per_year: resellerDefaults.annual,
+              });
             }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
           >
@@ -367,7 +393,21 @@ export default function ResellerSchools() {
                 onChange={(e) => setForm({ ...form, fee_per_learner_per_term: Number(e.target.value) || 0 })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               />
-              <p className="text-xs text-gray-500 mt-1">Used for platform subscription billing for this school</p>
+              <p className="text-xs text-gray-500 mt-1">Used for one-term platform subscription billing.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Fee per learner per year (KES) *</label>
+              <input
+                required
+                type="number"
+                min={1}
+                value={form.fee_per_learner_per_year}
+                onChange={(e) => setForm({ ...form, fee_per_learner_per_year: Number(e.target.value) || 0 })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <p className="text-xs text-green-700 mt-1">
+                Annual saving vs 3 terms: KES {Math.max(0, form.fee_per_learner_per_term * 3 - form.fee_per_learner_per_year).toLocaleString()} per learner.
+              </p>
             </div>
             <div className="md:col-span-2 flex gap-3 justify-end">
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
@@ -402,6 +442,7 @@ export default function ResellerSchools() {
                   <th className="px-4 py-3 text-center">Parents</th>
                   <th className="px-4 py-3 text-center">Admins</th>
                   <th className="px-4 py-3">Fee / learner / term</th>
+                  <th className="px-4 py-3">Fee / learner / year</th>
                   <th className="px-4 py-3">Admin lock</th>
                   <th className="px-4 py-3">DoS lock</th>
                   <th className="px-4 py-3">Status</th>
@@ -428,6 +469,7 @@ export default function ResellerSchools() {
                     <td className="px-4 py-3 text-center">{portfolioMap.get(s.id)?.parents ?? 0}</td>
                     <td className="px-4 py-3 text-center">{portfolioMap.get(s.id)?.admins ?? 0}</td>
                     <td className="px-4 py-3 font-medium">KES {feeOrDefault(s.fee_per_learner_per_term).toLocaleString()}</td>
+                    <td className="px-4 py-3 font-medium">KES {feeOrDefault(s.fee_per_learner_per_year, feeOrDefault(s.fee_per_learner_per_term) * 3).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       {s.admin_portal_locked ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">

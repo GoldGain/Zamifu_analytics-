@@ -770,13 +770,19 @@ export default function TimetableView() {
     return lookup;
   }, [entries]);
 
+  const isPlaceholderActivity = (entry: TimetableEntry): boolean => {
+    if (entry.entry_type !== 'activity' && entry.entry_type !== 'activities') return false;
+    const label = String(entry.activity_name || '').trim().toUpperCase().replace(/\s+/g, ' ');
+    return label === 'REVISION' || label === 'SELF-STUDY' || label === 'SELF STUDY';
+  };
+
   const getEntries = (day: number, classId: string, slot: TimeSlot): TimetableEntry[] => {
     // A merged activity column can represent multiple legacy DB slot IDs.
     const sourceIds = slot.sourceSlotIds?.length ? slot.sourceSlotIds : [slot.id];
     const merged: TimetableEntry[] = [];
     sourceIds.forEach((sourceId) => {
       const byId = entryLookup.get(`${day}-${classId}-${sourceId}`) || [];
-      merged.push(...byId);
+      merged.push(...byId.filter((entry) => !isPlaceholderActivity(entry)));
     });
     // Migration fallback: older generations stored an in-lesson activity in
     // its own activity slot. If that slot is now hidden, show the activity in
@@ -787,6 +793,7 @@ export default function TimetableView() {
           entry.day_of_week === day &&
           entry.class_id === classId &&
           (entry.entry_type === 'activity' || entry.entry_type === 'activities') &&
+          !isPlaceholderActivity(entry) &&
           Boolean(entry.effective_start_time && entry.effective_end_time) &&
           timeIntervalsOverlap(
             String(entry.effective_start_time),
@@ -806,6 +813,7 @@ export default function TimetableView() {
     if (!entriesForCell || entriesForCell.length === 0) return '';
     const parts: string[] = [];
     entriesForCell.forEach((entry) => {
+      if (isPlaceholderActivity(entry)) return;
       if (entry.entry_type === 'activity' || entry.entry_type === 'activities') {
         if (entry.activity_name) parts.push(entry.activity_name.toUpperCase());
         return;

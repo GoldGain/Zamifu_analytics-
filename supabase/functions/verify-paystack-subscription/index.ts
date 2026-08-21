@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: school, error: schoolError } = await admin
       .from("schools")
-      .select("id, name, reseller_id, fee_per_learner_per_term")
+      .select("id, name, reseller_id, fee_per_learner_per_term, fee_per_learner_per_year")
       .eq("id", profile.school_id)
       .maybeSingle();
     if (schoolError || !school) return json({ error: "School could not be found" }, 404);
@@ -135,7 +135,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const configuredFee = Number(school.fee_per_learner_per_term) || 50;
-    const expectedFee = period.toLowerCase().includes("annual") || period.toLowerCase().includes("year") ? 60 : configuredFee;
+    const configuredAnnualFee = Number(school.fee_per_learner_per_year) || 60;
+    const isAnnual = period.toLowerCase().includes("annual") || period.toLowerCase().includes("year");
+    const expectedFee = isAnnual ? configuredAnnualFee : configuredFee;
     const feePerLearner = feeFromMetadata > 0 ? feeFromMetadata : expectedFee;
     if (feePerLearner !== expectedFee) return json({ error: "Payment price does not match the configured school pricing" }, 409);
 

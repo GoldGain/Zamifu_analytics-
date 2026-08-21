@@ -1,6 +1,7 @@
 import { supabaseUntyped } from '@/lib/supabase/client';
 
 export const DEFAULT_FEE_PER_LEARNER = 50;
+export const DEFAULT_ANNUAL_FEE_PER_LEARNER = 60;
 export const DEFAULT_CURRENCY = 'KES';
 
 export interface ResellerRecord {
@@ -10,6 +11,7 @@ export interface ResellerRecord {
   status?: string | null;
   parent_pay_enabled?: boolean | null;
   default_fee_per_learner?: number | null;
+  default_fee_per_learner_per_year?: number | null;
   paystack_public_key?: string | null;
 }
 

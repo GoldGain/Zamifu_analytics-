@@ -13,6 +13,7 @@ export interface SchoolPortfolioItem {
   registrationSource: string | null;
   currency: string;
   feePerLearnerPerTerm: number;
+  feePerLearnerPerYear: number;
   learners: number;
   teachers: number;
   parents: number;
@@ -48,6 +49,7 @@ type SchoolRow = {
   registration_source: string | null;
   currency: string | null;
   fee_per_learner_per_term: number | null;
+  fee_per_learner_per_year: number | null;
   admin_portal_locked: boolean | null;
   dos_portal_locked: boolean | null;
 };
@@ -82,7 +84,7 @@ function emptyPortfolio(): ResellerPortfolio {
 export async function loadResellerPortfolio(resellerId: string): Promise<ResellerPortfolio> {
   const { data: schoolData, error: schoolError } = await supabaseUntyped
     .from('schools')
-    .select('id, name, code, county, sub_county, email, phone, status, registration_source, currency, fee_per_learner_per_term, admin_portal_locked, dos_portal_locked')
+    .select('id, name, code, county, sub_county, email, phone, status, registration_source, currency, fee_per_learner_per_term, fee_per_learner_per_year, admin_portal_locked, dos_portal_locked')
     .or(`reseller_id.eq.${resellerId},reseller_id.is.null`)
     .order('name');
 
@@ -131,6 +133,7 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
   const portfolioSchools = schools.map((school) => {
     const learners = studentCounts.get(school.id) || 0;
     const feePerLearnerPerTerm = feeOrDefault(school.fee_per_learner_per_term);
+    const feePerLearnerPerYear = feeOrDefault(school.fee_per_learner_per_year, feePerLearnerPerTerm * 3);
     const revenueThisTerm = learners * feePerLearnerPerTerm;
 
     return {
@@ -145,12 +148,13 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
       registrationSource: school.registration_source,
       currency: currencyCode(school.currency),
       feePerLearnerPerTerm,
+      feePerLearnerPerYear,
       learners,
       teachers: teacherCounts.get(school.id) || 0,
       parents: parentIdsBySchool.get(school.id)?.size || 0,
       admins: adminCounts.get(school.id) || 0,
       revenueThisTerm,
-      revenuePerYear: revenueThisTerm * 3,
+      revenuePerYear: learners * feePerLearnerPerYear,
       adminPortalLocked: Boolean(school.admin_portal_locked),
       dosPortalLocked: Boolean(school.dos_portal_locked),
     } satisfies SchoolPortfolioItem;
@@ -182,6 +186,22 @@ export async function updateSchoolFee(resellerId: string, schoolId: string, rawF
   const { error } = await supabaseUntyped
     .from('schools')
     .update({ fee_per_learner_per_term: fee })
+    .eq('id', schoolId)
+    .or(`reseller_id.eq.${resellerId},reseller_id.is.null`);
+
+  if (error) throw error;
+  return fee;
+}
+
+export async function updateSchoolAnnualFee(resellerId: string, schoolId: string, rawFee: number): Promise<number> {
+  const fee = Math.round(Number(rawFee));
+  if (!Number.isFinite(fee) || fee < 1 || fee > 1_000_000) {
+    throw new Error('Enter a fee between 1 and 1,000,000 per learner per year.');
+  }
+
+  const { error } = await supabaseUntyped
+    .from('schools')
+    .update({ fee_per_learner_per_year: fee })
     .eq('id', schoolId)
     .or(`reseller_id.eq.${resellerId},reseller_id.is.null`);
 

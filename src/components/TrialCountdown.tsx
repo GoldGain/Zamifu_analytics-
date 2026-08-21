@@ -6,7 +6,7 @@ import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lu
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
-  const { trialStatus, isLoading, pricePerLearner } = useTrial();
+  const { trialStatus, isLoading, pricePerLearner, annualPricePerLearner } = useTrial();
   const { user } = useAuth();
   const [showPayment, setShowPayment] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -48,7 +48,7 @@ export const TrialCountdown: React.FC = () => {
   }
 
   const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
-  const annualFee = 60;
+  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 60;
   const selectedFee = billingPeriod === 'annual' ? annualFee : pricePerLearner;
   const annualBaseline = pricePerLearner * 3;
   const annualSavings = Math.max(0, annualBaseline - annualFee);
@@ -105,7 +105,7 @@ export const TrialCountdown: React.FC = () => {
               </button>
               <button type="button" onClick={() => setBillingPeriod('annual')} className={`rounded-xl border-2 p-4 transition-colors ${billingPeriod === 'annual' ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}`}>
                 <span className="block font-bold text-gray-900">Pay annually</span>
-                <span className="block text-sm text-gray-600">KES 60 per learner per year</span>
+                <span className="block text-sm text-gray-600">KES {annualFee.toLocaleString()} per learner per year</span>
                 <span className="block text-xs font-semibold text-green-700 mt-1">Save KES {annualSavings} per learner ({annualBaseline > 0 ? Math.round((annualSavings / annualBaseline) * 100) : 0}% off)</span>
               </button>
             </div>
@@ -245,7 +245,7 @@ export const TrialCountdown: React.FC = () => {
                       className={`rounded-lg border-2 p-3 transition-colors ${billingPeriod === 'annual' ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}`}
                     >
                       <span className="block text-xs font-bold text-gray-900">Pay annually</span>
-                      <span className="block text-[11px] text-gray-600">KES {annualFee} per learner per year</span>
+                      <span className="block text-[11px] text-gray-600">KES {annualFee.toLocaleString()} per learner per year</span>
                       <span className="block text-[10px] font-semibold text-green-700 mt-1">Save KES {annualSavings} per learner</span>
                     </button>
                   </div>

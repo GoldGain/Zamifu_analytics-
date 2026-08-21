@@ -24,9 +24,9 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
   billingPeriod = 'term',
 }) => {
   const { user } = useAuth();
-  const { pricePerLearner, refreshTrialStatus } = useTrial();
+  const { pricePerLearner, annualPricePerLearner, refreshTrialStatus } = useTrial();
   const [processing, setProcessing] = useState(false);
-  const annualFee = 60;
+  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 60;
   const [resolvedFee, setResolvedFee] = useState(
     billingPeriod === 'annual' ? annualFee : (feePerLearner || pricePerLearner || PRICE_PER_LEARNER),
   );
@@ -41,7 +41,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
       return;
     }
     if (pricePerLearner && pricePerLearner > 0) setResolvedFee(pricePerLearner);
-  }, [billingPeriod, feePerLearner, pricePerLearner]);
+  }, [billingPeriod, feePerLearner, pricePerLearner, annualFee]);
 
   useEffect(() => {
     const load = async () => {
@@ -49,7 +49,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
       if (!user?.schoolId) return;
       const { data } = await (supabase as any)
         .from('schools')
-        .select('fee_per_learner_per_term')
+        .select('fee_per_learner_per_term, fee_per_learner_per_year')
         .eq('id', user.schoolId)
         .maybeSingle();
       const fee = Number(data?.fee_per_learner_per_term);

@@ -703,36 +703,9 @@ export default function TimetableGenerate() {
           }
         }
 
-        // Never leave a lesson box empty. If the school has not assigned enough
-        // weekly subject periods to occupy every configured slot, show an
-        // explicit self-study/revision period instead of a misleading blank.
-        // This preserves each level's saved lesson count, breaks, lunch, and
-        // activity reservations without inventing a teacher or learning area.
-        for (const cls of classesToProcess) {
-          for (let day = 1; day <= TIMETABLE_DAYS.length; day += 1) {
-            const { times: daySlotTimes } = getDaySlotTiming(day, cls);
-            for (const slot of lessonSlots) {
-              const classKey = `${cls.id}-${day}-${slot.id}`;
-              if (classBusy.has(classKey)) continue;
-              const timing = daySlotTimes.get(String(slot.label)) || {
-                start_time: slot.start_time,
-                end_time: slot.end_time,
-              };
-              allEntries.push({
-                school_id: schoolId,
-                day_of_week: day,
-                time_slot_id: slot.id,
-                class_id: cls.id,
-                level_group: levelKey,
-                effective_start_time: timing.start_time,
-                effective_end_time: timing.end_time,
-                entry_type: 'activity',
-                activity_name: 'REVISION',
-              });
-              classBusy.add(classKey);
-            }
-          }
-        }
+        // Unassigned lesson slots intentionally remain blank. Do not insert
+        // synthetic REVISION or SELF-STUDY activities: the viewer can then
+        // distinguish a genuinely configured activity from an open period.
       }
 
       // Bulk insert all entries

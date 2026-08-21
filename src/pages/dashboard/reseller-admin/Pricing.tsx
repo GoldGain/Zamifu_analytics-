@@ -3,13 +3,21 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { DollarSign, RefreshCw, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { DEFAULT_FEE_PER_LEARNER, feeOrDefault, getResellerForUser, money } from '@/lib/reseller';
+import {
+  DEFAULT_ANNUAL_FEE_PER_LEARNER,
+  DEFAULT_FEE_PER_LEARNER,
+  feeOrDefault,
+  getResellerForUser,
+  money,
+} from '@/lib/reseller';
 
 export default function ResellerPricing() {
   const { user } = useAuth();
   const [schools, setSchools] = useState<any[]>([]);
   const [fees, setFees] = useState<Record<string, number>>({});
+  const [annualFees, setAnnualFees] = useState<Record<string, number>>({});
   const [defaultFee, setDefaultFee] = useState(DEFAULT_FEE_PER_LEARNER);
+  const [defaultAnnualFee, setDefaultAnnualFee] = useState(DEFAULT_ANNUAL_FEE_PER_LEARNER);
   const [resellerId, setResellerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
@@ -22,18 +30,23 @@ export default function ResellerPricing() {
     if (reseller) {
       setResellerId(reseller.id);
       setDefaultFee(feeOrDefault(reseller.default_fee_per_learner));
+      setDefaultAnnualFee(feeOrDefault(reseller.default_fee_per_learner_per_year, DEFAULT_ANNUAL_FEE_PER_LEARNER));
       const { data } = await supabase
         .from('schools')
-        .select('id, name, code, fee_per_learner_per_term')
+        .select('id, name, code, fee_per_learner_per_term, fee_per_learner_per_year')
         .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
         .order('name');
       const list = data || [];
       setSchools(list);
       const map: Record<string, number> = {};
+      const annualMap: Record<string, number> = {};
       list.forEach((s: any) => {
-        map[s.id] = feeOrDefault(s.fee_per_learner_per_term);
+        const termFee = feeOrDefault(s.fee_per_learner_per_term);
+        map[s.id] = termFee;
+        annualMap[s.id] = feeOrDefault(s.fee_per_learner_per_year, termFee * 3);
       });
       setFees(map);
+      setAnnualFees(annualMap);
     }
     setLoading(false);
   };
@@ -47,12 +60,16 @@ export default function ResellerPricing() {
     setSavingDefault(true);
     try {
       const value = feeOrDefault(defaultFee);
+      const annualValue = feeOrDefault(defaultAnnualFee, DEFAULT_ANNUAL_FEE_PER_LEARNER);
       const { error } = await (supabase as any)
         .from('resellers')
-        .update({ default_fee_per_learner: value })
+        .update({
+          default_fee_per_learner: value,
+          default_fee_per_learner_per_year: annualValue,
+        })
         .eq('id', resellerId);
       if (error) throw error;
-      toast.success('Default fee saved (used when creating new schools)');
+      toast.success('Default term and annual fees saved (used when creating new schools)');
     } catch (e: any) {
       toast.error(e.message || 'Failed to save default');
     } finally {
@@ -64,10 +81,16 @@ export default function ResellerPricing() {
     setSavingId(schoolId);
     try {
       const value = feeOrDefault(fees[schoolId]);
+      const annualValue = feeOrDefault(annualFees[schoolId], value * 3);
+      if (!resellerId) throw new Error('Reseller account not found');
       const { error } = await (supabase as any)
         .from('schools')
-        .update({ fee_per_learner_per_term: value })
-        .eq('id', schoolId);
+        .update({
+          fee_per_learner_per_term: value,
+          fee_per_learner_per_year: annualValue,
+        })
+        .eq('id', schoolId)
+        .or(`reseller_id.eq.${resellerId},reseller_id.is.null`);
       if (error) throw error;
       toast.success('School fee updated');
       load();
@@ -86,7 +109,7 @@ export default function ResellerPricing() {
             <DollarSign className="w-6 h-6 text-green-600" /> Pricing
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Set amount to be paid per learner per term for each school. Editable anytime after create.
+            Set term and discounted annual amounts per learner for each school. Annual savings are calculated against three terms.
           </p>
         </div>
         <button onClick={load} className="flex items-center gap-2 px-3 py-2 border rounded-lg text-sm">
@@ -107,6 +130,19 @@ export default function ResellerPricing() {
               onChange={(e) => setDefaultFee(Number(e.target.value) || 0)}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-40"
             />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-700 mb-1">KES per learner / year</label>
+            <input
+              type="number"
+              min={1}
+              value={defaultAnnualFee}
+              onChange={(e) => setDefaultAnnualFee(Number(e.target.value) || 0)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-40"
+            />
+            <p className="text-xs text-green-700 mt-1">
+              Save KES {Math.max(0, defaultFee * 3 - defaultAnnualFee).toLocaleString()} vs 3 terms
+            </p>
           </div>
           <button
             onClick={saveDefault}
@@ -131,7 +167,9 @@ export default function ResellerPricing() {
               <tr>
                 <th className="px-4 py-3">School</th>
                 <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Fee per learner / term</th>
+                <th className="px-4 py-3">Fee / learner / term</th>
+                <th className="px-4 py-3">Fee / learner / year</th>
+                <th className="px-4 py-3">Annual saving vs 3 terms</th>
                 <th className="px-4 py-3">Preview (100 learners)</th>
                 <th className="px-4 py-3">Save</th>
               </tr>
@@ -139,6 +177,8 @@ export default function ResellerPricing() {
             <tbody>
               {schools.map((s) => {
                 const fee = feeOrDefault(fees[s.id]);
+                const annualFee = feeOrDefault(annualFees[s.id], fee * 3);
+                const annualSavings = Math.max(0, fee * 3 - annualFee);
                 return (
                   <tr key={s.id} className="border-b last:border-0">
                     <td className="px-4 py-3 font-medium">{s.name}</td>
@@ -155,7 +195,20 @@ export default function ResellerPricing() {
                         />
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{money(fee * 100)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">KES</span>
+                        <input
+                          type="number"
+                          min={1}
+                          value={annualFees[s.id] ?? DEFAULT_ANNUAL_FEE_PER_LEARNER}
+                          onChange={(e) => setAnnualFees({ ...annualFees, [s.id]: Number(e.target.value) || 0 })}
+                          className="border border-gray-300 rounded-lg px-3 py-1.5 w-28"
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-green-700 font-medium">{money(annualSavings)}</td>
+                    <td className="px-4 py-3 text-gray-600">{money(fee * 100)} / term<br />{money(annualFee * 100)} / year</td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => saveSchool(s.id)}

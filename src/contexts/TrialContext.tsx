@@ -13,8 +13,9 @@ interface TrialContextType {
   trialStatus: TrialStatus | null;
   isLoading: boolean;
   billingError: string | null;
-  refreshTrialStatus: () => Promise<void>;
+  refreshTrialStatus: (silent?: boolean) => Promise<void>;
   pricePerLearner: number;
+  annualPricePerLearner: number;
   paymentAmount: number;
   trialDays: number;
 }
@@ -25,6 +26,7 @@ const TrialContext = createContext<TrialContextType>({
   billingError: null,
   refreshTrialStatus: async () => {},
   pricePerLearner: PRICE_PER_LEARNER,
+  annualPricePerLearner: 60,
   paymentAmount: 0,
   trialDays: 60,
 });
@@ -35,10 +37,11 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [pricePerLearner, setPricePerLearner] = useState(PRICE_PER_LEARNER);
+  const [annualPricePerLearner, setAnnualPricePerLearner] = useState(60);
 
   const schoolId = user?.schoolId || '';
 
-  const refreshTrialStatus = useCallback(async () => {
+  const refreshTrialStatus = useCallback(async (silent = false) => {
     if (!schoolId) {
       setTrialStatus(null);
       setBillingError(null);
@@ -46,31 +49,39 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     try {
       const { data, error } = await (supabase as any)
         .from('schools')
-        .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, created_at, fee_per_learner_per_term')
+        .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, created_at, fee_per_learner_per_term, fee_per_learner_per_year')
         .eq('id', schoolId)
         .maybeSingle();
 
       if (error || !data) {
-        setTrialStatus(null);
-        setBillingError('The school subscription could not be verified. Please reconnect and try again.');
+        if (!silent) {
+          setTrialStatus(null);
+          setBillingError('The school subscription could not be verified. Please reconnect and try again.');
+        } else {
+          console.warn('[billing] background verification failed; keeping the last confirmed status', error);
+        }
         return;
       }
 
       const record = data as ServerBillingRecord;
       setTrialStatus(buildTrialStatus(record));
       const fee = Number(data.fee_per_learner_per_term);
+      const annualFee = Number(data.fee_per_learner_per_year);
       setPricePerLearner(fee > 0 ? fee : PRICE_PER_LEARNER);
+      setAnnualPricePerLearner(annualFee > 0 ? annualFee : 60);
       setBillingError(null);
     } catch (error) {
       console.error('[billing] failed to load server subscription status', error);
-      setTrialStatus(null);
-      setBillingError('The school subscription could not be verified. Please reconnect and try again.');
+      if (!silent) {
+        setTrialStatus(null);
+        setBillingError('The school subscription could not be verified. Please reconnect and try again.');
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [schoolId]);
 
@@ -81,7 +92,8 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!schoolId) return;
     const interval = window.setInterval(() => {
-      void refreshTrialStatus();
+      // Refresh server billing state without replacing the active dashboard route.
+      void refreshTrialStatus(true);
     }, 60000);
     return () => window.clearInterval(interval);
   }, [schoolId, refreshTrialStatus]);
@@ -98,6 +110,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
         billingError,
         refreshTrialStatus,
         pricePerLearner,
+        annualPricePerLearner,
         paymentAmount,
         trialDays: 60,
       }}
