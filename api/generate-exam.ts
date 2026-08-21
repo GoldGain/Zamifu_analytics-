@@ -403,7 +403,7 @@ export default async function handler(request: RequestLike, response: ResponseLi
   // Get the authoritative profile. Do not create or infer a profile in a paid/content-generation path.
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('id, school_id, role, full_name, first_name, last_name, email')
+    .select('id, school_id, role, first_name, last_name, email')
     .eq('id', user.id)
     .maybeSingle();
   if (profileError || !profile) {
