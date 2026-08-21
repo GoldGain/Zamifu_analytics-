@@ -25,19 +25,34 @@ function dataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function textLines(text: string, x: number, y: number, width: number): string {
-  const words = text.split(/\s+/).filter(Boolean);
+function wrapWords(text: unknown, maxChars: number): string[] {
+  const words = String(text ?? '').split(/\s+/).filter(Boolean);
   const lines: string[] = [];
   let line = '';
   for (const word of words) {
     const next = line ? `${line} ${word}` : word;
-    if (next.length > Math.max(12, Math.floor(width / 8)) && line) {
+    if (next.length > Math.max(8, maxChars) && line) {
       lines.push(line);
       line = word;
     } else line = next;
   }
   if (line) lines.push(line);
-  return lines.slice(0, 4).map((entry, index) => `<text x="${x}" y="${y + index * 18}" class="body">${escapeXml(entry)}</text>`).join('');
+  return lines.length ? lines : ['—'];
+}
+
+function textLines(text: string, x: number, y: number, width: number): string {
+  return wrapWords(text, Math.floor(width / 8)).slice(0, 4).map((entry, index) => `<text x="${x}" y="${y + index * 18}" class="body">${escapeXml(entry)}</text>`).join('');
+}
+
+function centeredTextLines(text: string, x: number, y: number, maxChars: number, className: string, lineHeight: number): string {
+  return wrapWords(text, maxChars).slice(0, 2).map((entry, index) => `<text x="${x}" y="${y + index * lineHeight}" text-anchor="middle" class="${className}">${escapeXml(entry)}</text>`).join('');
+}
+
+function tableCellText(text: unknown, x: number, centerY: number, width: number, header = false): string {
+  const lines = wrapWords(text, Math.floor(width / 7)).slice(0, 2);
+  const lineHeight = 13;
+  const startY = centerY - ((lines.length - 1) * lineHeight) / 2 + 4;
+  return lines.map((entry, index) => `<text x="${x}" y="${startY + index * lineHeight}" text-anchor="middle" class="${header ? 'table-header' : 'table-cell'}">${escapeXml(entry)}</text>`).join('');
 }
 
 function visualTitle(spec: ExamVisualSpec, question: GeneratedExamQuestion): string {
@@ -77,24 +92,34 @@ function renderMap(spec: ExamVisualSpec): string {
 }
 
 function renderTable(spec: ExamVisualSpec): string {
-  const headers = (spec.labels || ['Item', 'Value']).slice(0, 4);
-  const rows = (spec.x_labels || ['Item 1', 'Item 2', 'Item 3', 'Item 4']).slice(0, 6);
+  const sourceHeaders = (spec.labels || ['Item', 'Value']).map(String).slice(0, 4);
+  const sourceRows = (spec.x_labels || ['Item 1', 'Item 2', 'Item 3', 'Item 4']).map(String).slice(0, 6);
   const values = spec.values || [];
-  const x = 55;
-  const y = 62;
-  const tableWidth = 370;
+  const parsedRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()).filter(Boolean));
+  const commaSeparated = parsedRows.some((parts) => parts.length > 1);
+  const inferredColumns = commaSeparated ? Math.max(sourceHeaders.length, ...parsedRows.map((parts) => parts.length)) : Math.max(sourceHeaders.length, values.length ? 2 : sourceHeaders.length);
+  const headers = [...sourceHeaders];
+  if (commaSeparated && headers.length === 3 && inferredColumns === 4) headers.splice(2, 0, 'Group');
+  while (headers.length < inferredColumns) headers.push(`Detail ${headers.length}`);
+  const rows = sourceRows.map((row, rowIndex) => {
+    const parts = parsedRows[rowIndex];
+    if (commaSeparated && parts.length > 1) return [...parts, ...Array(Math.max(0, headers.length - parts.length)).fill('—')].slice(0, headers.length);
+    return headers.map((_, columnIndex) => columnIndex === 0 ? row : values[rowIndex] ?? '—');
+  });
+  const x = 28;
+  const y = 58;
+  const tableWidth = 424;
+  const rowHeight = rows.length > 5 ? 26 : 30;
   const columnWidth = tableWidth / headers.length;
-  const rowHeight = 30;
   const header = headers.map((header, index) => {
     const cellX = x + index * columnWidth;
-    return `<rect x="${cellX}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/><text x="${cellX + columnWidth / 2}" y="${y + 20}" text-anchor="middle" class="small">${escapeXml(header)}</text>`;
+    return `<rect x="${cellX}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/>${tableCellText(header, cellX + columnWidth / 2, y + rowHeight / 2, columnWidth - 8, true)}`;
   }).join('');
   const body = rows.map((row, rowIndex) => {
     const cellY = y + rowHeight * (rowIndex + 1);
-    return headers.map((_, columnIndex) => {
+    return row.map((value, columnIndex) => {
       const cellX = x + columnIndex * columnWidth;
-      const value = columnIndex === 0 ? row : values[rowIndex] ?? '—';
-      return `<rect x="${cellX}" y="${cellY}" width="${columnWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/><text x="${cellX + columnWidth / 2}" y="${cellY + 20}" text-anchor="middle" class="small">${escapeXml(value)}</text>`;
+      return `<rect x="${cellX}" y="${cellY}" width="${columnWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/>${tableCellText(value, cellX + columnWidth / 2, cellY + rowHeight / 2, columnWidth - 8)}`;
     }).join('');
   }).join('');
   return `${header}${body}`;
@@ -129,7 +154,7 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
     body = textLines(spec.prompt || 'Teacher-approved educational visual', 55, 110, 340);
   }
   const caption = spec.caption || (assetType === 'map' ? 'Schematic map for interpretation; verify labels before approval.' : 'Teacher-approved visual');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/><text x="240" y="28" text-anchor="middle" class="title">${escapeXml(title)}</text>${body}<text x="240" y="310" text-anchor="middle" class="small">${escapeXml(caption)}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.table-header{font:700 11px Arial;fill:#1e3a8a}.table-cell{font:11px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>${centeredTextLines(title, 240, 22, 42, 'title', 18)}${body}<text x="240" y="310" text-anchor="middle" class="small">${escapeXml(caption)}</text></svg>`;
   return dataUrl(svg);
 }
 
