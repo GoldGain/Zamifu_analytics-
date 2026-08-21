@@ -141,8 +141,11 @@ function ProtectedRoute({
   if (!user) return <Navigate to="/auth/login" replace />;
   if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
 
-  const body = lockTarget ? (
-    <SchoolPortalLockGate target={lockTarget}>{children}</SchoolPortalLockGate>
+  const schoolScopedRole = ['school_admin', 'teacher', 'student', 'parent'].includes(user.role);
+  const body = schoolScopedRole ? (
+    <SchoolPortalLockGate target={lockTarget} enforceBilling>
+      {children}
+    </SchoolPortalLockGate>
   ) : (
     children
   );

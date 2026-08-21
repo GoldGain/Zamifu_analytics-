@@ -23,8 +23,10 @@ export const TrialCountdown: React.FC = () => {
       try {
         const { count, error } = await supabase
           .from('students')
-          .select('*', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId);
+          .select('id', { count: 'exact', head: true })
+          .eq('school_id', user.schoolId)
+          .eq('is_active', true)
+          .eq('status', 'active');
         if (!error && count !== null) {
           setLearnersCount(count);
         }

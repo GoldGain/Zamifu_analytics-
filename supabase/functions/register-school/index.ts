@@ -191,7 +191,8 @@ Deno.serve(async (req) => {
     }
 
     const code = makeCode(school_name, knec_centre_code);
-    const trialExpires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const trialStarted = new Date();
+    const trialExpires = new Date(trialStarted.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
     const schoolPayload: Record<string, unknown> = {
       name: school_name,
@@ -209,7 +210,7 @@ Deno.serve(async (req) => {
       status: "active",
       subscription_plan: "trial",
       subscription_status: "trial",
-      trial_started_at: new Date().toISOString(),
+      trial_started_at: trialStarted.toISOString(),
       trial_expires_at: trialExpires,
       subscription_expires_at: trialExpires,
       reseller_id,

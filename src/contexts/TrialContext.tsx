@@ -2,139 +2,104 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useAuth } from './AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import {
-  checkTrialStatus,
-  updateTrialData,
-  markTrialAsPaid,
+  buildTrialStatus,
   calculatePaymentAmount,
-  getTrialData,
-  resetTrial,
-  simulateTrialExpiry,
-  type TrialStatus,
-  type TrialData,
-  TRIAL_DAYS,
   PRICE_PER_LEARNER,
+  type ServerBillingRecord,
+  type TrialStatus,
 } from '@/lib/trial';
 
 interface TrialContextType {
   trialStatus: TrialStatus | null;
   isLoading: boolean;
-  refreshTrialStatus: () => void;
-  updateLearnersCount: (count: number) => void;
-  handlePaymentSuccess: (learnersCount: number, reference: string, feePerLearner?: number) => void;
-  paymentAmount: number;
-  resetTrialPeriod: () => void;
-  simulateExpiry: () => void;
-  trialDays: number;
+  billingError: string | null;
+  refreshTrialStatus: () => Promise<void>;
   pricePerLearner: number;
+  paymentAmount: number;
+  trialDays: number;
 }
 
 const TrialContext = createContext<TrialContextType>({
   trialStatus: null,
   isLoading: true,
-  refreshTrialStatus: () => {},
-  updateLearnersCount: () => {},
-  handlePaymentSuccess: () => {},
-  paymentAmount: 0,
-  resetTrialPeriod: () => {},
-  simulateExpiry: () => {},
-  trialDays: TRIAL_DAYS,
+  billingError: null,
+  refreshTrialStatus: async () => {},
   pricePerLearner: PRICE_PER_LEARNER,
+  paymentAmount: 0,
+  trialDays: 60,
 });
 
 export function TrialProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [trialStatus, setTrialStatus] = useState<TrialStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [billingError, setBillingError] = useState<string | null>(null);
   const [pricePerLearner, setPricePerLearner] = useState(PRICE_PER_LEARNER);
 
   const schoolId = user?.schoolId || '';
 
-  const refreshTrialStatus = useCallback(() => {
+  const refreshTrialStatus = useCallback(async () => {
     if (!schoolId) {
       setTrialStatus(null);
+      setBillingError(null);
       setIsLoading(false);
       return;
     }
-    const status = checkTrialStatus(schoolId);
-    setTrialStatus(status);
-    setIsLoading(false);
+
+    setIsLoading(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('schools')
+        .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, created_at, fee_per_learner_per_term')
+        .eq('id', schoolId)
+        .maybeSingle();
+
+      if (error || !data) {
+        setTrialStatus(null);
+        setBillingError('The school subscription could not be verified. Please reconnect and try again.');
+        return;
+      }
+
+      const record = data as ServerBillingRecord;
+      setTrialStatus(buildTrialStatus(record));
+      const fee = Number(data.fee_per_learner_per_term);
+      setPricePerLearner(fee > 0 ? fee : PRICE_PER_LEARNER);
+      setBillingError(null);
+    } catch (error) {
+      console.error('[billing] failed to load server subscription status', error);
+      setTrialStatus(null);
+      setBillingError('The school subscription could not be verified. Please reconnect and try again.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [schoolId]);
 
   useEffect(() => {
-    refreshTrialStatus();
+    void refreshTrialStatus();
   }, [refreshTrialStatus]);
 
   useEffect(() => {
-    const loadFee = async () => {
-      if (!schoolId) {
-        setPricePerLearner(PRICE_PER_LEARNER);
-        return;
-      }
-      try {
-        const { data } = await (supabase as any)
-          .from('schools')
-          .select('fee_per_learner_per_term')
-          .eq('id', schoolId)
-          .maybeSingle();
-        const fee = Number(data?.fee_per_learner_per_term);
-        setPricePerLearner(fee > 0 ? fee : PRICE_PER_LEARNER);
-      } catch {
-        setPricePerLearner(PRICE_PER_LEARNER);
-      }
-    };
-    loadFee();
-  }, [schoolId]);
-
-  // Auto-refresh every minute
-  useEffect(() => {
     if (!schoolId) return;
-    const interval = setInterval(() => {
-      refreshTrialStatus();
+    const interval = window.setInterval(() => {
+      void refreshTrialStatus();
     }, 60000);
-    return () => clearInterval(interval);
+    return () => window.clearInterval(interval);
   }, [schoolId, refreshTrialStatus]);
-
-  const updateLearnersCount = useCallback((count: number) => {
-    if (!schoolId) return;
-    updateTrialData(schoolId, { learnersCount: count });
-    refreshTrialStatus();
-  }, [schoolId, refreshTrialStatus]);
-
-  const handlePaymentSuccess = useCallback((learnersCount: number, reference: string, feePerLearner?: number) => {
-    if (!schoolId) return;
-    markTrialAsPaid(schoolId, learnersCount, reference, feePerLearner || pricePerLearner);
-    refreshTrialStatus();
-  }, [schoolId, refreshTrialStatus, pricePerLearner]);
 
   const paymentAmount = trialStatus
     ? calculatePaymentAmount(trialStatus.trialData.learnersCount, pricePerLearner)
     : 0;
-
-  const resetTrialPeriod = useCallback(() => {
-    if (!schoolId) return;
-    resetTrial(schoolId);
-    refreshTrialStatus();
-  }, [schoolId, refreshTrialStatus]);
-
-  const simulateExpiry = useCallback(() => {
-    if (!schoolId) return;
-    simulateTrialExpiry(schoolId);
-    refreshTrialStatus();
-  }, [schoolId, refreshTrialStatus]);
 
   return (
     <TrialContext.Provider
       value={{
         trialStatus,
         isLoading,
+        billingError,
         refreshTrialStatus,
-        updateLearnersCount,
-        handlePaymentSuccess,
-        paymentAmount,
-        resetTrialPeriod,
-        simulateExpiry,
-        trialDays: TRIAL_DAYS,
         pricePerLearner,
+        paymentAmount,
+        trialDays: 60,
       }}
     >
       {children}

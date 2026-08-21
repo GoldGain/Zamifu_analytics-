@@ -1,10 +1,11 @@
 // ============================================================
-// FRONTEND TRIAL PERIOD MANAGEMENT
-// All trial data stored in localStorage — NO Supabase changes
+// SERVER-AUTHORITATIVE TRIAL AND SUBSCRIPTION CALCULATIONS
+// Trial data is loaded from Supabase by TrialContext. This module
+// intentionally does not read or write browser storage.
 // ============================================================
 
 export const TRIAL_DAYS = 60;
-export const PRICE_PER_LEARNER = 50; // fallback default KES per learner per term
+export const PRICE_PER_LEARNER = 50;
 
 export interface TrialData {
   trialStartDate: string;
@@ -16,59 +17,15 @@ export interface TrialData {
   paidAmount?: number;
 }
 
-export const getTrialStorageKey = (schoolId: string): string => `trial_${schoolId}`;
-
-export const getTrialData = (schoolId: string): TrialData => {
-  const key = getTrialStorageKey(schoolId);
-  const stored = localStorage.getItem(key);
-
-  if (stored) {
-    try {
-      return JSON.parse(stored) as TrialData;
-    } catch {
-      // If corrupted, start fresh trial
-    }
-  }
-
-  // First login — start trial
-  const now = new Date();
-  const end = new Date(now);
-  end.setDate(end.getDate() + TRIAL_DAYS);
-
-  const trialData: TrialData = {
-    trialStartDate: now.toISOString(),
-    trialEndDate: end.toISOString(),
-    hasPaid: false,
-    learnersCount: 0,
-  };
-
-  localStorage.setItem(key, JSON.stringify(trialData));
-  return trialData;
-};
-
-export const updateTrialData = (schoolId: string, updates: Partial<TrialData>): TrialData => {
-  const key = getTrialStorageKey(schoolId);
-  const current = getTrialData(schoolId);
-  const updated = { ...current, ...updates };
-  localStorage.setItem(key, JSON.stringify(updated));
-  return updated;
-};
-
-export const markTrialAsPaid = (
-  schoolId: string,
-  learnersCount: number,
-  reference: string,
-  feePerLearner: number = PRICE_PER_LEARNER
-): TrialData => {
-  const fee = feePerLearner > 0 ? feePerLearner : PRICE_PER_LEARNER;
-  return updateTrialData(schoolId, {
-    hasPaid: true,
-    paymentDate: new Date().toISOString(),
-    learnersCount,
-    paymentReference: reference,
-    paidAmount: learnersCount * fee,
-  });
-};
+export interface ServerBillingRecord {
+  id: string;
+  subscription_plan?: string | null;
+  subscription_status?: string | null;
+  subscription_expires_at?: string | null;
+  trial_started_at?: string | null;
+  trial_expires_at?: string | null;
+  created_at?: string | null;
+}
 
 export interface TrialStatus {
   isActive: boolean;
@@ -77,64 +34,53 @@ export interface TrialStatus {
   isPaid: boolean;
   trialData: TrialData;
   progressPercent: number;
+  subscriptionStatus: string;
+  subscriptionExpiresAt: string | null;
 }
 
-export const checkTrialStatus = (schoolId: string): TrialStatus => {
-  const trialData = getTrialData(schoolId);
-  const now = new Date();
-  const end = new Date(trialData.trialEndDate);
-  const totalMs = end.getTime() - new Date(trialData.trialStartDate).getTime();
-  const elapsedMs = now.getTime() - new Date(trialData.trialStartDate).getTime();
-  const daysRemaining = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-  const progressPercent = Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+const DAY_MS = 1000 * 60 * 60 * 24;
 
-  // Paid users always have active access
-  if (trialData.hasPaid) {
-    return {
-      isActive: true,
-      daysRemaining: 0,
-      isExpired: false,
-      isPaid: true,
-      trialData,
-      progressPercent: 100,
-    };
-  }
-
-  return {
-    isActive: daysRemaining > 0,
-    daysRemaining,
-    isExpired: daysRemaining <= 0,
-    isPaid: false,
-    trialData,
-    progressPercent,
-  };
-};
-
-// For testing: simulate trial expiry
-export const simulateTrialExpiry = (schoolId: string): void => {
-  const now = new Date();
-  const past = new Date(now);
-  past.setDate(past.getDate() - 1);
-  const start = new Date(now);
-  start.setDate(start.getDate() - 91);
-
-  updateTrialData(schoolId, {
-    trialStartDate: start.toISOString(),
-    trialEndDate: past.toISOString(),
-  });
-};
-
-// Reset trial (for admin/testing)
-export const resetTrial = (schoolId: string): TrialData => {
-  localStorage.removeItem(getTrialStorageKey(schoolId));
-  return getTrialData(schoolId);
-};
-
-// Calculate payment amount
 export const calculatePaymentAmount = (
   learnersCount: number,
-  feePerLearner: number = PRICE_PER_LEARNER
+  feePerLearner: number = PRICE_PER_LEARNER,
 ): number => {
   const fee = feePerLearner > 0 ? feePerLearner : PRICE_PER_LEARNER;
-  return learnersCount * fee;
+  return Math.max(0, learnersCount) * fee;
+};
+
+export const buildTrialStatus = (school: ServerBillingRecord): TrialStatus => {
+  const now = Date.now();
+  const trialStart = school.trial_started_at || school.created_at || new Date(now).toISOString();
+  const trialEnd = school.trial_expires_at || school.subscription_expires_at || new Date(new Date(trialStart).getTime() + TRIAL_DAYS * DAY_MS).toISOString();
+  const subscriptionStatus = String(school.subscription_status || 'trial').toLowerCase();
+  const subscriptionEndMs = school.subscription_expires_at ? new Date(school.subscription_expires_at).getTime() : NaN;
+  const isPaid = subscriptionStatus === 'active' && Number.isFinite(subscriptionEndMs) && subscriptionEndMs > now;
+  const trialEndMs = new Date(trialEnd).getTime();
+  const trialStartMs = new Date(trialStart).getTime();
+  const effectiveEndMs = isPaid ? subscriptionEndMs : trialEndMs;
+  const daysRemaining = isPaid
+    ? 0
+    : Math.max(0, Math.ceil((effectiveEndMs - now) / DAY_MS));
+  const totalMs = Math.max(1, trialEndMs - trialStartMs);
+  const elapsedMs = Math.max(0, now - trialStartMs);
+  const progressPercent = isPaid
+    ? 100
+    : Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+
+  return {
+    isActive: isPaid || daysRemaining > 0,
+    daysRemaining,
+    isExpired: !isPaid && daysRemaining <= 0,
+    isPaid,
+    trialData: {
+      trialStartDate: trialStart,
+      trialEndDate: trialEnd,
+      hasPaid: isPaid,
+      learnersCount: 0,
+      paymentDate: isPaid ? school.subscription_expires_at || undefined : undefined,
+    },
+    progressPercent,
+    subscriptionStatus,
+    subscriptionExpiresAt: school.subscription_expires_at || null,
+  };
 };

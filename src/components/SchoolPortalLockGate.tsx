@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
-import { Lock, Loader2, LogOut } from 'lucide-react';
+import { useTrial } from '@/contexts/TrialContext';
+import TrialCountdown from '@/components/TrialCountdown';
+import { Lock, Loader2, LogOut, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router';
 
 type LockTarget = 'school_admin' | 'dean_of_studies';
@@ -14,26 +16,30 @@ interface SchoolLocks {
 }
 
 /**
- * Blocks School Admin or Dean of Studies portals when the school is locked.
- * Reseller / master admins are never blocked by these flags.
+ * Blocks school portals when either the existing administrative lock or the
+ * server-authoritative trial/subscription state says access is not active.
+ * Reseller / master admins are not wrapped by this component.
  */
 export default function SchoolPortalLockGate({
   target,
+  enforceBilling = false,
   children,
 }: {
-  target: LockTarget;
+  target?: LockTarget;
+  enforceBilling?: boolean;
   children: React.ReactNode;
 }) {
   const { user, signOut, schoolData } = useAuth();
+  const { trialStatus, isLoading: billingLoading, billingError, refreshTrialStatus } = useTrial();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [locksLoading, setLocksLoading] = useState(true);
   const [locks, setLocks] = useState<SchoolLocks | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      if (!user?.schoolId) {
-        setLoading(false);
+      if (!user?.schoolId || !target) {
+        setLocksLoading(false);
         return;
       }
       try {
@@ -51,22 +57,22 @@ export default function SchoolPortalLockGate({
                   dos_portal_locked: !!data.dos_portal_locked,
                   lock_reason: data.lock_reason || null,
                 }
-              : null
+              : null,
           );
         }
       } catch {
         if (!cancelled) setLocks(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLocksLoading(false);
       }
     };
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [user?.schoolId]);
+  }, [user?.schoolId, target]);
 
-  if (loading) {
+  if (locksLoading || (enforceBilling && billingLoading)) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -74,31 +80,78 @@ export default function SchoolPortalLockGate({
     );
   }
 
-  const blocked =
-    target === 'school_admin'
-      ? !!locks?.admin_portal_locked
-      : !!locks?.dos_portal_locked;
+  const manuallyBlocked = target === 'school_admin'
+    ? !!locks?.admin_portal_locked
+    : target === 'dean_of_studies'
+      ? !!locks?.dos_portal_locked
+      : false;
+  const billingBlocked = enforceBilling && (
+    Boolean(billingError) || !trialStatus || !trialStatus.isActive
+  );
+  const blocked = manuallyBlocked || billingBlocked;
 
   if (!blocked) return <>{children}</>;
+
+  const schoolName = locks?.name || schoolData?.name || 'this school';
+  const billingUnavailable = Boolean(billingError) || !trialStatus;
+  const showPayment = billingBlocked && !billingUnavailable && user?.role === 'school_admin';
+
+  if (showPayment) {
+    return (
+      <div className="max-w-3xl mx-auto w-full">
+        <TrialCountdown />
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={async () => {
+              await signOut();
+              navigate('/auth/login');
+            }}
+            className="px-4 py-2.5 rounded-xl bg-gray-900 text-white text-sm hover:bg-gray-800 inline-flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" /> Sign out
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center p-6">
       <div className="max-w-lg w-full bg-white border border-red-100 rounded-2xl shadow-sm p-8 text-center">
         <div className="mx-auto w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
-          <Lock className="w-7 h-7 text-red-600" />
+          {billingUnavailable ? (
+            <AlertTriangle className="w-7 h-7 text-amber-600" />
+          ) : (
+            <Lock className="w-7 h-7 text-red-600" />
+          )}
         </div>
-        <h1 className="text-xl font-bold text-gray-900 mb-2">Portal locked</h1>
+        <h1 className="text-xl font-bold text-gray-900 mb-2">
+          {billingUnavailable ? 'Subscription verification unavailable' : 'Portal locked'}
+        </h1>
         <p className="text-sm text-gray-600 mb-1">
-          Access to the {target === 'school_admin' ? 'School Admin' : 'Dean of Studies'} portal
-          for <strong>{locks?.name || schoolData?.name || 'this school'}</strong> is currently locked.
+          {billingUnavailable
+            ? 'Zamifu could not verify the current school subscription. Connect to the internet and try again; access is paused until the server confirms the billing status.'
+            : `Access to the ${target === 'school_admin' ? 'School Admin' : target === 'dean_of_studies' ? 'Dean of Studies' : 'school'} portal for ${schoolName} is currently locked.`}
         </p>
-        {locks?.lock_reason && (
+        {!billingUnavailable && locks?.lock_reason && (
           <p className="text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 mt-3">
             Reason: {locks.lock_reason}
           </p>
         )}
+        {billingUnavailable && (
+          <button
+            type="button"
+            onClick={() => void refreshTrialStatus()}
+            className="mt-5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm hover:bg-blue-700 inline-flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" /> Retry verification
+          </button>
+        )}
         <p className="text-xs text-gray-500 mt-4">
-          Contact your reseller or school administrator if you need access restored.
+          {billingUnavailable
+            ? 'Live learner records and payment verification require a network connection.'
+            : 'Contact your reseller or school administrator if you need access restored.'}
         </p>
         <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
           <button
