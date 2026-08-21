@@ -561,9 +561,9 @@ export async function addSignaturesToPDF(
     doc.setTextColor(0, 102, 102);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
-    doc.text(`Next term begins on: ${formattedDate}`, 14, y + sigBlockH + (COMPACT_MODE ? 2 : 4));
+    doc.text(`Next term begins on: ${formattedDate}`, 14, y + sigBlockH + (COMPACT_MODE ? 4 : 4));
     doc.setTextColor(0, 0, 0);
-    return y + sigBlockH + (COMPACT_MODE ? 6 : 10);
+    return y + sigBlockH + (COMPACT_MODE ? 8 : 10);
   }
 
   return y + sigBlockH;
@@ -692,7 +692,8 @@ export function drawSummaryBox(
   doc.text(`Position: ${position}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading.grade}`, 65, startY + gap * 2);
   if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
-  return startY + boxH + (COMPACT_MODE ? 1 : 4);
+  // Leave a clear baseline gap so the deviation line cannot be painted into the summary border.
+  return startY + boxH + (COMPACT_MODE ? 3 : 4);
 }
 
 // ── Draw Next Term Start Date ──────────────────────────────────────────────────
