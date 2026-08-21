@@ -148,26 +148,26 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#F5F3EF] flex items-center justify-center overflow-y-auto px-4 py-8 sm:py-10">
       <SEO
         title="Login — Zamifu Analytics School Portal"
         description="Login to Zamifu Analytics, Kenya's intelligent school management portal for teachers, students, parents, and administrators."
         path="/login"
       />
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+      <div className="w-full max-w-lg">
+        <div className="text-center mb-6 sm:mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <img src="/icon-192.png" alt="Zamifu Analytics" className="w-12 h-12 rounded-xl object-contain" />
-            <span className="text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
+            <img src="/icon-192.png" alt="Zamifu Analytics" className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-contain" />
+            <span className="text-xl sm:text-2xl font-bold text-[#111111]">Zamifu Analytics</span>
           </Link>
-          <h1 className="text-2xl font-bold text-[#111111]">Welcome Back</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#111111]">Welcome Back</h1>
           <p className="text-sm text-[#666666] mt-1">Login to your school portal</p>
           <div className="mt-3 flex justify-center">
             <PWAInstallButton />
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 md:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+        <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
               {error}
@@ -179,7 +179,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setLoginMethod('email')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 min-h-12 py-3 rounded-lg text-sm sm:text-base font-medium transition-colors flex items-center justify-center gap-1 ${
                 loginMethod === 'email' 
                   ? 'bg-[#2563EB] text-white' 
                   : 'text-gray-500 hover:text-gray-700'
@@ -190,7 +190,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => setLoginMethod('admission')}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
+              className={`flex-1 min-h-12 py-3 rounded-lg text-sm sm:text-base font-medium transition-colors flex items-center justify-center gap-1 ${
                 loginMethod === 'admission' 
                   ? 'bg-[#2563EB] text-white' 
                   : 'text-gray-500 hover:text-gray-700'
@@ -210,7 +210,7 @@ export default function Login() {
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., GFA-2025-001'}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+                className="w-full min-h-12 px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
                 required
                 autoFocus
               />
@@ -227,13 +227,13 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent pr-10"
+                  className="w-full min-h-12 px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent pr-12"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -253,7 +253,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#2563EB] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full min-h-12 bg-[#2563EB] text-white py-3 rounded-xl text-base font-semibold hover:bg-[#1d4ed8] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sign In'}
             </button>

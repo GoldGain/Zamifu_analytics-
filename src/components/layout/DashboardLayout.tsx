@@ -164,6 +164,7 @@ const ROLE_DASHBOARDS: Record<string, string> = {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [zoomAvatar, setZoomAvatar] = useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
   const { user, signOut, schoolData } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -172,6 +173,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isClassTeacher, setIsClassTeacher] = useState(false);
   const [hasSubjectAssignments, setHasSubjectAssignments] = useState(false);
   const [isDoS, setIsDoS] = useState(false);
+
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [user?.avatarUrl]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -366,8 +371,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      <div className="lg:ml-64 min-h-screen">
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] px-4 md:px-6 py-3">
+      <div className="lg:ml-64 min-h-screen min-w-0 overflow-x-hidden">
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#E5E5E5] px-3 sm:px-4 md:px-6 py-2 sm:py-3">
           <div className="flex items-center justify-between">
             <button 
               onClick={() => setSidebarOpen(true)}
@@ -383,7 +388,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )}
               <span className="text-base font-bold text-[#111111]">{schoolData?.name || 'Zamifu Analytics'}</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               <PWAInstallButton variant="icon" />
               <Link to="/" className="text-sm text-[#666666] hover:text-[#111111] flex items-center gap-1">
                 <Home className="w-4 h-4" />
@@ -411,23 +416,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   onClose={() => setZoomAvatar(false)}
                 />
               )}
-              {user?.avatarUrl ? (
+              {user?.avatarUrl && !avatarLoadError ? (
                 <img
                   src={user.avatarUrl}
                   alt={user.firstName}
-                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 cursor-zoom-in hover:border-blue-400 hover:shadow-md transition-all"
+                  onError={() => setAvatarLoadError(true)}
+                  className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 rounded-full object-cover border-2 border-gray-200 cursor-zoom-in hover:border-blue-400 hover:shadow-md transition-all flex-shrink-0"
                   onClick={() => setZoomAvatar(true)}
                   title="Click to zoom"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-[#2563EB] flex items-center justify-center text-white text-sm font-bold">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 rounded-full bg-[#2563EB] flex-shrink-0 flex items-center justify-center text-white text-sm font-bold">
                   {user?.firstName?.[0]}{user?.lastName?.[0]}
                 </div>
               )}
             </div>
           </div>
         </header>
-        <main className="p-4 md:p-6">
+        <main className="min-w-0 overflow-x-hidden p-3 sm:p-4 md:p-6">
           {children}
         </main>
       </div>

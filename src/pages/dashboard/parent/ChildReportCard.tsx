@@ -18,6 +18,7 @@ import {
   getPercentage,
   formatPosition,
   addStudentPhotoToPDF,
+  drawStudentPhotoPlaceholder,
   drawPathwayPerformance,
   type SchoolInfo,
   type SignatureInfo,
@@ -70,6 +71,7 @@ export default function ParentChildReportCard() {
   const [previousAvg, setPreviousAvg] = useState<number | null>(null);
   const [trendData, setTrendData] = useState<{ term: string; avg: number }[]>([]);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [childPhotoLoadError, setChildPhotoLoadError] = useState(false);
 
   useEffect(() => { fetchChildren(); }, [user?.id]);
 
@@ -89,6 +91,7 @@ export default function ParentChildReportCard() {
       if (students && students.length > 0) {
         const firstChild = students[0] as any;
         setSelectedChild(firstChild);
+        setChildPhotoLoadError(false);
         fetchTerms(firstChild.school_id);
         fetchSchoolPayConfig(firstChild.school_id);
         fetchSchoolInfo(firstChild.school_id);
@@ -350,9 +353,8 @@ export default function ParentChildReportCard() {
 
       await drawReportHeader(doc, schoolInfo);
       const photoUrl = selectedChild.photo_url || null;
-      if (photoUrl) {
-        await addStudentPhotoToPDF(doc, photoUrl, 168, 26, 26);
-      }
+      const photoAdded = photoUrl ? await addStudentPhotoToPDF(doc, photoUrl, 168, 26, 26) : false;
+      if (!photoAdded) drawStudentPhotoPlaceholder(doc, `${selectedChild.first_name} ${selectedChild.last_name}`, 168, 26, 26);
       drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr, 34, results[0]?.school_exams?.name || undefined);
       let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
       
@@ -454,6 +456,7 @@ export default function ParentChildReportCard() {
               onChange={(e) => {
                 const child = children.find(c => c.id === e.target.value);
                 setSelectedChild(child);
+                setChildPhotoLoadError(false);
                 fetchTerms(child.school_id);
                 fetchSchoolPayConfig(child.school_id);
                 fetchSchoolInfo(child.school_id);
@@ -480,10 +483,10 @@ export default function ParentChildReportCard() {
         <div className="md:col-span-1 space-y-6">
           <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] text-center">
             <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden border-4 border-white shadow-sm">
-              {selectedChild?.photo_url ? (
-                <img src={selectedChild.photo_url} alt="" className="w-full h-full object-cover" />
+              {selectedChild?.photo_url && !childPhotoLoadError ? (
+                <img src={selectedChild.photo_url} alt="" onError={() => setChildPhotoLoadError(true)} className="w-full h-full object-cover" />
               ) : (
-                <Users className="w-10 h-10 text-blue-600" />
+                <div className="text-2xl font-bold text-blue-600">{selectedChild?.first_name?.[0]}{selectedChild?.last_name?.[0]}</div>
               )}
             </div>
             <h2 className="text-lg font-bold text-[#111111]">{selectedChild?.first_name} {selectedChild?.last_name}</h2>

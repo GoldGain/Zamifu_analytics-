@@ -301,35 +301,75 @@ export function drawTrendGraph(
 // Helper to compress and convert image to JPEG data URL
 async function compressImage(src: string, maxWidth: number = 400, quality: number = 0.7): Promise<string> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 10000);
+    const timeout = setTimeout(() => reject(new Error('Resource load timeout')), 12000);
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // Setting crossOrigin on data URLs can make some mobile browsers reject an otherwise valid image.
+    if (!src.startsWith('data:') && !src.startsWith('blob:')) img.crossOrigin = 'anonymous';
     img.onload = () => {
       clearTimeout(timeout);
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;
-
-      // Resize if too large
-      if (width > maxWidth) {
-        height = (maxWidth / width) * height;
-        width = maxWidth;
+      const sourceWidth = img.naturalWidth || img.width;
+      const sourceHeight = img.naturalHeight || img.height;
+      if (!sourceWidth || !sourceHeight) {
+        reject(new Error('Image has no readable dimensions'));
+        return;
       }
-
+      const scale = Math.min(1, maxWidth / sourceWidth);
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const height = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
-      // Use white background for JPEG conversion
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas is unavailable'));
+        return;
+      }
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
-      
-      // Convert to JPEG with compression
       resolve(canvas.toDataURL('image/jpeg', quality));
     };
     img.onerror = () => {
       clearTimeout(timeout);
       reject(new Error('Resource load failed'));
+    };
+    img.src = src;
+  });
+}
+
+async function compressSquareImage(src: string, maxSize: number = 800, quality: number = 0.92): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Photo load timeout')), 12000);
+    const img = new Image();
+    if (!src.startsWith('data:') && !src.startsWith('blob:')) img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      clearTimeout(timeout);
+      const sourceWidth = img.naturalWidth || img.width;
+      const sourceHeight = img.naturalHeight || img.height;
+      const side = Math.min(sourceWidth, sourceHeight);
+      if (!side) {
+        reject(new Error('Photo has no readable dimensions'));
+        return;
+      }
+      const outputSize = Math.max(1, Math.min(maxSize, side));
+      const canvas = document.createElement('canvas');
+      canvas.width = outputSize;
+      canvas.height = outputSize;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas is unavailable'));
+        return;
+      }
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, outputSize, outputSize);
+      const sx = (sourceWidth - side) / 2;
+      const sy = (sourceHeight - side) / 2;
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, outputSize, outputSize);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error('Photo resource failed to load'));
     };
     img.src = src;
   });
@@ -362,6 +402,31 @@ export async function addLogoToPDF(
 }
 
 // ── Add Student Photo to PDF ──────────────────────────────────────────────────
+export function drawStudentPhotoPlaceholder(
+  doc: jsPDF,
+  studentName: string,
+  x: number,
+  y: number,
+  size: number
+) {
+  const initials = studentName
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(part => part[0]?.toUpperCase() || '')
+    .join('') || 'ST';
+  doc.setFillColor(232, 234, 246);
+  doc.setDrawColor(106, 27, 154);
+  doc.setLineWidth(0.6);
+  doc.roundedRect(x, y, size, size, 2, 2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(Math.max(9, size * 0.42));
+  doc.setTextColor(106, 27, 154);
+  doc.text(initials, x + size / 2, y + size / 2 + size * 0.14, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+}
+
 export async function addStudentPhotoToPDF(
   doc: jsPDF,
   photoUrl: string | null | undefined,
@@ -373,23 +438,18 @@ export async function addStudentPhotoToPDF(
   try {
     let dataUrl = imageCache[photoUrl];
     if (!dataUrl) {
-      // Keep enough source resolution for a clear report-card photo while avoiding oversized PDF payloads.
-      dataUrl = await compressImage(photoUrl, 800, 0.92);
+      // Crop to a square before placing it, preserving the learner’s face and avoiding distortion.
+      dataUrl = await compressSquareImage(photoUrl, 800, 0.92);
       imageCache[photoUrl] = dataUrl;
     }
-    
-    // Add a nice border around the student photo
+
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(1);
     doc.rect(x - 0.5, y - 0.5, size + 1, size + 1, 'D');
-    
     doc.addImage(dataUrl, 'JPEG', x, y, size, size, undefined, 'FAST');
-    
-    // Add a subtle outer shadow/border
     doc.setDrawColor(200, 200, 200);
     doc.setLineWidth(0.1);
     doc.rect(x - 0.6, y - 0.6, size + 1.2, size + 1.2, 'D');
-    
     return true;
   } catch (err) {
     console.error('Photo add error:', err);

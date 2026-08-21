@@ -19,6 +19,7 @@ import {
   addSignaturesToPDF,
   drawReportHeader,
   addStudentPhotoToPDF,
+  drawStudentPhotoPlaceholder,
   addLogoToPDF,
   drawPathwayPerformance,
   drawStudentInfo,
@@ -138,7 +139,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(first_name, last_name, admission_number, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date').eq('id', schoolId).maybeSingle(),
@@ -785,11 +786,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       await drawReportHeader(doc, schoolInfo);
       
-      if (s.student?.photo_url) { 
-        try { await addStudentPhotoToPDF(doc, s.student.photo_url, 172, 4, 24); } catch (e) {} 
-      }
-
       const cardAssessment = s.examName || assessmentLabel || '';
+      const photoAdded = s.student?.photo_url
+        ? await addStudentPhotoToPDF(doc, s.student.photo_url, 170, 27, 24)
+        : false;
+      if (!photoAdded) drawStudentPhotoPlaceholder(doc, studentFullName, 170, 27, 24);
       const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
       
       drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 38, cardAssessment);
@@ -905,16 +906,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         await drawReportHeader(mainDoc, schoolInfo);
         
-        // Beautifully placed student photo on top right
-        if (s.student?.photo_url) { 
-          try { 
-            await addStudentPhotoToPDF(mainDoc, s.student.photo_url, 172, 4, 24); 
-          } catch (e) {
-            console.error("Photo error", e);
-          } 
-        }
-
+        // Keep the photo area visible even when a legacy URL is broken or missing.
         const cardAssessment = s.examName || assessmentLabel || '';
+        const photoAdded = s.student?.photo_url
+          ? await addStudentPhotoToPDF(mainDoc, s.student.photo_url, 170, 27, 24)
+          : false;
+        if (!photoAdded) drawStudentPhotoPlaceholder(mainDoc, studentFullName, 170, 27, 24);
         const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`;
         
         drawStudentInfo(
@@ -994,25 +991,25 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="min-w-0 space-y-4 sm:space-y-6">
+      <div className="flex min-w-0 flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#111111]">{scope === 'dos' ? 'DoS Results Dashboard' : scope === 'class_teacher' ? 'Class Results Dashboard' : 'Results Dashboard'}</h1>
           <p className="text-sm text-[#666666]">{scope === 'class_teacher' ? 'Results and report cards for your assigned class only' : 'Comprehensive academic analysis and reporting'}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="bg-blue-50 px-3 sm:px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
             <Users className="w-4 h-4 text-blue-600" />
             <span className="text-sm font-bold text-blue-700">{totalLearners} Learners</span>
           </div>
-          <div className="bg-purple-50 px-4 py-2 rounded-xl border border-purple-100 flex items-center gap-2">
+          <div className="bg-purple-50 px-3 sm:px-4 py-2 rounded-xl border border-purple-100 flex items-center gap-2">
             <FileText className="w-4 h-4 text-purple-600" />
             <span className="text-sm font-bold text-purple-700">{totalSubjects} Subjects</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
+      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
         <h2 className="text-lg font-semibold text-[#111111] mb-4 flex items-center gap-2">
           <FileText className="w-5 h-5 text-blue-600" /> Generate Reports
         </h2>
@@ -1041,20 +1038,20 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             </select>
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2 sm:gap-3">
           <button onClick={downloadClassResultsPDF} disabled={generatingPDF || !selectedClass || !selectedTerm}
-            className="flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors shadow-sm">
+            className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-[#2563EB] text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors shadow-sm">
             {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {generatingPDF ? 'Generating...' : 'Class Summary PDF'}
           </button>
           <button onClick={downloadBulkReportCards} disabled={generatingBulk || !selectedClass || !selectedTerm}
-            className="flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm">
+            className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-green-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm">
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
           </button>
           {scope === 'school' && (
             <button onClick={publishResults} disabled={publishing || !selectedClass || !selectedTerm}
-              className="flex items-center gap-2 bg-purple-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
+              className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-purple-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
               {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {publishing ? 'Publishing...' : 'Publish & Notify'}
             </button>
@@ -1065,7 +1062,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       {/* LEARNER RESULTS TABLE GRID */}
       {selectedClass && selectedTerm && (
         <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div className="p-4 sm:p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-600" /> Learner Performance Results
             </h2>
@@ -1075,8 +1072,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50/50">
-                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-0 bg-gray-50 z-10 border-r border-gray-100">POS</th>
-                  <th className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-[52px] bg-gray-50 z-10 border-r border-gray-100">Learner</th>
+                  <th className="w-[52px] min-w-[52px] px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-0 bg-gray-50 z-10 border-r border-gray-100">POS</th>
+                  <th className="min-w-[170px] px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-[52px] bg-gray-50 z-10 border-r border-gray-100">Learner</th>
                   {allSubjects.map(sub => (
                     <th key={sub} className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100 min-w-[100px]">{shortName(sub)}</th>
                   ))}
@@ -1091,9 +1088,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                   const gr = overallGradeWithBand(s.avgPct, band);
                   return (
                     <tr key={s.studentId} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="px-4 py-3 text-xs font-bold text-gray-500 sticky left-0 bg-white z-10 border-r border-gray-100">{s.position}</td>
+                      <td className="w-[52px] min-w-[52px] px-4 py-3 text-xs font-bold text-gray-500 sticky left-0 bg-white z-10 border-r border-gray-100">{s.position}</td>
                       <td className="px-4 py-3 sticky left-[52px] bg-white z-10 border-r border-gray-100">
-                        <div className="text-xs font-bold text-[#111111] truncate max-w-[120px]">{s.student?.first_name} {s.student?.last_name}</div>
+                        <div className="max-w-[170px] whitespace-normal break-words text-xs font-bold leading-tight text-[#111111]">{s.student?.first_name} {s.student?.last_name}</div>
                         <div className="text-[9px] text-gray-400 font-bold uppercase">{s.student?.admission_number}</div>
                       </td>
                       {allSubjects.map(sub => {
@@ -1133,7 +1130,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           <h2 className="text-lg font-semibold text-[#111111] flex items-center gap-2">
             <Trophy className="w-5 h-5 text-amber-500" /> Individual Records
           </h2>
-          <div className="relative w-full md:w-72">
+              <div className="relative w-full md:w-72 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="text" placeholder="Search learner or subject..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
           </div>
