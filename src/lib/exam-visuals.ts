@@ -88,7 +88,18 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   else if (assetType === 'shape' || assetType === 'diagram') {
     body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';
   } else if (assetType === 'flowchart') {
-    body = '<rect x="145" y="60" width="140" height="42" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="3"/><path d="M215 104 L215 145" class="axis"/><path d="M205 135 L215 150 L225 135" fill="none" class="axis"/><rect x="145" y="155" width="140" height="42" rx="8" fill="#dcfce7" stroke="#15803d" stroke-width="3"/>';
+    const labels = (spec.labels || ['Start', 'Process', 'Decision', 'End']).slice(0, 4);
+    const yPositions = [45, 105, 165, 225];
+    body = labels.map((label, index) => {
+      const y = yPositions[index];
+      const fills = ['#dbeafe', '#dcfce7', '#fef3c7', '#fce7f3'];
+      const strokes = ['#1d4ed8', '#15803d', '#b45309', '#be185d'];
+      const box = `<rect x="145" y="${y}" width="190" height="42" rx="8" fill="${fills[index]}" stroke="${strokes[index]}" stroke-width="3"/>${textLines(label, 158, y + 18, 164)}`;
+      const arrow = index < labels.length - 1
+        ? `<path d="M240 ${y + 44} L240 ${yPositions[index + 1] - 10}" class="axis"/><path d="M230 ${yPositions[index + 1] - 20} L240 ${yPositions[index + 1] - 8} L250 ${yPositions[index + 1] - 20}" fill="none" class="axis"/>`
+        : '';
+      return box + arrow;
+    }).join('');
   } else {
     body = textLines(spec.prompt || 'Teacher-approved educational visual', 55, 110, 340);
   }
