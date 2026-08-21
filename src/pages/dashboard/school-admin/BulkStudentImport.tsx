@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { createScopedUser } from '@/lib/supabase/createUser';
+import { deleteScopedUser, syncParentAccounts } from '@/lib/supabase/accountActions';
 
 type ImportRow = Record<string, string>;
 type ImportResult = { row: number; admission_number: string; name: string; email: string; password: string; status: 'created' | 'failed'; message?: string };
@@ -152,7 +153,7 @@ export default function BulkStudentImport() {
             class_id: classRow.id,
             metadata: { assessment_number: admission, admission_number: admission, class_id: classRow.id },
           });
-          const { error } = await supabaseUntyped.from('students').insert({
+          const { data: studentData, error } = await supabaseUntyped.from('students').insert({
             profile_id: authData.user.id,
             school_id: user.schoolId,
             admission_number: admission,
@@ -173,10 +174,25 @@ export default function BulkStudentImport() {
             parent_name: row.parent_name || null,
             parent_phone: row.parent_phone || null,
             parent_email: row.parent_email || null,
+            parent_id: null,
             is_active: true,
             enrollment_date: new Date().toISOString().split('T')[0],
-          });
+          }).select('id').single();
           if (error) throw new Error(error.message);
+          if (!studentData?.id) throw new Error('Learner record was created without an identifier.');
+          try {
+            await syncParentAccounts({
+              student_id: studentData.id,
+              primary: {
+                name: row.parent_name,
+                phone: row.parent_phone,
+                email: row.parent_email,
+              },
+            });
+          } catch (parentError: any) {
+            await deleteScopedUser({ record_id: studentData.id, target_type: 'student', school_id: user.schoolId });
+            throw new Error(`Parent account could not be linked: ${parentError.message}`);
+          }
           existingAdmissions.add(admissionKey);
           existingEmails.add(email);
           completed.push({ row: index + 2, admission_number: admission, name, email, password, status: 'created' });

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from "@/lib/supabase/client";
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { createScopedUser } from '@/lib/supabase/createUser';
+import { deleteScopedUser, syncParentAccounts } from '@/lib/supabase/accountActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudents } from '@/hooks/useSupabaseData';
 import { Search, Plus, Loader2, Filter, Camera, Pencil, Trash2, X, ArrowUpDown, ChevronUp, ChevronDown, Users, Download, ChevronUp as ChevronUpIcon } from 'lucide-react';
@@ -111,28 +112,6 @@ export default function SchoolAdminStudents() {
     fetchClasses();
   }, [user?.schoolId]);
 
-  const ensureParentAccount = async (parentEmail: string, parentName: string): Promise<string> => {
-    const normalizedEmail = parentEmail.trim().toLowerCase();
-    const { data: existingProfile } = await supabaseUntyped
-      .from('profiles')
-      .select('id')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
-    if (existingProfile?.id) return existingProfile.id as string;
-    const nameParts = (parentName || 'Parent').trim().split(' ');
-    const firstName = nameParts[0] || 'Parent';
-    const lastName = nameParts.slice(1).join(' ') || '';
-    const result = await createScopedUser({
-      email: normalizedEmail,
-      password: 'Parent@2025',
-      first_name: firstName,
-      last_name: lastName,
-      role: 'parent',
-      school_id: user?.schoolId || null,
-    });
-    return result.user.id;
-  };
-
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdding(true);
@@ -178,15 +157,6 @@ export default function SchoolAdminStudents() {
         },
       });
       const studentUserId = authData.user.id;
-      let parentId: string | null = null;
-      if (formData.parent_email && formData.parent_email.trim()) {
-        try {
-          parentId = await ensureParentAccount(formData.parent_email, formData.parent_name);
-        } catch (parentError: any) {
-          console.warn('Parent account creation warning:', parentError.message);
-          toast.warning(`Learner created but parent account issue: ${parentError.message}`);
-        }
-      }
       const { data: studentData, error: studentError } = await supabaseUntyped
         .from('students')
         .insert({
@@ -198,10 +168,10 @@ export default function SchoolAdminStudents() {
           last_name: formData.last_name,
           class_id: formData.class_id,
           student_email: studentEmail,
-          parent_id: parentId,
-          parent_name: formData.parent_name,
-          parent_phone: formData.parent_phone,
-          parent_email: formData.parent_email,
+          parent_id: null,
+          parent_name: formData.parent_name || null,
+          parent_phone: formData.parent_phone || null,
+          parent_email: formData.parent_email || null,
           parent2_name: formData.parent2_name || null,
           parent2_phone: formData.parent2_phone || null,
           parent2_email: formData.parent2_email || null,
@@ -223,13 +193,33 @@ export default function SchoolAdminStudents() {
         .single();
       if (studentError) throw new Error('Database error: ' + studentError.message);
       const studentId = (studentData as any)?.id;
-      if (parentId && studentId) {
-        const { error: linkError } = await supabaseUntyped
-          .from('parent_student_links')
-          .upsert({ parent_id: parentId, student_id: studentId }, { onConflict: 'parent_id,student_id' });
-        if (linkError) console.warn('parent_student_links upsert warning:', linkError.message);
+      if (!studentId) throw new Error('Learner was created without a database identifier.');
+
+      let parentSync: Awaited<ReturnType<typeof syncParentAccounts>>;
+      try {
+        parentSync = await syncParentAccounts({
+          student_id: studentId,
+          primary: {
+            name: formData.parent_name,
+            phone: formData.parent_phone,
+            email: formData.parent_email,
+          },
+          secondary: {
+            name: formData.parent2_name,
+            phone: formData.parent2_phone,
+            email: formData.parent2_email,
+          },
+        });
+      } catch (parentError: any) {
+        try {
+          await deleteScopedUser({ record_id: studentId, target_type: 'student', school_id: user?.schoolId });
+        } catch (cleanupError: any) {
+          console.error('Learner cleanup after parent sync failure failed:', cleanupError);
+        }
+        throw new Error(`Learner was not saved because the parent account could not be linked: ${parentError.message}`);
       }
-      const parentMsg = parentId ? ` | Parent: ${formData.parent_email} (Password: Parent@2025)` : '';
+
+      const parentMsg = parentSync.primary_parent_id ? ` | Parent: ${formData.parent_email} (Password: Parent@2025)` : '';
       toast.success(`✅ Learner added! Login: ${studentEmail} | Password: ${studentPassword}${parentMsg}`);
 
       // Send Welcome SMS to parent if phone number is provided
@@ -296,12 +286,6 @@ export default function SchoolAdminStudents() {
         middle_name: editForm.middle_name.trim() || null,
         last_name: editForm.last_name.trim(),
         class_id: editForm.class_id || null,
-        parent_name: editForm.parent_name.trim() || null,
-        parent_phone: editForm.parent_phone.trim() || null,
-        parent_email: editForm.parent_email.trim() || null,
-        parent2_name: editForm.parent2_name.trim() || null,
-        parent2_phone: editForm.parent2_phone.trim() || null,
-        parent2_email: editForm.parent2_email.trim() || null,
         gender: editForm.gender || null,
         date_of_birth: editForm.date_of_birth || null,
         birth_cert_number: editForm.birth_cert_number.trim() || null,
@@ -314,7 +298,20 @@ export default function SchoolAdminStudents() {
         emergency_contact_phone: editForm.emergency_contact_phone.trim() || null,
       }).eq('id', editingStudent.id);
       if (error) throw new Error(error.message);
-      toast.success('Learner updated successfully!');
+      await syncParentAccounts({
+        student_id: editingStudent.id,
+        primary: {
+          name: editForm.parent_name,
+          phone: editForm.parent_phone,
+          email: editForm.parent_email,
+        },
+        secondary: {
+          name: editForm.parent2_name,
+          phone: editForm.parent2_phone,
+          email: editForm.parent2_email,
+        },
+      });
+      toast.success('Learner updated successfully and parent account linked.');
       setEditingStudent(null);
       refetch();
     } catch (err: any) {
@@ -328,9 +325,12 @@ export default function SchoolAdminStudents() {
     if (!deletingStudent) return;
     setDeleting(true);
     try {
-      const { error } = await supabaseUntyped.from('students').delete().eq('id', deletingStudent.id);
-      if (error) throw new Error(error.message);
-      toast.success(`Learner "${deletingStudent.first_name} ${deletingStudent.last_name}" deleted.`);
+      await deleteScopedUser({
+        record_id: deletingStudent.id,
+        target_type: 'student',
+        school_id: user?.schoolId,
+      });
+      toast.success(`Learner "${deletingStudent.first_name} ${deletingStudent.last_name}" and login account deleted.`);
       setDeletingStudent(null);
       refetch();
     } catch (err: any) {
