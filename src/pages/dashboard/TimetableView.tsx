@@ -812,10 +812,15 @@ export default function TimetableView() {
   const getCellDisplay = (entriesForCell: TimetableEntry[]): string => {
     if (!entriesForCell || entriesForCell.length === 0) return '';
     const parts: string[] = [];
+    const seenActivityLabels = new Set<string>();
     entriesForCell.forEach((entry) => {
       if (isPlaceholderActivity(entry)) return;
       if (entry.entry_type === 'activity' || entry.entry_type === 'activities') {
-        if (entry.activity_name) parts.push(entry.activity_name.toUpperCase());
+        const label = String(entry.activity_name || '').trim().toUpperCase();
+        if (label && !seenActivityLabels.has(label)) {
+          seenActivityLabels.add(label);
+          parts.push(label);
+        }
         return;
       }
       if (!entry.subject_name && !entry.subject_code) return;
