@@ -235,29 +235,37 @@ export function generateSlots(
   pushLesson(1);
   pushLesson(2);
 
-  // FIRST BREAK
+  // FIRST BREAK. If a saved anchor is earlier than the preceding lessons,
+  // move the break after those lessons instead of overlapping Lesson 2.
+  const firstBreakDuration = Math.max(1, timeToMinutes(firstBreakEnd) - timeToMinutes(firstBreakStart));
+  const normalizedFirstBreakStart = Math.max(currentMinutes, timeToMinutes(firstBreakStart));
+  const normalizedFirstBreakEnd = normalizedFirstBreakStart + firstBreakDuration;
   slots.push({
     slot_order: order++,
     label: 'FIRST BREAK',
     slot_type: 'break',
-    start_time: firstBreakStart,
-    end_time: firstBreakEnd,
+    start_time: minutesToTime(normalizedFirstBreakStart),
+    end_time: minutesToTime(normalizedFirstBreakEnd),
   });
-  currentMinutes = timeToMinutes(firstBreakEnd);
+  currentMinutes = normalizedFirstBreakEnd;
 
   // Lessons 3–4
   pushLesson(3);
   pushLesson(4);
 
-  // SECOND BREAK
+  // SECOND BREAK. Keep the anchor after Lessons 3–4 when the saved time is
+  // inconsistent with the selected level’s lesson duration.
+  const secondBreakDuration = Math.max(1, timeToMinutes(secondBreakEnd) - timeToMinutes(secondBreakStart));
+  const normalizedSecondBreakStart = Math.max(currentMinutes, timeToMinutes(secondBreakStart));
+  const normalizedSecondBreakEnd = normalizedSecondBreakStart + secondBreakDuration;
   slots.push({
     slot_order: order++,
     label: 'SECOND BREAK',
     slot_type: 'break',
-    start_time: secondBreakStart,
-    end_time: secondBreakEnd,
+    start_time: minutesToTime(normalizedSecondBreakStart),
+    end_time: minutesToTime(normalizedSecondBreakEnd),
   });
-  currentMinutes = timeToMinutes(secondBreakEnd);
+  currentMinutes = normalizedSecondBreakEnd;
 
   // Lessons 5–6
   pushLesson(5);
@@ -266,10 +274,11 @@ export function generateSlots(
   // LUNCH. If saved times are inconsistent with the six pre-lunch lessons,
   // move the lunch window forward rather than creating an overlap or a lesson
   // that appears after lunch. This is especially important for Lower Primary.
-  if (afterLunch === 0 && timeToMinutes(lunchStart) < currentMinutes) {
-    lunchStart = minutesToTime(currentMinutes);
-    if (timeToMinutes(lunchEnd) <= currentMinutes) lunchEnd = minutesToTime(currentMinutes + 30);
-  }
+  const lunchDuration = Math.max(1, timeToMinutes(lunchEnd) - timeToMinutes(lunchStart));
+  const normalizedLunchStart = Math.max(currentMinutes, timeToMinutes(lunchStart));
+  const normalizedLunchEnd = normalizedLunchStart + lunchDuration;
+  lunchStart = minutesToTime(normalizedLunchStart);
+  lunchEnd = minutesToTime(normalizedLunchEnd);
   slots.push({
     slot_order: order++,
     label: 'LUNCH',

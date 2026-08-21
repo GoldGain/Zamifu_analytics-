@@ -146,9 +146,9 @@ export default function TimetableSetup() {
   const [activities, setActivities] = useState<ScheduledActivity[]>([]);
   const [activityDraft, setActivityDraft] = useState({
     day_of_week: 5,
-    activity_name: 'PPI',
-    start_time: '08:00',
-    end_time: '09:00',
+    activity_name: '',
+    start_time: '',
+    end_time: '',
     target_classes: 'All',
     target_level_group: 'all',
     blocks_lessons: true,
@@ -570,7 +570,7 @@ export default function TimetableSetup() {
           <Plus className="w-5 h-5 text-emerald-600" />
           Scheduled Activities
         </h2>
-        <p className="text-sm text-gray-600 mb-4">Add an activity for a specific day and exact time. Choose the level it applies to, then keep <strong>Exact-time block</strong> enabled so no lesson can occupy that interval for that level.</p>
+        <p className="text-sm text-gray-600 mb-4">Activities are optional and appear only when a school adds them. Set the day, exact time, level, and optional class scope. For PPI or another activity that should replace a lesson, use the existing lesson interval for that level (for example, Friday Lesson 1: 8:20–9:00) and keep <strong>Exact-time block</strong> enabled. The activity will fill that lesson cell without adding a column or changing the level&apos;s saved lesson count; breaks and lunch remain fixed.</p>
         <div className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>

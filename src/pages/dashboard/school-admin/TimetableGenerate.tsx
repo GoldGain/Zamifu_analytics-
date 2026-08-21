@@ -6,7 +6,12 @@ import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-reac
 import { toast } from 'sonner';
 import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
-import { activityBlocksLessons, activityMatchesLevel, shiftSlotsAroundActivities as shiftActivitySlots } from '@/lib/timetable-activity';
+import {
+  activityBlocksLessons,
+  activityMatchesLevel,
+  isPostLessonActivity,
+  resolveActivityLessonSlot,
+} from '@/lib/timetable-activity';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -316,15 +321,16 @@ export default function TimetableGenerate() {
           }
         }
 
-        // Generate the normal base slots once. Explicit activities are not folded
-        // into this global clock: each day/class receives its own shifted copy so
-        // Friday PPI cannot move Monday–Thursday or overwrite the first lesson.
+        // Generate the normal level-specific clock once. Explicit activities do
+        // not shift this clock and do not add lesson columns. A blocking activity
+        // that overlaps a lesson owns that existing lesson slot; only a genuine
+        // post-school activity is allowed to create a final activity segment.
         const targets = resolveLessonTargets(levelKey, config);
         const lessonCount = targets.totalLessons;
         const generationConfig = {
           ...config,
           // Explicit activities replace the generic activities window. They are
-          // added below at their configured day/time instead.
+          // classified below by exact day/time and target scope.
           activities_start: freshActivities.length ? undefined : config.activities_start,
           activities_end: freshActivities.length ? undefined : config.activities_end,
           lessons_per_day: targets.totalLessons,
@@ -338,11 +344,25 @@ export default function TimetableGenerate() {
           // Lower Primary and Pre-Primary end at lunch: do not generate any
           // activity after lunch for those levels.
           .filter(a => !(['lower-primary', 'pre-primary'].includes(levelKey)) || toMinutes(a.start_time) < toMinutes(config.lunch_start));
-        // Activities are structural time slots, not one column per activity record.
-        // Group records sharing the same interval so PPI/Games/etc. at the same time
-        // occupy one column and can be displayed together in that cell.
+        const postLessonActivities = activityCandidates.filter((activity) =>
+          isPostLessonActivity(baseSlots, activity),
+        );
+        const inLessonActivities = activityCandidates.filter((activity) =>
+          Boolean(resolveActivityLessonSlot(baseSlots, activity)),
+        );
+        const unplacedActivities = activityCandidates.filter((activity) =>
+          !postLessonActivities.includes(activity) && !inLessonActivities.includes(activity),
+        );
+        if (unplacedActivities.length > 0) {
+          console.warn(
+            `[timetable] ${levelKey}: activities not aligned to a lesson or post-school window were not inserted as extra columns`,
+            unplacedActivities.map((activity) => `${activity.activity_name} ${activity.start_time}-${activity.end_time}`),
+          );
+        }
+        // Only post-school activities are structural segments. In-lesson
+        // activities such as Friday PPI replace a normal lesson entry later.
         const activityGroups = new Map<string, ScheduledActivity[]>();
-        activityCandidates.forEach((activity) => {
+        postLessonActivities.forEach((activity) => {
           const key = `${activity.start_time}-${activity.end_time}`;
           const group = activityGroups.get(key) || [];
           group.push(activity);
@@ -359,7 +379,7 @@ export default function TimetableGenerate() {
             activityMeta: group,
           })),
         ]
-          .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time) || (a.slot_type === 'activities' ? -1 : 1))
+          .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time) || (a.slot_type === 'activities' ? 1 : -1))
           .map((slot, index) => ({ ...slot, slot_order: index + 1 }));
         const activityMetaByOrder = new Map<number, ScheduledActivity[]>();
         combinedSlots.forEach((slot: any) => { if (slot.activityMeta) activityMetaByOrder.set(slot.slot_order, slot.activityMeta); });
@@ -462,20 +482,41 @@ export default function TimetableGenerate() {
             activityMatchesLevel(activity.target_level_group, levelKey) &&
             matchesTarget(activity, cls)
           );
-          const blockingActivities = matchingActivities.filter(activityBlocksLessons);
-          const shiftedBase = shiftActivitySlots(baseSlots, blockingActivities);
+          const rawBlockingActivities = matchingActivities.filter(activityBlocksLessons);
+          // The shared level clock is fixed for every class and day. Activities
+          // reserve entries in this clock; they never shift breaks or lunch.
+          // Normalize an in-lesson activity to the exact duration of the one
+          // lesson slot it owns, so an old 60-minute PPI row cannot block two
+          // lesson positions in a 35- or 40-minute level structure.
+          const blockingActivities = rawBlockingActivities.map((activity) => {
+            const lessonSlot = resolveActivityLessonSlot(baseSlots, activity);
+            return lessonSlot
+              ? { ...activity, start_time: lessonSlot.start_time, end_time: lessonSlot.end_time }
+              : activity;
+          });
           const times = new Map<string, { start_time: string; end_time: string }>();
-          shiftedBase.forEach((slot: any) => times.set(String(slot.label), {
+          baseSlots.forEach((slot: any) => times.set(String(slot.label), {
             start_time: slot.start_time,
             end_time: slot.end_time,
           }));
           return { matchingActivities, blockingActivities, times };
         };
 
-        // Fill breaks, lunch, generic activity windows, and explicitly scheduled activities.
+        // Fill breaks, lunch, post-school activity windows, and in-lesson
+        // activities. A blocking activity inside the lesson structure replaces
+        // one existing lesson slot instead of creating a new column.
         for (const cls of classesToProcess) {
           for (let day = 1; day <= 5; day++) {
             const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
+            const lessonActivitiesByOrder = new Map<number, ScheduledActivity[]>();
+            dayActivities.forEach((activity) => {
+              const lessonSlot = resolveActivityLessonSlot(baseSlots, activity);
+              if (!lessonSlot) return;
+              const order = Number(lessonSlot.slot_order);
+              const existing = lessonActivitiesByOrder.get(order) || [];
+              existing.push(activity);
+              lessonActivitiesByOrder.set(order, existing);
+            });
             for (const slot of fixedSlots) {
               const isActivity = slot.slot_type === 'activities' || slot.slot_type === 'activity';
               const activitiesAtSlot = isActivity ? (activityMetaByOrder.get(Number(slot.slot_order)) || []) : [];
@@ -486,8 +527,8 @@ export default function TimetableGenerate() {
               const effectiveTiming = isActivity
                 ? { start_time: slot.start_time, end_time: slot.end_time }
                 : (daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time });
-              // An explicitly scheduled activity owns this class/time slot. Mark it
-              // busy before lesson allocation so no lesson can be placed over it.
+              // Post-school activity segments are the only extra structural
+              // slots. Mark them busy before lesson allocation.
               if (isActivity) {
                 classBusy.add(`${cls.id}-${day}-${slot.id}`);
               }
@@ -503,6 +544,22 @@ export default function TimetableGenerate() {
                 activity_name: isActivity
                   ? (matchingActivities.map(a => a.activity_name.trim()).join(' / ') || config.activities?.[String(day)] || 'Activity')
                   : slot.label,
+              });
+            }
+            for (const [slotOrder, scheduledAtLesson] of lessonActivitiesByOrder) {
+              const lessonSlot = lessonSlots.find((slot: any) => Number(slot.slot_order) === slotOrder);
+              if (!lessonSlot) continue;
+              classBusy.add(`${cls.id}-${day}-${lessonSlot.id}`);
+              allEntries.push({
+                school_id: schoolId,
+                day_of_week: day,
+                time_slot_id: lessonSlot.id,
+                class_id: cls.id,
+                level_group: levelKey,
+                effective_start_time: lessonSlot.start_time,
+                effective_end_time: lessonSlot.end_time,
+                entry_type: 'activity',
+                activity_name: scheduledAtLesson.map((activity) => activity.activity_name.trim()).join(' / ') || 'Activity',
               });
             }
           }

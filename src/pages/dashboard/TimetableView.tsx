@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { supabase, supabaseUntyped } from '../../lib/supabase/client';
+import { supabase } from '../../lib/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { AlertCircle, Download, Printer, RefreshCw } from 'lucide-react';
 import {
@@ -10,7 +10,13 @@ import {
   type TimetableConfig,
   type TimetableSlot,
 } from '@/lib/timetable-generator';
-import { activityBlocksLessons, activityMatchesLevel, shiftSlotsAroundActivities } from '@/lib/timetable-activity';
+import {
+  activityBlocksLessons,
+  activityMatchesLevel,
+  isPostLessonActivity,
+  resolveActivityLessonSlot,
+  timeIntervalsOverlap,
+} from '@/lib/timetable-activity';
 
 interface SchoolClass {
   id: string;
@@ -162,33 +168,48 @@ const normalizeBaseSlotsAroundAnchors = (baseSlots: TimeSlot[]): TimeSlot[] => {
 };
 
 const shiftBaseSlotsForActivities = (baseSlots: TimeSlot[], dayActivities: SchoolActivity[]): TimeSlot[] =>
-  shiftSlotsAroundActivities(
-    normalizeBaseSlotsAroundAnchors(baseSlots),
-    dayActivities.filter(activityBlocksLessons),
-  );
+  normalizeBaseSlotsAroundAnchors(baseSlots);
 
 const buildTimelineSegments = (
   baseSlots: TimeSlot[],
   dayActivities: SchoolActivity[],
 ): TimelineSegment[] => {
-  const shifted = shiftBaseSlotsForActivities(baseSlots, dayActivities).map((slot) => ({
-    id: slot.id,
-    start_time: slot.start_time,
-    end_time: slot.end_time,
-    slot_type: slot.slot_type,
-    label: slot.label,
-    slot_order: slot.slot_order,
-    sourceSlotIds: slot.sourceSlotIds,
-  }));
-  const activities = dayActivities.map((activity) => ({
-    id: `activity-${activity.id}`,
-    start_time: String(activity.start_time).slice(0, 5),
-    end_time: String(activity.end_time).slice(0, 5),
-    slot_type: 'activity' as const,
-    label: activity.activity_name,
-    activity,
-  }));
-  return [...shifted, ...activities].sort((a, b) =>
+  const fixedSlots = shiftBaseSlotsForActivities(baseSlots, dayActivities).map((slot) => {
+    const owners = dayActivities
+      .filter(activityBlocksLessons)
+      .filter((activity) => resolveActivityLessonSlot(baseSlots, activity)?.id === slot.id);
+    if (owners.length === 0) {
+      return {
+        id: slot.id,
+        start_time: slot.start_time,
+        end_time: slot.end_time,
+        slot_type: slot.slot_type,
+        label: slot.label,
+        slot_order: slot.slot_order,
+        sourceSlotIds: slot.sourceSlotIds,
+      };
+    }
+    return {
+      id: slot.id,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      slot_type: 'activity' as const,
+      label: owners.map((activity) => activity.activity_name).join(' / '),
+      slot_order: slot.slot_order,
+      sourceSlotIds: slot.sourceSlotIds,
+    };
+  });
+  const activities = dayActivities
+    .filter((activity) => isPostLessonActivity(baseSlots, activity))
+    .map((activity) => ({
+      id: `activity-${activity.id}`,
+      start_time: String(activity.start_time).slice(0, 5),
+      end_time: String(activity.end_time).slice(0, 5),
+      slot_type: 'activity' as const,
+      label: activity.activity_name,
+      activity,
+    }));
+  return [...fixedSlots, ...activities].sort((a, b) =>
     timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time) ||
     timeToMinutesView(a.end_time) - timeToMinutesView(b.end_time)
   );
@@ -342,6 +363,16 @@ function buildDisplaySlotsForLevel(
   // Never treat unknown/default as a real level for column counts when we know the class level
   const key = levelKey === 'default' ? 'lower-primary' : levelKey;
   const targets = LEVEL_LESSON_TARGETS[key] || { total: 7, afterLunch: 1 };
+  const stripInLessonActivitySlots = (slots: TimeSlot[]): TimeSlot[] => {
+    const lessonEnds = slots
+      .filter((slot) => slot.slot_type === 'lesson')
+      .map((slot) => timeToMinutesView(slot.end_time));
+    const lastLessonEnd = lessonEnds.length ? Math.max(...lessonEnds) : Number.POSITIVE_INFINITY;
+    return slots.filter((slot) => {
+      if (slot.slot_type !== 'activity' && slot.slot_type !== 'activities') return true;
+      return timeToMinutesView(slot.start_time) >= lastLessonEnd;
+    });
+  };
   const byLevel = (lg: string) =>
     dedupeByOrder(all.filter((s) => (s.level_group || 'default') === lg));
 
@@ -356,10 +387,73 @@ function buildDisplaySlotsForLevel(
     candidates.length > 0 &&
     counts.total === targets.total &&
     counts.afterLunch === targets.afterLunch;
+  const normalizeLegacyActivitySlots = (candidateSlots: TimeSlot[]): TimeSlot[] => {
+    const lessonSlots = candidateSlots.filter((slot) => slot.slot_type === 'lesson');
+    const lastLessonEnd = lessonSlots.length
+      ? Math.max(...lessonSlots.map((slot) => timeToMinutesView(slot.end_time)))
+      : Number.POSITIVE_INFINITY;
+    const hasInLessonActivity = candidateSlots.some((slot) =>
+      (slot.slot_type === 'activity' || slot.slot_type === 'activities') &&
+      timeToMinutesView(slot.start_time) < lastLessonEnd,
+    );
+    const requiredTimes = [
+      levelConfig?.start_time,
+      levelConfig?.first_break_start,
+      levelConfig?.first_break_end,
+      levelConfig?.second_break_start,
+      levelConfig?.second_break_end,
+      levelConfig?.lunch_start,
+      levelConfig?.lunch_end,
+    ];
+    if (!hasInLessonActivity || !levelConfig || requiredTimes.some((value) => !value)) {
+      return stripInLessonActivitySlots(candidateSlots);
+    }
+    const cfg: TimetableConfig = {
+      lesson_duration: Number(levelConfig.period_duration) || 40,
+      school_start: String(levelConfig.start_time).slice(0, 5),
+      school_end: String(levelConfig.end_time || levelConfig.activities_end || levelConfig.lunch_end).slice(0, 5),
+      first_break_start: String(levelConfig.first_break_start).slice(0, 5),
+      first_break_end: String(levelConfig.first_break_end).slice(0, 5),
+      second_break_start: String(levelConfig.second_break_start).slice(0, 5),
+      second_break_end: String(levelConfig.second_break_end).slice(0, 5),
+      lunch_start: String(levelConfig.lunch_start).slice(0, 5),
+      lunch_end: String(levelConfig.lunch_end).slice(0, 5),
+      activities_start: undefined,
+      activities_end: undefined,
+      lessons_per_day: typeof levelConfig.lessons_per_day === 'number' ? levelConfig.lessons_per_day : targets.total,
+      after_lunch_lessons: typeof levelConfig.after_lunch_lessons === 'number' ? levelConfig.after_lunch_lessons : targets.afterLunch,
+    };
+    const oldByLabel = new Map(
+      candidateSlots
+        .filter((slot) => slot.slot_type !== 'activity' && slot.slot_type !== 'activities')
+        .map((slot) => [slot.label, slot]),
+    );
+    const generated = generateSlots(cfg, targets.total, key).map((slot, index) => {
+      const old = oldByLabel.get(slot.label);
+      return {
+        ...(old || {}),
+        id: old?.id || `synth-${key}-${slot.slot_order}-${index}`,
+        slot_order: slot.slot_order,
+        start_time: slot.start_time.length === 5 ? `${slot.start_time}:00` : slot.start_time,
+        end_time: slot.end_time.length === 5 ? `${slot.end_time}:00` : slot.end_time,
+        slot_type: slot.slot_type === 'activities' ? 'activity' : slot.slot_type,
+        label: slot.label,
+        level_group: key,
+      } as TimeSlot;
+    });
+    const postSchool = candidateSlots
+      .filter((slot) =>
+        (slot.slot_type === 'activity' || slot.slot_type === 'activities') &&
+        timeToMinutesView(slot.start_time) >= lastLessonEnd,
+      )
+      .sort((a, b) => timeToMinutesView(a.start_time) - timeToMinutesView(b.start_time))
+      .map((slot, index) => ({ ...slot, slot_order: generated.length + index + 1 }));
+    return [...generated, ...postSchool];
+  };
 
   // Prefer DB slots only when structure is exactly correct for this level
   if (countsMatch) {
-    let slots = candidates;
+    let slots = normalizeLegacyActivitySlots(candidates);
       if (targets.afterLunch === 0) {
       // Zero-after-lunch levels hide generic post-lunch activities, but retain
       // explicitly scheduled activities that occur before lunch (for example Friday PPI).
@@ -405,9 +499,12 @@ function buildDisplaySlotsForLevel(
     levelConfig?.lunch_end,
   ];
   if (!levelConfig || required.some((v) => !v)) {
-    if (candidates.length) return targets.afterLunch === 0
-      ? candidates.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity')
-      : candidates;
+    if (candidates.length) {
+      const filtered = stripInLessonActivitySlots(candidates);
+      return targets.afterLunch === 0
+        ? filtered.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity')
+        : filtered;
+    }
     return [];
   }
 
@@ -437,9 +534,10 @@ function buildDisplaySlotsForLevel(
     label: s.label,
     level_group: key,
   }));
+  const filteredMapped = stripInLessonActivitySlots(mapped);
   return targets.afterLunch === 0
-    ? mapped.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity')
-    : mapped;
+    ? filteredMapped.filter((s) => s.slot_type !== 'activities' && s.slot_type !== 'activity')
+    : filteredMapped;
 }
 
 /** @deprecated name kept for call sites */
@@ -453,7 +551,6 @@ export default function TimetableView() {
   const [entries, setEntries] = useState<TimetableEntry[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [levelConfigs, setLevelConfigs] = useState<Record<string, any>>({});
-  const [activities, setActivities] = useState<SchoolActivity[]>([]);
   const [teacherKey, setTeacherKey] = useState<TeacherKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -478,7 +575,6 @@ export default function TimetableView() {
         fetchLevelConfigs(),
         fetchEntries(),
         fetchTeacherKey(),
-        fetchActivities(),
       ]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load timetable');
@@ -563,21 +659,6 @@ export default function TimetableView() {
       subject_code: entry.subjects?.code,
     }));
     setEntries(mapped);
-  };
-
-  const fetchActivities = async () => {
-      const { data, error: err } = await supabaseUntyped
-      .from('after_school_activities')
-      .select('id, school_id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons')
-      .eq('school_id', user?.schoolId)
-      .order('day_of_week')
-      .order('start_time');
-    if (err) {
-      console.warn('Could not fetch activities:', err);
-      setActivities([]);
-      return;
-    }
-    setActivities((data || []) as SchoolActivity[]);
   };
 
   const fetchTeacherKey = async () => {
@@ -697,6 +778,25 @@ export default function TimetableView() {
       const byId = entryLookup.get(`${day}-${classId}-${sourceId}`) || [];
       merged.push(...byId);
     });
+    // Migration fallback: older generations stored an in-lesson activity in
+    // its own activity slot. If that slot is now hidden, show the activity in
+    // the normal lesson cell whose effective interval it overlaps, replacing
+    // the old subject entry in that cell.
+    const legacyActivityEntries = slot.slot_type === 'lesson'
+      ? entries.filter((entry) =>
+          entry.day_of_week === day &&
+          entry.class_id === classId &&
+          (entry.entry_type === 'activity' || entry.entry_type === 'activities') &&
+          Boolean(entry.effective_start_time && entry.effective_end_time) &&
+          timeIntervalsOverlap(
+            String(entry.effective_start_time),
+            String(entry.effective_end_time),
+            slot.start_time,
+            slot.end_time,
+          ),
+        )
+      : [];
+    if (legacyActivityEntries.length) return legacyActivityEntries;
     if (merged.length) return merged;
     // Synthetic display slots: match by slot_order.
     return entriesByOrder.get(`${day}-${classId}-${slot.slot_order}`) || [];
@@ -719,16 +819,6 @@ export default function TimetableView() {
     return parts.join(' ') || '';
   };
 
-  /** Get activities for a given day from the configured activity schedule table */
-  const getActivitiesForDay = (dayIdx: number, classesForTable: SchoolClass[]): string => {
-    const dayNum = dayIdx + 1;
-    const dayActivities = activities.filter(a =>
-      a.day_of_week === dayNum && classesForTable.some(cls => activityMatchesClass(a, cls))
-    );
-    if (dayActivities.length === 0) return '';
-    // Return all activity names for this day, joined
-    return Array.from(new Set(dayActivities.map(a => a.activity_name.trim().toUpperCase()))).join(' / ');
-  };
 
   /** Active level groups represented by the school’s active classes. */
   const allLevelGroupsInView = useMemo(
@@ -1148,22 +1238,15 @@ export default function TimetableView() {
     }
 
     const lessonSummary = countLessons(slotsForTable);
-    const hasActivitySlots = slotsForTable.some((s) => s.slot_type === 'activities' || s.slot_type === 'activity');
-    const showLegacyActivityColumn = !hasActivitySlots && lessonSummary.afterLunch > 0;
 
-    // Generated entries carry effective per-day times because an exact-time
-    // activity can shift the rest of that day without changing the shared
-    // slot-order columns. Prefer those persisted times so the matrix never
-    // suggests that a lesson overlaps an activity, break, or lunch. Empty
-    // cells use the same shared helper as the generator as a safe fallback.
+    // Breaks, lunch, and lesson clocks are shared by every class in the level.
+    // Per-entry effective times are used only when persisted; no activity can
+    // shift the level structure or create an empty leading interval.
     const effectiveSlotsByDayClass = new Map<string, TimeSlot>();
     DAYS.forEach((_, dayIdx) => {
       classesToRender.forEach((cls) => {
-        const dayActivities = activities.filter(
-          (activity) => activity.day_of_week === dayIdx + 1 && activityMatchesClass(activity, cls),
-        );
-        shiftBaseSlotsForActivities(slotsForTable, dayActivities).forEach((shiftedSlot) => {
-          effectiveSlotsByDayClass.set(`${dayIdx + 1}-${cls.id}-${shiftedSlot.id}`, shiftedSlot);
+        slotsForTable.forEach((slot) => {
+          effectiveSlotsByDayClass.set(`${dayIdx + 1}-${cls.id}-${slot.id}`, slot);
         });
       });
     });
@@ -1174,11 +1257,11 @@ export default function TimetableView() {
       day: number,
       cls: SchoolClass,
     ): string => {
-      const timedEntry = entriesForCell.find((entry) => entry.effective_start_time && entry.effective_end_time);
       const fallbackSlot = effectiveSlotsByDayClass.get(`${day}-${cls.id}-${slot.id}`) || slot;
-      const start = timedEntry?.effective_start_time || fallbackSlot.start_time;
-      const end = timedEntry?.effective_end_time || fallbackSlot.end_time;
-      return `${fmt(start)}–${fmt(end)}`;
+      // Every class in a level uses the same fixed clock. Activity entries
+      // inherit their owning lesson/post-school segment time and never shift
+      // breaks, lunch, or the first lesson.
+      return `${fmt(fallbackSlot.start_time)}–${fmt(fallbackSlot.end_time)}`;
     };
 
     return (
@@ -1200,10 +1283,10 @@ export default function TimetableView() {
           {countLessons(slotsForTable).afterLunch === 0 ? ' · ends at lunch (no post-lunch lesson columns)' : ''}
         </p>
         <p className="text-slate-500 text-[0.65rem] mt-1">
-          Cell times show the exact day-specific schedule after any timed activity shifts.
+          Cell times use the saved level clock; activities occupy only their configured slot and never shift breaks or lunch.
         </p>
         <p className="text-emerald-700 text-[0.65rem] mt-1 font-semibold">
-          Activities appear only on their configured day, time, and selected level/class. Empty activity cells are intentionally blank, and lessons are blocked only in that exact interval.
+          Optional activities appear only on their configured day, time, and selected level/class. An exact-time activity fills its existing slot; empty activity cells are not added as a separate column.
         </p>
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
@@ -1248,12 +1331,7 @@ export default function TimetableView() {
                   </th>
                 );
               })}
-              {showLegacyActivityColumn && (
-                <th rowSpan={2} className="tt-header" style={{ width: '72px', minWidth: '72px', color: '#33cc33' }}>
-                  <span style={{display:'block'}}>ACTIVITIES</span>
-                  <span style={{display:'block', fontSize:'0.55rem', color:'#8f8'}}>AFTER SCHOOL</span>
-                </th>
-              )}
+
             </tr>
             <tr>
               {slotsForTable.map(slot => {
@@ -1313,11 +1391,7 @@ export default function TimetableView() {
                         </td>
                       );
                     })}
-                    {showLegacyActivityColumn && clsIdx === 0 && (
-                      <td rowSpan={classesToRender.length} className="tt-activity">
-                        {getActivitiesForDay(dayIdx, classesToRender) || '—'}
-                      </td>
-                    )}
+
                   </tr>
                 ))}
               </React.Fragment>

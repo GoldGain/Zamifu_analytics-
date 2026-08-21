@@ -24,7 +24,58 @@ export function activityBlocksLessons(activity: Pick<ActivityInterval, 'blocks_l
 export interface TimedSlot {
   start_time: string;
   end_time: string;
+  slot_type?: string;
+  slot_order?: number;
+  label?: string;
   [key: string]: unknown;
+}
+
+/** Return true when two time intervals overlap. Endpoints touching is not an overlap. */
+export function timeIntervalsOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string,
+): boolean {
+  return timeToMinutes(startA) < timeToMinutes(endB) && timeToMinutes(endA) > timeToMinutes(startB);
+}
+
+/**
+ * Map a blocking activity to one normal lesson slot it owns. This replaces the
+ * lesson content without adding a structural slot or changing the level's
+ * saved lesson count. A legacy activity that begins before the school start is
+ * assigned to the first lesson slot it touches.
+ */
+export function resolveActivityLessonSlot<T extends TimedSlot>(
+  baseSlots: T[],
+  activity: ActivityInterval,
+): T | null {
+  if (!activityBlocksLessons(activity)) return null;
+  const lessons = baseSlots
+    .filter((slot) => slot.slot_type === 'lesson')
+    .sort((a, b) => (a.slot_order ?? 0) - (b.slot_order ?? 0));
+  const overlapping = lessons.filter((lesson) =>
+    timeIntervalsOverlap(lesson.start_time, lesson.end_time, activity.start_time, activity.end_time),
+  );
+  if (overlapping.length === 0) return null;
+  const activityStart = timeToMinutes(activity.start_time);
+  return overlapping.find((lesson) => {
+    const start = timeToMinutes(lesson.start_time);
+    const end = timeToMinutes(lesson.end_time);
+    return activityStart >= start && activityStart < end;
+  }) || overlapping[0] || null;
+}
+
+/** True when a blocking activity starts at or after the final lesson. */
+export function isPostLessonActivity<T extends TimedSlot>(
+  baseSlots: T[],
+  activity: ActivityInterval,
+): boolean {
+  const lessons = baseSlots
+    .filter((slot) => slot.slot_type === 'lesson')
+    .sort((a, b) => timeToMinutes(b.end_time) - timeToMinutes(a.end_time));
+  const lastLesson = lessons[0];
+  return Boolean(lastLesson && timeToMinutes(activity.start_time) >= timeToMinutes(lastLesson.end_time));
 }
 
 const timeToMinutes = (value: string | null | undefined): number => {
