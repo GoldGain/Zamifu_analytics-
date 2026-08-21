@@ -153,19 +153,24 @@ function parseJsonObject(content: string): Record<string, unknown> {
 }
 
 export async function generateExamWithDeepSeek(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
-  const apiKey = process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY;
+  // Prefer the explicitly configured DeepSeek credential in production. The platform
+  // may also expose an OpenAI-compatible proxy key, but that proxy catalog does not
+  // contain DeepSeek model IDs and can return an empty 200 response for them.
+  const deepSeekKey = process.env.DEEPSEEK_API_KEY;
+  const openAiKey = process.env.OPENAI_API_KEY;
+  const useDeepSeek = Boolean(deepSeekKey);
+  const apiKey = useDeepSeek ? deepSeekKey : openAiKey;
   if (!apiKey) {
     throw new DeepSeekConfigurationError('The exam-generation service is not configured. Add OPENAI_API_KEY or DEEPSEEK_API_KEY to the server environment.');
   }
 
-  // Compute endpoint at call time (not module load) to ensure env vars are available
-  // Use DeepSeek directly unless explicitly overridden
-  const endpoint = process.env.OPENAI_API_BASE
-    ? `${process.env.OPENAI_API_BASE.replace(/\/$/, '')}/chat/completions`
-    : (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com') + '/chat/completions';
+  // Compute endpoint at call time (not module load) to ensure env vars are available.
+  const endpoint = useDeepSeek
+    ? `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`
+    : `${(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`;
 
-  // Use deepseek-v4-pro as the primary model
-  const modelName = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro';
+  // Use the stable DeepSeek chat model unless an explicit model override is supplied.
+  const modelName = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || (useDeepSeek ? 'deepseek-chat' : 'gpt-5-mini');
 
   console.log('[exam-gen] endpoint:', endpoint);
   console.log('[exam-gen] model:', modelName);
@@ -196,6 +201,9 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
 
   const rawText = await response.text().catch(() => '');
   console.log('[exam-gen] status:', response.status, 'response length:', rawText.length);
+  if (!rawText.trim()) {
+    throw new DeepSeekResponseError(`The AI service returned an empty response (status ${response.status}). Please try again.`);
+  }
 
   let payload: DeepSeekResponse;
   try {
