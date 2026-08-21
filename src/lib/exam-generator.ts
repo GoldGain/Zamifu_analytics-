@@ -13,6 +13,7 @@ import {
   type GeneratedExamQuestion,
   type QuestionType,
 } from './exam-schema';
+import { renderExamVisualDataUrl } from './exam-visuals';
 
 const sectionTitles: Record<string, string> = {
   multiple_choice: 'SECTION A: MULTIPLE CHOICE QUESTIONS',
