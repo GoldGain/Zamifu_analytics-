@@ -280,14 +280,14 @@ async function handleExamGeneration(
         source_kind: 'generated',
         grade_level: paper.grade_level,
         subject: paper.subject,
-        strand: question.strand || 'General',
-        sub_strand: question.sub_strand || 'General',
+        strand: (question.strand || 'General').slice(0, 100),
+        sub_strand: (question.sub_strand || 'General').slice(0, 100),
         question_type: question.question_type,
         question_text: question.question_text,
         options: question.options?.length ? question.options : null,
         correct_answer: question.correct_answer,
         marking_scheme: question.marking_scheme,
-        image_url: question.image_url || null,
+        image_url: question.image_url && question.image_url.length <= 500 ? question.image_url : null,
         difficulty: question.difficulty,
         marks: question.marks,
         topic: question.topic || null,
@@ -295,7 +295,13 @@ async function handleExamGeneration(
         competency: question.competency || null,
         cognitive_level: question.cognitive_level || null,
         review_status: 'draft',
-        metadata: { generated_at: paper.generated_at, format: paper.format, visual_spec: question.visual_spec || null },
+        metadata: {
+          generated_at: paper.generated_at,
+          format: paper.format,
+          visual_spec: question.visual_spec
+            ? { ...question.visual_spec, rendered_data_url: question.image_url || null }
+            : null,
+        },
       })))
       .select('id');
 
@@ -340,7 +346,7 @@ async function handleExamGeneration(
     const visualQuestions = persistedQuestions.filter((question) => question.image_url && question.visual_spec);
     if (visualQuestions.length && paperId) {
       const { error: visualError } = await supabase.from('exam_visual_assets').insert(visualQuestions.map((question) => ({
-        school_id: profile.school_id, question_id: question.id, paper_id: paperId, asset_type: ['diagram', 'map', 'chart', 'graph', 'shape', 'flowchart', 'illustration', 'table', 'number_line'].includes(String(question.visual_spec?.asset_type || '').toLowerCase()) ? String(question.visual_spec?.asset_type || '').toLowerCase() : 'illustration', source_kind: 'generated', visual_spec: question.visual_spec, alt_text: `Generated visual for ${paper.subject} question`, caption: typeof question.visual_spec?.caption === 'string' ? question.visual_spec.caption : null, approval_status: 'draft', created_by: user.id,
+        school_id: profile.school_id, question_id: question.id, paper_id: paperId, asset_type: ['diagram', 'map', 'chart', 'graph', 'shape', 'flowchart', 'illustration', 'table', 'number_line'].includes(String(question.visual_spec?.asset_type || '').toLowerCase()) ? String(question.visual_spec?.asset_type || '').toLowerCase() : 'illustration', source_kind: 'generated', visual_spec: question.visual_spec ? { ...question.visual_spec, rendered_data_url: question.image_url || null } : {}, alt_text: `Generated visual for ${paper.subject} question`, caption: typeof question.visual_spec?.caption === 'string' ? question.visual_spec.caption.slice(0, 500) : null, approval_status: 'draft', created_by: user.id,
       })));
       if (visualError) throw new Error(`Could not save generated visual metadata: ${visualError.message}`);
     }
