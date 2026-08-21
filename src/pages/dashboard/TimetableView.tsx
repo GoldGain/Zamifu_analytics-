@@ -1202,15 +1202,10 @@ export default function TimetableView() {
             levelConfigs[resolveClassLevelGroup(classesToRender[0])]
           )
         : allSlots);
-    // Defensive UI invariant: one column per shared activity interval, even if
-    // older generated data contains several activity rows at the same time.
-    const slotsForTable = rawSlotsForTable.reduce<TimeSlot[]>((merged, slot) => {
-      if (slot.slot_type === 'activity' || slot.slot_type === 'activities') {
-        const toMinutes = (value: string) => {
-          const [h, m] = String(value || '').slice(0, 5).split(':').map(Number);
-          return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-        };
-      }
+    // Activities never become grid columns. In-lesson activity entries are
+    // rendered in their owning lesson cell; post-school activities are listed
+    // in a compact note beneath the level grid.
+    const mergedSlotsForTable = rawSlotsForTable.reduce<TimeSlot[]>((merged, slot) => {
       if (slot.slot_type !== 'activity' && slot.slot_type !== 'activities') {
         merged.push(slot);
         return merged;
@@ -1229,6 +1224,12 @@ export default function TimetableView() {
       }
       return merged;
     }, []);
+    const postSchoolActivitySlots = mergedSlotsForTable.filter((slot) =>
+      slot.slot_type === 'activity' || slot.slot_type === 'activities'
+    );
+    const slotsForTable = mergedSlotsForTable.filter((slot) =>
+      slot.slot_type !== 'activity' && slot.slot_type !== 'activities'
+    );
     if (!slotsForTable.length) {
       return (
         <div id={tableId} className="m-4 rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900 text-sm">
@@ -1399,6 +1400,14 @@ export default function TimetableView() {
           </tbody>
         </table>
       </div>
+      {postSchoolActivitySlots.length > 0 && (
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[0.68rem] text-emerald-900">
+          <strong>After-school activities:</strong>{' '}
+          {postSchoolActivitySlots.map((slot) =>
+            `${slot.label.replace(/^ACTIVITY:\s*/i, '')} ${fmt(slot.start_time)}–${fmt(slot.end_time)}`
+          ).join(' · ')}
+        </div>
+      )}
       {teacherKey.length > 0 && (
         <div className="mt-6 pt-4 border-t border-gray-700">
           <h3 className="text-blue-400 font-black text-xs uppercase mb-3 tracking-widest">Teacher Reference Key</h3>
