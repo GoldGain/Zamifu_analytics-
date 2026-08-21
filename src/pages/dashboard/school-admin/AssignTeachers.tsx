@@ -18,6 +18,7 @@ interface TeacherAssignment {
   is_priority: boolean;
   priority_band: 'none' | 'morning' | 'mid_morning' | 'afternoon';
   is_double_lesson: boolean;
+  double_lesson_days: string[];
   available_days: string[];
 }
 
@@ -57,6 +58,7 @@ export default function AssignTeachers() {
     lessons_per_week: 5,
     priority_band: 'none' as const,
     is_double_lesson: false,
+    double_lesson_days: [...ALL_DAYS],
     available_days: [...ALL_DAYS],
   });
 
@@ -64,6 +66,9 @@ export default function AssignTeachers() {
   const [editingAvailabilityId, setEditingAvailabilityId] = useState<string | null>(null);
   const [editingDays, setEditingDays] = useState<string[]>([...ALL_DAYS]);
   const [savingAvailability, setSavingAvailability] = useState(false);
+  const [editingDoubleLessonId, setEditingDoubleLessonId] = useState<string | null>(null);
+  const [editingDoubleDays, setEditingDoubleDays] = useState<string[]>([...ALL_DAYS]);
+  const [savingDoubleLesson, setSavingDoubleLesson] = useState(false);
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -111,7 +116,7 @@ export default function AssignTeachers() {
     const { data, error: ae } = await supabase
       .from('teacher_subject_assignments')
       .select(`
-        id, teacher_id, class_id, subject_id, lessons_per_week, is_priority, priority_band, available_days,
+        id, teacher_id, class_id, subject_id, lessons_per_week, is_priority, priority_band, is_double_lesson, double_lesson_days, available_days,
         teachers(first_name, last_name, teacher_number),
         classes(name),
         subjects(name)
@@ -133,7 +138,10 @@ export default function AssignTeachers() {
       lessons_per_week: a.lessons_per_week || 5,
       is_priority: a.is_priority || false,
       priority_band: a.priority_band || (a.is_priority ? 'morning' : 'none'),
-      is_double_lesson: a.is_double_lesson || false,
+      is_double_lesson: a.is_double_lesson === true,
+      double_lesson_days: Array.isArray(a.double_lesson_days) && a.double_lesson_days.length > 0
+        ? a.double_lesson_days
+        : (a.is_double_lesson === true ? (Array.isArray(a.available_days) && a.available_days.length > 0 ? a.available_days : [...ALL_DAYS]) : []),
       available_days: Array.isArray(a.available_days) && a.available_days.length > 0
         ? a.available_days
         : [...ALL_DAYS],
@@ -151,6 +159,10 @@ export default function AssignTeachers() {
       setError('Double Lesson requires an even Lessons / Week total (for example, 4 periods = two practical blocks).');
       return;
     }
+    if (formData.is_double_lesson && formData.double_lesson_days.length === 0) {
+      setError('Select at least one weekday for the double lesson.');
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
@@ -166,6 +178,7 @@ export default function AssignTeachers() {
           priority_band: formData.priority_band,
           is_priority: formData.priority_band === 'morning',
           is_double_lesson: formData.is_double_lesson,
+          double_lesson_days: formData.is_double_lesson ? formData.double_lesson_days : [],
           available_days: formData.available_days,
           assigned_by_admin: true,
           is_active: true,
@@ -175,7 +188,7 @@ export default function AssignTeachers() {
       if (insertError) throw insertError;
 
       setSuccess('Assignment saved successfully!');
-      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'none', is_double_lesson: false, available_days: [...ALL_DAYS] });
+      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'none', is_double_lesson: false, double_lesson_days: [...ALL_DAYS], available_days: [...ALL_DAYS] });
       await fetchAssignments();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -231,12 +244,87 @@ export default function AssignTeachers() {
   };
 
   const toggleFormDay = (day: string) => {
+    setFormData(prev => {
+      const isRemoving = prev.available_days.includes(day);
+      return {
+        ...prev,
+        available_days: isRemoving
+          ? prev.available_days.filter(d => d !== day)
+          : [...prev.available_days, day],
+        double_lesson_days: isRemoving
+          ? prev.double_lesson_days.filter(d => d !== day)
+          : prev.double_lesson_days,
+      };
+    });
+  };
+
+  const toggleFormDoubleDay = (day: string) => {
     setFormData(prev => ({
       ...prev,
-      available_days: prev.available_days.includes(day)
-        ? prev.available_days.filter(d => d !== day)
-        : [...prev.available_days, day],
+      double_lesson_days: prev.double_lesson_days.includes(day)
+        ? prev.double_lesson_days.filter(d => d !== day)
+        : [...prev.double_lesson_days, day],
     }));
+  };
+
+  const handleEditDoubleLesson = (assignment: TeacherAssignment) => {
+    setEditingDoubleLessonId(assignment.id);
+    setEditingDoubleDays(
+      assignment.double_lesson_days.length > 0
+        ? [...assignment.double_lesson_days]
+        : [...(assignment.available_days.length > 0 ? assignment.available_days : ALL_DAYS)],
+    );
+  };
+
+  const toggleEditingDoubleDay = (day: string) => {
+    setEditingDoubleDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day],
+    );
+  };
+
+  const handleSaveDoubleLesson = async (assignment: TeacherAssignment) => {
+    if (editingDoubleDays.length === 0) {
+      setError('Select at least one weekday for the double lesson.');
+      return;
+    }
+    setSavingDoubleLesson(true);
+    try {
+      const { error } = await (supabase as any)
+        .from('teacher_subject_assignments')
+        .update({ is_double_lesson: true, double_lesson_days: editingDoubleDays })
+        .eq('id', assignment.id);
+      if (error) throw error;
+      setAssignments(prev => prev.map(a => a.id === assignment.id
+        ? { ...a, is_double_lesson: true, double_lesson_days: [...editingDoubleDays] }
+        : a));
+      setEditingDoubleLessonId(null);
+      setSuccess('Double-lesson weekdays updated. Generate the timetable again to apply them.');
+      setTimeout(() => setSuccess(null), 3500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save double-lesson weekdays');
+    } finally {
+      setSavingDoubleLesson(false);
+    }
+  };
+
+  const handleMakeSingleLesson = async (assignment: TeacherAssignment) => {
+    setSavingDoubleLesson(true);
+    try {
+      const { error } = await (supabase as any)
+        .from('teacher_subject_assignments')
+        .update({ is_double_lesson: false, double_lesson_days: [] })
+        .eq('id', assignment.id);
+      if (error) throw error;
+      setAssignments(prev => prev.map(a => a.id === assignment.id
+        ? { ...a, is_double_lesson: false, double_lesson_days: [] }
+        : a));
+      setSuccess('Assignment changed back to single lessons.');
+      setTimeout(() => setSuccess(null), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to change lesson format');
+    } finally {
+      setSavingDoubleLesson(false);
+    }
   };
 
   if (loading) {
@@ -351,20 +439,52 @@ export default function AssignTeachers() {
                 <p className="text-[11px] text-gray-500 mt-1">The generator prefers the selected band and only falls back when the band cannot fit all weekly lessons.</p>
               </div>
 
-              <label className="flex items-center gap-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-3 text-sm text-purple-900">
-                <input
-                  type="checkbox"
-                  checked={formData.is_double_lesson}
-                  onChange={(e) => setFormData({ ...formData, is_double_lesson: e.target.checked })}
-                  className="h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                />
-                <span>
-                  <span className="font-semibold">Double Lesson</span>
-                  <span className="block text-xs text-purple-700">
-                    Consecutive 2-period practical block; never split by a break, lunch, or activity. Use an even weekly total.
+              <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-3 text-sm text-purple-900">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_double_lesson}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      is_double_lesson: e.target.checked,
+                      double_lesson_days: e.target.checked
+                        ? (formData.double_lesson_days.length > 0 ? formData.double_lesson_days : [...formData.available_days])
+                        : [],
+                    })}
+                    className="mt-0.5 h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span>
+                    <span className="font-semibold">Use double lesson on selected days</span>
+                    <span className="block text-xs text-purple-700">
+                      The two periods stay consecutive and cannot cross a break, lunch, or activity. Choose the exact weekdays below.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+                {formData.is_double_lesson && (
+                  <div className="mt-3 border-t border-purple-200 pt-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-purple-800 mb-2">Double-lesson days</p>
+                    <div className="flex flex-wrap gap-2">
+                      {ALL_DAYS.map(day => {
+                        const available = formData.available_days.includes(day);
+                        const selected = formData.double_lesson_days.includes(day);
+                        return (
+                          <label key={day} className={`flex items-center gap-1.5 ${available ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              disabled={!available}
+                              onChange={() => toggleFormDoubleDay(day)}
+                              className="h-3.5 w-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-xs font-semibold">{day.substring(0, 3)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-purple-700 mt-2">Selected: {formData.double_lesson_days.length ? formData.double_lesson_days.join(', ') : 'none'}</p>
+                  </div>
+                )}
+              </div>
 
               {/* Available Days */}
               <div>
@@ -478,11 +598,72 @@ export default function AssignTeachers() {
                               <span className="text-gray-400 text-xs">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            {a.is_double_lesson ? (
-                              <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">2× consecutive</span>
+                          <td className="px-4 py-3 text-center align-top">
+                            {editingDoubleLessonId === a.id ? (
+                              <div className="min-w-[180px] space-y-2 text-left">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-purple-800">Double on:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {ALL_DAYS.map(day => {
+                                    const available = a.available_days.includes(day);
+                                    return (
+                                      <label key={day} className={`flex items-center gap-1 ${available ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={editingDoubleDays.includes(day)}
+                                          disabled={!available}
+                                          onChange={() => toggleEditingDoubleDay(day)}
+                                          className="h-3.5 w-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                                        />
+                                        <span className="text-[11px] font-semibold">{day.substring(0, 3)}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  <button
+                                    onClick={() => handleSaveDoubleLesson(a)}
+                                    disabled={savingDoubleLesson}
+                                    className="flex items-center gap-1 px-2 py-1 bg-purple-600 text-white rounded text-[11px] font-bold hover:bg-purple-700 disabled:opacity-50"
+                                  >
+                                    <Save size={11} /> {savingDoubleLesson ? 'Saving...' : 'Save'}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingDoubleLessonId(null)}
+                                    className="px-2 py-1 border border-gray-300 text-gray-600 rounded text-[11px] hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : a.is_double_lesson ? (
+                              <div className="min-w-[130px]">
+                                <span className="inline-block bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">Double</span>
+                                <p className="text-[11px] text-purple-700 mt-1 leading-tight">
+                                  {(a.double_lesson_days.length > 0 ? a.double_lesson_days : ALL_DAYS).map(day => day.substring(0, 3)).join(' · ')}
+                                </p>
+                                <div className="flex justify-center gap-2 mt-1">
+                                  <button
+                                    onClick={() => handleEditDoubleLesson(a)}
+                                    className="text-purple-600 hover:text-purple-800 text-[11px] font-semibold underline"
+                                  >
+                                    Edit days
+                                  </button>
+                                  <button
+                                    onClick={() => handleMakeSingleLesson(a)}
+                                    disabled={savingDoubleLesson}
+                                    className="text-gray-500 hover:text-gray-700 text-[11px] font-semibold underline disabled:opacity-50"
+                                  >
+                                    Make single
+                                  </button>
+                                </div>
+                              </div>
                             ) : (
-                              <span className="text-gray-400 text-xs">Single</span>
+                              <button
+                                onClick={() => handleEditDoubleLesson(a)}
+                                className="text-purple-600 hover:text-purple-800 text-xs font-semibold underline"
+                              >
+                                Set double days
+                              </button>
                             )}
                           </td>
                           <td className="px-4 py-3">

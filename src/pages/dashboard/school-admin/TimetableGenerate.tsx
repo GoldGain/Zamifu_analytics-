@@ -56,6 +56,7 @@ const timeToMinutes = (value: string | null | undefined): number => {
   return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
 };
 const toMinutes = timeToMinutes;
+const TIMETABLE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 
 // Map level config DB row to frontend config
 const mapLevelConfigToFrontend = (dbConfig: any, dbActivities: Record<string, string>): FrontendConfig => ({
@@ -526,6 +527,12 @@ export default function TimetableGenerate() {
           for (const assignment of classAssignments) {
             const lessonsToSchedule = Number(assignment.lessons_per_week || 0);
             const isDoubleLesson = assignment.is_double_lesson === true;
+            const availableDays = Array.isArray(assignment.available_days) && assignment.available_days.length > 0
+              ? assignment.available_days.map((day: unknown) => String(day))
+              : [...TIMETABLE_DAYS];
+            const configuredDoubleDays = Array.isArray(assignment.double_lesson_days) && assignment.double_lesson_days.length > 0
+              ? assignment.double_lesson_days.map((day: unknown) => String(day))
+              : (isDoubleLesson ? availableDays : []);
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
@@ -597,10 +604,15 @@ export default function TimetableGenerate() {
 
             const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean) => {
               for (let day = 1; day <= 5 && scheduled < lessonsToSchedule; day++) {
+                const dayName = TIMETABLE_DAYS[day - 1];
+                if (!availableDays.includes(dayName)) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of slotsToTry) {
                   if (skipPreferredStarts && preferredLessonSlots.some((preferred: any) => preferred.id === slot.id)) continue;
-                  const unitSize: 1 | 2 = isDoubleLesson && scheduled + 1 < lessonsToSchedule ? 2 : 1;
+                  const useDoubleBlock = isDoubleLesson
+                    && configuredDoubleDays.includes(dayName)
+                    && scheduled + 1 < lessonsToSchedule;
+                  const unitSize: 1 | 2 = useDoubleBlock ? 2 : 1;
                   const placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, unitSize);
                   if (placed > 0) {
                     scheduled += placed;
