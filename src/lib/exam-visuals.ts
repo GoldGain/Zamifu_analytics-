@@ -119,20 +119,37 @@ function renderNurseryBedDiagram(spec: ExamVisualSpec): string {
 }
 
 function renderTable(spec: ExamVisualSpec): string {
-  const sourceHeaders = (spec.labels || ['Item', 'Value']).map(String).slice(0, 4);
-  const sourceRows = (spec.x_labels || ['Item 1', 'Item 2', 'Item 3', 'Item 4']).map(String).slice(0, 6);
-  const values = spec.values || [];
+  const sourceLabels = (spec.labels || []).map(String).filter(Boolean);
+  const sourceRows = (spec.x_labels || []).map(String).filter(Boolean);
+  const values = (spec.values || []).map((value) => String(value));
   const parsedRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()).filter(Boolean));
   const commaSeparated = parsedRows.some((parts) => parts.length > 1);
-  const inferredColumns = commaSeparated ? Math.max(sourceHeaders.length, ...parsedRows.map((parts) => parts.length)) : Math.max(sourceHeaders.length, values.length ? 2 : sourceHeaders.length);
-  const headers = [...sourceHeaders];
-  if (commaSeparated && headers.length === 3 && inferredColumns === 4) headers.splice(2, 0, 'Group');
-  while (headers.length < inferredColumns) headers.push(`Detail ${headers.length}`);
-  const rows = sourceRows.map((row, rowIndex) => {
-    const parts = parsedRows[rowIndex];
-    if (commaSeparated && parts.length > 1) return [...parts, ...Array(Math.max(0, headers.length - parts.length)).fill('—')].slice(0, headers.length);
-    return headers.map((_, columnIndex) => columnIndex === 0 ? row : values[rowIndex] ?? '—');
-  });
+  const promptNumbers = String(spec.prompt || '').match(/[+-]\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
+
+  // Providers often describe a horizontal table in prose: labels contain the
+  // column headings, x_labels contain the two row labels, and the signed values
+  // are embedded in the prompt. Reconstruct that shape instead of treating the
+  // headings as four columns and filling every cell with a dash.
+  let headers: string[];
+  let rows: string[][];
+  if (sourceLabels.length >= 2 && sourceRows.length >= 2 && (values.length >= sourceLabels.length || promptNumbers.length >= sourceLabels.length)) {
+    const rowValues = (values.length >= sourceLabels.length ? values : promptNumbers).slice(0, sourceLabels.length);
+    headers = [sourceRows[0] || 'Item', ...sourceLabels];
+    rows = [[sourceRows[1] || 'Value', ...rowValues]];
+  } else {
+    const fallbackHeaders = sourceLabels.length ? sourceLabels.slice(0, 6) : ['Item', 'Value'];
+    const fallbackRows = sourceRows.length ? sourceRows.slice(0, 6) : ['Item 1', 'Item 2', 'Item 3', 'Item 4'];
+    const inferredColumns = commaSeparated ? Math.max(fallbackHeaders.length, ...parsedRows.map((parts) => parts.length)) : Math.max(fallbackHeaders.length, values.length ? 2 : fallbackHeaders.length);
+    headers = [...fallbackHeaders];
+    if (commaSeparated && headers.length === 3 && inferredColumns === 4) headers.splice(2, 0, 'Group');
+    while (headers.length < inferredColumns) headers.push(`Detail ${headers.length}`);
+    rows = fallbackRows.map((row, rowIndex) => {
+      const parts = parsedRows[rowIndex];
+      if (commaSeparated && parts.length > 1) return [...parts, ...Array(Math.max(0, headers.length - parts.length)).fill('—')].slice(0, headers.length);
+      return headers.map((_, columnIndex) => columnIndex === 0 ? row : values[rowIndex] ?? '—');
+    });
+  }
+
   const x = 28;
   const y = 58;
   const tableWidth = 424;
