@@ -76,6 +76,30 @@ function renderMap(spec: ExamVisualSpec): string {
   return `${polygon}${labels}<path d="M410 65 L410 35 L400 48 L420 48 Z" fill="#111827"/><text x="410" y="25" text-anchor="middle" class="small">N</text><line x1="70" y1="285" x2="150" y2="285" stroke="#111827" stroke-width="3"/><text x="160" y="289" class="small">schematic scale</text>`;
 }
 
+function renderTable(spec: ExamVisualSpec): string {
+  const headers = (spec.labels || ['Item', 'Value']).slice(0, 4);
+  const rows = (spec.x_labels || ['Item 1', 'Item 2', 'Item 3', 'Item 4']).slice(0, 6);
+  const values = spec.values || [];
+  const x = 55;
+  const y = 62;
+  const tableWidth = 370;
+  const columnWidth = tableWidth / headers.length;
+  const rowHeight = 30;
+  const header = headers.map((header, index) => {
+    const cellX = x + index * columnWidth;
+    return `<rect x="${cellX}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/><text x="${cellX + columnWidth / 2}" y="${y + 20}" text-anchor="middle" class="small">${escapeXml(header)}</text>`;
+  }).join('');
+  const body = rows.map((row, rowIndex) => {
+    const cellY = y + rowHeight * (rowIndex + 1);
+    return headers.map((_, columnIndex) => {
+      const cellX = x + columnIndex * columnWidth;
+      const value = columnIndex === 0 ? row : values[rowIndex] ?? '—';
+      return `<rect x="${cellX}" y="${cellY}" width="${columnWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/><text x="${cellX + columnWidth / 2}" y="${cellY + 20}" text-anchor="middle" class="small">${escapeXml(value)}</text>`;
+    }).join('');
+  }).join('');
+  return `${header}${body}`;
+}
+
 export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string | null {
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   const assetType = String(spec.asset_type || '').toLowerCase();
@@ -84,6 +108,7 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   let body = '';
   if (assetType === 'map') body = renderMap(spec);
   else if (assetType === 'graph' || assetType === 'chart') body = renderGraph(spec);
+  else if (assetType === 'table') body = renderTable(spec);
   else if (assetType === 'number_line') body = renderNumberLine(spec);
   else if (assetType === 'shape' || assetType === 'diagram') {
     body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';
