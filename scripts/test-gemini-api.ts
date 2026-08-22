@@ -36,7 +36,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     title: request.title,
     instructions: ['Answer all questions.'],
     questions: [
-      { question_type: 'case_study', question_text: 'A learner investigates cells using a prepared slide.', options: [], correct_answer: 'See marking scheme.', marking_scheme: 'Award one mark for each valid point.', marks: 1, difficulty: 'medium', strand: 'The Cell', sub_strand: 'Cell structure', topic: 'Cells', learning_outcome: 'Describe cell parts.', competency: 'Critical thinking', cognitive_level: 'apply', visual_spec: { asset_type: 'diagram', title: 'Cell', prompt: 'A labelled cell diagram.', caption: 'School-owned schematic cell diagram.', labels: ['Cell wall'] } },
+      { question_type: 'case_study', question_text: 'A learner investigates cells using a prepared slide.', options: ['A. Cell wall', 'B. Cytoplasm', 'C. Nucleus', 'D. Vacuole'], correct_answer: 'See marking scheme.', marking_scheme: 'Award one mark for each valid point.', marks: 1, difficulty: 'medium', strand: 'The Cell', sub_strand: 'Cell structure', topic: 'Cells', learning_outcome: 'Describe cell parts.', competency: 'Critical thinking', cognitive_level: 'apply', visual_spec: { asset_type: 'diagram', title: 'Cell', prompt: 'A labelled cell diagram.', caption: 'School-owned schematic cell diagram.', labels: ['Cell wall'] } },
       { question_type: 'case_study', question_text: 'The learner records the observations in a table.', options: [], correct_answer: 'See marking scheme.', marking_scheme: 'Award one mark for each valid point.', marks: 1, difficulty: 'medium', strand: 'The Cell', sub_strand: 'Cell structure', topic: 'Cells', learning_outcome: 'Record observations.', competency: 'Communication', cognitive_level: 'apply', visual_spec: null },
     ],
   };
@@ -54,6 +54,7 @@ try {
   assert.deepEqual(paper.questions.map((question) => question.marks), [10, 10]);
   assert.equal(paper.total_marks, 20);
   assert.equal(paper.questions[0]?.visual_spec?.asset_type, 'diagram');
+  assert.deepEqual(paper.questions[0]?.options, ['Cell wall', 'Cytoplasm', 'Nucleus', 'Vacuole']);
   console.log('PASS: Gemini adapter uses the official JSON contract and reconciles exact KJSEA marks.');
 } finally {
   globalThis.fetch = originalFetch;

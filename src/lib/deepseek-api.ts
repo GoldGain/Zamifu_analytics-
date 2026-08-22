@@ -43,9 +43,16 @@ function toSafeString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value.trim() : fallback;
 }
 
+function cleanOption(value: string): string {
+  // Providers sometimes return the display label ("A.", "B.", …) even
+  // though the renderer adds that label. Strip only an explicit option prefix
+  // so legitimate answers such as "A number greater than five" are preserved.
+  return value.trim().replace(/^(?:[A-Ha-h][.)]|\([A-Ha-h]\))\s*/, '').trim();
+}
+
 function toSafeArray(value: unknown): string[] {
   return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean)
+    ? value.filter((entry): entry is string => typeof entry === 'string').map(cleanOption).filter(Boolean)
     : [];
 }
 
