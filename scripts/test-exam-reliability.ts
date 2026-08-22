@@ -58,7 +58,8 @@ globalThis.fetch = (async (_input, init) => {
 try {
   const paper = await generateExamWithDeepSeek(request, 'Numbers: Integers: ordering integers and number lines.');
   assert.equal(calls, 3, 'the provider should be retried after empty and malformed responses');
-  assert.equal(requestBodies[0]?.model, 'deepseek-v4-pro', 'legacy deepseek-chat should map to the current V4-Pro model');
+  assert.equal(requestBodies[0]?.model, 'deepseek-chat', 'the proven DeepSeek compatibility alias should remain the first attempt');
+  assert.equal(requestBodies[2]?.model, 'deepseek-v4-pro', 'the final recovery attempt should use the V4-Pro fallback');
   assert.deepEqual(requestBodies[0]?.response_format, { type: 'json_object' }, 'the first attempt should use DeepSeek JSON mode');
   assert.equal(paper.questions.length, 1, 'the recovered response should normalize one valid question');
   assert.equal(paper.questions[0]?.question_text, 'Which integer is greatest: -3, 0, or 2?');

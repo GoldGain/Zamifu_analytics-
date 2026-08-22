@@ -194,14 +194,13 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     ? `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`
     : `${(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`;
 
-  // DeepSeek's current API documents the V4 model names. Keep the older
-  // deepseek-chat setting backward-compatible by mapping it to V4-Pro.
+  // Keep the proven production default unless an administrator explicitly
+  // chooses another model. This avoids breaking existing deployments whose key
+  // is enabled for DeepSeek's compatibility alias but not a newly released V4 id.
   const configuredModel = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || '';
-  const modelName = useDeepSeek
-    ? (configuredModel === 'deepseek-chat' || !configuredModel ? 'deepseek-v4-pro' : configuredModel)
-    : (configuredModel || 'gpt-5-mini');
+  const modelName = useDeepSeek ? (configuredModel || 'deepseek-chat') : (configuredModel || 'gpt-5-mini');
   const fallbackModel = useDeepSeek
-    ? (process.env.AI_EXAM_FALLBACK_MODEL || (modelName === 'deepseek-v4-flash' ? 'deepseek-v4-pro' : 'deepseek-v4-flash'))
+    ? (process.env.AI_EXAM_FALLBACK_MODEL || (modelName === 'deepseek-chat' ? 'deepseek-v4-pro' : 'deepseek-chat'))
     : modelName;
 
   console.log('[exam-gen] endpoint:', endpoint);
@@ -240,6 +239,9 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     const body = JSON.stringify(requestPayload);
     console.log('[exam-gen] attempt:', attempt + 1, 'model:', plan.model, 'request body length:', body.length, 'max_tokens:', plan.maxTokens);
 
+    const timeoutMs = attempt === 0 ? 45000 : 35000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -248,6 +250,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
           Authorization: `Bearer ${apiKey}`,
         },
         body,
+        signal: controller.signal,
       });
       const rawText = await response.text().catch(() => '');
       console.log('[exam-gen] attempt:', attempt + 1, 'status:', response.status, 'response length:', rawText.length);
@@ -276,12 +279,16 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
       if (!candidateQuestions.length) throw new DeepSeekResponseError('The AI service did not provide any valid questions.');
       parsed = candidate;
     } catch (error) {
-      lastFailure = error instanceof Error ? error.message : 'Unknown provider failure.';
+      lastFailure = error instanceof Error && error.name === 'AbortError'
+        ? `The AI service timed out after ${timeoutMs / 1000} seconds.`
+        : error instanceof Error ? error.message : 'Unknown provider failure.';
       console.error('[exam-gen] attempt failed:', attempt + 1, plan.model, lastFailure.slice(0, 300));
       if (error instanceof DeepSeekConfigurationError) throw error;
       if (attempt < attemptPlans.length - 1) {
         await waitBeforeRetry(attempt);
       }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

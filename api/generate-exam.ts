@@ -249,7 +249,7 @@ async function handleExamGeneration(
   try {
     const { data: generationJob, error: generationJobError } = await supabase
       .from('exam_generation_jobs')
-      .insert({ school_id: profile.school_id, created_by: user.id, status: 'generating', request_payload: parsedRequest, provider: 'deepseek', model: process.env.AI_EXAM_MODEL || (process.env.DEEPSEEK_MODEL === 'deepseek-chat' ? 'deepseek-v4-pro' : process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro') })
+      .insert({ school_id: profile.school_id, created_by: user.id, status: 'generating', request_payload: parsedRequest, provider: 'deepseek', model: process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat' })
       .select('id')
       .single();
     if (generationJobError) throw new Error(`Could not start the generation job: ${generationJobError.message}`);
