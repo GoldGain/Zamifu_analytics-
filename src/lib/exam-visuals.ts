@@ -118,21 +118,35 @@ function renderNurseryBedDiagram(spec: ExamVisualSpec): string {
   </g>`;
 }
 
-function renderTable(spec: ExamVisualSpec): string {
+function parseMarkdownTable(source: string): string[][] {
+  return source.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes('|')).map((line) => {
+    const cells = line.split('|').map((cell) => cell.trim());
+    if (cells[0] === '') cells.shift();
+    if (cells[cells.length - 1] === '') cells.pop();
+    return cells;
+  }).filter((cells) => cells.length >= 2 && !cells.every((cell) => /^:?-{2,}:?$/.test(cell)));
+}
+
+function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): string {
   const sourceLabels = (spec.labels || []).map(String).filter(Boolean);
   const sourceRows = (spec.x_labels || []).map(String).filter(Boolean);
   const values = (spec.values || []).map((value) => String(value));
   const parsedRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()).filter(Boolean));
   const commaSeparated = parsedRows.some((parts) => parts.length > 1);
   const promptNumbers = String(spec.prompt || '').match(/[+-]\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
+  const markdownRows = parseMarkdownTable(`${question?.question_text || ''}\n${spec.prompt || ''}`);
 
-  // Providers often describe a horizontal table in prose: labels contain the
-  // column headings, x_labels contain the two row labels, and the signed values
-  // are embedded in the prompt. Reconstruct that shape instead of treating the
-  // headings as four columns and filling every cell with a dash.
+  // Prefer an explicit markdown table from the question itself. This preserves
+  // exact learner-facing values when a provider puts the data in the prompt but
+  // omits the parallel visual_spec.values array.
   let headers: string[];
   let rows: string[][];
-  if (sourceLabels.length >= 2 && sourceRows.length >= 2 && (values.length >= sourceLabels.length || promptNumbers.length >= sourceLabels.length)) {
+  if (markdownRows.length >= 2) {
+    const columnCount = Math.min(6, Math.max(...markdownRows.map((row) => row.length)));
+    headers = markdownRows[0].slice(0, columnCount);
+    while (headers.length < columnCount) headers.push(`Detail ${headers.length}`);
+    rows = markdownRows.slice(1).map((row) => [...row, ...Array(Math.max(0, columnCount - row.length)).fill('—')].slice(0, columnCount));
+  } else if (sourceLabels.length >= 2 && sourceRows.length >= 2 && (values.length >= sourceLabels.length || promptNumbers.length >= sourceLabels.length)) {
     const rowValues = (values.length >= sourceLabels.length ? values : promptNumbers).slice(0, sourceLabels.length);
     headers = [sourceRows[0] || 'Item', ...sourceLabels];
     rows = [[sourceRows[1] || 'Value', ...rowValues]];
@@ -203,7 +217,7 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   let body = '';
   if (assetType === 'map') body = renderMap(spec);
   else if (assetType === 'graph' || assetType === 'chart') body = renderGraph(spec);
-  else if (assetType === 'table') body = renderTable(spec);
+  else if (assetType === 'table') body = renderTable(spec, question);
   else if (assetType === 'number_line') body = renderNumberLine(spec);
   else if (assetType === 'shape' || assetType === 'diagram') {
     const descriptor = `${question.question_text} ${spec.title || ''} ${spec.prompt || ''} ${spec.caption || ''} ${(spec.labels || []).join(' ')}`.toLowerCase();
