@@ -107,11 +107,19 @@ export default function ExamGeneratorPage() {
 
     const { data: strandsData } = await supabaseUntyped
       .from('curriculum_strands')
-      .select('id, strand_name, strand_order')
+      .select('id, strand_name, strand_order, strand_description')
       .eq('subject_id', selectedSubject)
       .order('strand_order');
 
-    if (!strandsData || strandsData.length === 0) {
+    // Prefer rows explicitly marked as source-verified KICD when a subject also
+    // contains legacy generic curriculum rows. This keeps the selector truthful
+    // without deleting legacy records that may be referenced by school content.
+    const sourceVerifiedStrands = (strandsData || []).filter((strand: { strand_description?: string | null }) =>
+      /(?:official|source-verified)\s+kicd/i.test(strand.strand_description || '')
+    );
+    const effectiveStrandsData = sourceVerifiedStrands.length > 0 ? sourceVerifiedStrands : (strandsData || []);
+
+    if (effectiveStrandsData.length === 0) {
       // Fallback to embedded KICD knowledge — build full strand+sub-strand+topic tree
       const packs = getStrandPacks(subjectName);
       const localStrands: CurriculumStrandOption[] = packs.map((pack, si) => {
@@ -151,7 +159,7 @@ export default function ExamGeneratorPage() {
     const enriched: CurriculumStrandOption[] = [];
     const allTopics: CurriculumTopicOption[] = [];
 
-    for (const strand of strandsData) {
+    for (const strand of effectiveStrandsData) {
       const { data: ssData } = await supabaseUntyped
         .from('curriculum_sub_strands')
         .select('id, sub_strand_name, sub_strand_order')
