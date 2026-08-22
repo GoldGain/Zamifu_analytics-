@@ -21,10 +21,13 @@ import {
   type ExamPdfMode,
 } from '@/lib/exam-generator';
 import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
+import { filterSubStrands, filterTopics, retainVisibleIds } from '@/lib/curriculum-selection';
 
 export interface CurriculumTopicOption {
   id: string;
   topic_name: string;
+  strand_id?: string;
+  sub_strand_id?: string;
 }
 
 export interface CurriculumSubStrandOption {
@@ -118,9 +121,20 @@ export default function ExamGenerator({
   const [approvingPaper, setApprovingPaper] = useState(false);
   const [openingPaper, setOpeningPaper] = useState<string | null>(null);
 
-  const availableSubStrands = useMemo(() => strands
-    .filter((strand) => selectedStrands.size === 0 || selectedStrands.has(strand.id))
-    .flatMap((strand) => strand.sub_strands || []), [selectedStrands, strands]);
+  const availableSubStrands = useMemo(() => selectedStrands.size > 0 ? filterSubStrands(strands, selectedStrands) : [], [selectedStrands, strands]);
+  const availableTopics = useMemo(() => {
+    if (selectedSubStrands.size > 0) return filterTopics(topics, selectedStrands, selectedSubStrands);
+    if (selectedStrands.size > 0) return filterTopics(topics, selectedStrands, new Set());
+    return [];
+  }, [selectedStrands, selectedSubStrands, topics]);
+
+  useEffect(() => {
+    setSelectedSubStrands((current) => retainVisibleIds(current, availableSubStrands.map((subStrand) => subStrand.id)));
+  }, [availableSubStrands]);
+
+  useEffect(() => {
+    setSelectedTopics((current) => retainVisibleIds(current, availableTopics.map((topic) => topic.id)));
+  }, [availableTopics]);
 
   const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size);
   const selectedFormatDescription = formatOptions.find((option) => option.value === format)?.description || '';
@@ -147,7 +161,10 @@ export default function ExamGenerator({
     if (!initialTopic || !topics.length) return;
     const requested = initialTopic.toLowerCase().trim();
     const match = topics.find((topic) => topic.topic_name.toLowerCase().trim() === requested);
-    if (match) setSelectedTopics(new Set([match.id]));
+    if (!match) return;
+    if (match.strand_id) setSelectedStrands(new Set([match.strand_id]));
+    if (match.sub_strand_id) setSelectedSubStrands(new Set([match.sub_strand_id]));
+    setSelectedTopics(new Set([match.id]));
   }, [initialTopic, topics]);
 
   useEffect(() => {
@@ -281,7 +298,7 @@ export default function ExamGenerator({
         subject,
         strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
         subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
-        topics: topics.filter((topic) => selectedTopics.has(topic.id)).map((topic) => topic.topic_name),
+        topics: availableTopics.filter((topic) => selectedTopics.has(topic.id)).map((topic) => topic.topic_name),
         questionTypes: Array.from(selectedQuestionTypes),
         totalMarks,
         durationMinutes,
@@ -538,14 +555,14 @@ export default function ExamGenerator({
           </div>
 
           <div className="mt-5 grid gap-3 lg:grid-cols-3">
-            <SelectionPanel title="Strands" count={selectedStrands.size}>
+            <SelectionPanel title="1. Strands" count={selectedStrands.size} description="Choose one or more broad curriculum areas." onSelectAll={() => setSelectedStrands(new Set(strands.map((strand) => strand.id)))} onClear={() => setSelectedStrands(new Set())}>
               {strands.length ? strands.map((strand) => <SelectableRow key={strand.id} checked={selectedStrands.has(strand.id)} label={strand.strand_name} onChange={() => setSelectedStrands((current) => toggleValue(current, strand.id))} />) : <EmptySelection label="Select a grade and subject first." />}
             </SelectionPanel>
-            <SelectionPanel title="Sub-strands" count={selectedSubStrands.size}>
-              {availableSubStrands.length ? availableSubStrands.map((subStrand) => <SelectableRow key={subStrand.id} checked={selectedSubStrands.has(subStrand.id)} label={subStrand.sub_strand_name} onChange={() => setSelectedSubStrands((current) => toggleValue(current, subStrand.id))} />) : <EmptySelection label="Choose a strand to narrow the selection." />}
+            <SelectionPanel title="2. Sub-strands" count={selectedSubStrands.size} description={selectedStrands.size ? 'Filtered by the selected strands.' : 'Select a strand first to unlock sub-strands.'} onSelectAll={() => setSelectedSubStrands(new Set(availableSubStrands.map((subStrand) => subStrand.id)))} onClear={() => setSelectedSubStrands(new Set())}>
+              {availableSubStrands.length ? availableSubStrands.map((subStrand) => <SelectableRow key={subStrand.id} checked={selectedSubStrands.has(subStrand.id)} label={subStrand.sub_strand_name} onChange={() => setSelectedSubStrands((current) => toggleValue(current, subStrand.id))} />) : <EmptySelection label="Select one or more strands first." />}
             </SelectionPanel>
-            <SelectionPanel title="Topics" count={selectedTopics.size}>
-              {topics.length ? topics.map((topic) => <SelectableRow key={topic.id} checked={selectedTopics.has(topic.id)} label={topic.topic_name} onChange={() => setSelectedTopics((current) => toggleValue(current, topic.id))} />) : <EmptySelection label="No topic records are available for this selection." />}
+            <SelectionPanel title="3. Topics" count={selectedTopics.size} description={selectedSubStrands.size ? 'Filtered by the selected sub-strands.' : selectedStrands.size ? 'Filtered by the selected strands; choose sub-strands to narrow further.' : 'Select a strand first, or leave curriculum choices empty for an all-curriculum paper.'} onSelectAll={() => setSelectedTopics(new Set(availableTopics.map((topic) => topic.id)))} onClear={() => setSelectedTopics(new Set())}>
+              {availableTopics.length ? availableTopics.map((topic) => <SelectableRow key={topic.id} checked={selectedTopics.has(topic.id)} label={topic.topic_name} onChange={() => setSelectedTopics((current) => toggleValue(current, topic.id))} />) : <EmptySelection label={selectedSubStrands.size || selectedStrands.size ? 'No topics are available inside the selected curriculum scope.' : 'Select a strand first to unlock topics.'} />}
             </SelectionPanel>
           </div>
 
@@ -586,8 +603,8 @@ export default function ExamGenerator({
   );
 }
 
-function SelectionPanel({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
-  return <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><p className="text-xs font-semibold text-slate-700">{title}</p><span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{count}</span></div><div className="max-h-32 space-y-1 overflow-y-auto pr-1">{children}</div></div>;
+function SelectionPanel({ title, count, description, onSelectAll, onClear, children }: { title: string; count: number; description: string; onSelectAll: () => void; onClear: () => void; children: React.ReactNode }) {
+  return <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="mb-2 flex items-start justify-between gap-2"><div><p className="text-xs font-semibold text-slate-700">{title}</p><p className="mt-0.5 text-[10px] leading-4 text-slate-400">{description}</p></div><span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{count}</span></div><div className="mb-2 flex items-center gap-2"><button type="button" onClick={onSelectAll} className="text-[10px] font-semibold text-red-600 hover:text-red-700">Select all</button><span className="text-[10px] text-slate-300">|</span><button type="button" onClick={onClear} className="text-[10px] font-semibold text-slate-500 hover:text-slate-700">Clear</button></div><div className="max-h-40 space-y-1 overflow-y-auto pr-1">{children}</div></div>;
 }
 
 function SelectableRow({ checked, label, onChange }: { checked: boolean; label: string; onChange: () => void }) {

@@ -134,6 +134,8 @@ export default function ExamGeneratorPage() {
             localTopics.push({
               id: `local-topic-${topicIdx}`,
               topic_name: topicName,
+              strand_id: `local-strand-${packs.indexOf(pack)}`,
+              sub_strand_id: `local-ss-${packs.indexOf(pack)}-${pack.subStrands.indexOf(ss)}`,
             });
             topicIdx++;
           }
@@ -178,37 +180,51 @@ export default function ExamGeneratorPage() {
           allTopics.push({
             id: topic.id,
             topic_name: topic.topic_name,
+            strand_id: strand.id,
+            sub_strand_id: ss.id,
           });
         }
       }
     }
 
-    // If DB strands have no sub-strands at all, supplement with KICD embedded knowledge
-    const hasSubStrands = enriched.some(s => s.sub_strands && s.sub_strands.length > 0);
-    if (!hasSubStrands) {
-      const packs = getStrandPacks(subjectName);
-      for (const strand of enriched) {
-        const matchingPack = packs.find(p =>
-          p.strand.toLowerCase().includes(strand.strand_name.toLowerCase()) ||
-          strand.strand_name.toLowerCase().includes(p.strand.toLowerCase())
-        );
-        if (matchingPack) {
-          strand.sub_strands = matchingPack.subStrands.map((ss, ssi) => ({
-            id: `kicd-ss-${strand.id}-${ssi}`,
-            sub_strand_name: ss.name,
-          }));
-          if (allTopics.length === 0) {
-            let topicIdx = 0;
-            for (const ss of matchingPack.subStrands) {
-              for (const topicName of ss.topics) {
-                allTopics.push({ id: `kicd-topic-${topicIdx}`, topic_name: topicName });
-                topicIdx++;
-              }
-            }
-          }
-        }
+    // Database imports are authoritative, but some schools have strand and
+    // sub-strand rows without topic rows. Supplement only missing children
+    // from the embedded curriculum pack so the dependency chain stays usable.
+    const packs = getStrandPacks(subjectName);
+    for (const strand of enriched) {
+      const matchingPack = packs.find((pack) => {
+        const databaseName = strand.strand_name.toLowerCase();
+        const packName = pack.strand.toLowerCase();
+        return databaseName.includes(packName) || packName.includes(databaseName);
+      });
+      if (!matchingPack) continue;
+
+      if (!strand.sub_strands?.length) {
+        strand.sub_strands = matchingPack.subStrands.map((subStrand, subStrandIndex) => ({
+          id: `kicd-ss-${strand.id}-${subStrandIndex}`,
+          sub_strand_name: subStrand.name,
+        }));
+      }
+
+      for (const [subStrandIndex, subStrand] of (strand.sub_strands || []).entries()) {
+        const matchingPackSubStrand = matchingPack.subStrands.find((packSubStrand) => {
+          const databaseName = subStrand.sub_strand_name.toLowerCase();
+          const packName = packSubStrand.name.toLowerCase();
+          return databaseName.includes(packName) || packName.includes(databaseName);
+        });
+        if (!matchingPackSubStrand || allTopics.some((topic) => topic.sub_strand_id === subStrand.id)) continue;
+
+        matchingPackSubStrand.topics.forEach((topicName, topicIndex) => {
+          allTopics.push({
+            id: `kicd-topic-${strand.id}-${subStrandIndex}-${topicIndex}`,
+            topic_name: topicName,
+            strand_id: strand.id,
+            sub_strand_id: subStrand.id,
+          });
+        });
       }
     }
+
 
     setStrands(enriched);
     setTopics(allTopics);

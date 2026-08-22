@@ -256,12 +256,27 @@ export const JUNIOR_STRAND_PACKS: Record<string, KicdStrandPack[]> = {
       strand: 'Scientific Investigation',
       subStrands: [
         {
-          name: 'Scientific Methods',
-          topics: ['Laboratory safety', 'Measurements', 'Scientific inquiry', 'Recording results'],
+          name: 'Scientific Methods and Safety',
+          topics: ['Laboratory safety', 'Scientific inquiry'],
           slos: [
             'observe laboratory safety rules',
-            'use basic measuring instruments accurately',
             'design simple scientific investigations',
+          ],
+        },
+        {
+          name: 'Measurements and Recording',
+          topics: ['Measurements', 'Recording results'],
+          slos: [
+            'use basic measuring instruments accurately',
+            'record observations and measurements using suitable units',
+          ],
+        },
+        {
+          name: 'Data Analysis and Interpretation',
+          topics: ['Data collection', 'Tables and graphs', 'Interpreting results'],
+          slos: [
+            'organise scientific observations in tables and graphs',
+            'interpret patterns and draw evidence-based conclusions',
           ],
         },
       ],
@@ -270,13 +285,24 @@ export const JUNIOR_STRAND_PACKS: Record<string, KicdStrandPack[]> = {
       strand: 'Matter and Materials',
       subStrands: [
         {
-          name: 'Properties of Matter',
-          topics: ['States of matter', 'Mixtures and separation', 'Elements and compounds', 'Physical and chemical changes'],
-          slos: [
-            'describe properties of matter',
-            'separate mixtures using appropriate methods',
-            'distinguish physical and chemical changes',
-          ],
+          name: 'States of Matter',
+          topics: ['Solids, liquids and gases', 'Changes of state'],
+          slos: ['describe properties of the three common states of matter', 'explain changes of state using particle ideas'],
+        },
+        {
+          name: 'Mixtures and Separation',
+          topics: ['Types of mixtures', 'Filtration and decantation', 'Evaporation and distillation'],
+          slos: ['identify common mixtures', 'select suitable methods for separating mixtures'],
+        },
+        {
+          name: 'Elements, Compounds and Mixtures',
+          topics: ['Elements', 'Compounds', 'Distinguishing mixtures from compounds'],
+          slos: ['classify substances as elements, compounds or mixtures', 'describe simple properties of compounds'],
+        },
+        {
+          name: 'Physical and Chemical Changes',
+          topics: ['Physical changes', 'Chemical changes', 'Evidence of chemical change'],
+          slos: ['distinguish physical and chemical changes', 'identify evidence of a chemical reaction'],
         },
       ],
     },
@@ -284,13 +310,29 @@ export const JUNIOR_STRAND_PACKS: Record<string, KicdStrandPack[]> = {
       strand: 'Living Things and Environment',
       subStrands: [
         {
-          name: 'Organisms and Ecosystems',
-          topics: ['Cell structure', 'Human body systems', 'Nutrition', 'Ecosystems and conservation'],
-          slos: [
-            'describe basic cell structures',
-            'explain functions of major body systems',
-            'demonstrate care for the environment',
-          ],
+          name: 'Cell Structure and Functions',
+          topics: ['Cell structure', 'Functions of cell parts'],
+          slos: ['describe basic cell structures', 'relate cell parts to their functions'],
+        },
+        {
+          name: 'Human Body Systems',
+          topics: ['Digestive system', 'Respiratory system', 'Circulatory system'],
+          slos: ['explain functions of major body systems', 'describe how body systems work together'],
+        },
+        {
+          name: 'Nutrition and Health',
+          topics: ['Nutrients', 'Balanced diet', 'Healthy living'],
+          slos: ['identify nutrients in foods', 'explain practices that promote good health'],
+        },
+        {
+          name: 'Ecosystems and Conservation',
+          topics: ['Food chains', 'Interdependence', 'Environmental conservation'],
+          slos: ['describe relationships in an ecosystem', 'demonstrate care for the environment'],
+        },
+        {
+          name: 'Reproduction',
+          topics: ['Modes of reproduction', 'Growth and development'],
+          slos: ['describe basic modes of reproduction', 'explain stages of growth and development'],
         },
       ],
     },
@@ -298,13 +340,54 @@ export const JUNIOR_STRAND_PACKS: Record<string, KicdStrandPack[]> = {
       strand: 'Force, Energy and Motion',
       subStrands: [
         {
-          name: 'Energy Transformations',
-          topics: ['Types of energy', 'Heat transfer', 'Simple machines', 'Electricity basics'],
-          slos: [
-            'identify forms of energy and transformations',
-            'explain heat transfer methods',
-            'apply principles of simple machines',
-          ],
+          name: 'Types of Energy',
+          topics: ['Forms of energy', 'Energy transformations'],
+          slos: ['identify forms of energy and transformations', 'describe energy changes in everyday devices'],
+        },
+        {
+          name: 'Heat Transfer',
+          topics: ['Conduction', 'Convection', 'Radiation'],
+          slos: ['explain heat transfer methods', 'identify applications of heat transfer'],
+        },
+        {
+          name: 'Simple Machines',
+          topics: ['Levers', 'Pulleys', 'Mechanical advantage'],
+          slos: ['identify common simple machines', 'apply principles of simple machines'],
+        },
+        {
+          name: 'Electricity and Magnetism',
+          topics: ['Electric circuits', 'Conductors and insulators', 'Magnets'],
+          slos: ['construct a simple electric circuit', 'distinguish conductors from insulators'],
+        },
+        {
+          name: 'Light and Sound',
+          topics: ['Reflection of light', 'Refraction of light', 'Sound production'],
+          slos: ['describe reflection and refraction', 'explain how sound is produced'],
+        },
+      ],
+    },
+    {
+      strand: 'Earth and Space',
+      subStrands: [
+        {
+          name: 'The Solar System',
+          topics: ['The Sun and planets', 'Rotation and revolution'],
+          slos: ['identify major bodies in the solar system', 'distinguish rotation from revolution'],
+        },
+        {
+          name: 'Weather and Climate',
+          topics: ['Weather elements', 'Weather instruments', 'Climate patterns'],
+          slos: ['record common weather elements', 'distinguish weather from climate'],
+        },
+        {
+          name: 'Rocks and Minerals',
+          topics: ['Types of rocks', 'Uses of minerals'],
+          slos: ['identify common rocks and minerals', 'describe useful properties of minerals'],
+        },
+        {
+          name: 'Environmental Conservation',
+          topics: ['Pollution', 'Waste management', 'Sustainable practices'],
+          slos: ['identify causes of pollution', 'propose sustainable conservation practices'],
         },
       ],
     },
