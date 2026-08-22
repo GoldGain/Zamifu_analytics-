@@ -84,16 +84,18 @@ function renderNumberLine(spec: ExamVisualSpec): string {
   }).join('')}`;
 }
 
-function extractVolume(labels: string[], fallback: number): number {
-  const match = labels.join(' ').match(/(?:initial|before)[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*mL/i);
-  const value = match ? Number(match[1]) : fallback;
+function extractVolume(labels: string[], fallback: number, position: 'initial' | 'final'): number {
+  const matches = labels.flatMap((label) => Array.from(label.matchAll(/([0-9]+(?:\.[0-9]+)?)\s*(?:mL|cm³|cm3)\b/gi)).map((match) => Number(match[1]))).filter((value) => Number.isFinite(value));
+  const value = position === 'final' ? matches[matches.length - 1] : matches[0];
   return Number.isFinite(value) ? value : fallback;
 }
 
 function renderMeasuringCylinderDiagram(spec: ExamVisualSpec): string {
   const labels = (spec.labels || []).map(String);
-  const initial = extractVolume(labels, 40);
-  const final = extractVolume(labels.filter((label) => /final|after/i.test(label)), 65);
+  const values = (spec.values || []).map((value) => `${value} mL`);
+  const volumeSources = [...labels, ...values];
+  const initial = extractVolume(volumeSources, 40, 'initial');
+  const final = extractVolume(volumeSources, 65, 'final');
   const maxVolume = Math.max(80, Math.ceil(Math.max(initial, final) / 10) * 10);
   const drawCylinder = (x: number, volume: number, stone: boolean, label: string): string => {
     const baseY = 238;

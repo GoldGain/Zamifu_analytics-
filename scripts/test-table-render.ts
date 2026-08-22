@@ -101,3 +101,20 @@ for (const value of ['40 mL', '65 mL', 'stone', 'Read the bottom of the meniscus
 }
 assert.ok(!cylinderSvg.includes('M90 245'), 'measuring-cylinder SVG should not use the generic shape placeholder');
 console.log('PASS: measuring-cylinder visuals preserve volume readings, graduations, and the stone.');
+
+const labelledCylinderQuestion: GeneratedExamQuestion = {
+  ...measuringCylinderQuestion,
+  question_text: 'The diagrams below show cylinders A and B before and after a stone is submerged.',
+  visual_spec: {
+    title: 'Water displacement readings',
+    labels: ['Cylinder A: Water level 50 cm³', 'Cylinder B: Water level 80 cm³ with submerged stone'],
+    values: [50, 80],
+    caption: 'Read the volume in each cylinder.',
+    asset_type: 'diagram',
+  },
+};
+const labelledCylinderSvg = decodeURIComponent(renderExamVisualDataUrl(labelledCylinderQuestion)!.split(',', 2)[1] || '');
+for (const value of ['50 mL', '80 mL']) {
+  assert.ok(labelledCylinderSvg.includes(value), `labelled cylinder SVG should contain provider reading ${value}`);
+}
+console.log('PASS: labelled Cylinder A/B readings are preserved in the deterministic visual.');
