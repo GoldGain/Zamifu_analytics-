@@ -117,6 +117,59 @@ export function alignQuestionsToBlueprint(request: ExamGenerationRequest, questi
   }));
 }
 
+const markFlexibility: Record<QuestionType, number> = {
+  essay: 9,
+  case_study: 8,
+  short_answer: 7,
+  numeric_response: 6,
+  matching: 5,
+  completion: 4,
+  multiple_response: 3,
+  modified_true_false: 2,
+  multiple_choice: 1,
+};
+
+/**
+ * Reconcile provider-supplied marks when a request has no explicit blueprint.
+ * Blueprint requests are already aligned to their exact mark sequence above.
+ * For flexible CBE/custom requests, adjust one mark at a time, preferring
+ * response types that can legitimately carry developed marking guidance, while
+ * keeping every question within the 1–30 mark schema bounds.
+ */
+export function reconcileQuestionMarks(request: ExamGenerationRequest, questions: GeneratedExamQuestion[]): GeneratedExamQuestion[] {
+  const aligned = alignQuestionsToBlueprint(request, questions);
+  if (request.blueprint?.sections.length || !aligned.length || request.totalMarks <= 0) return aligned;
+  let delta = Math.round(request.totalMarks) - aligned.reduce((sum, question) => sum + question.marks, 0);
+  if (delta === 0) return aligned;
+
+  const adjusted = aligned.map((question) => ({ ...question }));
+  const indices = adjusted.map((question, index) => index).sort((left, right) => {
+    const flexibility = markFlexibility[adjusted[right].question_type] - markFlexibility[adjusted[left].question_type];
+    return flexibility || adjusted[right].marks - adjusted[left].marks || right - left;
+  });
+  while (delta !== 0) {
+    let changed = false;
+    for (const index of indices) {
+      const question = adjusted[index];
+      if (delta > 0 && question.marks < 30) {
+        question.marks += 1;
+        delta -= 1;
+        changed = true;
+      } else if (delta < 0 && question.marks > 1) {
+        question.marks -= 1;
+        delta += 1;
+        changed = true;
+      }
+      if (delta === 0) break;
+    }
+    if (!changed) break;
+  }
+  if (delta !== 0) {
+    throw new DeepSeekResponseError(`The generated questions could not be reconciled to the requested ${request.totalMarks} marks.`);
+  }
+  return adjusted;
+}
+
 export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
   const blueprint = allocateQuestionBlueprint(request);
   const selectedStrands = request.strands.length ? request.strands.join('; ') : 'Use the selected curriculum topic context.';
@@ -327,7 +380,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
   const normalizedQuestions = Array.isArray(parsed.questions)
     ? parsed.questions.map((entry) => normalizeQuestion(entry, fallbackType, fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
     : [];
-  const blueprintAlignedQuestions = alignQuestionsToBlueprint(request, normalizedQuestions);
+  const blueprintAlignedQuestions = reconcileQuestionMarks(request, normalizedQuestions);
 
   if (!blueprintAlignedQuestions.length) {
     throw new DeepSeekResponseError('The AI service did not provide any valid questions. Please try again with a narrower curriculum selection.');

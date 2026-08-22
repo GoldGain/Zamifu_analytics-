@@ -181,6 +181,57 @@ export function makeFormatBlueprint(format: ExamFormat, totalMarks: number, diff
   return undefined;
 }
 
+export function makeBalancedBlueprint(questionTypes: QuestionType[], totalMarks: number, difficulty: Difficulty = 'mixed'): ExamBlueprint {
+  const safeTotal = Math.max(1, Math.round(totalMarks));
+  const selected = Array.from(new Set(questionTypes)).filter((type): type is QuestionType => CBC_QUESTION_TYPES.some((item) => item.value === type));
+  const types = selected.length ? selected : ['multiple_choice' as QuestionType];
+  const totalWeight = types.reduce((sum, type) => sum + (CBC_QUESTION_TYPES.find((item) => item.value === type)?.defaultMarks || 1), 0);
+  const countPerType = Math.max(1, Math.round(safeTotal / Math.max(1, totalWeight)));
+  const items = types.flatMap((type) => Array.from({ length: countPerType }, () => ({
+    type,
+    marks: CBC_QUESTION_TYPES.find((item) => item.value === type)?.defaultMarks || 1,
+  })));
+  let delta = safeTotal - items.reduce((sum, item) => sum + item.marks, 0);
+  const adjustmentOrder = items.map((item, index) => index).sort((left, right) => items[right].marks - items[left].marks);
+  while (delta !== 0) {
+    let changed = false;
+    for (const index of adjustmentOrder) {
+      if (delta > 0 && items[index].marks < 30) {
+        items[index].marks += 1;
+        delta -= 1;
+        changed = true;
+      } else if (delta < 0 && items[index].marks > 1) {
+        items[index].marks -= 1;
+        delta += 1;
+        changed = true;
+      }
+      if (delta === 0) break;
+    }
+    if (!changed) break;
+  }
+  if (delta !== 0) {
+    throw new Error(`Could not allocate exactly ${safeTotal} marks across the selected question types.`);
+  }
+
+  const sections: ExamBlueprintSection[] = [];
+  for (const item of items) {
+    const previous = sections[sections.length - 1];
+    if (previous && previous.question_type === item.type && previous.marks_per_question === item.marks) {
+      previous.count += 1;
+    } else {
+      sections.push({
+        id: `balanced-${sections.length + 1}`,
+        title: questionTypeLabel(item.type),
+        question_type: item.type,
+        count: 1,
+        marks_per_question: item.marks,
+        difficulty,
+      });
+    }
+  }
+  return { sections, total_marks: safeTotal };
+}
+
 export function allocateQuestionBlueprint(request: ExamGenerationRequest): Array<{ type: QuestionType; count: number; marks: number }> {
   if (request.blueprint?.sections.length) {
     return request.blueprint.sections.map((section) => ({

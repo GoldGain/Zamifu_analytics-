@@ -10,6 +10,7 @@ import {
   CBC_QUESTION_TYPES,
   downloadExamPdf,
   learnerQuestionText,
+  makeBalancedBlueprint,
   makeFormatBlueprint,
   questionTypeLabel,
   type Difficulty,
@@ -308,7 +309,9 @@ export default function ExamGenerator({
         format,
         term,
         schoolName,
-        blueprint: ['kpsea', 'kjsea'].includes(format) ? makeFormatBlueprint(format, totalMarks, difficulty) : undefined,
+        blueprint: ['kpsea', 'kjsea'].includes(format)
+          ? makeFormatBlueprint(format, totalMarks, difficulty)
+          : makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty),
       };
       const response = await fetch('/api/generate-exam', {
         method: 'POST',

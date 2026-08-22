@@ -34,6 +34,7 @@ export {
   questionTypeLabel,
   validateExamRequest,
   allocateQuestionBlueprint,
+  makeBalancedBlueprint,
   makeFormatBlueprint,
 } from './exam-schema';
 export type {

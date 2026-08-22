@@ -1,10 +1,10 @@
 import {
-  alignQuestionsToBlueprint,
   buildExamPrompt,
   extractJsonFromContent,
   fallbackDifficulty,
   normalizeQuestion,
   outputTokenBudget,
+  reconcileQuestionMarks,
 } from './deepseek-api.js';
 import { hasCompleteTableVisual } from './exam-visuals.js';
 import { makeExamTitle, type ExamGenerationRequest, type ExamPaper, type GeneratedExamQuestion } from './exam-schema.js';
@@ -48,7 +48,7 @@ function buildPaper(request: ExamGenerationRequest, parsed: Record<string, unkno
   const normalized = Array.isArray(parsed.questions)
     ? parsed.questions.map((entry) => normalizeQuestion(entry, fallbackType, fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
     : [];
-  const blueprintAlignedQuestions = alignQuestionsToBlueprint(request, normalized);
+  const blueprintAlignedQuestions = reconcileQuestionMarks(request, normalized);
   if (!blueprintAlignedQuestions.length) {
     throw new GeminiResponseError('Gemini did not provide any valid questions. Please try again with a narrower curriculum selection.');
   }

@@ -14,6 +14,8 @@ import {
   type ExamGenerationRequest,
   type ExamBlueprint,
   type QuestionType,
+  makeBalancedBlueprint,
+  makeFormatBlueprint,
 } from '../src/lib/exam-schema.js';
 import { filterUnnecessaryExamVisual, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
@@ -228,11 +230,19 @@ async function handleExamGeneration(
   user: { id: string; email?: string; user_metadata?: Record<string, unknown> },
   request: RequestLike,
 ): Promise<void> {
-  const parsedRequest = parseExamRequest(parseBody(request.body));
-  if (!parsedRequest) {
+  const rawParsedRequest = parseExamRequest(parseBody(request.body));
+  if (!rawParsedRequest) {
     jsonError(response, 400, 'Invalid exam-generation request.');
     return;
   }
+  const parsedRequest: ExamGenerationRequest = rawParsedRequest.blueprint
+    ? rawParsedRequest
+    : {
+        ...rawParsedRequest,
+        blueprint: ['kpsea', 'kjsea'].includes(rawParsedRequest.format)
+          ? makeFormatBlueprint(rawParsedRequest.format, rawParsedRequest.totalMarks, rawParsedRequest.difficulty)
+          : makeBalancedBlueprint(rawParsedRequest.questionTypes, rawParsedRequest.totalMarks, rawParsedRequest.difficulty),
+      };
   const accessError = assertGenerationAccess(profile);
   if (accessError) {
     jsonError(response, 403, accessError);
