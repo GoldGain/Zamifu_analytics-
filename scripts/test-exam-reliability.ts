@@ -43,8 +43,10 @@ const validContent = JSON.stringify({
 
 const originalFetch = globalThis.fetch;
 let calls = 0;
-globalThis.fetch = (async () => {
+const requestBodies: Array<Record<string, unknown>> = [];
+globalThis.fetch = (async (_input, init) => {
   calls += 1;
+  if (typeof init?.body === 'string') requestBodies.push(JSON.parse(init.body) as Record<string, unknown>);
   if (calls === 1) return new Response('', { status: 200 });
   if (calls === 2) return new Response(JSON.stringify({ choices: [{ message: { content: '{not-valid-json' } }] }), { status: 200 });
   return new Response(JSON.stringify({ choices: [{ message: { content: [{ type: 'text', text: validContent }] } }] }), {
@@ -56,6 +58,8 @@ globalThis.fetch = (async () => {
 try {
   const paper = await generateExamWithDeepSeek(request, 'Numbers: Integers: ordering integers and number lines.');
   assert.equal(calls, 3, 'the provider should be retried after empty and malformed responses');
+  assert.equal(requestBodies[0]?.model, 'deepseek-v4-pro', 'legacy deepseek-chat should map to the current V4-Pro model');
+  assert.deepEqual(requestBodies[0]?.response_format, { type: 'json_object' }, 'the first attempt should use DeepSeek JSON mode');
   assert.equal(paper.questions.length, 1, 'the recovered response should normalize one valid question');
   assert.equal(paper.questions[0]?.question_text, 'Which integer is greatest: -3, 0, or 2?');
   assert.deepEqual(paper.questions[0]?.options, ['-3', '0', '2', '-5']);

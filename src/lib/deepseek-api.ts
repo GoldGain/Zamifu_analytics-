@@ -94,6 +94,11 @@ function fallbackDifficulty(request: ExamGenerationRequest): 'easy' | 'medium' |
   return request.difficulty === 'mixed' ? 'medium' : request.difficulty;
 }
 
+function outputTokenBudget(request: ExamGenerationRequest, compact = false): number {
+  const scaled = request.totalMarks * (compact ? 110 : 160);
+  return Math.min(compact ? 10000 : 14000, Math.max(compact ? 5500 : 7000, scaled));
+}
+
 function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
   const blueprint = allocateQuestionBlueprint(request);
   const selectedStrands = request.strands.length ? request.strands.join('; ') : 'Use the selected curriculum topic context.';
@@ -108,7 +113,7 @@ function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: strin
     ? JSON.stringify(request.blueprint.sections.map((section) => ({ type: section.question_type, count: section.count, marks_per_question: section.marks_per_question, difficulty: section.difficulty, strand: section.strand, sub_strand: section.sub_strand, topic: section.topic, competency: section.competency })))
     : blueprint.map((entry) => `${entry.count} ${entry.type} items totaling about ${entry.marks} marks`).join('; ');
 
-  return `You are a senior Kenyan CBE/CBC assessment specialist. Create an original, age-appropriate, classroom-ready assessment. Do not reproduce copyrighted questions, proprietary marking schemes, or web text. Align questions to the stated grade, subject, strand, sub-strand, and topics. Use inclusive language, realistic Kenyan classroom contexts where suitable, clear command words, and internally consistent marks.\n\nAssessment context:\n- Grade: ${request.gradeLevel}\n- Subject: ${request.subject}\n- Strand(s): ${selectedStrands}\n- Sub-strand(s): ${selectedSubStrands}\n- Topic(s): ${selectedTopics}\n- Format: ${request.format.toUpperCase()}\n- Difficulty: ${request.difficulty}\n- Total marks target: ${request.totalMarks}\n- Duration: ${request.durationMinutes} minutes\n- Required question blueprint: ${blueprintText}\n- Learning outcomes: ${outcomes}\n- Competencies: ${competencies}\n- ${imageDirection}\n\nVetted internal curriculum context (use only as high-level guidance; do not quote it verbatim):\n${knowledgeContext || 'No additional knowledge records were supplied. Use established CBE assessment practice and the selected curriculum context.'}\n\nReturn json only. Use exactly this object shape:\n{\n  "title": "string",\n  "instructions": ["string"],\n  "questions": [\n    {\n      "question_type": "multiple_choice | multiple_response | modified_true_false | completion | matching | short_answer | numeric_response | case_study | essay",\n      "question_text": "string",\n      "options": ["string"],\n      "correct_answer": "string",\n      "marking_scheme": "string",\n      "marks": 1,\n      "difficulty": "easy | medium | hard",\n      "strand": "string",\n      "sub_strand": "string",\n      "topic": "string",\n      "learning_outcome": "string or empty",\n      "competency": "string or empty",\n      "cognitive_level": "remember | understand | apply | analyse | evaluate | create",\n      "visual_spec": {"asset_type":"diagram | map | chart | graph | shape | flowchart | illustration | table | number_line", "title":"string", "prompt":"string", "caption":"string", "labels":["string"], "x_labels":["string"], "map_regions":["string"]} or null\n    }\n  ]\n}\nFor every question that does not explicitly require a visual, use null for visual_spec. The word json is intentionally included to enable structured JSON output.`;
+  return `You are a senior Kenyan CBE/CBC assessment specialist. Create an original, age-appropriate, classroom-ready assessment. Do not reproduce copyrighted questions, proprietary marking schemes, or web text. Align questions to the stated grade, subject, strand, sub-strand, and topics. Use inclusive language, realistic Kenyan classroom contexts where suitable, clear command words, and internally consistent marks.\n\nAssessment context:\n- Grade: ${request.gradeLevel}\n- Subject: ${request.subject}\n- Strand(s): ${selectedStrands}\n- Sub-strand(s): ${selectedSubStrands}\n- Topic(s): ${selectedTopics}\n- Format: ${request.format.toUpperCase()}\n- Difficulty: ${request.difficulty}\n- Total marks target: ${request.totalMarks}\n- Duration: ${request.durationMinutes} minutes\n- Required question blueprint: ${blueprintText}\n- Learning outcomes: ${outcomes}\n- Competencies: ${competencies}\n- ${imageDirection}\n\nVetted internal curriculum context (use only as high-level guidance; do not quote it verbatim):\n${knowledgeContext || 'No additional knowledge records were supplied. Use established CBE assessment practice and the selected curriculum context.'}\n\nReturn json only. Use exactly this object shape:\n{\n  "title": "string",\n  "instructions": ["string"],\n  "questions": [\n    {\n      "question_type": "multiple_choice | multiple_response | modified_true_false | completion | matching | short_answer | numeric_response | case_study | essay",\n      "question_text": "string",\n      "options": ["string"],\n      "correct_answer": "string",\n      "marking_scheme": "string",\n      "marks": 1,\n      "difficulty": "easy | medium | hard",\n      "strand": "string",\n      "sub_strand": "string",\n      "topic": "string",\n      "learning_outcome": "string or empty",\n      "competency": "string or empty",\n      "cognitive_level": "remember | understand | apply | analyse | evaluate | create",\n      "visual_spec": {"asset_type":"diagram | map | chart | graph | shape | flowchart | illustration | table | number_line", "title":"string", "prompt":"string", "caption":"string", "labels":["string"], "x_labels":["string"], "map_regions":["string"]} or null\n    }\n  ]\n}\nFor every question that does not explicitly require a visual, use null for visual_spec. Keep every field concise, do not repeat the instructions, and do not add commentary outside the JSON object. The word json is intentionally included to enable structured JSON output.`;
 }
 
 function extractJsonFromContent(content: string): Record<string, unknown> | null {
@@ -189,8 +194,15 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     ? `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`
     : `${(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`;
 
-  // Use the stable DeepSeek chat model unless an explicit model override is supplied.
-  const modelName = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || (useDeepSeek ? 'deepseek-chat' : 'gpt-5-mini');
+  // DeepSeek's current API documents the V4 model names. Keep the older
+  // deepseek-chat setting backward-compatible by mapping it to V4-Pro.
+  const configuredModel = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || '';
+  const modelName = useDeepSeek
+    ? (configuredModel === 'deepseek-chat' || !configuredModel ? 'deepseek-v4-pro' : configuredModel)
+    : (configuredModel || 'gpt-5-mini');
+  const fallbackModel = useDeepSeek
+    ? (process.env.AI_EXAM_FALLBACK_MODEL || (modelName === 'deepseek-v4-flash' ? 'deepseek-v4-pro' : 'deepseek-v4-flash'))
+    : modelName;
 
   console.log('[exam-gen] endpoint:', endpoint);
   console.log('[exam-gen] model:', modelName);
@@ -198,26 +210,35 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
 
   const prompt = buildExamPrompt(request, knowledgeContext);
   let parsed: Record<string, unknown> | null = null;
+  let lastFailure = '';
+  const attemptPlans = [
+    { model: modelName, maxTokens: outputTokenBudget(request), useJsonMode: true },
+    { model: modelName, maxTokens: outputTokenBudget(request, true), useJsonMode: false },
+    { model: fallbackModel, maxTokens: outputTokenBudget(request, true), useJsonMode: false },
+  ];
 
-  for (let attempt = 0; attempt < 3 && !parsed; attempt += 1) {
+  for (let attempt = 0; attempt < attemptPlans.length && !parsed; attempt += 1) {
+    const plan = attemptPlans[attempt];
     const retryInstruction = attempt === 0
       ? ''
-      : '\n\nRETRY REQUIREMENT: The previous provider response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return an empty message, do not use markdown fences, and keep each question field concise enough to fit the requested paper.';
+      : attempt === 1
+        ? '\n\nRECOVERY REQUIREMENT: The previous provider response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return an empty message, do not use markdown fences, and keep every field concise enough to fit the requested paper.'
+        : '\n\nFINAL RECOVERY REQUIREMENT: Produce the complete paper in the exact JSON shape now. Prioritise all required questions, marks, answers, and marking guidance. Use short sentences, empty strings for optional metadata when necessary, and visual_spec null unless the stem explicitly requires a visual. Return JSON only.';
     const requestPayload: Record<string, unknown> = {
-      model: modelName,
+      model: plan.model,
       messages: [
         { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' },
         { role: 'user', content: `${prompt}${retryInstruction}` },
       ],
-      temperature: attempt === 0 ? 0.45 : 0.25,
-      max_tokens: attempt === 0 ? 7000 : 6000,
+      temperature: attempt === 0 ? 0.45 : 0.2,
+      max_tokens: plan.maxTokens,
       stream: false,
     };
-    // DeepSeek supports json_object, but omitting it on retries gives the provider
-    // a second compatible path when a transient structured-output response is empty.
-    if (attempt === 0) requestPayload.response_format = { type: 'json_object' };
+    // DeepSeek's JSON mode is useful for the first attempt. The recovery paths
+    // intentionally omit it so a transient empty structured response can recover.
+    if (plan.useJsonMode) requestPayload.response_format = { type: 'json_object' };
     const body = JSON.stringify(requestPayload);
-    console.log('[exam-gen] attempt:', attempt + 1, 'request body length:', body.length);
+    console.log('[exam-gen] attempt:', attempt + 1, 'model:', plan.model, 'request body length:', body.length, 'max_tokens:', plan.maxTokens);
 
     try {
       const response = await fetch(endpoint, {
@@ -254,15 +275,19 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
         : [];
       if (!candidateQuestions.length) throw new DeepSeekResponseError('The AI service did not provide any valid questions.');
       parsed = candidate;
-    } catch {
-      if (attempt < 2) {
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : 'Unknown provider failure.';
+      console.error('[exam-gen] attempt failed:', attempt + 1, plan.model, lastFailure.slice(0, 300));
+      if (error instanceof DeepSeekConfigurationError) throw error;
+      if (attempt < attemptPlans.length - 1) {
         await waitBeforeRetry(attempt);
       }
     }
   }
 
   if (!parsed) {
-    throw new DeepSeekResponseError('The AI service did not return a usable exam response after three attempts. Please retry; your selected blueprint and curriculum choices were not lost.');
+    const detail = lastFailure ? ` Last provider detail: ${lastFailure.slice(0, 260)}` : '';
+    throw new DeepSeekResponseError(`The AI service did not return a usable exam response after three attempts. Please retry; your selected blueprint and curriculum choices were not lost.${detail}`);
   }
   const fallbackType = request.questionTypes[0] || 'multiple_choice';
   const normalizedQuestions = Array.isArray(parsed.questions)
