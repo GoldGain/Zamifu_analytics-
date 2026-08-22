@@ -61,7 +61,7 @@ function normalizeDifficulty(value: unknown, fallback: 'easy' | 'medium' | 'hard
   return value === 'easy' || value === 'medium' || value === 'hard' ? value : fallback;
 }
 
-function normalizeQuestion(raw: unknown, fallbackType: QuestionType, fallbackDifficulty: 'easy' | 'medium' | 'hard'): GeneratedExamQuestion | null {
+export function normalizeQuestion(raw: unknown, fallbackType: QuestionType, fallbackDifficulty: 'easy' | 'medium' | 'hard'): GeneratedExamQuestion | null {
   if (!raw || typeof raw !== 'object') return null;
   const item = raw as Record<string, unknown>;
   const questionText = toSafeString(item.question_text);
@@ -90,16 +90,16 @@ function normalizeQuestion(raw: unknown, fallbackType: QuestionType, fallbackDif
   };
 }
 
-function fallbackDifficulty(request: ExamGenerationRequest): 'easy' | 'medium' | 'hard' {
+export function fallbackDifficulty(request: ExamGenerationRequest): 'easy' | 'medium' | 'hard' {
   return request.difficulty === 'mixed' ? 'medium' : request.difficulty;
 }
 
-function outputTokenBudget(request: ExamGenerationRequest, compact = false): number {
+export function outputTokenBudget(request: ExamGenerationRequest, compact = false): number {
   const scaled = request.totalMarks * (compact ? 110 : 160);
   return Math.min(compact ? 10000 : 14000, Math.max(compact ? 5500 : 7000, scaled));
 }
 
-function alignQuestionsToBlueprint(request: ExamGenerationRequest, questions: GeneratedExamQuestion[]): GeneratedExamQuestion[] {
+export function alignQuestionsToBlueprint(request: ExamGenerationRequest, questions: GeneratedExamQuestion[]): GeneratedExamQuestion[] {
   const sections = request.blueprint?.sections || [];
   if (!sections.length) return questions;
   const markSequence = sections.flatMap((section) => Array.from({ length: section.count }, () => section.marks_per_question));
@@ -109,7 +109,7 @@ function alignQuestionsToBlueprint(request: ExamGenerationRequest, questions: Ge
   }));
 }
 
-function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
+export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
   const blueprint = allocateQuestionBlueprint(request);
   const selectedStrands = request.strands.length ? request.strands.join('; ') : 'Use the selected curriculum topic context.';
   const selectedSubStrands = request.subStrands.length ? request.subStrands.join('; ') : 'Not separately constrained.';
@@ -131,7 +131,7 @@ function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: strin
   return `You are a senior Kenyan CBE/CBC assessment specialist. Create an original, age-appropriate, classroom-ready assessment. Do not reproduce copyrighted questions, proprietary marking schemes, or web text. Align questions to the stated grade, subject, strand, sub-strand, and topics. Use inclusive language, realistic Kenyan classroom contexts where suitable, clear command words, and internally consistent marks.\n\nAssessment context:\n- Grade: ${request.gradeLevel}\n- Subject: ${request.subject}\n- Strand(s): ${selectedStrands}\n- Sub-strand(s): ${selectedSubStrands}\n- Topic(s): ${selectedTopics}\n- Format: ${request.format.toUpperCase()}\n- Format guidance: ${formatDirection}\n- Difficulty: ${request.difficulty}\n- Total marks target: ${request.totalMarks}\n- Duration: ${request.durationMinutes} minutes\n- Required question blueprint: ${blueprintText}\n- Learning outcomes: ${outcomes}\n- Competencies: ${competencies}\n- ${imageDirection}\n\nVetted internal curriculum context (use only as high-level guidance; do not quote it verbatim):\n${knowledgeContext || 'No additional knowledge records were supplied. Use established CBE assessment practice and the selected curriculum context.'}\n\nReturn json only. Use exactly this object shape:\n{\n  "title": "string",\n  "instructions": ["string"],\n  "questions": [\n    {\n      "question_type": "multiple_choice | multiple_response | modified_true_false | completion | matching | short_answer | numeric_response | case_study | essay",\n      "question_text": "string",\n      "options": ["string"],\n      "correct_answer": "string",\n      "marking_scheme": "string",\n      "marks": 1,\n      "difficulty": "easy | medium | hard",\n      "strand": "string",\n      "sub_strand": "string",\n      "topic": "string",\n      "learning_outcome": "string or empty",\n      "competency": "string or empty",\n      "cognitive_level": "remember | understand | apply | analyse | evaluate | create",\n      "visual_spec": {"asset_type":"diagram | map | chart | graph | shape | flowchart | illustration | table | number_line", "title":"string", "prompt":"string", "caption":"string", "labels":["string"], "x_labels":["string"], "map_regions":["string"]} or null\n    }\n  ]\n}\nFor every question that does not explicitly require a visual, use null for visual_spec. Keep every field concise, do not repeat the instructions, and do not add commentary outside the JSON object. The word json is intentionally included to enable structured JSON output.`;
 }
 
-function extractJsonFromContent(content: string): Record<string, unknown> | null {
+export function extractJsonFromContent(content: string): Record<string, unknown> | null {
   // Strategy 1: Try direct parse of the full content
   try {
     const direct = JSON.parse(content);

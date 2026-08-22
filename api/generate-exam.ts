@@ -5,6 +5,11 @@ import {
   DeepSeekResponseError,
 } from '../src/lib/deepseek-api.js';
 import {
+  generateExamWithGemini,
+  GeminiConfigurationError,
+  GeminiResponseError,
+} from '../src/lib/gemini-api.js';
+import {
   validateExamRequest,
   type ExamGenerationRequest,
   type ExamBlueprint,
@@ -246,16 +251,40 @@ async function handleExamGeneration(
   }
 
   let generationJobId: string | null = null;
+  const configuredProvider = String(process.env.AI_EXAM_PROVIDER || '').trim().toLowerCase();
+  const useGemini = configuredProvider === 'gemini' || (!configuredProvider && Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
+  const primaryProvider = useGemini ? 'gemini' : 'deepseek';
+  const primaryModel = useGemini ? (process.env.GEMINI_MODEL || 'gemini-3.7-flash') : (process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat');
+  let actualProvider = primaryProvider;
+  let actualModel = primaryModel;
   try {
     const { data: generationJob, error: generationJobError } = await supabase
       .from('exam_generation_jobs')
-      .insert({ school_id: profile.school_id, created_by: user.id, status: 'generating', request_payload: parsedRequest, provider: 'deepseek', model: process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat' })
+      .insert({ school_id: profile.school_id, created_by: user.id, status: 'generating', request_payload: parsedRequest, provider: primaryProvider, model: primaryModel })
       .select('id')
       .single();
     if (generationJobError) throw new Error(`Could not start the generation job: ${generationJobError.message}`);
     generationJobId = generationJob?.id || null;
     const vetted = await loadVettedContext(supabase, parsedRequest);
-    const draftPaper = await generateExamWithDeepSeek(parsedRequest, vetted.context);
+    let draftPaper;
+    try {
+      draftPaper = useGemini
+        ? await generateExamWithGemini(parsedRequest, vetted.context)
+        : await generateExamWithDeepSeek(parsedRequest, vetted.context);
+    } catch (error) {
+      // Gemini is the preferred provider when configured, but a transient
+      // quota, model, or structured-output failure must not break the already
+      // verified DeepSeek route. Explicit Gemini configuration failures remain
+      // actionable instead of being silently masked.
+      if (!useGemini || error instanceof GeminiConfigurationError) throw error;
+      console.warn('[exam-gen] Gemini primary failed; using DeepSeek fallback:', error instanceof Error ? error.message.slice(0, 240) : 'unknown failure');
+      actualProvider = 'deepseek';
+      actualModel = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+      draftPaper = await generateExamWithDeepSeek(parsedRequest, vetted.context);
+      if (generationJobId) {
+        await supabase.from('exam_generation_jobs').update({ provider: actualProvider, model: actualModel }).eq('id', generationJobId);
+      }
+    }
     const renderedQuestions = draftPaper.questions
       .map(filterUnnecessaryExamVisual)
       .map(withRenderedExamVisual);
@@ -357,7 +386,7 @@ async function handleExamGeneration(
     if (generationJobId) {
       await supabase.from('exam_generation_jobs').update({ status: 'failed', error_message: error instanceof Error ? error.message : 'Unknown generation failure', updated_at: new Date().toISOString() }).eq('id', generationJobId);
     }
-    const message = error instanceof DeepSeekConfigurationError || error instanceof DeepSeekResponseError
+    const message = error instanceof DeepSeekConfigurationError || error instanceof DeepSeekResponseError || error instanceof GeminiConfigurationError || error instanceof GeminiResponseError
       ? error.message
       : error instanceof Error ? error.message : 'The exam could not be generated at this time.';
     jsonError(response, 502, message);
