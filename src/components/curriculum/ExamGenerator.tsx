@@ -245,6 +245,16 @@ export default function ExamGenerator({
         validation_results: Array.isArray(saved.validation_results) ? saved.validation_results : [],
       };
       setPaper(loadedPaper);
+      // Keep the blueprint controls truthful when a saved paper is reopened.
+      // Without this synchronization, a KPSEA paper could be displayed while
+      // the form still showed the initial CBE/50-mark/60-minute defaults.
+      setTitle(saved.title || '');
+      setFormat(loadedPaper.format);
+      setTerm(saved.term || 'Term 1');
+      setTotalMarks(Number(saved.total_marks || loadedPaper.total_marks));
+      setDurationMinutes(Number(saved.duration_minutes || loadedPaper.duration_minutes));
+      setSelectedQuestionTypes(new Set(questions.map((question) => question.question_type)));
+      setIncludeImages(questions.some((question) => Boolean(question.image_url || question.visual_spec)));
       toast.success('Saved assessment opened for review.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The saved paper could not be opened.');
