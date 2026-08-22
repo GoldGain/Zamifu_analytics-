@@ -1,0 +1,87 @@
+-- Official index: https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-six-designs/
+-- Official Drive file: 1Cqoxx-afRo1d3DdjdCY8l5STD1lXJhJI (Grade 6 Science and Tech - Revised.pdf).
+-- Exact hierarchy source: KICD viewer page 13 summary table and page 14 detailed strand heading.
+-- Additive/idempotent: existing official parent rows are preserved and only missing official topic anchors are added.
+BEGIN;
+
+INSERT INTO curriculum_subjects (grade_id, subject_name, subject_code)
+SELECT g.id, 'Science and Technology', 'SCI'
+FROM curriculum_grades g
+WHERE g.grade_number=6
+  AND NOT EXISTS (
+    SELECT 1 FROM curriculum_subjects s
+    WHERE s.grade_id=g.id
+      AND lower(trim(s.subject_name))='science and technology'
+  );
+
+INSERT INTO curriculum_strands (subject_id, strand_name, strand_description, strand_order)
+SELECT s.id, v.strand_name, 'Official KICD Grade 6 Science and Technology revised-design strand.', v.strand_order
+FROM (VALUES
+  ('Living things and their Environment',1),
+  ('Matter',2),
+  ('Force and energy',3)
+) v(strand_name,strand_order)
+JOIN curriculum_grades g ON g.grade_number=6
+JOIN curriculum_subjects s ON s.grade_id=g.id
+  AND lower(trim(s.subject_name))='science and technology'
+WHERE NOT EXISTS (
+  SELECT 1 FROM curriculum_strands st
+  WHERE st.subject_id=s.id
+    AND lower(trim(st.strand_name))=lower(trim(v.strand_name))
+    AND st.strand_description ~* '(official|source-verified)[[:space:]]+kicd'
+);
+
+INSERT INTO curriculum_sub_strands (strand_id, sub_strand_name, sub_strand_description, sub_strand_order)
+SELECT st.id, v.sub_strand_name, 'Official KICD Grade 6 Science and Technology revised-design sub-strand.', v.sub_strand_order
+FROM (VALUES
+  ('Living things and their Environment','Fungi',1),
+  ('Living things and their Environment','Invertebrates',2),
+  ('Living things and their Environment','Human circulatory system',3),
+  ('Matter','Change of state',1),
+  ('Matter','Composition of air',2),
+  ('Force and energy','Light',1),
+  ('Force and energy','Levers as simple machines',2),
+  ('Force and energy','Slopes as simple machines',3)
+) v(strand_name,sub_strand_name,sub_strand_order)
+JOIN curriculum_grades g ON g.grade_number=6
+JOIN curriculum_subjects s ON s.grade_id=g.id
+  AND lower(trim(s.subject_name))='science and technology'
+JOIN curriculum_strands st ON st.subject_id=s.id
+  AND lower(trim(st.strand_name))=lower(trim(v.strand_name))
+  AND st.strand_description ~* '(official|source-verified)[[:space:]]+kicd'
+WHERE NOT EXISTS (
+  SELECT 1 FROM curriculum_sub_strands ss
+  WHERE ss.strand_id=st.id
+    AND lower(trim(ss.sub_strand_name))=lower(trim(v.sub_strand_name))
+    AND ss.sub_strand_description ~* '(official|source-verified)[[:space:]]+kicd'
+);
+
+INSERT INTO curriculum_topics (sub_strand_id, topic_name, topic_description, learning_objectives, topic_order)
+SELECT ss.id, v.sub_strand_name, 'Official KICD Grade 6 Science and Technology revised-design content anchor from the exact summary-table sub-strand heading.', ARRAY[]::text[], 1
+FROM (VALUES
+  ('Living things and their Environment','Fungi'),
+  ('Living things and their Environment','Invertebrates'),
+  ('Living things and their Environment','Human circulatory system'),
+  ('Matter','Change of state'),
+  ('Matter','Composition of air'),
+  ('Force and energy','Light'),
+  ('Force and energy','Levers as simple machines'),
+  ('Force and energy','Slopes as simple machines')
+) v(strand_name,sub_strand_name)
+JOIN curriculum_grades g ON g.grade_number=6
+JOIN curriculum_subjects s ON s.grade_id=g.id
+  AND lower(trim(s.subject_name))='science and technology'
+JOIN curriculum_strands st ON st.subject_id=s.id
+  AND lower(trim(st.strand_name))=lower(trim(v.strand_name))
+  AND st.strand_description ~* '(official|source-verified)[[:space:]]+kicd'
+JOIN curriculum_sub_strands ss ON ss.strand_id=st.id
+  AND lower(trim(ss.sub_strand_name))=lower(trim(v.sub_strand_name))
+  AND ss.sub_strand_description ~* '(official|source-verified)[[:space:]]+kicd'
+WHERE NOT EXISTS (
+  SELECT 1 FROM curriculum_topics t
+  WHERE t.sub_strand_id=ss.id
+    AND lower(trim(t.topic_name))=lower(trim(v.sub_strand_name))
+    AND t.topic_description ~* 'Official KICD Grade 6 Science and Technology'
+);
+
+COMMIT;
