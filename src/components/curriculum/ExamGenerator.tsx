@@ -9,6 +9,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import {
   CBC_QUESTION_TYPES,
   downloadExamPdf,
+  learnerQuestionText,
   makeFormatBlueprint,
   questionTypeLabel,
   type Difficulty,
@@ -624,7 +625,7 @@ function QuestionPreview({ question, index, includeImages, uploading, onAttach, 
   }
   return <article className="rounded-xl border border-slate-200 bg-white p-3.5">
     <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0 flex-1">{editing ? <textarea value={draftStem} onChange={(event) => setDraftStem(event.target.value)} rows={3} className="w-full rounded-lg border border-red-200 px-2.5 py-2 text-sm leading-6 text-slate-800 outline-none focus:ring-2 focus:ring-red-100" /> : <p className="text-sm leading-6 text-slate-800"><span className="mr-1 font-bold">{index + 1}.</span>{question.question_text}</p>}</div>
+      <div className="min-w-0 flex-1">{editing ? <textarea value={draftStem} onChange={(event) => setDraftStem(event.target.value)} rows={3} className="w-full rounded-lg border border-red-200 px-2.5 py-2 text-sm leading-6 text-slate-800 outline-none focus:ring-2 focus:ring-red-100" /> : <p className="whitespace-pre-line text-sm leading-6 text-slate-800"><span className="mr-1 font-bold">{index + 1}.</span>{learnerQuestionText(question)}</p>}</div>
       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${questionBadgeClass(question.question_type)}`}>{question.marks}m</span>
     </div>
     {validationIssues.length > 0 && <div className="mt-2 space-y-1">{validationIssues.map((issue) => <p key={issue.code} className={`flex items-start gap-1 text-[11px] leading-4 ${issue.severity === 'critical' ? 'text-red-700' : issue.severity === 'warning' ? 'text-amber-700' : 'text-blue-700'}`}>{issue.severity === 'critical' ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> : <Eye className="mt-0.5 h-3 w-3 shrink-0" />}{issue.message}</p>)}</div>}

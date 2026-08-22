@@ -80,6 +80,21 @@ function isObjectiveKpseaPaper(paper: BrandedPaper): boolean {
     && paper.questions.every((question) => question.question_type === 'multiple_choice' && normalizeOptions(question).length >= 2);
 }
 
+export function learnerQuestionText(question: GeneratedExamQuestion): string {
+  let text = question.question_text || '';
+  const assetType = String((question.visual_spec as { asset_type?: unknown } | null)?.asset_type || '').toLowerCase();
+  if (assetType === 'table') {
+    text = text.split(/\r?\n/).filter((line) => {
+      const trimmed = line.trim();
+      return !(trimmed.includes('|') && trimmed.split('|').length >= 3);
+    }).join('\n');
+  }
+  if (assetType === 'diagram' || assetType === 'shape') {
+    text = text.replace(/\[\s*(?:diagram|figure|illustration|image|picture)[^\]]*\]/gi, '');
+  }
+  return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function formatSpecificInstructions(paper: BrandedPaper): string[] {
   if (isObjectiveKpseaPaper(paper)) {
     return [
@@ -393,7 +408,7 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
     doc.setTextColor(0, 0, 0);
     for (const question of group.questions) {
       const textWidth = formal ? 91 : 176;
-      const stem = doc.splitTextToSize(`${sequence}. ${question.question_text}${formal ? '' : `  [${question.marks} mark${question.marks === 1 ? '' : 's'}]`}`, textWidth);
+      const stem = doc.splitTextToSize(`${sequence}. ${learnerQuestionText(question)}${formal ? '' : `  [${question.marks} mark${question.marks === 1 ? '' : 's'}]`}`, textWidth);
       y = ensureRoom(doc, paper, y, stem.length * 4.6 + 10, 'STUDENT PAPER');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(formal ? 8.5 : 9.5);

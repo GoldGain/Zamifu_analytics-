@@ -67,3 +67,37 @@ for (const value of ['1', '4', '2', '6', '3', '5', '4', '3']) {
 }
 assert.ok(!structuredSvg.includes('>—</text>'), 'structured table SVG should not replace complete rows with dash placeholders');
 console.log('PASS: structured table visuals preserve all numeric rows.');
+
+const multiTableQuestion: GeneratedExamQuestion = {
+  ...question,
+  question_text: `Study the tables below.\n\n| Symbol | Meaning |\n|--------|---------|\n| A | Wear safety goggles |\n| B | Flammable material |\n| C | Toxic substance |\n| D | Corrosive substance |\n\nThe results are shown below.\n\n| Temperature (°C) | Time (seconds) |\n|------------------|----------------|\n| 20 | 120 |\n| 40 | 60 |\n| 60 | 30 |\n| 80 | 15 |`,
+  visual_spec: {
+    title: 'Safety symbols and dissolving data',
+    caption: 'Two complete data tables',
+    table_headers: ['Symbol', 'Meaning'],
+    table_rows: [['A', 'Wear safety goggles'], ['B', 'Flammable material'], ['C', 'Toxic substance'], ['D', 'Corrosive substance']],
+    asset_type: 'table',
+  },
+};
+const multiTableSvg = decodeURIComponent(renderExamVisualDataUrl(multiTableQuestion)!.split(',', 2)[1] || '');
+for (const value of ['Temperature (°C)', 'Time (seconds)', '20', '120', '40', '60', '60', '30', '80', '15']) {
+  assert.ok(multiTableSvg.includes(value), `multi-table SVG should contain ${value}`);
+}
+console.log('PASS: structured and Markdown tables compose without dropping source values.');
+
+const measuringCylinderQuestion: GeneratedExamQuestion = {
+  ...question,
+  question_text: 'The diagrams below show the water level before and after the stone is placed in a measuring cylinder.',
+  visual_spec: {
+    title: 'Measuring Cylinder Diagrams',
+    labels: ['Initial volume: 40 mL', 'Final volume: 65 mL'],
+    caption: 'Read the bottom of the meniscus at eye level.',
+    asset_type: 'diagram',
+  },
+};
+const cylinderSvg = decodeURIComponent(renderExamVisualDataUrl(measuringCylinderQuestion)!.split(',', 2)[1] || '');
+for (const value of ['40 mL', '65 mL', 'stone', 'Read the bottom of the meniscus']) {
+  assert.ok(cylinderSvg.includes(value), `measuring-cylinder SVG should contain ${value}`);
+}
+assert.ok(!cylinderSvg.includes('M90 245'), 'measuring-cylinder SVG should not use the generic shape placeholder');
+console.log('PASS: measuring-cylinder visuals preserve volume readings, graduations, and the stone.');

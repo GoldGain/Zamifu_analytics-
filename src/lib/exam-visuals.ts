@@ -84,6 +84,31 @@ function renderNumberLine(spec: ExamVisualSpec): string {
   }).join('')}`;
 }
 
+function extractVolume(labels: string[], fallback: number): number {
+  const match = labels.join(' ').match(/(?:initial|before)[^0-9]*([0-9]+(?:\.[0-9]+)?)\s*mL/i);
+  const value = match ? Number(match[1]) : fallback;
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function renderMeasuringCylinderDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || []).map(String);
+  const initial = extractVolume(labels, 40);
+  const final = extractVolume(labels.filter((label) => /final|after/i.test(label)), 65);
+  const maxVolume = Math.max(80, Math.ceil(Math.max(initial, final) / 10) * 10);
+  const drawCylinder = (x: number, volume: number, stone: boolean, label: string): string => {
+    const baseY = 238;
+    const topY = 66;
+    const waterTop = baseY - Math.max(0, Math.min(maxVolume, volume)) / maxVolume * (baseY - topY);
+    const ticks = Array.from({ length: maxVolume / 10 + 1 }, (_, index) => {
+      const tickY = baseY - index * (baseY - topY) / (maxVolume / 10);
+      return `<line x1="${x + 14}" y1="${tickY}" x2="${x + (index % 2 === 0 ? 30 : 24)}" y2="${tickY}" stroke="#1f2937" stroke-width="1"/><text x="${x + 5}" y="${tickY + 3}" text-anchor="end" class="small">${index * 10}</text>`;
+    }).join('');
+    const stoneShape = stone ? `<path d="M${x + 45} ${baseY - 18} q18 -22 36 0 q-3 17 -18 18 q-15 -1 -18 -18 Z" fill="#fef3c7" stroke="#92400e" stroke-width="2"/><text x="${x + 63}" y="${baseY - 27}" text-anchor="middle" class="small">stone</text>` : '';
+    return `<path d="M${x + 14} ${topY} L${x + 14} ${baseY} Q${x + 63} ${baseY + 12} ${x + 112} ${baseY} L${x + 112} ${topY}" fill="#eff6ff" fill-opacity="0.42" stroke="#1d4ed8" stroke-width="3"/><path d="M${x + 15} ${waterTop} L${x + 111} ${waterTop} L${x + 111} ${baseY} Q${x + 63} ${baseY + 10} ${x + 15} ${baseY} Z" fill="#93c5fd" fill-opacity="0.72"/>${ticks}${stoneShape}<text x="${x + 63}" y="260" text-anchor="middle" class="body">${escapeXml(label)}</text><text x="${x + 63}" y="278" text-anchor="middle" class="body">${escapeXml(`${volume} mL`)}</text>`;
+  };
+  return `${drawCylinder(72, initial, false, 'Before')}${drawCylinder(296, final, true, 'After stone')}<text x="240" y="302" text-anchor="middle" class="small">Read the bottom of the meniscus at eye level.</text>`;
+}
+
 function renderMap(spec: ExamVisualSpec): string {
   const regions = (spec.map_regions || spec.labels || ['Region A', 'Region B', 'Region C']).slice(0, 6);
   const polygon = '<path d="M105 55 L235 42 L335 85 L390 160 L338 245 L230 268 L130 232 L75 150 Z" fill="#fee2e2" stroke="#991b1b" stroke-width="4"/>';
@@ -122,13 +147,35 @@ function renderNurseryBedDiagram(spec: ExamVisualSpec): string {
   </g>`;
 }
 
-function parseMarkdownTable(source: string): string[][] {
-  return source.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.includes('|')).map((line) => {
+function parseMarkdownTableRows(lines: string[]): string[][] {
+  return lines.map((line) => {
     const cells = line.split('|').map((cell) => cell.trim());
     if (cells[0] === '') cells.shift();
     if (cells[cells.length - 1] === '') cells.pop();
     return cells;
   }).filter((cells) => cells.length >= 2 && !cells.every((cell) => /^:?-{2,}:?$/.test(cell)));
+}
+
+function parseMarkdownTableBlocks(source: string): string[][][] {
+  const blocks: string[][][] = [];
+  let current: string[] = [];
+  const flush = () => {
+    if (current.length >= 2) {
+      const rows = parseMarkdownTableRows(current);
+      if (rows.length >= 2) blocks.push(rows);
+    }
+    current = [];
+  };
+  for (const line of source.split(/\r?\n/)) {
+    if (line.trim().includes('|')) current.push(line.trim());
+    else flush();
+  }
+  flush();
+  return blocks;
+}
+
+function parseMarkdownTable(source: string): string[][] {
+  return parseMarkdownTableBlocks(source).flat();
 }
 
 function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): string {
@@ -144,54 +191,69 @@ function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): st
   const promptNumbers = String(spec.prompt || '').match(/[+-]?\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
   const markdownRows = parseMarkdownTable(`${question?.question_text || ''}\n${spec.prompt || ''}`);
 
-  // Prefer the structured table contract, then a complete markdown table from
-  // the learner-facing stem. Both routes preserve exact values supplied by the
-  // provider instead of silently manufacturing dash placeholders.
-  let headers: string[];
-  let rows: string[][];
+  // Prefer the structured table contract, then complete Markdown tables from
+  // the learner-facing stem. When both are present, append any additional
+  // source table that is not a duplicate of the structured table. This keeps
+  // multi-table case studies faithful without manufacturing missing values.
+  const markdownTables = parseMarkdownTableBlocks(`${question?.question_text || ''}\n${spec.prompt || ''}`);
+  const tableSets: Array<{ headers: string[]; rows: string[][] }> = [];
   if (structuredHeaders.length >= 2 && structuredRows.length > 0) {
-    headers = structuredHeaders.slice(0, 6);
-    rows = structuredRows.map((row) => [...row, ...Array(Math.max(0, headers.length - row.length)).fill('—')].slice(0, headers.length));
-  } else if (markdownRows.length >= 2) {
-    const columnCount = Math.min(6, Math.max(...markdownRows.map((row) => row.length)));
-    headers = markdownRows[0].slice(0, columnCount);
-    while (headers.length < columnCount) headers.push(`Detail ${headers.length}`);
-    rows = markdownRows.slice(1).map((row) => [...row, ...Array(Math.max(0, columnCount - row.length)).fill('—')].slice(0, columnCount));
+    const headers = structuredHeaders.slice(0, 6);
+    const rows = structuredRows.map((row) => [...row, ...Array(Math.max(0, headers.length - row.length)).fill('—')].slice(0, headers.length));
+    tableSets.push({ headers, rows });
+    for (const table of markdownTables) {
+      const candidateHeaders = table[0].slice(0, 6);
+      const candidateRows = table.slice(1).map((row) => [...row, ...Array(Math.max(0, candidateHeaders.length - row.length)).fill('—')].slice(0, candidateHeaders.length));
+      const duplicate = candidateHeaders.join('|') === headers.join('|') && candidateRows.some((row) => rows.some((existing) => existing.join('|') === row.join('|')));
+      if (!duplicate && candidateHeaders.length >= 2 && candidateRows.length > 0) tableSets.push({ headers: candidateHeaders, rows: candidateRows });
+    }
+  } else if (markdownTables.length > 0) {
+    for (const table of markdownTables) {
+      const columnCount = Math.min(6, Math.max(...table.map((row) => row.length)));
+      const headers = table[0].slice(0, columnCount);
+      while (headers.length < columnCount) headers.push(`Detail ${headers.length}`);
+      const rows = table.slice(1).map((row) => [...row, ...Array(Math.max(0, columnCount - row.length)).fill('—')].slice(0, columnCount));
+      tableSets.push({ headers, rows });
+    }
   } else if (sourceLabels.length >= 2 && sourceRows.length >= 2 && (values.length >= sourceLabels.length || promptNumbers.length >= sourceLabels.length)) {
     const rowValues = (values.length >= sourceLabels.length ? values : promptNumbers).slice(0, sourceLabels.length);
-    headers = [sourceRows[0] || 'Item', ...sourceLabels];
-    rows = [[sourceRows[1] || 'Value', ...rowValues]];
+    tableSets.push({ headers: [sourceRows[0] || 'Item', ...sourceLabels], rows: [[sourceRows[1] || 'Value', ...rowValues]] });
   } else {
     const fallbackHeaders = sourceLabels.length ? sourceLabels.slice(0, 6) : ['Item', 'Value'];
     const fallbackRows = sourceRows.length ? sourceRows.slice(0, 6) : ['Item 1', 'Item 2', 'Item 3', 'Item 4'];
     const inferredColumns = commaSeparated ? Math.max(fallbackHeaders.length, ...parsedRows.map((parts) => parts.length)) : Math.max(fallbackHeaders.length, values.length ? 2 : fallbackHeaders.length);
-    headers = [...fallbackHeaders];
+    const headers = [...fallbackHeaders];
     if (commaSeparated && headers.length === 3 && inferredColumns === 4) headers.splice(2, 0, 'Group');
     while (headers.length < inferredColumns) headers.push(`Detail ${headers.length}`);
-    rows = fallbackRows.map((row, rowIndex) => {
+    const rows = fallbackRows.map((row, rowIndex) => {
       const parts = parsedRows[rowIndex];
       if (commaSeparated && parts.length > 1) return [...parts, ...Array(Math.max(0, headers.length - parts.length)).fill('—')].slice(0, headers.length);
       return headers.map((_, columnIndex) => columnIndex === 0 ? row : values[rowIndex] ?? '—');
     });
+    tableSets.push({ headers, rows });
   }
 
   const x = 28;
-  const y = 58;
+  let y = 58;
   const tableWidth = 424;
-  const rowHeight = rows.length > 5 ? 26 : 30;
-  const columnWidth = tableWidth / headers.length;
-  const header = headers.map((header, index) => {
-    const cellX = x + index * columnWidth;
-    return `<rect x="${cellX}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/>${tableCellText(header, cellX + columnWidth / 2, y + rowHeight / 2, columnWidth - 8, true)}`;
-  }).join('');
-  const body = rows.map((row, rowIndex) => {
-    const cellY = y + rowHeight * (rowIndex + 1);
-    return row.map((value, columnIndex) => {
-      const cellX = x + columnIndex * columnWidth;
-      return `<rect x="${cellX}" y="${cellY}" width="${columnWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/>${tableCellText(value, cellX + columnWidth / 2, cellY + rowHeight / 2, columnWidth - 8)}`;
+  const rowHeight = tableSets.length > 1 ? 20 : (tableSets[0]?.rows.length || 0) > 5 ? 26 : 30;
+  return tableSets.map(({ headers, rows }, tableIndex) => {
+    const columnWidth = tableWidth / headers.length;
+    const header = headers.map((header, index) => {
+      const cellX = x + index * columnWidth;
+      return `<rect x="${cellX}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/>${tableCellText(header, cellX + columnWidth / 2, y + rowHeight / 2, columnWidth - 8, true)}`;
     }).join('');
+    const body = rows.map((row, rowIndex) => {
+      const cellY = y + rowHeight * (rowIndex + 1);
+      return row.map((value, columnIndex) => {
+        const cellX = x + columnIndex * columnWidth;
+        return `<rect x="${cellX}" y="${cellY}" width="${columnWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/>${tableCellText(value, cellX + columnWidth / 2, cellY + rowHeight / 2, columnWidth - 8)}`;
+      }).join('');
+    }).join('');
+    const markup = `${header}${body}`;
+    y += (rows.length + 1) * rowHeight + (tableIndex < tableSets.length - 1 ? 12 : 0);
+    return markup;
   }).join('');
-  return `${header}${body}`;
 }
 
 const EXPLICIT_VISUAL_REFERENCE = /\b(?:diagram|figure|map|graph|chart|table|illustration|picture|image|photograph|flowchart|number\s+line)\b|\b(?:shown\s+(?:below|above)|as\s+(?:shown|illustrated)|study\s+(?:it|the)|observe\s+(?:it|the)|refer\s+to|look\s+at|use\s+the)\b/i;
@@ -247,7 +309,9 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   else if (assetType === 'number_line') body = renderNumberLine(spec);
   else if (assetType === 'shape' || assetType === 'diagram') {
     const descriptor = `${question.question_text} ${spec.title || ''} ${spec.prompt || ''} ${spec.caption || ''} ${(spec.labels || []).join(' ')}`.toLowerCase();
-    if (assetType === 'diagram' && /nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) {
+    if (assetType === 'diagram' && /measuring\s+cylinder|meniscus|initial\s+volume|final\s+volume|stone/.test(descriptor)) {
+      body = renderMeasuringCylinderDiagram(spec);
+    } else if (assetType === 'diagram' && /nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) {
       body = renderNurseryBedDiagram(spec);
     } else {
       body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';

@@ -74,9 +74,9 @@ function buildPaper(request: ExamGenerationRequest, parsed: Record<string, unkno
 function recoveryInstruction(attempt: number): string {
   if (attempt === 0) return '';
   if (attempt === 1) {
-    return '\n\nRECOVERY REQUIREMENT: The previous response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return markdown, do not add commentary, and keep every field concise enough to fit the requested paper. If any table visual is required, include table_headers and complete table_rows with every learner-facing cell and numeric value.';
+    return '\n\nRECOVERY REQUIREMENT: The previous response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return markdown, do not add commentary, and keep every field concise enough to fit the requested paper. If any table visual is required, include table_headers and complete table_rows with every learner-facing cell and numeric value. Do not repeat a visual table or bracketed diagram placeholder in question_text; use precise structured labels and values for the visual.';
   }
-  return '\n\nFINAL RECOVERY REQUIREMENT: Produce the complete paper in the exact JSON shape now. Prioritise all required questions, marks, answers, and marking guidance. Use short sentences, empty strings for optional metadata when necessary, and visual_spec null unless the stem explicitly requires a visual. Any table visual must include table_headers and complete table_rows; do not use x_labels alone. Return JSON only.';
+  return '\n\nFINAL RECOVERY REQUIREMENT: Produce the complete paper in the exact JSON shape now. Prioritise all required questions, marks, answers, and marking guidance. Use short sentences, empty strings for optional metadata when necessary, and visual_spec null unless the stem explicitly requires a visual. Any table visual must include table_headers and complete table_rows; do not use x_labels alone. Do not repeat a visual table or bracketed diagram placeholder in question_text. Measurement diagrams must show precise readings, units, graduations, water levels, and objects rather than generic shapes. Return JSON only.';
 }
 
 export async function generateExamWithGemini(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
