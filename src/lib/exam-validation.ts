@@ -1,4 +1,5 @@
 import type { ExamBlueprint, ExamGenerationRequest, GeneratedExamQuestion } from './exam-schema';
+import { hasCompleteTableVisual } from './exam-visuals';
 
 export type ExamValidationSeverity = 'critical' | 'warning' | 'info';
 
@@ -80,6 +81,9 @@ export function validateGeneratedExam(request: ExamGenerationRequest, questions:
     }
     if (question.visual_spec && !question.image_url) {
       issues.push({ code: 'VISUAL_NOT_RENDERED', severity: 'critical', message: 'This question has a visual specification but no rendered visual asset.', questionIndex: index });
+    }
+    if (question.visual_spec && !hasCompleteTableVisual(question)) {
+      issues.push({ code: 'TABLE_DATA_INCOMPLETE', severity: 'critical', message: 'This table visual is missing complete learner-facing rows or values.', questionIndex: index });
     }
     if (question.image_url && !question.visual_spec) {
       issues.push({ code: 'VISUAL_METADATA_MISSING', severity: 'warning', message: 'Add a caption, alt text, and visual type for this image.', questionIndex: index });

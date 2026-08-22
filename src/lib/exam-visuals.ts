@@ -10,6 +10,10 @@ export interface ExamVisualSpec {
   x_labels?: string[];
   legend?: string[];
   map_regions?: string[];
+  table_headers?: string[];
+  table_rows?: Array<Array<string | number>>;
+  rows?: Array<Array<string | number>>;
+  data?: Array<Array<string | number>>;
 }
 
 function escapeXml(value: unknown): string {
@@ -131,17 +135,24 @@ function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): st
   const sourceLabels = (spec.labels || []).map(String).filter(Boolean);
   const sourceRows = (spec.x_labels || []).map(String).filter(Boolean);
   const values = (spec.values || []).map((value) => String(value));
+  const structuredHeaders = (spec.table_headers || spec.labels || []).map(String).filter(Boolean);
+  const structuredRows = (spec.table_rows || spec.rows || spec.data || [])
+    .filter((row): row is Array<string | number> => Array.isArray(row))
+    .map((row) => row.map((value) => String(value ?? '').trim()));
   const parsedRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()).filter(Boolean));
   const commaSeparated = parsedRows.some((parts) => parts.length > 1);
-  const promptNumbers = String(spec.prompt || '').match(/[+-]\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
+  const promptNumbers = String(spec.prompt || '').match(/[+-]?\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
   const markdownRows = parseMarkdownTable(`${question?.question_text || ''}\n${spec.prompt || ''}`);
 
-  // Prefer an explicit markdown table from the question itself. This preserves
-  // exact learner-facing values when a provider puts the data in the prompt but
-  // omits the parallel visual_spec.values array.
+  // Prefer the structured table contract, then a complete markdown table from
+  // the learner-facing stem. Both routes preserve exact values supplied by the
+  // provider instead of silently manufacturing dash placeholders.
   let headers: string[];
   let rows: string[][];
-  if (markdownRows.length >= 2) {
+  if (structuredHeaders.length >= 2 && structuredRows.length > 0) {
+    headers = structuredHeaders.slice(0, 6);
+    rows = structuredRows.map((row) => [...row, ...Array(Math.max(0, headers.length - row.length)).fill('—')].slice(0, headers.length));
+  } else if (markdownRows.length >= 2) {
     const columnCount = Math.min(6, Math.max(...markdownRows.map((row) => row.length)));
     headers = markdownRows[0].slice(0, columnCount);
     while (headers.length < columnCount) headers.push(`Detail ${headers.length}`);
@@ -190,6 +201,21 @@ const EXPLICIT_VISUAL_REFERENCE = /\b(?:diagram|figure|map|graph|chart|table|ill
  * This prevents a provider from turning every ordinary question into a generic
  * three-shape placeholder while preserving real diagram/map/chart questions.
  */
+export function hasCompleteTableVisual(question: GeneratedExamQuestion): boolean {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  if (String(spec.asset_type || '').toLowerCase() !== 'table') return true;
+  const headers = (spec.table_headers || spec.labels || []).map(String).filter((value) => value.trim());
+  const structuredRows = (spec.table_rows || spec.rows || spec.data || [])
+    .filter((row): row is Array<string | number> => Array.isArray(row))
+    .map((row) => row.map((value) => String(value ?? '').trim()));
+  if (headers.length >= 2 && structuredRows.length > 0 && structuredRows.every((row) => row.length >= headers.length && row.slice(0, headers.length).every((value) => value && value !== '—'))) return true;
+  const markdownRows = parseMarkdownTable(`${question.question_text || ''}\n${spec.prompt || ''}`);
+  if (markdownRows.length >= 2) return markdownRows.slice(1).every((row) => row.every((value) => value.trim() && value.trim() !== '—'));
+  const values = (spec.values || []).map((value) => String(value).trim()).filter(Boolean);
+  const promptNumbers = String(spec.prompt || '').match(/[+-]?\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
+  return headers.length >= 2 && (values.length >= headers.length || promptNumbers.length >= headers.length);
+}
+
 export function shouldKeepExamVisual(question: GeneratedExamQuestion): boolean {
   if (!question.visual_spec) return false;
   const spec = question.visual_spec as ExamVisualSpec;

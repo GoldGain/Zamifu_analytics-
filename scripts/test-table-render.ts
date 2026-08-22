@@ -46,3 +46,24 @@ for (const value of ['Mon', '4', 'Tue', '6', 'Wed', '5', 'Thu', '3', 'Fri', '7']
 }
 assert.ok(!markdownSvg.includes('>—</text>'), 'markdown table SVG should not replace source values with dash placeholders');
 console.log('PASS: markdown table visuals preserve source cell values.');
+
+const structuredTableQuestion: GeneratedExamQuestion = {
+  ...question,
+  question_text: 'Use the table below to answer the question. How many pupils read 3 books?',
+  visual_spec: {
+    title: 'Books read by pupils',
+    prompt: 'Study the table.',
+    caption: 'Number of books read by pupils',
+    labels: ['Number of books', 'Number of pupils'],
+    x_labels: ['1', '2', '3', '4'],
+    table_headers: ['Number of books', 'Number of pupils'],
+    table_rows: [['1', 4], ['2', 6], ['3', 5], ['4', 3]],
+    asset_type: 'table',
+  },
+};
+const structuredSvg = decodeURIComponent(renderExamVisualDataUrl(structuredTableQuestion)!.split(',', 2)[1] || '');
+for (const value of ['1', '4', '2', '6', '3', '5', '4', '3']) {
+  assert.ok(structuredSvg.includes(`>${value}</text>`), `structured table SVG should contain ${value}`);
+}
+assert.ok(!structuredSvg.includes('>—</text>'), 'structured table SVG should not replace complete rows with dash placeholders');
+console.log('PASS: structured table visuals preserve all numeric rows.');

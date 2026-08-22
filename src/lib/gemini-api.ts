@@ -6,6 +6,7 @@ import {
   normalizeQuestion,
   outputTokenBudget,
 } from './deepseek-api.js';
+import { hasCompleteTableVisual } from './exam-visuals.js';
 import { makeExamTitle, type ExamGenerationRequest, type ExamPaper, type GeneratedExamQuestion } from './exam-schema.js';
 
 interface GeminiResponse {
@@ -73,9 +74,9 @@ function buildPaper(request: ExamGenerationRequest, parsed: Record<string, unkno
 function recoveryInstruction(attempt: number): string {
   if (attempt === 0) return '';
   if (attempt === 1) {
-    return '\n\nRECOVERY REQUIREMENT: The previous response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return markdown, do not add commentary, and keep every field concise enough to fit the requested paper.';
+    return '\n\nRECOVERY REQUIREMENT: The previous response was unusable. Return a complete, concise JSON object now. Do not omit questions, do not return markdown, do not add commentary, and keep every field concise enough to fit the requested paper. If any table visual is required, include table_headers and complete table_rows with every learner-facing cell and numeric value.';
   }
-  return '\n\nFINAL RECOVERY REQUIREMENT: Produce the complete paper in the exact JSON shape now. Prioritise all required questions, marks, answers, and marking guidance. Use short sentences, empty strings for optional metadata when necessary, and visual_spec null unless the stem explicitly requires a visual. Return JSON only.';
+  return '\n\nFINAL RECOVERY REQUIREMENT: Produce the complete paper in the exact JSON shape now. Prioritise all required questions, marks, answers, and marking guidance. Use short sentences, empty strings for optional metadata when necessary, and visual_spec null unless the stem explicitly requires a visual. Any table visual must include table_headers and complete table_rows; do not use x_labels alone. Return JSON only.';
 }
 
 export async function generateExamWithGemini(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
@@ -129,9 +130,12 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
       const candidate = extractJsonFromContent(content);
       if (!candidate) throw new GeminiResponseError('Gemini returned content that could not be parsed as the requested structured JSON.');
       const candidateQuestions = Array.isArray(candidate.questions)
-        ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter(Boolean)
+        ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
         : [];
       if (!candidateQuestions.length) throw new GeminiResponseError('Gemini did not provide any valid questions.');
+      if (candidateQuestions.some((question) => !hasCompleteTableVisual(question))) {
+        throw new GeminiResponseError('Gemini returned an incomplete table visual. Retry with table_headers and every table_rows cell required by the question.');
+      }
       parsed = candidate;
     } catch (error) {
       lastFailure = error instanceof Error && error.name === 'AbortError'
