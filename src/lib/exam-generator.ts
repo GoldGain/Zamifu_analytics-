@@ -73,6 +73,31 @@ function isFormalPracticeFormat(paper: BrandedPaper): boolean {
   return paper.format === 'kpsea' || paper.format === 'kjsea';
 }
 
+function isObjectiveKpseaPaper(paper: BrandedPaper): boolean {
+  return paper.format === 'kpsea'
+    && paper.questions.length > 0
+    && paper.questions.every((question) => question.question_type === 'multiple_choice' && normalizeOptions(question).length >= 2);
+}
+
+function formatSpecificInstructions(paper: BrandedPaper): string[] {
+  if (isObjectiveKpseaPaper(paper)) {
+    return [
+      'Answer all questions on the separate answer sheet provided.',
+      'For each question, choose only one correct answer from A, B, C and D.',
+      'Shade the circle that corresponds to your chosen answer clearly and completely.',
+      'Do not write more than one answer for any question.',
+    ];
+  }
+  if (paper.format === 'kjsea') {
+    return [
+      'Answer all questions in the spaces provided.',
+      'Show all working for calculations and give clear labelled responses where required.',
+      'Use the diagrams, tables, maps and other visual stimuli only as directed by each question.',
+    ];
+  }
+  return [];
+}
+
 function addPageHeader(doc: jsPDF, paper: BrandedPaper, continuation = false, subtitle?: string): number {
   doc.setFillColor(248, 250, 252);
   doc.rect(0, 0, 210, 35, 'F');
@@ -186,6 +211,25 @@ function addCandidateTable(doc: jsPDF, y: number): number {
   return Number((doc as jsPDF & { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY || y + 32) + 7;
 }
 
+function addAnswerSheetSample(doc: jsPDF, y: number): number {
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(107, 114, 128);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(14, y, 182, 19, 1.2, 1.2, 'FD');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('HOW TO USE THE ANSWER SHEET', 18, y + 5);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.text('For each item, shade only one circle. Example of a selected answer:', 18, y + 10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('A  ○    B  ●    C  ○    D  ○', 133, y + 10);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(6.8);
+  doc.text('Use a dark pencil or pen and erase corrections completely.', 18, y + 15);
+  return y + 25;
+}
+
 function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): number {
   doc.setTextColor(17, 24, 39);
   doc.setFont('helvetica', 'bold');
@@ -223,13 +267,19 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   y += 5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  const instructions = (paper.instructions.length ? paper.instructions : ['Answer all questions.', 'Write your name and class clearly.', 'Read every question carefully before answering.']).slice(0, 8);
+  const baseInstructions = paper.instructions.length
+    ? paper.instructions
+    : ['Answer all questions.', 'Write your name and class clearly.', 'Read every question carefully before answering.'];
+  const instructions = [...formatSpecificInstructions(paper), ...baseInstructions]
+    .filter((instruction, index, all) => all.indexOf(instruction) === index)
+    .slice(0, 8);
   instructions.forEach((instruction, index) => {
     const lines = doc.splitTextToSize(`${index + 1}. ${instruction}`, 178);
     doc.text(lines, 16, y);
     y += lines.length * 4.2 + 1.5;
   });
   y += 3;
+  if (isObjectiveKpseaPaper(paper)) y = addAnswerSheetSample(doc, y);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.text('PAPER STRUCTURE', 14, y);
@@ -257,8 +307,22 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   return Math.min(y, 270);
 }
 
+function addAnswerLines(doc: jsPDF, paper: BrandedPaper, y: number, marks: number): number {
+  if (paper.format !== 'kjsea') return y;
+  const lineCount = Math.max(1, Math.min(6, Math.ceil(marks / 2)));
+  y = ensureRoom(doc, paper, y, lineCount * 5 + 2, 'STUDENT PAPER');
+  doc.setDrawColor(156, 163, 175);
+  doc.setLineWidth(0.25);
+  doc.setLineDashPattern([1, 1], 0);
+  for (let index = 0; index < lineCount; index += 1) {
+    doc.line(14, y + index * 5, 105, y + index * 5);
+  }
+  doc.setLineDashPattern([], 0);
+  return y + lineCount * 5 + 2;
+}
+
 function addWorkingSpaceColumn(doc: jsPDF, paper: BrandedPaper): void {
-  if (!isFormalPracticeFormat(paper)) return;
+  if (!isFormalPracticeFormat(paper) || isObjectiveKpseaPaper(paper)) return;
   doc.setDrawColor(107, 114, 128);
   doc.setLineWidth(0.35);
   doc.line(112, 52, 112, 282);
@@ -339,11 +403,16 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
         });
         if (formal) {
           doc.setFontSize(8);
-          doc.text('Answer: ____________________', 19, y + 1);
+          if (isObjectiveKpseaPaper(paper)) {
+            doc.text('Record one answer on the separate answer sheet.', 19, y + 1);
+          } else {
+            doc.text('Answer in the space provided.', 19, y + 1);
+          }
           y += 5;
         }
       }
       y = await addQuestionVisual(doc, paper, { ...question, question_number: sequence }, y, 'STUDENT PAPER');
+      if (!options.length) y = addAnswerLines(doc, paper, y + 2, question.marks);
       y += formal ? 6 : 4;
       sequence += 1;
     }

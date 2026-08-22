@@ -105,7 +105,7 @@ export default function ExamGenerator({
   const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<Set<QuestionType>>(
     new Set<QuestionType>(['multiple_choice', 'short_answer', 'essay']),
   );
-  const [includeImages, setIncludeImages] = useState(false);
+  const [includeImages, setIncludeImages] = useState(true);
   const [includeMarkingScheme, setIncludeMarkingScheme] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -121,6 +121,18 @@ export default function ExamGenerator({
     .flatMap((strand) => strand.sub_strands || []), [selectedStrands, strands]);
 
   const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size);
+  const selectedFormatDescription = formatOptions.find((option) => option.value === format)?.description || '';
+
+  function handleFormatChange(nextFormat: ExamFormat) {
+    setFormat(nextFormat);
+    if (nextFormat === 'kpsea') {
+      setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice']));
+      setIncludeImages(true);
+    } else if (nextFormat === 'kjsea') {
+      setSelectedQuestionTypes(new Set<QuestionType>(['short_answer', 'numeric_response', 'case_study', 'essay']));
+      setIncludeImages(true);
+    }
+  }
 
   useEffect(() => {
     setPaper(null);
@@ -470,9 +482,10 @@ export default function ExamGenerator({
               <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={`${subject || 'Subject'} ${gradeLevel || 'Grade'} Assessment`} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100" />
             </label>
             <label className="block text-xs font-semibold text-slate-700">Assessment format
-              <select value={format} onChange={(event) => setFormat(event.target.value as ExamFormat)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
+              <select value={format} onChange={(event) => handleFormatChange(event.target.value as ExamFormat)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
                 {formatOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
+              <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">{selectedFormatDescription}</span>
             </label>
             <label className="block text-xs font-semibold text-slate-700">Term
               <select value={term} onChange={(event) => setTerm(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
@@ -524,7 +537,7 @@ export default function ExamGenerator({
           </div>
 
           <div className="mt-5 space-y-2 rounded-xl border border-amber-100 bg-amber-50 p-3.5 text-xs text-amber-900">
-            <label className="flex cursor-pointer items-start gap-2"><input type="checkbox" checked={includeImages} onChange={(event) => setIncludeImages(event.target.checked)} className="mt-0.5 rounded border-amber-300 text-red-600 focus:ring-red-500" /><span><strong>Plan for visual questions.</strong> After generation, attach licensed or school-owned diagrams and images to individual questions.</span></label>
+            <label className="flex cursor-pointer items-start gap-2"><input type="checkbox" checked={includeImages} onChange={(event) => setIncludeImages(event.target.checked)} className="mt-0.5 rounded border-amber-300 text-red-600 focus:ring-red-500" /><span><strong>Generate automatic visuals.</strong> The AI will request precise diagrams, maps, tables, graphs, or illustrations only when a question genuinely requires one. Zamifu renders the visual deterministically for the browser preview and PDF; school-owned attachments remain available as a fallback.</span></label>
             <label className="flex cursor-pointer items-start gap-2"><input type="checkbox" checked={includeMarkingScheme} onChange={(event) => setIncludeMarkingScheme(event.target.checked)} className="mt-0.5 rounded border-amber-300 text-red-600 focus:ring-red-500" /><span><strong>Include marking scheme</strong> in the exported PDF.</span></label>
           </div>
 
