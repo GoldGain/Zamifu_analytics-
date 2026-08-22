@@ -1,5 +1,5 @@
 import type { ExamBlueprint, ExamGenerationRequest, GeneratedExamQuestion } from './exam-schema';
-import { hasCompleteTableVisual } from './exam-visuals';
+import { hasCompleteTableVisual } from './exam-visuals.js';
 
 export type ExamValidationSeverity = 'critical' | 'warning' | 'info';
 
