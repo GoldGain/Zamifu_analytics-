@@ -122,6 +122,24 @@ function renderMap(spec: ExamVisualSpec): string {
   return `${polygon}${labels}<path d="M410 65 L410 35 L400 48 L420 48 Z" fill="#111827"/><text x="410" y="25" text-anchor="middle" class="small">N</text><line x1="70" y1="285" x2="150" y2="285" stroke="#111827" stroke-width="3"/><text x="160" y="289" class="small">schematic scale</text>`;
 }
 
+function renderCircuitDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || []).map(String);
+  const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
+  return `<g>
+    <path d="M58 92 H108 M152 92 H205 M255 92 H332 M388 92 V222 H58 V92" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="108" y1="72" x2="108" y2="112" stroke="#1d4ed8" stroke-width="6"/><line x1="124" y1="80" x2="124" y2="104" stroke="#1d4ed8" stroke-width="4"/>
+    <line x1="136" y1="72" x2="136" y2="112" stroke="#1d4ed8" stroke-width="6"/><line x1="152" y1="80" x2="152" y2="104" stroke="#1d4ed8" stroke-width="4"/>
+    <text x="116" y="62" text-anchor="middle" class="small">+</text><text x="144" y="62" text-anchor="middle" class="small">−</text>
+    <circle cx="360" cy="92" r="28" fill="#fef3c7" stroke="#b45309" stroke-width="4"/><path d="M344 76 L376 108 M376 76 L344 108" stroke="#b45309" stroke-width="3"/>
+    <circle cx="205" cy="92" r="5" fill="#111827"/><circle cx="255" cy="92" r="5" fill="#111827"/><path d="M205 92 L244 68" fill="none" stroke="#b45309" stroke-width="4" stroke-linecap="round"/>
+    <text x="130" y="145" text-anchor="middle" class="body">${label(0, 'Cells in series')}</text>
+    <text x="230" y="55" text-anchor="middle" class="body">${label(2, 'Switch')}</text>
+    <text x="360" y="140" text-anchor="middle" class="body">${label(1, 'Bulb')}</text>
+    <text x="225" y="250" text-anchor="middle" class="body">${label(3, 'Connecting wires')}</text>
+    <text x="240" y="285" text-anchor="middle" class="small">Closed circuit with two cells, a switch and a bulb.</text>
+  </g>`;
+}
+
 function renderNurseryBedDiagram(spec: ExamVisualSpec): string {
   const labels = (spec.labels || ['Shade', 'Seed drill', 'Nursery bed', 'Watering can']).map(String);
   const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
@@ -313,6 +331,8 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
     const descriptor = `${question.question_text} ${spec.title || ''} ${spec.prompt || ''} ${spec.caption || ''} ${(spec.labels || []).join(' ')}`.toLowerCase();
     if (assetType === 'diagram' && /measuring\s+cylinder|meniscus|initial\s+volume|final\s+volume|stone/.test(descriptor)) {
       body = renderMeasuringCylinderDiagram(spec);
+    } else if (assetType === 'diagram' && /electric\s+circuit|circuit|cell(?:s)?\b|bulb|switch|connecting\s+wires|ammeter|voltage|potential\s+difference/.test(descriptor)) {
+      body = renderCircuitDiagram(spec);
     } else if (assetType === 'diagram' && /nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) {
       body = renderNurseryBedDiagram(spec);
     } else {

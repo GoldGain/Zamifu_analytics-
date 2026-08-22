@@ -118,3 +118,21 @@ for (const value of ['50 mL', '80 mL']) {
   assert.ok(labelledCylinderSvg.includes(value), `labelled cylinder SVG should contain provider reading ${value}`);
 }
 console.log('PASS: labelled Cylinder A/B readings are preserved in the deterministic visual.');
+
+const circuitQuestion: GeneratedExamQuestion = {
+  ...measuringCylinderQuestion,
+  question_text: 'Study the electric circuit below. Identify the cells, switch, bulb and connecting wires.',
+  visual_spec: {
+    title: 'Simple electric circuit with two cells, a bulb, and a switch',
+    labels: ['Cell', 'Bulb', 'Switch', 'Connecting wires'],
+    caption: 'A simple circuit with two cells, a bulb, a switch, and connecting wires.',
+    asset_type: 'diagram',
+  },
+};
+const circuitSvg = decodeURIComponent(renderExamVisualDataUrl(circuitQuestion)!.split(',', 2)[1] || '');
+for (const value of ['Cell', 'Bulb', 'Switch', 'Connecting wires', 'Closed circuit']) {
+  assert.ok(circuitSvg.includes(value), `circuit SVG should contain ${value}`);
+}
+assert.ok(circuitSvg.includes('M58 92'), 'circuit SVG should include connected wire paths');
+assert.ok(!circuitSvg.includes('M90 245'), 'circuit SVG should not use the generic shape placeholder');
+console.log('PASS: circuit visuals preserve connected components and labels.');
