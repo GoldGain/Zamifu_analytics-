@@ -9,6 +9,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import {
   CBC_QUESTION_TYPES,
   downloadExamPdf,
+  makeFormatBlueprint,
   questionTypeLabel,
   type Difficulty,
   type ExamFormat,
@@ -129,7 +130,7 @@ export default function ExamGenerator({
       setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice']));
       setIncludeImages(true);
     } else if (nextFormat === 'kjsea') {
-      setSelectedQuestionTypes(new Set<QuestionType>(['short_answer', 'numeric_response', 'case_study', 'essay']));
+      setSelectedQuestionTypes(new Set<QuestionType>(['case_study']));
       setIncludeImages(true);
     }
   }
@@ -279,6 +280,7 @@ export default function ExamGenerator({
         format,
         term,
         schoolName,
+        blueprint: ['kpsea', 'kjsea'].includes(format) ? makeFormatBlueprint(format, totalMarks, difficulty) : undefined,
       };
       const response = await fetch('/api/generate-exam', {
         method: 'POST',

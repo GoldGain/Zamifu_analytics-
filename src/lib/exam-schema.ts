@@ -137,6 +137,50 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   return errors;
 }
 
+export function makeFormatBlueprint(format: ExamFormat, totalMarks: number, difficulty: Difficulty = 'mixed'): ExamBlueprint | undefined {
+  const safeTotal = Math.max(1, Math.round(totalMarks));
+  if (format === 'kpsea') {
+    return {
+      sections: [{
+        id: 'kpsea-objective',
+        title: 'Objective questions',
+        question_type: 'multiple_choice',
+        count: safeTotal,
+        marks_per_question: 1,
+        difficulty,
+      }],
+      total_marks: safeTotal,
+    };
+  }
+  if (format === 'kjsea') {
+    const fullQuestions = Math.floor(safeTotal / 10);
+    const remainder = safeTotal % 10;
+    const sections: ExamBlueprintSection[] = [];
+    if (fullQuestions > 0) {
+      sections.push({
+        id: 'kjsea-structured-main',
+        title: 'Structured and practical questions',
+        question_type: 'case_study',
+        count: fullQuestions,
+        marks_per_question: 10,
+        difficulty,
+      });
+    }
+    if (remainder > 0) {
+      sections.push({
+        id: 'kjsea-structured-remainder',
+        title: 'Structured question',
+        question_type: 'case_study',
+        count: 1,
+        marks_per_question: remainder,
+        difficulty,
+      });
+    }
+    return { sections, total_marks: safeTotal };
+  }
+  return undefined;
+}
+
 export function allocateQuestionBlueprint(request: ExamGenerationRequest): Array<{ type: QuestionType; count: number; marks: number }> {
   if (request.blueprint?.sections.length) {
     return request.blueprint.sections.map((section) => ({

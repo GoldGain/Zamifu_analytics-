@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateExamWithDeepSeek } from '../src/lib/deepseek-api.ts';
+import { makeFormatBlueprint } from '../src/lib/exam-schema.ts';
 import type { ExamGenerationRequest } from '../src/lib/exam-schema.ts';
 
 process.env.DEEPSEEK_API_KEY = 'test-key';
@@ -65,6 +66,24 @@ try {
   assert.equal(paper.questions[0]?.question_text, 'Which integer is greatest: -3, 0, or 2?');
   assert.deepEqual(paper.questions[0]?.options, ['-3', '0', '2', '-5']);
   console.log('PASS: exam generation retries empty/malformed responses and extracts structured content.');
+
+  calls = 0;
+  requestBodies.length = 0;
+  const kjseaRequest: ExamGenerationRequest = {
+    ...request,
+    title: 'Grade 9 Integrated Science KJSEA Blueprint Test',
+    gradeLevel: 'Grade 9',
+    subject: 'Integrated Science',
+    questionTypes: ['case_study'],
+    totalMarks: 10,
+    format: 'kjsea',
+    blueprint: makeFormatBlueprint('kjsea', 10, 'mixed'),
+  };
+  const kjseaPaper = await generateExamWithDeepSeek(kjseaRequest, 'Integrated Science: Scientific investigation and measurement.');
+  assert.equal(kjseaPaper.questions.length, 1, 'the KJSEA blueprint should request one main structured question');
+  assert.equal(kjseaPaper.questions[0]?.marks, 10, 'the KJSEA blueprint should reconcile the main-question mark value');
+  assert.equal(kjseaPaper.total_marks, 10, 'the reconciled KJSEA paper should total exactly the requested marks');
+  console.log('PASS: KJSEA blueprint reconciliation preserves exact main-question marks.');
 } finally {
   globalThis.fetch = originalFetch;
 }

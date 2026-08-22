@@ -99,6 +99,16 @@ function outputTokenBudget(request: ExamGenerationRequest, compact = false): num
   return Math.min(compact ? 10000 : 14000, Math.max(compact ? 5500 : 7000, scaled));
 }
 
+function alignQuestionsToBlueprint(request: ExamGenerationRequest, questions: GeneratedExamQuestion[]): GeneratedExamQuestion[] {
+  const sections = request.blueprint?.sections || [];
+  if (!sections.length) return questions;
+  const markSequence = sections.flatMap((section) => Array.from({ length: section.count }, () => section.marks_per_question));
+  return questions.slice(0, markSequence.length).map((question, index) => ({
+    ...question,
+    marks: markSequence[index] || question.marks,
+  }));
+}
+
 function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
   const blueprint = allocateQuestionBlueprint(request);
   const selectedStrands = request.strands.length ? request.strands.join('; ') : 'Use the selected curriculum topic context.';
@@ -305,13 +315,14 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
   const normalizedQuestions = Array.isArray(parsed.questions)
     ? parsed.questions.map((entry) => normalizeQuestion(entry, fallbackType, fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
     : [];
+  const blueprintAlignedQuestions = alignQuestionsToBlueprint(request, normalizedQuestions);
 
-  if (!normalizedQuestions.length) {
+  if (!blueprintAlignedQuestions.length) {
     throw new DeepSeekResponseError('The AI service did not provide any valid questions. Please try again with a narrower curriculum selection.');
   }
 
   const targetQuestionLimit = Math.min(60, Math.max(3, Math.ceil(request.totalMarks / 1)));
-  const questions = normalizedQuestions.slice(0, targetQuestionLimit).map((question, index) => ({ ...question, question_number: index + 1 }));
+  const questions = blueprintAlignedQuestions.slice(0, targetQuestionLimit).map((question, index) => ({ ...question, question_number: index + 1 }));
   const computedMarks = questions.reduce((sum, question) => sum + question.marks, 0);
 
   return {
