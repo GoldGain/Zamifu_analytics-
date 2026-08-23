@@ -77,6 +77,12 @@ export interface ExamPaper {
   validation_results?: Array<{ code: string; severity: 'critical' | 'warning' | 'info'; message: string; questionIndex?: number }>;
 }
 
+export interface CurriculumScopeNode {
+  strand: string;
+  subStrands: string[];
+  topics: string[];
+}
+
 export interface ExamGenerationRequest {
   title?: string;
   gradeLevel: string;
@@ -84,6 +90,7 @@ export interface ExamGenerationRequest {
   strands: string[];
   subStrands: string[];
   topics: string[];
+  curriculumScope?: CurriculumScopeNode[];
   questionTypes: QuestionType[];
   totalMarks: number;
   durationMinutes: number;
@@ -99,6 +106,8 @@ export interface ExamGenerationRequest {
   competencies?: string[];
   blueprint?: ExamBlueprint;
   preset?: string;
+  variationKey?: string;
+  avoidQuestionStems?: string[];
 }
 
 export interface ExamGenerationResponse {

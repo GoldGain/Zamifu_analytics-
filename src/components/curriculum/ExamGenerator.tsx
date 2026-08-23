@@ -129,6 +129,27 @@ export default function ExamGenerator({
     return [];
   }, [selectedStrands, selectedSubStrands, topics]);
 
+  const curriculumScope = useMemo(() => {
+    if (selectedStrands.size === 0) return [];
+    return strands
+      .filter((strand) => selectedStrands.has(strand.id))
+      .map((strand) => {
+        const visibleSubStrands = (strand.sub_strands || [])
+          .filter((subStrand) => selectedSubStrands.size === 0 || selectedSubStrands.has(subStrand.id));
+        const visibleSubStrandIds = new Set(visibleSubStrands.map((subStrand) => subStrand.id));
+        const visibleTopics = availableTopics.filter((topic) => (
+          topic.strand_id === strand.id
+          && (!selectedSubStrands.size || Boolean(topic.sub_strand_id && visibleSubStrandIds.has(topic.sub_strand_id)))
+          && (!selectedTopics.size || selectedTopics.has(topic.id))
+        ));
+        return {
+          strand: strand.strand_name,
+          subStrands: visibleSubStrands.map((subStrand) => subStrand.sub_strand_name),
+          topics: visibleTopics.map((topic) => topic.topic_name),
+        };
+      });
+  }, [availableTopics, selectedStrands, selectedSubStrands, selectedTopics, strands]);
+
   useEffect(() => {
     setSelectedSubStrands((current) => retainVisibleIds(current, availableSubStrands.map((subStrand) => subStrand.id)));
   }, [availableSubStrands]);
@@ -300,6 +321,7 @@ export default function ExamGenerator({
         strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
         subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
         topics: availableTopics.filter((topic) => selectedTopics.has(topic.id)).map((topic) => topic.topic_name),
+        curriculumScope,
         questionTypes: Array.from(selectedQuestionTypes),
         totalMarks,
         durationMinutes,
@@ -394,7 +416,7 @@ export default function ExamGenerator({
         body: JSON.stringify({
           title: `${paper?.title || subject} — replacement question`, gradeLevel, subject,
           strands: question.strand ? [question.strand] : [], subStrands: question.sub_strand ? [question.sub_strand] : [],
-          topics: question.topic ? [question.topic] : [], questionTypes: [question.question_type],
+          topics: question.topic ? [question.topic] : [], curriculumScope: question.strand ? [{ strand: question.strand, subStrands: question.sub_strand ? [question.sub_strand] : [], topics: question.topic ? [question.topic] : [] }] : [], questionTypes: [question.question_type],
           totalMarks: question.marks, durationMinutes: Math.max(10, Math.min(30, durationMinutes)), difficulty: question.difficulty,
           includeImages: Boolean(question.visual_spec), includeMarkingScheme: true, format, term, schoolName,
           blueprint: { total_marks: question.marks, sections: [{ id: `replacement-${Date.now()}`, question_type: question.question_type, count: 1, marks_per_question: question.marks, difficulty: question.difficulty, strand: question.strand, sub_strand: question.sub_strand, topic: question.topic }] },

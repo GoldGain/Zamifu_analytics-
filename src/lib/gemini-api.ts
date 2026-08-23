@@ -97,7 +97,7 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
       },
       contents: [{ role: 'user', parts: [{ text: `${prompt}${recoveryInstruction(attempt)}` }] }],
       generationConfig: {
-        temperature: attempt === 0 ? 0.35 : 0.15,
+        temperature: attempt === 0 ? 0.65 : 0.3,
         maxOutputTokens: outputTokenBudget(request, attempt > 0),
         responseMimeType: 'application/json',
         thinkingConfig: { thinkingLevel: attempt === 0 ? 'medium' : 'low' },

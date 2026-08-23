@@ -24,7 +24,8 @@ assert.deepEqual(filterSubStrands(strands, new Set(['living'])), [{ id: 'cells' 
 assert.deepEqual(filterTopics(topics, new Set(), new Set()).map((topic) => topic.id), ['states', 'heat', 'cells-topic']);
 assert.deepEqual(filterTopics(topics, new Set(['science']), new Set()).map((topic) => topic.id), ['states', 'heat']);
 assert.deepEqual(filterTopics(topics, new Set(['science', 'living']), new Set(['matter'])).map((topic) => topic.id), ['states']);
-assert.deepEqual(filterTopics(topics, new Set(['science']), new Set(['cells'])).map((topic) => topic.id), ['cells-topic']);
+assert.deepEqual(filterTopics(topics, new Set(['science']), new Set(['cells'])).map((topic) => topic.id), []);
+assert.deepEqual(filterTopics(topics, new Set(['science', 'living']), new Set(['cells'])).map((topic) => topic.id), ['cells-topic']);
 
 const retained = retainVisibleIds(new Set(['matter', 'cells']), ['matter', 'energy']);
 assert.deepEqual([...retained], ['matter']);

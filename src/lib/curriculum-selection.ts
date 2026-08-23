@@ -23,11 +23,20 @@ export function filterTopics<T extends TopicSelectionNode>(
   selectedStrandIds: Set<string>,
   selectedSubStrandIds: Set<string>,
 ): T[] {
+  const inSelectedStrand = (topic: T): boolean => (
+    selectedStrandIds.size === 0
+      ? true
+      : Boolean(topic.strand_id && selectedStrandIds.has(topic.strand_id))
+  );
+
   if (selectedSubStrandIds.size > 0) {
-    return topics.filter((topic) => Boolean(topic.sub_strand_id && selectedSubStrandIds.has(topic.sub_strand_id)));
+    return topics.filter((topic) => (
+      inSelectedStrand(topic)
+      && Boolean(topic.sub_strand_id && selectedSubStrandIds.has(topic.sub_strand_id))
+    ));
   }
   if (selectedStrandIds.size > 0) {
-    return topics.filter((topic) => Boolean(topic.strand_id && selectedStrandIds.has(topic.strand_id)));
+    return topics.filter(inSelectedStrand);
   }
   return topics;
 }

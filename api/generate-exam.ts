@@ -12,6 +12,7 @@ import {
 import {
   validateExamRequest,
   type ExamGenerationRequest,
+  type CurriculumScopeNode,
   type ExamBlueprint,
   type QuestionType,
   makeBalancedBlueprint,
@@ -66,6 +67,22 @@ function stringArray(value: unknown, limit = 20): string[] {
     : [];
 }
 
+function parseCurriculumScope(value: unknown): CurriculumScopeNode[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const nodes = value.slice(0, 20).flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const node = entry as Record<string, unknown>;
+    const strand = typeof node.strand === 'string' ? node.strand.trim().slice(0, 180) : '';
+    if (!strand) return [];
+    return [{
+      strand,
+      subStrands: stringArray(node.subStrands, 80),
+      topics: stringArray(node.topics, 120),
+    }];
+  });
+  return nodes.length ? nodes : undefined;
+}
+
 function parseBlueprint(value: unknown): ExamBlueprint | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const raw = value as { sections?: unknown; total_marks?: unknown; estimated_minutes?: unknown };
@@ -118,6 +135,7 @@ function parseExamRequest(raw: unknown): ExamGenerationRequest | null {
     strands: stringArray(body.strands),
     subStrands: stringArray(body.subStrands),
     topics: stringArray(body.topics),
+    curriculumScope: parseCurriculumScope(body.curriculumScope),
     questionTypes,
     totalMarks: Number.isFinite(totalMarks) ? Math.round(totalMarks) : 0,
     durationMinutes: Number.isFinite(durationMinutes) ? Math.round(durationMinutes) : 0,
@@ -133,6 +151,8 @@ function parseExamRequest(raw: unknown): ExamGenerationRequest | null {
     competencies: stringArray(body.competencies, 20),
     blueprint: parseBlueprint(body.blueprint),
     preset: typeof body.preset === 'string' ? body.preset.trim().slice(0, 80) : undefined,
+    variationKey: typeof body.variationKey === 'string' ? body.variationKey.trim().slice(0, 120) : undefined,
+    avoidQuestionStems: stringArray(body.avoidQuestionStems, 40),
   };
 }
 
@@ -157,15 +177,31 @@ function embeddedCurriculumContext(request: ExamGenerationRequest): { context: s
   const requestedStrands = new Set(request.strands.map(normalizeContextKey));
   const requestedSubStrands = new Set(request.subStrands.map(normalizeContextKey));
   const requestedTopics = new Set(request.topics.map(normalizeContextKey));
+  const scopedByStrand = new Map<string, { subStrands: Set<string>; topics: Set<string> }>();
+  for (const node of request.curriculumScope || []) {
+    const strandKey = normalizeContextKey(node.strand);
+    if (!strandKey) continue;
+    scopedByStrand.set(strandKey, {
+      subStrands: new Set(node.subStrands.map(normalizeContextKey).filter(Boolean)),
+      topics: new Set(node.topics.map(normalizeContextKey).filter(Boolean)),
+    });
+  }
   const lines: string[] = [];
   for (const pack of packs) {
-    if (requestedStrands.size && !requestedStrands.has(normalizeContextKey(pack.strand))) continue;
+    const strandKey = normalizeContextKey(pack.strand);
+    if (requestedStrands.size && !requestedStrands.has(strandKey)) continue;
+    const strandScope = scopedByStrand.get(strandKey);
     for (const subStrand of pack.subStrands) {
-      if (requestedSubStrands.size && !requestedSubStrands.has(normalizeContextKey(subStrand.name))) continue;
-      const topics = requestedTopics.size
-        ? subStrand.topics.filter((topic) => requestedTopics.has(normalizeContextKey(topic)))
-        : subStrand.topics;
-      if (!topics.length && requestedTopics.size) continue;
+      const subStrandKey = normalizeContextKey(subStrand.name);
+      const allowedSubStrands = strandScope?.subStrands.size ? strandScope.subStrands : requestedSubStrands;
+      if (allowedSubStrands.size && !allowedSubStrands.has(subStrandKey)) continue;
+      const topics = subStrand.topics.filter((topic) => {
+        const topicKey = normalizeContextKey(topic);
+        if (requestedTopics.size && !requestedTopics.has(topicKey)) return false;
+        if (strandScope?.topics.size && !strandScope.topics.has(topicKey)) return false;
+        return true;
+      });
+      if (!topics.length && (requestedTopics.size || strandScope?.topics.size)) continue;
       const outcomes = subStrand.slos.slice(0, 3).join('; ');
       lines.push([pack.strand, subStrand.name, topics.slice(0, 8).join(', '), outcomes].filter(Boolean).join(': '));
     }
@@ -174,6 +210,43 @@ function embeddedCurriculumContext(request: ExamGenerationRequest): { context: s
     context: lines.slice(0, 18).join('\n'),
     sourceSummary: lines.length ? [`Embedded KICD-aligned curriculum pack for ${request.subject}`] : [],
   };
+}
+
+async function loadRecentQuestionStems(
+  supabase: ReturnType<typeof createClient>,
+  profile: ExamProfile,
+  request: ExamGenerationRequest,
+): Promise<string[]> {
+  try {
+    const { data: papers, error: paperError } = await supabase
+      .from('exam_papers')
+      .select('questions')
+      .eq('school_id', profile.school_id)
+      .eq('grade_level', request.gradeLevel)
+      .eq('subject', request.subject)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    if (paperError) return [];
+    const questionIds = Array.from(new Set((papers || []).flatMap((paper: any) => (
+      Array.isArray(paper.questions) ? paper.questions.filter((id: unknown): id is string => typeof id === 'string') : []
+    )))).slice(0, 120);
+    if (!questionIds.length) return [];
+    const { data: questionRows, error: questionError } = await supabase
+      .from('exam_questions')
+      .select('question_text')
+      .in('id', questionIds)
+      .limit(120);
+    if (questionError) return [];
+    return Array.from(new Set((questionRows || [])
+      .map((row: any) => typeof row.question_text === 'string' ? row.question_text.trim() : '')
+      .filter(Boolean)));
+  } catch {
+    return [];
+  }
+}
+
+function makeVariationKey(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function loadVettedContext(
@@ -188,8 +261,12 @@ async function loadVettedContext(
     .limit(24);
 
   const requestedGrade = normalizeContextKey(request.gradeLevel);
+  const requestedStrands = new Set(request.strands.map(normalizeContextKey));
+  const requestedSubStrands = new Set(request.subStrands.map(normalizeContextKey));
   const matching = (error ? [] : (data || []))
     .filter((row: any) => !row.grade_level || normalizeContextKey(row.grade_level) === requestedGrade)
+    .filter((row: any) => !requestedStrands.size || (row.strand && requestedStrands.has(normalizeContextKey(row.strand))))
+    .filter((row: any) => !requestedSubStrands.size || (row.sub_strand && requestedSubStrands.has(normalizeContextKey(row.sub_strand))))
     .slice(0, 10);
   const databaseContext = matching.map((row: any) => [row.strand, row.sub_strand, row.content_summary].filter(Boolean).join(': ')).join('\n');
   const databaseSources = matching.map((row: any) => row.source_name).filter(Boolean);
@@ -275,12 +352,18 @@ async function handleExamGeneration(
       .single();
     if (generationJobError) throw new Error(`Could not start the generation job: ${generationJobError.message}`);
     generationJobId = generationJob?.id || null;
-    const vetted = await loadVettedContext(supabase, parsedRequest);
+    const recentQuestionStems = await loadRecentQuestionStems(supabase, profile, parsedRequest);
+    const generationRequest: ExamGenerationRequest = {
+      ...parsedRequest,
+      variationKey: makeVariationKey(),
+      avoidQuestionStems: Array.from(new Set([...(parsedRequest.avoidQuestionStems || []), ...recentQuestionStems])).slice(0, 40),
+    };
+    const vetted = await loadVettedContext(supabase, generationRequest);
     let draftPaper;
     try {
       draftPaper = useGemini
-        ? await generateExamWithGemini(parsedRequest, vetted.context)
-        : await generateExamWithDeepSeek(parsedRequest, vetted.context);
+        ? await generateExamWithGemini(generationRequest, vetted.context)
+        : await generateExamWithDeepSeek(generationRequest, vetted.context);
     } catch (error) {
       // Gemini is the preferred provider when configured, but a transient
       // quota, model, or structured-output failure must not break the already
@@ -290,7 +373,7 @@ async function handleExamGeneration(
       console.warn('[exam-gen] Gemini primary failed; using DeepSeek fallback:', error instanceof Error ? error.message.slice(0, 240) : 'unknown failure');
       actualProvider = 'deepseek';
       actualModel = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-      draftPaper = await generateExamWithDeepSeek(parsedRequest, vetted.context);
+      draftPaper = await generateExamWithDeepSeek(generationRequest, vetted.context);
       if (generationJobId) {
         await supabase.from('exam_generation_jobs').update({ provider: actualProvider, model: actualModel }).eq('id', generationJobId);
       }
@@ -298,7 +381,7 @@ async function handleExamGeneration(
     const renderedQuestions = draftPaper.questions
       .map(filterUnnecessaryExamVisual)
       .map(withRenderedExamVisual);
-    const validation = validateGeneratedExam(parsedRequest, renderedQuestions);
+    const validation = validateGeneratedExam(generationRequest, renderedQuestions, { previousStems: recentQuestionStems });
     if (!validation.passed) {
       throw new DeepSeekResponseError(`The generated paper needs repair before it can be saved: ${validation.issues.filter((issue) => issue.severity === 'critical').map((issue) => issue.message).slice(0, 3).join(' ')}`);
     }
