@@ -17,6 +17,7 @@ import {
   resolveActivityLessonSlot,
   timeIntervalsOverlap,
 } from '@/lib/timetable-activity';
+import { getSubjectCode } from '@/lib/timetable-subject-code';
 
 interface SchoolClass {
   id: string;
@@ -217,56 +218,7 @@ const buildTimelineSegments = (
 
 const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
 
-const SUBJECT_CODE_MAP: Record<string, string> = {
-  mathematics: 'MATH',
-  math: 'MATH',
-  english: 'ENG',
-  kiswahili: 'KISW',
-  'integrated science': 'INTSC',
-  science: 'SC',
-  'social studies': 'SST',
-  cre: 'CRE',
-  'christian religious education': 'CRE',
-  agriculture: 'AGN',
-  'pre-technical': 'PRET',
-  'pre technical': 'PRET',
-  'creative arts': 'CAS',
-  'creative and sports': 'CAS',
-  'home science': 'HSC',
-  'business studies': 'BST',
-  history: 'HIST',
-  geography: 'GEO',
-  physics: 'PHY',
-  chemistry: 'CHEM',
-  biology: 'BIO',
-};
 
-const getSubjectCode = (name: string, code: string): string => {
-  const normalizedName = (name || '').trim().toLowerCase();
-  const mappedByName = Object.entries(SUBJECT_CODE_MAP).find(([key]) =>
-    normalizedName.includes(key.toLowerCase())
-  );
-  if (mappedByName) return mappedByName[1];
-
-  const cleanCode = (code || '').trim().toUpperCase();
-  if (cleanCode) {
-    if (cleanCode.startsWith('MAT') || cleanCode === 'MA') return 'MATH';
-    if (cleanCode.startsWith('ENG') || cleanCode === 'ELA') return 'ENG';
-    if (cleanCode.startsWith('KIS') || cleanCode === 'KLA') return 'KISW';
-    if (cleanCode.startsWith('BIO')) return 'BIO';
-    if (cleanCode.startsWith('CHE')) return 'CHEM';
-    if (cleanCode.startsWith('PHY')) return 'PHY';
-    if (cleanCode.startsWith('INTSCI') || cleanCode.startsWith('ISC')) return 'INTSC';
-    if (cleanCode.startsWith('SS')) return 'SST';
-    if (cleanCode.startsWith('AGR')) return 'AGN';
-    if (cleanCode.startsWith('PRE') || cleanCode.startsWith('PTS')) return 'PRET';
-    if (cleanCode.startsWith('CAS') || cleanCode.startsWith('CA')) return 'CAS';
-    if (cleanCode.startsWith('CRE') || cleanCode.startsWith('CHR')) return 'CRE';
-    return cleanCode.replace(/\d+/g, '').substring(0, 5) || cleanCode.substring(0, 5);
-  }
-
-  return name.replace(/[^A-Za-z]/g, '').substring(0, 5).toUpperCase() || 'SUB';
-};
 
 const displayClassName = (cls: SchoolClass): string => {
   // Keep the full stored name (e.g. "Grade 7", "Class 3", "Form 1", "PP1")
