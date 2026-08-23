@@ -134,8 +134,8 @@ Deno.serve(async (req: Request) => {
       return json({ error: "The learner count changed before verification. Please restart payment." }, 409);
     }
 
-    const configuredFee = Number(school.fee_per_learner_per_term) || 50;
-    const configuredAnnualFee = Number(school.fee_per_learner_per_year) || 60;
+    const configuredFee = Number(school.fee_per_learner_per_term) || 20;
+    const configuredAnnualFee = Number(school.fee_per_learner_per_year) || 50;
     const isAnnual = period.toLowerCase().includes("annual") || period.toLowerCase().includes("year");
     const expectedFee = isAnnual ? configuredAnnualFee : configuredFee;
     const feePerLearner = feeFromMetadata > 0 ? feeFromMetadata : expectedFee;

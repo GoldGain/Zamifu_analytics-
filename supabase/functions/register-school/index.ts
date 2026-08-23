@@ -219,7 +219,8 @@ Deno.serve(async (req) => {
       onboarding_completed: false,
       admin_portal_locked: false,
       dos_portal_locked: false,
-      fee_per_learner_per_term: 50,
+      fee_per_learner_per_term: 20,
+      fee_per_learner_per_year: 50,
     };
 
     let schoolId = selected_existing_id || null;

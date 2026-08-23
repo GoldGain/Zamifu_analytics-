@@ -117,7 +117,7 @@ export default function BulkSms() {
         .replace(/{class}/g, student.classes?.name || '')
         .replace(/{school}/g, schoolData?.name || user?.schoolName || 'School');
 
-      const result = await sendBulkSMS([student.parent_phone], personalizedMessage);
+      const result = await sendBulkSMS([student.parent_phone], personalizedMessage, undefined, user?.schoolId || undefined);
       if (result.success) {
         successCount++;
       } else {

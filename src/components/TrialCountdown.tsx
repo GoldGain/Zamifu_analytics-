@@ -48,7 +48,7 @@ export const TrialCountdown: React.FC = () => {
   }
 
   const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
-  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 60;
+  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 50;
   const selectedFee = billingPeriod === 'annual' ? annualFee : pricePerLearner;
   const annualBaseline = pricePerLearner * 3;
   const annualSavings = Math.max(0, annualBaseline - annualFee);

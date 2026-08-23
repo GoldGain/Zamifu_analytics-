@@ -26,7 +26,7 @@ const TrialContext = createContext<TrialContextType>({
   billingError: null,
   refreshTrialStatus: async () => {},
   pricePerLearner: PRICE_PER_LEARNER,
-  annualPricePerLearner: 60,
+  annualPricePerLearner: 50,
   paymentAmount: 0,
   trialDays: 60,
 });
@@ -37,7 +37,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [pricePerLearner, setPricePerLearner] = useState(PRICE_PER_LEARNER);
-  const [annualPricePerLearner, setAnnualPricePerLearner] = useState(60);
+  const [annualPricePerLearner, setAnnualPricePerLearner] = useState(50);
 
   const schoolId = user?.schoolId || '';
 
@@ -72,7 +72,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
       const fee = Number(data.fee_per_learner_per_term);
       const annualFee = Number(data.fee_per_learner_per_year);
       setPricePerLearner(fee > 0 ? fee : PRICE_PER_LEARNER);
-      setAnnualPricePerLearner(annualFee > 0 ? annualFee : 60);
+      setAnnualPricePerLearner(annualFee > 0 ? annualFee : 50);
       setBillingError(null);
     } catch (error) {
       console.error('[billing] failed to load server subscription status', error);

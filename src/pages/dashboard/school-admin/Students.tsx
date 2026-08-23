@@ -231,7 +231,7 @@ export default function SchoolAdminStudents() {
           'Parent@2025',
           undefined
         );
-        sendSMS(formData.parent_phone, welcomeMessage).then((result) => {
+        sendSMS(formData.parent_phone, welcomeMessage, undefined, user?.schoolId || undefined).then((result) => {
           if (result.success) {
             toast.success('Welcome SMS sent to parent');
           } else {

@@ -106,7 +106,7 @@ export default function Communicate() {
     let failCount = 0;
 
     for (const phone of phones) {
-      const result = await sendBulkSMS([phone], message);
+      const result = await sendBulkSMS([phone], message, undefined, user?.schoolId || undefined);
       if (result.success) {
         successCount++;
       } else {

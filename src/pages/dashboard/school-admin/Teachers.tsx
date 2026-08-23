@@ -111,7 +111,7 @@ export default function SchoolAdminTeachers() {
           schoolData?.name
         );
         if (formData.phone) {
-          const smsResult = await sendSMS(formData.phone, welcomeMsg);
+          const smsResult = await sendSMS(formData.phone, welcomeMsg, undefined, user?.schoolId || undefined);
           if (smsResult.success) {
             toast.success(`Welcome SMS sent to ${formData.first_name}`);
           } else {

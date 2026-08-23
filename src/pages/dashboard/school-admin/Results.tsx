@@ -282,7 +282,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 '',
                 classObj
               );
-              const smsResult = await sendSMS(student.parent_phone, smsMsg);
+              const smsResult = await sendSMS(student.parent_phone, smsMsg, undefined, user?.schoolId || undefined);
               if (smsResult.success) smsSentCount++;
             }
           }

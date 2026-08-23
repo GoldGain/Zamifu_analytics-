@@ -26,7 +26,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
   const { user } = useAuth();
   const { pricePerLearner, annualPricePerLearner, refreshTrialStatus } = useTrial();
   const [processing, setProcessing] = useState(false);
-  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 60;
+  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 50;
   const [resolvedFee, setResolvedFee] = useState(
     billingPeriod === 'annual' ? annualFee : (feePerLearner || pricePerLearner || PRICE_PER_LEARNER),
   );

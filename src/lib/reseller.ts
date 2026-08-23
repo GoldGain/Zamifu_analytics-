@@ -1,7 +1,7 @@
 import { supabaseUntyped } from '@/lib/supabase/client';
 
-export const DEFAULT_FEE_PER_LEARNER = 50;
-export const DEFAULT_ANNUAL_FEE_PER_LEARNER = 60;
+export const DEFAULT_FEE_PER_LEARNER = 20;
+export const DEFAULT_ANNUAL_FEE_PER_LEARNER = 50;
 export const DEFAULT_CURRENCY = 'KES';
 
 export interface ResellerRecord {

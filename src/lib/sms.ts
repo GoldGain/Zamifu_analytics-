@@ -2,9 +2,12 @@
 // Supports Olympus SMS (default, no config needed) and Africa's Talking (per-school)
 
 import { calculate844Grade, calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
+import { supabaseUntyped } from '@/lib/supabase/client';
 
 const OLYMPUS_API_URL = 'https://sms.ots.co.ke/api/v3/sms/send';
-const OLYMPUS_API_TOKEN = '3682|HN95vYSLpT8BcOjhWYj7gBVOXTSp1B3UsZFbtByfbfef70cf';
+// Public registration is migrated to the server function below; this is retained
+// only as a defensive empty fallback for callers that still provide a provider config.
+const OLYMPUS_API_TOKEN = '';
 const OLYMPUS_SENDER_ID = 'PROCALL';
 
 interface SMSPayload {
@@ -146,37 +149,52 @@ async function sendViaAfricasTalking(
   }
 }
 
+async function readFunctionError(error: any, fallback: string): Promise<string> {
+  let message = error?.message || fallback;
+  try {
+    const responseBody = await error?.context?.json?.();
+    if (responseBody?.error) message = responseBody.error;
+  } catch {
+    // Keep the safe fallback when the response body is unavailable.
+  }
+  return message;
+}
+
+async function invokeServerSms(body: Record<string, unknown>): Promise<SMSResponse> {
+  const { data, error } = await supabaseUntyped.functions.invoke('send-sms', { body });
+  if (error) return { success: false, error: await readFunctionError(error, 'SMS service request failed') };
+  return data?.success
+    ? { success: true, message: data.message || 'SMS sent successfully', data }
+    : { success: false, error: data?.error || 'SMS delivery failed' };
+}
+
 /**
- * Send a single SMS using the configured provider
- * @param phone - Phone number (any format, will be normalized)
- * @param message - Message text
- * @param config - SMS provider config (defaults to Olympus)
+ * Send a single SMS. School-originated messages are processed by the server so
+ * credits are reserved before delivery and refunded automatically on failure.
  */
 export async function sendSMS(
   phone: string,
   message: string,
-  config?: SMSConfig
+  config?: SMSConfig,
+  schoolId?: string,
 ): Promise<SMSResponse> {
   try {
-    if (!phone || phone.trim().length < 10) {
-      return { success: false, error: 'Invalid phone number' };
-    }
+    if (!phone || phone.trim().length < 10) return { success: false, error: 'Invalid phone number' };
+    if (!message || !message.trim()) return { success: false, error: 'Message is empty' };
 
-    // Default to Olympus if no config provided
-    if (!config || config.provider === 'olympus') {
-      return await sendViaOlympus(phone, message);
-    }
+    // A schoolId marks a paid school-originated message. Provider credentials
+    // remain server-side and are never accepted from the browser for billing.
+    if (schoolId) return invokeServerSms({ phone, message, school_id: schoolId });
 
-    // Africa's Talking requires API key and username
-    if (config.provider === 'africastalking') {
-      if (!config.apiKey || !config.username) {
-        // Fall back to Olympus if AT is not configured
-        console.warn('Africa\'s Talking not fully configured, falling back to Olympus');
-        return await sendViaOlympus(phone, message);
-      }
+    // Registration OTPs happen before a school session exists and are handled
+    // as a controlled transactional onboarding action by the Edge Function.
+    if (!config) return invokeServerSms({ action: 'registration_otp', phone, message });
+
+    // Keep explicit provider-config support for non-school legacy callers, but
+    // never embed the default provider credential in the browser bundle.
+    if (config.provider === 'africastalking' && config.apiKey && config.username) {
       return await sendViaAfricasTalking(phone, message, config.apiKey, config.username, config.senderId || 'ZAMIFU');
     }
-
     return await sendViaOlympus(phone, message);
   } catch (error: any) {
     return { success: false, error: error.message || 'Failed to send SMS' };
@@ -184,48 +202,15 @@ export async function sendSMS(
 }
 
 /**
- * Send SMS with school-specific config
- * Fetches settings from school_settings table and sends using configured provider
+ * Send a school SMS through the same server-side wallet path used by all
+ * school-admin screens.
  */
 export async function sendSMSWithSchoolConfig(
   phone: string,
   message: string,
-  schoolId: string
+  schoolId: string,
 ): Promise<SMSResponse> {
-  try {
-    const { supabaseUntyped } = await import('@/lib/supabase/client');
-
-    const { data: settings } = await supabaseUntyped
-      .from('school_settings')
-      .select('sms_provider, sms_api_key, sms_username, sms_sender_id')
-      .eq('school_id', schoolId)
-      .maybeSingle();
-
-    const config: SMSConfig = {
-      provider: (settings?.sms_provider as 'olympus' | 'africastalking') || 'olympus',
-      apiKey: settings?.sms_api_key || undefined,
-      username: settings?.sms_username || undefined,
-      senderId: settings?.sms_sender_id || 'ZAMIFU',
-    };
-
-    const result = await sendSMS(phone, message, config);
-
-    // Log the SMS
-    try {
-      await supabaseUntyped.from('sms_logs').insert({
-        school_id: schoolId,
-        recipient_phone: normalizePhone(phone),
-        message: cleanMessage(message),
-        status: result.success ? 'sent' : 'failed',
-        error_message: result.error || null,
-        sent_at: new Date().toISOString(),
-      }).catch(() => {}); // Non-blocking
-    } catch {}
-
-    return result;
-  } catch (error: any) {
-    return { success: false, error: error.message || 'Failed to send SMS' };
-  }
+  return sendSMS(phone, message, undefined, schoolId);
 }
 
 /**
@@ -237,7 +222,8 @@ export async function sendSMSWithSchoolConfig(
 export async function sendBulkSMS(
   recipients: string[],
   message: string,
-  config?: SMSConfig
+  config?: SMSConfig,
+  schoolId?: string,
 ): Promise<SMSResponse> {
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
     return { success: false, error: 'No recipients provided' };
@@ -256,7 +242,7 @@ export async function sendBulkSMS(
       results.push({ phone: phone || 'invalid', success: false, error: 'Invalid phone number' });
       continue;
     }
-    const result = await sendSMS(phone, message, config);
+    const result = await sendSMS(phone, message, config, schoolId);
     if (result.success) {
       successCount++;
     } else {

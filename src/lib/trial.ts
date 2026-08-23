@@ -5,7 +5,7 @@
 // ============================================================
 
 export const TRIAL_DAYS = 60;
-export const PRICE_PER_LEARNER = 50;
+export const PRICE_PER_LEARNER = 20;
 
 export interface TrialData {
   trialStartDate: string;

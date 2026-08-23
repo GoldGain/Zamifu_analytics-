@@ -39,6 +39,19 @@ function normalizePhone(phone: string): string {
   return value;
 }
 
+function cleanSmsMessage(message: string): string {
+  return String(message || "").replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, "");
+}
+
+function countSmsSegments(message: string): number {
+  const clean = cleanSmsMessage(message);
+  if (!clean) return 0;
+  const isGsm7 = /^[\x00-\x7F]*$/.test(clean);
+  const singleLimit = isGsm7 ? 160 : 70;
+  const multipartLimit = isGsm7 ? 153 : 67;
+  return clean.length <= singleLimit ? 1 : Math.ceil(clean.length / multipartLimit);
+}
+
 function phoneCandidates(phone: string): string[] {
   const canonical = normalizePhone(phone);
   const digits = canonical.replace(/^\+/, "");
@@ -64,7 +77,7 @@ async function sendViaOlympus(phone: string, message: string): Promise<SmsResult
       recipient,
       sender_id: OLYMPUS_SENDER_ID,
       type: "plain",
-      message: message.replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, ""),
+      message: cleanSmsMessage(message),
     }),
   });
   const data = await response.json().catch(() => ({}));
@@ -95,7 +108,7 @@ async function sendViaAfricasTalking(
   const formData = new URLSearchParams({
     username,
     to: normalizePhone(phone),
-    message: message.replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, ""),
+    message: cleanSmsMessage(message),
     from: senderId || "",
   });
   const response = await fetch("https://api.africastalking.com/version1/messaging", {
@@ -182,6 +195,16 @@ async function sendResetSms(adminClient: any, user: ResetAccount, phone: string,
   }
   if (provider === "olympus") return sendViaOlympus(phone, message);
   return { success: false, error: "SMS provider is not configured for this school." };
+}
+
+async function handleRegistrationOtp(body: any) {
+  const phone = normalizePhone(body.phone || "");
+  const message = String(body.message || "").trim();
+  if (!/^\+254[17]\d{8}$/.test(phone)) return json({ error: "Enter a valid Kenyan phone number." }, 400);
+  if (!message) return json({ error: "Message is empty." }, 400);
+  const sms = await sendViaOlympus(phone, message);
+  if (!sms.success) return json({ error: sms.error || "SMS delivery failed. Please try again." }, 400);
+  return json({ success: true, messageId: sms.messageId });
 }
 
 async function handleResetAction(adminClient: any, action: string, body: any) {
@@ -300,6 +323,7 @@ Deno.serve(async (req) => {
     if (action === "lookup" || action === "request" || action === "verify" || action === "reset") {
       return await handleResetAction(adminClient, action, body);
     }
+    if (action === "registration_otp") return await handleRegistrationOtp(body);
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ error: "Please sign in before sending SMS." }, 401);
@@ -307,30 +331,57 @@ Deno.serve(async (req) => {
     const { data: { user: callerUser } } = await callerClient.auth.getUser();
     if (!callerUser) return json({ error: "Your session has expired. Please sign in again." }, 401);
     const { data: callerProfile } = await callerClient.from("profiles").select("role, school_id").eq("id", callerUser.id).single();
-    if (!callerProfile) return json({ error: "Your account profile could not be found." }, 403);
+    if (!callerProfile?.school_id) return json({ error: "Your account profile could not be found." }, 403);
 
     const { phone, message, school_id } = body;
     if (!phone || !message) return json({ error: "Enter a phone number and message." }, 400);
-    const resolvedSchoolId = school_id || callerProfile.school_id;
+    const resolvedSchoolId = String(school_id || callerProfile.school_id).trim();
+    if (resolvedSchoolId !== String(callerProfile.school_id)) return json({ error: "You can only send SMS for your own school." }, 403);
+
+    const cleanMessage = cleanSmsMessage(message);
+    const smsSegments = countSmsSegments(cleanMessage);
+    if (!smsSegments) return json({ error: "Message is empty." }, 400);
+
+    const { data: reservation, error: reservationError } = await adminClient.rpc("reserve_school_sms_credits", {
+      p_school_id: resolvedSchoolId,
+      p_sms_segments: smsSegments,
+      p_recipient_phone: normalizePhone(phone),
+      p_message: cleanMessage,
+      p_sent_by: callerUser.id,
+    });
+    if (reservationError) {
+      if (/INSUFFICIENT_SMS_CREDITS/i.test(reservationError.message || "")) {
+        return json({ error: `Insufficient SMS credits. This message needs ${smsSegments} SMS credit${smsSegments === 1 ? "" : "s"}.` }, 402);
+      }
+      console.error("SMS credit reservation failed:", reservationError.message);
+      return json({ error: "SMS credits could not be reserved. Please try again." }, 500);
+    }
+
     const { data: schoolSettings } = await adminClient.from("school_settings").select("sms_provider, sms_sender_id, sms_api_key, sms_username").eq("school_id", resolvedSchoolId).maybeSingle();
     const provider = schoolSettings?.sms_provider || "olympus";
     const sms = provider === "africastalking" && schoolSettings?.sms_api_key && schoolSettings?.sms_username
-      ? await sendViaAfricasTalking(phone, message, schoolSettings.sms_sender_id || "", schoolSettings.sms_api_key, schoolSettings.sms_username)
-      : await sendViaOlympus(phone, message);
+      ? await sendViaAfricasTalking(phone, cleanMessage, schoolSettings.sms_sender_id || "", schoolSettings.sms_api_key, schoolSettings.sms_username)
+      : await sendViaOlympus(phone, cleanMessage);
 
-    await adminClient.from("sms_logs").insert({
-      school_id: resolvedSchoolId,
-      recipient_phone: phone,
-      message: message.replace(/[^\w\s.,;:!?@#$%&*()\-+=/[\]{}|<>~^`\n]/g, ""),
-      status: sms.success ? "sent" : "failed",
-      message_id: sms.messageId || null,
-      error_message: sms.error || null,
-      sent_by: callerUser.id,
-      sent_at: new Date().toISOString(),
-    }).catch(() => {});
+    const reservationId = reservation?.reservation_id;
+    const { data: settlement, error: settlementError } = await adminClient.rpc("settle_school_sms_charge", {
+      p_reservation_id: reservationId,
+      p_success: Boolean(sms.success),
+      p_provider_message_id: sms.messageId || null,
+      p_error_message: sms.error || null,
+    });
+    if (settlementError) {
+      console.error("SMS credit settlement failed:", settlementError.message);
+      return json({ error: "The SMS provider response could not be recorded safely. Please contact support before retrying." }, 500);
+    }
 
-    if (!sms.success) return json({ error: sms.error || "SMS delivery failed. Please try again." }, 400);
-    return json({ success: true, messageId: sms.messageId });
+    if (!sms.success) return json({ error: sms.error || "SMS delivery failed. Your SMS credit was returned." }, 400);
+    return json({
+      success: true,
+      messageId: sms.messageId,
+      smsSegments,
+      smsBalance: Number(settlement?.sms_balance || 0),
+    });
   } catch (err) {
     console.error("SMS Error:", err);
     return json({ error: "We could not complete that request. Please try again." }, 500);
