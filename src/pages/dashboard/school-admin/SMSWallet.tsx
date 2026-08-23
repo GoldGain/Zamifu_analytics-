@@ -85,7 +85,7 @@ export default function SMSWallet() {
     void loadWallet();
   }, [schoolId]);
 
-  const credits = useMemo(() => Math.max(1, Math.floor(Number(creditsToBuy) || 0)), [creditsToBuy]);
+  const credits = useMemo(() => Math.max(0, Math.floor(Number(creditsToBuy) || 0)), [creditsToBuy]);
 
   const handlePurchase = async () => {
     if (!schoolId || credits <= 0) return;
