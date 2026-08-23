@@ -5,6 +5,7 @@ import {
   Plus, Trash2, Download, Save, Loader2, BookOpen, Users, FileSpreadsheet, X, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { sortByAdmissionNumber } from '@/lib/student-order';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -108,10 +109,9 @@ export default function ClassList() {
         .select('id, first_name, last_name, admission_number, class_id')
         .eq('class_id', selectedClass)
         .or('status.eq.active,status.is.null')
-        .eq('is_active', true)
-        .order('first_name', { ascending: true });
+        .eq('is_active', true);
       if (error) throw error;
-      setStudents(data || []);
+      setStudents(sortByAdmissionNumber(data || []));
     } catch (err: any) {
       toast.error('Failed to load students: ' + err.message);
     }

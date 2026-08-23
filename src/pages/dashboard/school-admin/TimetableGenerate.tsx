@@ -63,6 +63,18 @@ const timeToMinutes = (value: string | null | undefined): number => {
 const toMinutes = timeToMinutes;
 const TIMETABLE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 
+const stableRotation = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index++) hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  return hash;
+};
+
+const rotateList = <T,>(items: T[], offset: number): T[] => {
+  if (items.length === 0) return items;
+  const start = ((offset % items.length) + items.length) % items.length;
+  return [...items.slice(start), ...items.slice(0, start)];
+};
+
 // Map level config DB row to frontend config
 const mapLevelConfigToFrontend = (dbConfig: any, dbActivities: Record<string, string>): FrontendConfig => ({
   // Multi-tenant: only use this school's saved Setup values. No invented school times.
@@ -294,6 +306,7 @@ export default function TimetableGenerate() {
       const classBusy = new Set<string>();
       const allEntries: any[] = [];
       const generatedSummary: string[] = [];
+      const underScheduled: Array<{ className: string; subjectName: string; configured: number; scheduled: number }> = [];
 
       // Process each selected level group
       for (const levelKey of Array.from(selectedLevels)) {
@@ -662,25 +675,33 @@ export default function TimetableGenerate() {
               return unitSize;
             };
 
-            const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean) => {
-              // Reserve the configured double-lesson weekdays for pair placement
-              // before using other available weekdays for single lessons. Without
-              // this ordering, an early single lesson can consume the weekly
-              // count before a later selected double day is reached.
-              const dayOrder = [1, 2, 3, 4, 5].sort((a, b) => {
+            const rotation = stableRotation(`${levelKey}:${cls.id}:${assignment.subject_id}:${assignment.teacher_id}`);
+            const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean, rotationOffset: number) => {
+              // Reserve configured double-lesson weekdays for pair placement, then
+              // rotate the deterministic search order per class/subject/teacher.
+              // This prevents every class from claiming the same early periods and
+              // leaves fewer conflicts for shared teachers and CRE assignments.
+              const baseDayOrder = [1, 2, 3, 4, 5].sort((a, b) => {
                 const aName = TIMETABLE_DAYS[a - 1];
                 const bName = TIMETABLE_DAYS[b - 1];
                 const aDoubleDay = isDoubleLesson && configuredDoubleDays.includes(aName);
                 const bDoubleDay = isDoubleLesson && configuredDoubleDays.includes(bName);
                 return Number(bDoubleDay) - Number(aDoubleDay) || a - b;
               });
+              const doubleDays = baseDayOrder.filter((day) => isDoubleLesson && configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]));
+              const regularDays = baseDayOrder.filter((day) => !doubleDays.includes(day));
+              const dayOrder = [
+                ...rotateList(doubleDays, rotationOffset),
+                ...rotateList(regularDays, rotationOffset),
+              ];
+              const rotatedSlots = rotateList(slotsToTry, rotationOffset + 1);
 
               for (const day of dayOrder) {
                 if (scheduled >= lessonsToSchedule) break;
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
-                for (const slot of slotsToTry) {
+                for (const slot of rotatedSlots) {
                   if (skipPreferredStarts && preferredLessonSlots.some((preferred: any) => preferred.id === slot.id)) continue;
                   const useDoubleBlock = isDoubleLesson
                     && configuredDoubleDays.includes(dayName)
@@ -695,11 +716,19 @@ export default function TimetableGenerate() {
               }
             };
 
-            schedulePass(candidateLessonSlots, false);
+            schedulePass(candidateLessonSlots, false, rotation % 5);
             // If the preferred band cannot fit all weekly lessons because of
-            // teacher/class conflicts, fill remaining units in other slots rather
-            // than silently dropping the subject.
-            if (scheduled < lessonsToSchedule) schedulePass(lessonSlots, true);
+            // teacher/class conflicts, fill remaining units in other slots
+            // rather than silently dropping the subject.
+            if (scheduled < lessonsToSchedule) schedulePass(lessonSlots, true, (rotation + 2) % 5);
+            if (scheduled < lessonsToSchedule) {
+              underScheduled.push({
+                className: `${cls.name || 'Class'}${cls.stream ? ` (${cls.stream})` : ''}`,
+                subjectName: String(assignment.subjects?.name || 'Learning area'),
+                configured: lessonsToSchedule,
+                scheduled,
+              });
+            }
           }
         }
 
@@ -719,6 +748,14 @@ export default function TimetableGenerate() {
           `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
           { duration: 8000 }
         );
+      if (underScheduled.length > 0) {
+        const gapSummary = underScheduled
+          .slice(0, 8)
+          .map((gap) => `${gap.className} — ${gap.subjectName}: ${gap.scheduled}/${gap.configured}`)
+          .join('; ');
+        console.warn('[timetable] assignments still under-scheduled after redistribution', underScheduled);
+        toast.warning(`Some assignments could not fit without double-booking a teacher: ${gapSummary}`, { duration: 12000 });
+      }
       fetchData();
     } catch (err: any) {
       console.error(err);
