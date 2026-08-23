@@ -1,5 +1,5 @@
 import type { ExamBlueprint, ExamGenerationRequest, GeneratedExamQuestion } from './exam-schema';
-import { hasCompleteTableVisual } from './exam-visuals.js';
+import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 
 export type ExamValidationSeverity = 'critical' | 'warning' | 'info';
 
@@ -140,6 +140,9 @@ export function validateGeneratedExam(
     }
     if (question.visual_spec && !hasCompleteTableVisual(question)) {
       issues.push({ code: 'TABLE_DATA_INCOMPLETE', severity: 'critical', message: 'This table visual is missing complete learner-facing rows or values.', questionIndex: index });
+    }
+    if (question.visual_spec && !hasUsableVisualSpec(question)) {
+      issues.push({ code: 'VISUAL_SPEC_INCOMPLETE', severity: 'critical', message: 'This visual needs a complete structured specification with readable labels or data before it can be used in the paper.', questionIndex: index });
     }
     if (question.image_url && !question.visual_spec) {
       issues.push({ code: 'VISUAL_METADATA_MISSING', severity: 'warning', message: 'Add a caption, alt text, and visual type for this image.', questionIndex: index });

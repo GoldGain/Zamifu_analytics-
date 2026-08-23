@@ -6,7 +6,7 @@ import {
   type GeneratedExamQuestion,
   type QuestionType,
 } from './exam-schema.js';
-import { hasCompleteTableVisual } from './exam-visuals.js';
+import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 
 interface DeepSeekChoice {
   message?: { content?: unknown; reasoning_content?: string | null };
@@ -365,6 +365,9 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
       if (!candidateQuestions.length) throw new DeepSeekResponseError('The AI service did not provide any valid questions.');
       if (candidateQuestions.some((question) => !hasCompleteTableVisual(question))) {
         throw new DeepSeekResponseError('The AI response included an incomplete table visual. Retry with table_headers and every table_rows cell required by the question.');
+      }
+      if (candidateQuestions.some((question) => question.visual_spec && !hasUsableVisualSpec(question))) {
+        throw new DeepSeekResponseError('The AI response included an incomplete visual specification. Retry with readable labels or complete data for every required diagram, map, graph, chart, flowchart, table, or number line.');
       }
       parsed = candidate;
     } catch (error) {

@@ -6,7 +6,7 @@ import {
   outputTokenBudget,
   reconcileQuestionMarks,
 } from './deepseek-api.js';
-import { hasCompleteTableVisual } from './exam-visuals.js';
+import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 import { makeExamTitle, type ExamGenerationRequest, type ExamPaper, type GeneratedExamQuestion } from './exam-schema.js';
 
 interface GeminiResponse {
@@ -135,6 +135,9 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
       if (!candidateQuestions.length) throw new GeminiResponseError('Gemini did not provide any valid questions.');
       if (candidateQuestions.some((question) => !hasCompleteTableVisual(question))) {
         throw new GeminiResponseError('Gemini returned an incomplete table visual. Retry with table_headers and every table_rows cell required by the question.');
+      }
+      if (candidateQuestions.some((question) => question.visual_spec && !hasUsableVisualSpec(question))) {
+        throw new GeminiResponseError('Gemini returned an incomplete visual specification. Retry with readable labels or complete data for every required diagram, map, graph, chart, flowchart, table, or number line.');
       }
       parsed = candidate;
     } catch (error) {

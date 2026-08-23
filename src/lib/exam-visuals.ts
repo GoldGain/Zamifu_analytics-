@@ -124,7 +124,11 @@ function renderMap(spec: ExamVisualSpec): string {
 
 function renderCircuitDiagram(spec: ExamVisualSpec): string {
   const labels = (spec.labels || []).map(String);
+  const markersOnly = labels.length > 0 && labels.every((entry) => /^[A-Z]$/.test(entry.trim()));
   const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
+  const markers = markersOnly
+    ? `<text x="130" y="56" text-anchor="middle" class="body">${label(0, 'X')}</text><line x1="130" y1="60" x2="130" y2="72" stroke="#111827" stroke-width="2"/><text x="360" y="145" text-anchor="middle" class="body">${label(1, 'Y')}</text><line x1="360" y1="137" x2="360" y2="120" stroke="#111827" stroke-width="2"/>`
+    : `<text x="130" y="145" text-anchor="middle" class="body">${label(0, 'Cells in series')}</text><text x="230" y="55" text-anchor="middle" class="body">${label(2, 'Switch')}</text><text x="360" y="140" text-anchor="middle" class="body">${label(1, 'Bulb')}</text><text x="225" y="250" text-anchor="middle" class="body">${label(3, 'Connecting wires')}</text>`;
   return `<g>
     <path d="M58 92 H108 M152 92 H205 M255 92 H332 M388 92 V222 H58 V92" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
     <line x1="108" y1="72" x2="108" y2="112" stroke="#1d4ed8" stroke-width="6"/><line x1="124" y1="80" x2="124" y2="104" stroke="#1d4ed8" stroke-width="4"/>
@@ -132,15 +136,121 @@ function renderCircuitDiagram(spec: ExamVisualSpec): string {
     <text x="116" y="62" text-anchor="middle" class="small">+</text><text x="144" y="62" text-anchor="middle" class="small">−</text>
     <circle cx="360" cy="92" r="28" fill="#fef3c7" stroke="#b45309" stroke-width="4"/><path d="M344 76 L376 108 M376 76 L344 108" stroke="#b45309" stroke-width="3"/>
     <circle cx="205" cy="92" r="5" fill="#111827"/><circle cx="255" cy="92" r="5" fill="#111827"/><path d="M205 92 L244 68" fill="none" stroke="#b45309" stroke-width="4" stroke-linecap="round"/>
-    <text x="130" y="145" text-anchor="middle" class="body">${label(0, 'Cells in series')}</text>
-    <text x="230" y="55" text-anchor="middle" class="body">${label(2, 'Switch')}</text>
-    <text x="360" y="140" text-anchor="middle" class="body">${label(1, 'Bulb')}</text>
-    <text x="225" y="250" text-anchor="middle" class="body">${label(3, 'Connecting wires')}</text>
+    ${markers}
     <text x="240" y="285" text-anchor="middle" class="small">Closed circuit with two cells, a switch and a bulb.</text>
   </g>`;
 }
 
-function renderNurseryBedDiagram(spec: ExamVisualSpec): string {
+function renderSeparationStagesDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || []).map(String);
+  const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
+  return `<g>
+    <text x="118" y="52" text-anchor="middle" class="body">Stage 1: Filtration</text>
+    <path d="M83 78 H153 L132 112 V172 H104 V112 Z" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3"/>
+    <path d="M91 92 H145" stroke="#92400e" stroke-width="2"/><path d="M99 96 Q118 84 137 96" fill="none" stroke="#92400e" stroke-width="2"/>
+    <path d="M104 145 H132 V172 H104 Z" fill="#bfdbfe" fill-opacity="0.8"/><path d="M104 172 L132 172 L142 202 H94 Z" fill="#dcfce7" fill-opacity="0.7" stroke="#15803d" stroke-width="2"/>
+    <text x="118" y="218" text-anchor="middle" class="small">${label(1, 'Residue (insoluble solid)')}</text>
+    <text x="118" y="235" text-anchor="middle" class="small">${label(2, 'Filtrate (clear solution)')}</text>
+    <path d="M164 130 H190" stroke="#111827" stroke-width="2"/><path d="M184 122 L194 130 L184 138" fill="none" stroke="#111827" stroke-width="2"/>
+    <text x="300" y="52" text-anchor="middle" class="body">Stage 2: Evaporation</text>
+    <path d="M236 175 L364 175 L348 198 L252 198 Z" fill="#fef3c7" stroke="#b45309" stroke-width="3"/>
+    <path d="M251 175 Q300 154 349 175" fill="#bfdbfe" fill-opacity="0.8" stroke="#1d4ed8" stroke-width="2"/>
+    <line x1="262" y1="198" x2="250" y2="228" stroke="#111827" stroke-width="3"/><line x1="338" y1="198" x2="350" y2="228" stroke="#111827" stroke-width="3"/><line x1="250" y1="228" x2="350" y2="228" stroke="#111827" stroke-width="3"/>
+    <path d="M282 228 Q300 207 318 228" fill="none" stroke="#dc2626" stroke-width="4"/><path d="M290 228 Q300 214 310 228" fill="none" stroke="#f59e0b" stroke-width="3"/>
+    <text x="300" y="246" text-anchor="middle" class="small">${label(3, 'Evaporating dish on tripod stand')}</text>
+    <text x="300" y="264" text-anchor="middle" class="small">${label(4, 'Bunsen burner flame')}</text>
+    <text x="240" y="292" text-anchor="middle" class="small">${label(0, 'Stage 1: filter funnel and filter paper')} → heat the filtrate to recover the dissolved solid</text>
+  </g>`;
+}
+
+function renderFoodChainDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || ['Grass', 'Grasshopper', 'Frog', 'Snake', 'Eagle']).map(String).slice(0, 6);
+  const cellWidth = 68;
+  const gap = 12;
+  const startX = Math.max(12, (480 - (labels.length * cellWidth + (labels.length - 1) * gap)) / 2);
+  const boxes = labels.map((entry, index) => {
+    const x = startX + index * (cellWidth + gap);
+    const y = index % 2 === 0 ? 112 : 184;
+    const fill = index === 0 ? '#dcfce7' : index === labels.length - 1 ? '#fee2e2' : '#dbeafe';
+    const box = `<rect x="${x}" y="${y}" width="${cellWidth}" height="38" rx="8" fill="${fill}" stroke="#1d4ed8" stroke-width="2"/>${centeredTextLines(entry, x + cellWidth / 2, y + 15, 10, 'small', 11)}`;
+    const nextX = startX + (index + 1) * (cellWidth + gap);
+    const nextY = (index + 1) % 2 === 0 ? 131 : 203;
+    const arrow = index < labels.length - 1 ? `<line x1="${x + cellWidth}" y1="${y + 19}" x2="${nextX - 7}" y2="${nextY}" stroke="#475569" stroke-width="2"/><path d="M${nextX - 15} ${nextY - 5} L${nextX - 5} ${nextY} L${nextX - 15} ${nextY + 5}" fill="none" stroke="#475569" stroke-width="2"/>` : '';
+    return box + arrow;
+  }).join('');
+  return `<g><text x="240" y="58" text-anchor="middle" class="body">Energy flow through the food chain</text>${boxes}<text x="240" y="278" text-anchor="middle" class="small">Arrows show the direction of energy transfer.</text></g>`;
+}
+
+function renderDistillationDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || []).map(String);
+  const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
+  return `<g>
+    <line x1="72" y1="70" x2="72" y2="244" stroke="#111827" stroke-width="4"/><line x1="52" y1="244" x2="94" y2="244" stroke="#111827" stroke-width="4"/>
+    <line x1="72" y1="105" x2="112" y2="105" stroke="#111827" stroke-width="3"/><line x1="96" y1="105" x2="96" y2="140" stroke="#111827" stroke-width="3"/>
+    <path d="M96 150 Q120 130 144 150 L151 183 Q149 213 120 222 Q91 213 89 183 Z" fill="#dbeafe" fill-opacity="0.72" stroke="#1d4ed8" stroke-width="3"/>
+    <rect x="112" y="92" width="16" height="52" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3"/>
+    <line x1="120" y1="54" x2="120" y2="117" stroke="#b45309" stroke-width="3"/><circle cx="120" cy="54" r="5" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+    <path d="M151 166 H304 Q316 166 316 154 V142 Q316 130 304 130 H151" fill="#e0f2fe" fill-opacity="0.72" stroke="#0369a1" stroke-width="3"/>
+    <line x1="163" y1="142" x2="304" y2="142" stroke="#0369a1" stroke-width="2"/><path d="M180 154 H274" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="7 5"/>
+    <path d="M316 154 L344 154 L344 177" fill="none" stroke="#0369a1" stroke-width="3"/>
+    <path d="M344 177 Q360 163 376 177 L382 205 Q380 224 360 230 Q340 224 338 205 Z" fill="#dcfce7" fill-opacity="0.76" stroke="#15803d" stroke-width="3"/>
+    <path d="M101 226 H139 L132 242 H108 Z" fill="#fef3c7" stroke="#b45309" stroke-width="2"/><path d="M107 226 Q120 212 133 226" fill="none" stroke="#dc2626" stroke-width="3"/>
+    <text x="120" y="252" text-anchor="middle" class="small">${label(1, 'Round-bottom flask')}</text>
+    <text x="120" y="70" text-anchor="middle" class="small">${label(0, 'Thermometer')}</text>
+    <text x="235" y="120" text-anchor="middle" class="small">${label(2, 'Condenser')}</text>
+    <text x="360" y="252" text-anchor="middle" class="small">${label(3, 'Receiving flask')}</text>
+    <text x="120" y="274" text-anchor="middle" class="small">Heat</text>
+  </g>`;
+}
+
+function renderSeparatingFunnelDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || []).map(String);
+  const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
+  return `<g>
+    <line x1="72" y1="55" x2="72" y2="246" stroke="#111827" stroke-width="4"/><line x1="50" y1="246" x2="94" y2="246" stroke="#111827" stroke-width="4"/>
+    <line x1="72" y1="98" x2="206" y2="98" stroke="#111827" stroke-width="4"/><line x1="174" y1="98" x2="174" y2="122" stroke="#111827" stroke-width="3"/>
+    <path d="M174 88 L286 88 L274 152 Q270 175 246 186 L246 210 L218 210 L218 186 Q190 175 186 152 Z" fill="#eff6ff" fill-opacity="0.65" stroke="#1d4ed8" stroke-width="3"/>
+    <path d="M187 137 L274 137 L268 156 Q264 173 244 181 L220 181 Q198 173 193 156 Z" fill="#fef3c7" fill-opacity="0.9"/>
+    <path d="M187 137 L274 137 L270 112 L190 112 Z" fill="#bfdbfe" fill-opacity="0.85"/>
+    <line x1="218" y1="210" x2="246" y2="210" stroke="#111827" stroke-width="4"/><circle cx="232" cy="210" r="7" fill="#fef3c7" stroke="#b45309" stroke-width="3"/>
+    <line x1="232" y1="217" x2="232" y2="228" stroke="#111827" stroke-width="3"/>
+    <path d="M202 230 L262 230 L254 266 L210 266 Z" fill="#dcfce7" fill-opacity="0.7" stroke="#15803d" stroke-width="3"/>
+    <text x="174" y="72" text-anchor="middle" class="small">${label(0, 'Layer A (lower)')}</text>
+    <text x="304" y="118" text-anchor="middle" class="small">${label(1, 'Layer B (upper)')}</text>
+    <text x="232" y="246" text-anchor="middle" class="small">${label(2, 'Stopcock')}</text>
+    <text x="232" y="282" text-anchor="middle" class="small">${label(3, 'Conical flask')}</text>
+  </g>`;
+}
+
+function renderConceptMapDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || ['Honesty', 'Kindness', 'Respect', 'Empathy']).map(String).slice(0, 4);
+  const positions = [[240, 58], [78, 142], [402, 142], [240, 232]];
+  const connectors = positions.map(([x, y]) => `<line x1="240" y1="154" x2="${x}" y2="${y}" stroke="#64748b" stroke-width="2"/>`).join('');
+  const boxes = labels.map((entry, index) => {
+    const [x, y] = positions[index] || positions[0];
+    return `<rect x="${x - 55}" y="${y - 17}" width="110" height="34" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>${centeredTextLines(entry, x, y - 3, 15, 'small', 11)}`;
+  }).join('');
+  return `<g>${connectors}<circle cx="240" cy="154" r="54" fill="#dcfce7" stroke="#15803d" stroke-width="3"/>${centeredTextLines('Healthy Friendship', 240, 149, 15, 'body', 16)}${boxes}<text x="240" y="277" text-anchor="middle" class="small">Concept map; relationships are shown schematically.</text></g>`;
+}
+
+function renderGenericLabeledDiagram(spec: ExamVisualSpec): string {
+  const labels = (spec.labels || []).map(String).filter(Boolean).slice(0, 4);
+  const effectiveLabels = labels.length >= 2 ? labels : ['Part A', 'Part B'];
+  const positions = [[72, 68], [408, 68], [72, 236], [408, 236]];
+  const connectors = effectiveLabels.map((_, index) => {
+    const [x, y] = positions[index];
+    const endX = x < 240 ? 130 : 350;
+    const endY = y < 150 ? 100 : 205;
+    return `<line x1="${x}" y1="${y}" x2="${endX}" y2="${endY}" stroke="#64748b" stroke-width="2"/>`;
+  }).join('');
+  const boxes = effectiveLabels.map((entry, index) => {
+    const [x, y] = positions[index];
+    return `<rect x="${x - 58}" y="${y - 15}" width="116" height="30" rx="7" fill="#f8fafc" stroke="#475569" stroke-width="2"/>${centeredTextLines(entry, x, y - 2, 15, 'small', 11)}`;
+  }).join('');
+  return `<g>${connectors}<rect x="130" y="100" width="220" height="105" rx="12" fill="#f8fafc" stroke="#1d4ed8" stroke-width="3" stroke-dasharray="7 5"/><text x="240" y="145" text-anchor="middle" class="body">SCHEMATIC VISUAL</text><text x="240" y="165" text-anchor="middle" class="small">Use the labelled parts shown.</text>${boxes}<text x="240" y="252" text-anchor="middle" class="small">Not to scale; interpret only as directed by the question.</text></g>`;
+}
+
+function renderNurseryBedDiagram(spec: ExamVisualSpec) {
   const labels = (spec.labels || ['Shade', 'Seed drill', 'Nursery bed', 'Watering can']).map(String);
   const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
   const seedRows = [0, 1, 2].map((row) => {
@@ -298,6 +408,26 @@ export function hasCompleteTableVisual(question: GeneratedExamQuestion): boolean
   return headers.length >= 2 && (values.length >= headers.length || promptNumbers.length >= headers.length);
 }
 
+export function hasUsableVisualSpec(question: GeneratedExamQuestion): boolean {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  const assetType = String(spec.asset_type || '').toLowerCase();
+  const labels = (spec.labels || []).map(String).filter((value) => value.trim());
+  const mapRegions = (spec.map_regions || []).map(String).filter((value) => value.trim());
+  const values = (spec.values || []).filter((value) => Number.isFinite(Number(value)));
+  const xLabels = (spec.x_labels || []).map(String).filter((value) => value.trim());
+  const flowLabels = labels.length;
+  if (!assetType) return false;
+  if (!String(spec.title || spec.caption || '').trim()) return false;
+  if (assetType === 'table') return hasCompleteTableVisual(question);
+  if (assetType === 'map') return mapRegions.length >= 2 || labels.length >= 2;
+  if (assetType === 'graph' || assetType === 'chart') return values.length >= 2 && (xLabels.length >= values.length || labels.length >= values.length);
+  if (assetType === 'flowchart') return flowLabels >= 2;
+  if (assetType === 'number_line') return labels.length >= 2;
+  if (assetType === 'diagram' || assetType === 'shape') return labels.length >= 2;
+  if (assetType === 'illustration') return Boolean(String(spec.prompt || '').trim()) && labels.length >= 1;
+  return false;
+}
+
 export function shouldKeepExamVisual(question: GeneratedExamQuestion): boolean {
   if (!question.visual_spec) return false;
   const spec = question.visual_spec as ExamVisualSpec;
@@ -335,8 +465,18 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
       body = renderCircuitDiagram(spec);
     } else if (assetType === 'diagram' && /nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) {
       body = renderNurseryBedDiagram(spec);
+    } else if (assetType === 'diagram' && /distillation|round-bottom|condenser|receiving flask|separation apparatus/.test(descriptor)) {
+      body = renderDistillationDiagram(spec);
+    } else if (assetType === 'diagram' && /separating funnel|stopcock|immiscible|two distinct layers/.test(descriptor)) {
+      body = renderSeparatingFunnelDiagram(spec);
+    } else if (assetType === 'diagram' && /filter funnel|filter paper|filtrate|residue|evaporating dish|tripod|bunsen|separation stages|sand.*salt/.test(descriptor)) {
+      body = renderSeparationStagesDiagram(spec);
+    } else if (assetType === 'diagram' && /food chain|grasshopper|flow of energy|producer|consumer|predator|prey/.test(descriptor)) {
+      body = renderFoodChainDiagram(spec);
+    } else if (assetType === 'diagram' && /healthy friendship|friendship|qualities|honesty|kindness|respect|empathy/.test(descriptor)) {
+      body = renderConceptMapDiagram(spec);
     } else {
-      body = '<rect x="95" y="70" width="120" height="100" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/><circle cx="300" cy="120" r="52" fill="#dcfce7" stroke="#15803d" stroke-width="4"/><path d="M90 245 L220 245 L155 185 Z" fill="#fef3c7" stroke="#b45309" stroke-width="4"/>';
+      body = renderGenericLabeledDiagram(spec);
     }
   } else if (assetType === 'flowchart') {
     const labels = (spec.labels || ['Start', 'Process', 'Decision', 'End']).slice(0, 4);
