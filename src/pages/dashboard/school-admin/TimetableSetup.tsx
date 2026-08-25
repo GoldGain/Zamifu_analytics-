@@ -139,6 +139,7 @@ export default function TimetableSetup() {
   const [schoolId, setSchoolId] = useState<string>('');
   const [selectedLevel, setSelectedLevel] = useState<string>('lower-primary');
   const [configs, setConfigs] = useState<Record<string, LevelConfig>>({});
+  const [savedConfigLevels, setSavedConfigLevels] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copyFrom, setCopyFrom] = useState('');
@@ -211,6 +212,11 @@ export default function TimetableSetup() {
       });
 
       setConfigs(configMap);
+      setSavedConfigLevels(new Set(
+        (levelConfigs || [])
+          .map((config: any) => String(config.level_group || '').trim())
+          .filter((level: string) => LEVEL_GROUPS.some((group) => group.key === level))
+      ));
 
       const { data: activityRows, error: activityError } = await supabaseUntyped
         .from('after_school_activities')
@@ -334,6 +340,11 @@ export default function TimetableSetup() {
           after_lunch_lessons: saved.after_lunch_lessons ?? afterLunch,
         },
       }));
+      setSavedConfigLevels(prev => {
+        const next = new Set(prev);
+        next.add(selectedLevel);
+        return next;
+      });
 
       toast.success(
         `Saved ${LEVEL_GROUPS.find(l => l.key === selectedLevel)?.label}: start ${(saved.start_time || '').toString().slice(0,5)}, lunch ${(saved.lunch_start || '').toString().slice(0,5)}–${(saved.lunch_end || '').toString().slice(0,5)}, ${saved.lessons_per_day ?? normalizedLessons} lessons (${saved.after_lunch_lessons ?? afterLunch} after lunch). Now open Generate Timetable.`
@@ -484,6 +495,16 @@ export default function TimetableSetup() {
           )}
         </div>
       </div>
+
+      {!savedConfigLevels.has(selectedLevel) && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3 text-sm text-amber-900">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
+          <div>
+            <p className="font-bold">Preview defaults — not saved for this school</p>
+            <p className="mt-1">These are safe editing defaults only. Save this {LEVEL_GROUPS.find(l => l.key === selectedLevel)?.label || 'level'} configuration before generating or viewing its timetable, so the saved lunch end and post-lunch lesson timing are used.</p>
+          </div>
+        </div>
+      )}
 
       {/* Level Configuration Form */}
       <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">

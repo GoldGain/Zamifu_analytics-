@@ -294,6 +294,26 @@ export default function TimetableGenerate() {
         );
       }
 
+      // Upper Primary uses only direct class-linked assignments. Do not clear or
+      // generate an apparently empty Grade 4–6 timetable when those assignments
+      // are absent; Junior and every other level keep their existing path.
+      if (selectedLevels.has('upper-primary')) {
+        const upperPrimaryClasses = allClasses.filter((cls: any) => {
+          const gradeLevel = Number(cls.grade_level ?? cls.level);
+          if ([4, 5, 6].includes(gradeLevel)) return true;
+          return /grade\s*[456]\b/i.test(String(cls.name || ''));
+        });
+        const upperPrimaryClassIds = new Set(upperPrimaryClasses.map((cls: any) => String(cls.id)));
+        const upperPrimaryAssignments = (assignments || []).filter((assignment: any) =>
+          upperPrimaryClassIds.has(String(assignment.class_id))
+        );
+        if (upperPrimaryClasses.length > 0 && upperPrimaryAssignments.length === 0) {
+          throw new Error(
+            'Upper Primary has no active teacher assignments linked to the Grade 4–6 classes. Assign each learning area and its weekly lesson count in Teacher Assignments, then generate again.'
+          );
+        }
+      }
+
       // Clear existing entries/slots for selected levels + legacy "default" (old generator)
       // so View Timetable never mixes wrong lesson counts across levels.
       const levelsToClear = new Set<string>([...Array.from(selectedLevels), 'default']);

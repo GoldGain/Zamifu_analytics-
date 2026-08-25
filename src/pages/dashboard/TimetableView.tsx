@@ -336,10 +336,25 @@ function buildDisplaySlotsForLevel(
   // Do NOT fall back to legacy "default" slots — they have wrong after-lunch counts
 
   const counts = countLessons(candidates);
+  const upperPrimaryConfigComplete = key !== 'upper-primary' || Boolean(
+    levelConfig &&
+    [
+      levelConfig.start_time,
+      levelConfig.first_break_start,
+      levelConfig.first_break_end,
+      levelConfig.second_break_start,
+      levelConfig.second_break_end,
+      levelConfig.lunch_start,
+      levelConfig.lunch_end,
+    ].every(Boolean) &&
+    Number(levelConfig.lessons_per_day ?? targets.total) === targets.total &&
+    Number(levelConfig.after_lunch_lessons ?? targets.afterLunch) === targets.afterLunch
+  );
   const countsMatch =
     candidates.length > 0 &&
     counts.total === targets.total &&
-    counts.afterLunch === targets.afterLunch;
+    counts.afterLunch === targets.afterLunch &&
+    upperPrimaryConfigComplete;
   const normalizeLegacyActivitySlots = (candidateSlots: TimeSlot[]): TimeSlot[] => {
     const lessonSlots = candidateSlots.filter((slot) => slot.slot_type === 'lesson');
     const lastLessonEnd = lessonSlots.length
@@ -452,6 +467,10 @@ function buildDisplaySlotsForLevel(
     levelConfig?.lunch_end,
   ];
   if (!levelConfig || required.some((v) => !v)) {
+    // Upper Primary must never render old candidate slots without its own saved
+    // seven-lesson/one-after-lunch clock; those candidates are commonly stale
+    // rows from an earlier generation and can show the wrong afternoon time.
+    if (key === 'upper-primary') return [];
     if (candidates.length) {
       const filtered = stripInLessonActivitySlots(candidates);
       return targets.afterLunch === 0
