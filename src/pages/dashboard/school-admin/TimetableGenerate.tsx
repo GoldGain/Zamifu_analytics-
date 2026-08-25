@@ -305,8 +305,40 @@ export default function TimetableGenerate() {
       const teacherBusy = new Set<string>();
       const classBusy = new Set<string>();
       const allEntries: any[] = [];
+      type AssignmentPlacementContext = {
+        assignmentKey: string;
+        assignment: any;
+        cls: any;
+        levelKey: string;
+        subjectName: string;
+        isMath: boolean;
+        isScience: boolean;
+        preferredLessonSlots: any[];
+        availableDays: string[];
+        isDoubleLesson: boolean;
+        configuredDoubleDays: string[];
+        lessonSlots: any[];
+        nextLessonById: Map<string, any>;
+        config: FrontendConfig;
+        classSubjectBySlot: Map<string, string>;
+        getDaySlotTiming: (day: number, cls: any) => {
+          blockingActivities: ScheduledActivity[];
+          times: Map<string, { start_time: string; end_time: string }>;
+        };
+      };
+      type LessonPlacementRecord = {
+        context: AssignmentPlacementContext;
+        unitSize: 1 | 2;
+        day: number;
+        slots: any[];
+        classKeys: string[];
+        teacherKeys: string[];
+        entries: any[];
+      };
+      const assignmentContexts = new Map<string, AssignmentPlacementContext>();
+      const placementRecords: LessonPlacementRecord[] = [];
       const generatedSummary: string[] = [];
-      const underScheduled: Array<{ className: string; subjectName: string; configured: number; scheduled: number }> = [];
+      const underScheduled: Array<{ className: string; subjectName: string; configured: number; scheduled: number; assignmentKey: string }> = [];
 
       // Process each selected level group
       for (const levelKey of Array.from(selectedLevels)) {
@@ -672,11 +704,39 @@ export default function TimetableGenerate() {
                 classBusy.add(keys[index].classKey);
                 classSubjectBySlot.set(keys[index].classKey, subjectName);
               });
+              placementRecords.push({
+                context: placementContext,
+                unitSize,
+                day,
+                slots: unitSlots,
+                classKeys: keys.map(({ classKey }) => classKey),
+                teacherKeys: keys.map(({ teacherKey }) => teacherKey),
+                entries: allEntries.slice(-unitSlots.length),
+              });
               return unitSize;
             };
 
             const rotation = stableRotation(`${levelKey}:${cls.id}:${assignment.subject_id}:${assignment.teacher_id}`);
             const preferredSlotIds = new Set(preferredLessonSlots.map((preferred: any) => String(preferred.id)));
+            const placementContext: AssignmentPlacementContext = {
+              assignmentKey: `${levelKey}:${cls.id}:${assignment.subject_id}:${assignment.teacher_id}`,
+              assignment,
+              cls,
+              levelKey,
+              subjectName,
+              isMath,
+              isScience,
+              preferredLessonSlots,
+              availableDays,
+              isDoubleLesson,
+              configuredDoubleDays,
+              lessonSlots,
+              nextLessonById,
+              config,
+              classSubjectBySlot,
+              getDaySlotTiming,
+            };
+            assignmentContexts.set(placementContext.assignmentKey, placementContext);
             const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean, rotationOffset: number) => {
               // Reserve configured double-lesson weekdays for pair placement, then
               // rotate the deterministic search order per class/subject/teacher.
@@ -728,10 +788,188 @@ export default function TimetableGenerate() {
                 subjectName: String(assignment.subjects?.name || 'Learning area'),
                 configured: lessonsToSchedule,
                 scheduled,
+                assignmentKey: placementContext.assignmentKey,
               });
             }
           }
         }
+
+        const removePlacement = (placement: LessonPlacementRecord) => {
+          placement.entries.forEach((entry) => {
+            const index = allEntries.indexOf(entry);
+            if (index >= 0) allEntries.splice(index, 1);
+          });
+          placement.teacherKeys.forEach((key) => teacherBusy.delete(key));
+          placement.classKeys.forEach((key) => {
+            classBusy.delete(key);
+            placement.context.classSubjectBySlot.delete(key);
+          });
+          const recordIndex = placementRecords.indexOf(placement);
+          if (recordIndex >= 0) placementRecords.splice(recordIndex, 1);
+        };
+
+        const getUnitSlots = (context: AssignmentPlacementContext, startSlot: any, unitSize: 1 | 2) => {
+          const secondSlot = unitSize === 2 ? context.nextLessonById.get(String(startSlot.id)) : null;
+          if (unitSize === 2 && !secondSlot) return null;
+          return secondSlot ? [startSlot, secondSlot] : [startSlot];
+        };
+
+        const canPlaceContextAt = (
+          context: AssignmentPlacementContext,
+          startSlot: any,
+          day: number,
+          unitSize: 1 | 2,
+        ) => {
+          const unitSlots = getUnitSlots(context, startSlot, unitSize);
+          if (!unitSlots) return false;
+          const dayName = TIMETABLE_DAYS[day - 1];
+          if (!context.availableDays.includes(dayName)) return false;
+          if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
+          const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
+          const timings = unitSlots.map((slot: any) =>
+            times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
+          );
+          const keys = unitSlots.map((slot: any) => ({
+            teacherKey: `${context.assignment.teacher_id}-${day}-${slot.id}`,
+            classKey: `${context.cls.id}-${day}-${slot.id}`,
+          }));
+          if (keys.some(({ teacherKey, classKey }) => teacherBusy.has(teacherKey) || classBusy.has(classKey))) return false;
+          if (blockingActivities.some((activity) => timings.some((timing) =>
+            overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time)))) return false;
+
+          const previousLesson = context.lessonSlots
+            .filter((slot: any) => slot.slot_order < startSlot.slot_order)
+            .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
+          const earlier = previousLesson
+            ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${previousLesson.id}`)
+            : undefined;
+          const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
+          const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
+          const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(context.config.lunch_start);
+          if (startsInMorning && ((context.isMath && earlierIsScience) || (context.isScience && earlierIsMath))) return false;
+          return true;
+        };
+
+        const addPlacementAt = (
+          context: AssignmentPlacementContext,
+          startSlot: any,
+          day: number,
+          unitSize: 1 | 2,
+        ): LessonPlacementRecord | null => {
+          const unitSlots = getUnitSlots(context, startSlot, unitSize);
+          if (!unitSlots || !canPlaceContextAt(context, startSlot, day, unitSize)) return null;
+          const { times } = context.getDaySlotTiming(day, context.cls);
+          const entries = unitSlots.map((slot: any) => {
+            const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
+            return {
+              school_id: schoolId,
+              day_of_week: day,
+              time_slot_id: slot.id,
+              class_id: context.cls.id,
+              level_group: context.levelKey,
+              effective_start_time: timing.start_time,
+              effective_end_time: timing.end_time,
+              subject_id: context.assignment.subject_id,
+              teacher_id: context.assignment.teacher_id,
+              entry_type: unitSize === 2 ? 'lesson_double' : 'lesson',
+            };
+          });
+          const classKeys = unitSlots.map((slot: any) => `${context.cls.id}-${day}-${slot.id}`);
+          const teacherKeys = unitSlots.map((slot: any) => `${context.assignment.teacher_id}-${day}-${slot.id}`);
+          allEntries.push(...entries);
+          teacherKeys.forEach((key) => teacherBusy.add(key));
+          classKeys.forEach((key) => {
+            classBusy.add(key);
+            context.classSubjectBySlot.set(key, context.subjectName);
+          });
+          const placement = { context, unitSize, day, slots: unitSlots, classKeys, teacherKeys, entries };
+          placementRecords.push(placement);
+          return placement;
+        };
+
+        const orderedRepairSlots = (context: AssignmentPlacementContext) => {
+          const preferredIds = new Set(context.preferredLessonSlots.map((slot: any) => String(slot.id)));
+          return [
+            ...context.preferredLessonSlots,
+            ...context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id))),
+          ];
+        };
+
+        const tryRepairGap = (gap: typeof underScheduled[number]) => {
+          const context = assignmentContexts.get(gap.assignmentKey);
+          if (!context) return;
+          const repairSlots = orderedRepairSlots(context);
+          let guard = 0;
+          while (gap.scheduled < gap.configured && guard < context.lessonSlots.length * TIMETABLE_DAYS.length * 2) {
+            guard += 1;
+            let repaired = false;
+            const remaining = gap.configured - gap.scheduled;
+            const dayOrder = [1, 2, 3, 4, 5];
+            for (const day of dayOrder) {
+              if (repaired) break;
+              const dayName = TIMETABLE_DAYS[day - 1];
+              if (!context.availableDays.includes(dayName)) continue;
+              const desiredUnit: 1 | 2 = context.isDoubleLesson
+                && context.configuredDoubleDays.includes(dayName)
+                && remaining > 1
+                ? 2
+                : 1;
+              for (const slot of repairSlots) {
+                if (canPlaceContextAt(context, slot, day, desiredUnit)) {
+                  if (addPlacementAt(context, slot, day, desiredUnit)) {
+                    gap.scheduled += desiredUnit;
+                    repaired = true;
+                    break;
+                  }
+                }
+
+                // If the target class period is occupied by a lesson and the
+                // target teacher is also occupied, move that single lesson to a
+                // different valid period, then fill the target period.
+                if (desiredUnit !== 1) continue;
+                const targetClassKey = `${context.cls.id}-${day}-${slot.id}`;
+                const targetTeacherKey = `${context.assignment.teacher_id}-${day}-${slot.id}`;
+                const blockers = placementRecords.filter((placement) =>
+                  placement.context.levelKey === context.levelKey
+                  && (placement.classKeys.includes(targetClassKey) || placement.teacherKeys.includes(targetTeacherKey))
+                );
+                const uniqueBlockers = blockers.filter((placement, index) => blockers.indexOf(placement) === index);
+                if (uniqueBlockers.length !== 1 || uniqueBlockers[0].unitSize !== 1) continue;
+                const blocker = uniqueBlockers[0];
+                const originalDay = blocker.day;
+                const originalSlot = blocker.slots[0];
+                removePlacement(blocker);
+                const targetPlacement = addPlacementAt(context, slot, day, 1);
+                if (targetPlacement) {
+                  let blockerMoved = false;
+                  for (const blockerDay of [1, 2, 3, 4, 5]) {
+                    if (blockerMoved) break;
+                    for (const blockerSlot of orderedRepairSlots(blocker.context)) {
+                      if (blockerDay === originalDay && String(blockerSlot.id) === String(originalSlot.id)) continue;
+                      if (canPlaceContextAt(blocker.context, blockerSlot, blockerDay, 1)
+                        && addPlacementAt(blocker.context, blockerSlot, blockerDay, 1)) {
+                        blockerMoved = true;
+                        break;
+                      }
+                    }
+                  }
+                  if (blockerMoved) {
+                    gap.scheduled += 1;
+                    repaired = true;
+                    break;
+                  }
+                  removePlacement(targetPlacement);
+                }
+                addPlacementAt(blocker.context, originalSlot, originalDay, 1);
+              }
+            }
+            if (!repaired) break;
+          }
+        };
+
+        // Repair every known shortfall before persisting entries. A repaired
+        // warning is updated to its final count and is not shown as an error.
+        underScheduled.forEach(tryRepairGap);
 
         // Unassigned lesson slots intentionally remain blank. Do not insert
         // synthetic REVISION or SELF-STUDY activities: the viewer can then
@@ -749,12 +987,13 @@ export default function TimetableGenerate() {
           `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
           { duration: 8000 }
         );
-      if (underScheduled.length > 0) {
-        const gapSummary = underScheduled
+      const unresolvedGaps = underScheduled.filter((gap) => gap.scheduled < gap.configured);
+      if (unresolvedGaps.length > 0) {
+        const gapSummary = unresolvedGaps
           .slice(0, 8)
           .map((gap) => `${gap.className} — ${gap.subjectName}: ${gap.scheduled}/${gap.configured}`)
           .join('; ');
-        console.warn('[timetable] assignments still under-scheduled after redistribution', underScheduled);
+        console.warn('[timetable] assignments still under-scheduled after repair', unresolvedGaps);
         toast.warning(`Some assignments could not fit without double-booking a teacher: ${gapSummary}`, { duration: 12000 });
       }
       fetchData();
