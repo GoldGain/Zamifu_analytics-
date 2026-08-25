@@ -113,7 +113,7 @@ const mapDbToFrontend = (dbConfig: any, dbActivities: Record<string, string>): F
 
 // Map level group key to class grade_level ranges
 const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
-  'pre-primary': [-2, -1, 0],
+  'pre-primary': [-3, -2, -1, 0],
   'lower-primary': [1, 2, 3],
   'upper-primary': [4, 5, 6],
   'combined-primary': [1, 2, 3, 4, 5, 6],
@@ -476,7 +476,7 @@ export default function TimetableGenerate() {
           if (!target || target === 'all') return true;
           const className = String(cls.name || '').toLowerCase();
           const grade = Number(cls.grade_level ?? cls.level);
-          const isPrimary = (grade >= 1 && grade <= 6) || /grade\s*[1-6]\b|pp\s*[12]|pre[\s-]?primary/.test(className);
+          const isPrimary = (grade >= -3 && grade <= 6) || /grade\s*[1-6]\b|playgroup|pp\s*[12]|pre[\s-]?primary/.test(className);
           const isJunior = (grade >= 7 && grade <= 9) || /grade\s*[789]\b|junior|jss/.test(className);
           const isSenior = (grade >= 10 && grade <= 12) || /grade\s*(10|11|12)\b|senior/.test(className);
           if (target.includes('primary') && isPrimary) return true;

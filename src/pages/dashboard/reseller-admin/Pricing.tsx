@@ -43,7 +43,7 @@ export default function ResellerPricing() {
       list.forEach((s: any) => {
         const termFee = feeOrDefault(s.fee_per_learner_per_term);
         map[s.id] = termFee;
-        annualMap[s.id] = feeOrDefault(s.fee_per_learner_per_year, termFee * 3);
+        annualMap[s.id] = feeOrDefault(s.fee_per_learner_per_year, defaultAnnualFee);
       });
       setFees(map);
       setAnnualFees(annualMap);
@@ -177,7 +177,7 @@ export default function ResellerPricing() {
             <tbody>
               {schools.map((s) => {
                 const fee = feeOrDefault(fees[s.id]);
-                const annualFee = feeOrDefault(annualFees[s.id], fee * 3);
+                const annualFee = feeOrDefault(annualFees[s.id], DEFAULT_ANNUAL_FEE_PER_LEARNER);
                 const annualSavings = Math.max(0, fee * 3 - annualFee);
                 return (
                   <tr key={s.id} className="border-b last:border-0">

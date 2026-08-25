@@ -16,7 +16,7 @@ const LEVEL_DURATIONS: Record<string, string[]> = {
 
 function detectLevel(grade: string): string {
   const g = grade.toLowerCase().trim();
-  if (/pp1|pp2|pre.?primary/i.test(g)) return 'Pre-Primary';
+  if (/playgroup|pp1|pp2|pre.?primary/i.test(g)) return 'Pre-Primary';
   if (/grade\s*1|grade\s*2|grade\s*3|class\s*1|class\s*2|class\s*3|lower\s*primary/i.test(g)) return 'Lower Primary';
   if (/grade\s*4|grade\s*5|grade\s*6|class\s*4|class\s*5|class\s*6|upper\s*primary/i.test(g)) return 'Upper Primary';
   if (/grade\s*7|grade\s*8|grade\s*9|junior|jss/i.test(g)) return 'Junior School';

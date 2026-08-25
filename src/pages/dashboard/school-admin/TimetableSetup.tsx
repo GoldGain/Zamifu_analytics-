@@ -23,7 +23,7 @@ function normalizeTime(value: string | null | undefined): string | null {
 
 
 export const LEVEL_GROUPS = [
-  { key: 'pre-primary', label: 'Pre-Primary (PP1, PP2)', grades: 'PP1, PP2' },
+  { key: 'pre-primary', label: 'Pre-Primary (Playgroup, PP1, PP2)', grades: 'Playgroup, PP1, PP2' },
   { key: 'lower-primary', label: 'Lower Primary (Grade 1-3)', grades: 'Grade 1, 2, 3' },
   { key: 'upper-primary', label: 'Upper Primary (Grade 4-6)', grades: 'Grade 4, 5, 6' },
   { key: 'combined-primary', label: 'Combined Primary (Grade 1-6)', grades: 'Grade 1-6' },

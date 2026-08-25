@@ -1,5 +1,5 @@
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { currencyCode, feeOrDefault } from '@/lib/reseller';
+import { DEFAULT_ANNUAL_FEE_PER_LEARNER, currencyCode, feeOrDefault } from '@/lib/reseller';
 
 export interface SchoolPortfolioItem {
   id: string;
@@ -133,7 +133,7 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
   const portfolioSchools = schools.map((school) => {
     const learners = studentCounts.get(school.id) || 0;
     const feePerLearnerPerTerm = feeOrDefault(school.fee_per_learner_per_term);
-    const feePerLearnerPerYear = feeOrDefault(school.fee_per_learner_per_year, feePerLearnerPerTerm * 3);
+    const feePerLearnerPerYear = feeOrDefault(school.fee_per_learner_per_year, DEFAULT_ANNUAL_FEE_PER_LEARNER);
     const revenueThisTerm = learners * feePerLearnerPerTerm;
 
     return {

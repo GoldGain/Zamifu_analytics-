@@ -15,6 +15,7 @@ interface StandardClass {
 }
 
 const STANDARD_CLASSES: StandardClass[] = [
+  { name: 'Playgroup', grade_level: -3, curriculum: 'CBE', label: 'Playgroup — Pre-Primary CBE' },
   { name: 'PP1',      grade_level: -2, curriculum: 'CBE', label: 'PP1      — Pre-Primary CBE' },
   { name: 'PP2',      grade_level: -1, curriculum: 'CBE', label: 'PP2      — Pre-Primary CBE' },
   { name: 'Grade 1',  grade_level: 1,  curriculum: 'CBE', label: 'Grade 1  — Primary CBE'  },
@@ -230,7 +231,7 @@ export default function SchoolAdminClasses() {
               <label className="block text-xs text-gray-500 mb-1">Class *</label>
               <select value={selectedPreset} onChange={e => setSelectedPreset(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white" required>
                 <option value="">— Select a class —</option>
-                <optgroup label="Pre-Primary CBE (PP1–PP2)">
+                <optgroup label="Pre-Primary CBE (Playgroup, PP1–PP2)">
                   {STANDARD_CLASSES.filter(c => c.curriculum === 'CBE' && c.grade_level < 0).map(c => (
                     <option key={c.name} value={c.name}>{c.name}</option>
                   ))}

@@ -18,6 +18,7 @@ import {
   timeIntervalsOverlap,
 } from '@/lib/timetable-activity';
 import { getSubjectCode } from '@/lib/timetable-subject-code';
+import { buildWeeklyLessonSummary } from '@/lib/timetable-summary';
 
 interface SchoolClass {
   id: string;
@@ -101,7 +102,7 @@ const activityMatchesClass = (activity: SchoolActivity, cls: SchoolClass): boole
   if (!target || target === 'all') return true;
   const className = String(cls.name || '').toLowerCase();
   const grade = Number(cls.grade_level ?? cls.level);
-  const isPrimary = (grade >= 1 && grade <= 6) || /grade\s*[1-6]\b|pp\s*[12]|pre[\s-]?primary/.test(className);
+  const isPrimary = (grade >= -3 && grade <= 6) || /grade\s*[1-6]\b|playgroup|pp\s*[12]|pre[\s-]?primary/.test(className);
   const isJunior = (grade >= 7 && grade <= 9) || /grade\s*[789]\b|junior|jss/.test(className);
   const isSenior = (grade >= 10 && grade <= 12) || /grade\s*(10|11|12)\b|senior/.test(className);
   if (target.includes('primary') && isPrimary) return true;
@@ -239,7 +240,7 @@ const fmt = (t: string): string => {
 function resolveClassLevelGroup(cls: SchoolClass): string {
   const grade = Number(cls.grade_level ?? cls.level);
   const name = String(cls.name || '').toLowerCase();
-  if (grade === -2 || grade === -1 || grade === 0 || /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return 'pre-primary';
+  if (grade === -3 || grade === -2 || grade === -1 || grade === 0 || /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return 'pre-primary';
   if ((grade >= 1 && grade <= 3) || /grade\s*[123]\b/.test(name)) return 'lower-primary';
   if ((grade >= 4 && grade <= 6) || /grade\s*[456]\b/.test(name)) return 'upper-primary';
   if ((grade >= 7 && grade <= 9) || /grade\s*[789]\b/.test(name)) return 'junior';
@@ -960,6 +961,85 @@ export default function TimetableView() {
       min-width: 760px;
       table-layout: fixed;
     }
+    .tt-summary-panel {
+      margin: 14px 0 18px;
+      padding: 14px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+      break-inside: avoid;
+    }
+    .tt-summary-title {
+      color: #1e3a8a;
+      font-size: 0.9rem;
+      font-weight: 900;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+    .tt-summary-note {
+      margin-top: 3px;
+      color: #64748b;
+      font-size: 0.68rem;
+      line-height: 1.35;
+    }
+    .tt-summary-empty {
+      margin: 0;
+      border: 1px dashed #93c5fd;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #64748b;
+      padding: 10px 12px;
+      font-size: 0.72rem;
+    }
+    .tt-summary-badge {
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e40af;
+      padding: 5px 9px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .tt-summary-table {
+      width: 100%;
+      min-width: 620px;
+      border-collapse: collapse;
+      table-layout: auto;
+      background: #ffffff;
+    }
+    .tt-summary-table th,
+    .tt-summary-table td {
+      border: 1px solid #dbe3ee;
+      padding: 6px 8px;
+      color: #334155;
+      font-size: 0.7rem;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .tt-summary-table thead th {
+      background: #1e3a8a;
+      color: #ffffff;
+      font-size: 0.64rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .tt-summary-table thead th:first-child,
+    .tt-summary-table tbody th {
+      text-align: left;
+    }
+    .tt-summary-table tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+    .tt-summary-table tbody th {
+      color: #1e293b;
+      font-weight: 700;
+    }
+    .tt-summary-total {
+      color: #1d4ed8 !important;
+      font-weight: 900;
+    }
     .tt-weekly-table .tt-time-header {
       min-width: 72px;
       padding: 5px 3px;
@@ -1207,6 +1287,9 @@ export default function TimetableView() {
     }
 
     const lessonSummary = countLessons(slotsForTable);
+    const weeklyLessonSummary = buildWeeklyLessonSummary(classesToRender, slotsForTable, (day, classId, slot) =>
+      getEntries(day, classId, slot)
+    );
 
     // Breaks, lunch, and lesson clocks are shared by every class in the level.
     // Per-entry effective times are used only when persisted; no activity can
@@ -1259,6 +1342,44 @@ export default function TimetableView() {
         </p>
         <div className="h-0.5 w-24 bg-blue-400 mx-auto mt-2"></div>
       </div>
+      <section className="tt-summary-panel" aria-label="Weekly learning-area lesson summary">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <div>
+            <h3 className="tt-summary-title">Weekly learning-area summary</h3>
+            <p className="tt-summary-note">Count of scheduled subject lessons across Monday–Friday. Activities, breaks, and lunch are not counted as learning areas.</p>
+          </div>
+          <span className="tt-summary-badge">{weeklyLessonSummary.reduce((sum, row) => sum + row.totalLessons, 0)} scheduled cells</span>
+        </div>
+        {weeklyLessonSummary.length === 0 ? (
+          <p className="tt-summary-empty">No scheduled learning-area lessons yet. Add or generate subject entries to see the weekly totals here.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="tt-summary-table">
+              <thead>
+                <tr>
+                  <th>Learning area</th>
+                  <th>Total / week</th>
+                  {classesToRender.length > 1 && classesToRender.map((cls) => (
+                    <th key={cls.id}>{displayClassName(cls)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {weeklyLessonSummary.map((row) => (
+                  <tr key={row.key}>
+                    <th scope="row">{row.label}</th>
+                    <td className="tt-summary-total">{row.totalLessons}</td>
+                    {classesToRender.length > 1 && classesToRender.map((cls) => (
+                      <td key={cls.id}>{row.perClass[cls.id] || 0}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <div className="overflow-x-auto">
         <table className="tt-table">
           <thead>

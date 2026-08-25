@@ -156,7 +156,7 @@ export default function ResellerSchools() {
       fee_per_learner_per_term: feeOrDefault(s.fee_per_learner_per_term),
       fee_per_learner_per_year: feeOrDefault(
         s.fee_per_learner_per_year,
-        feeOrDefault(s.fee_per_learner_per_term) * 3,
+        resellerDefaults.annual,
       ),
     });
     setEditingId(s.id);
