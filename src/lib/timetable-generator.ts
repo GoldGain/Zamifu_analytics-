@@ -133,6 +133,23 @@ export function getLessonCountForLevel(level: string, override?: number | null):
   return 8;
 }
 
+/**
+ * Decide whether a fallback scheduling pass should skip a slot that belongs to
+ * the preferred priority band. When an assignment has no priority band, its
+ * preferred slots are the complete lesson-slot set; the fallback must therefore
+ * keep all slots eligible instead of skipping the entire timetable.
+ */
+export function shouldSkipPreferredSlot(
+  skipPreferredStarts: boolean,
+  preferredSlotIds: ReadonlySet<string>,
+  totalLessonSlotCount: number,
+  slotId: string,
+): boolean {
+  return skipPreferredStarts
+    && preferredSlotIds.size < totalLessonSlotCount
+    && preferredSlotIds.has(slotId);
+}
+
 export function getAfterLunchCount(level: string, override?: number | null): number {
   if (typeof override === 'number' && override >= 0 && override <= 3) return override;
   const config = getLevelConfig(level);

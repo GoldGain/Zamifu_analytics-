@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets } from '@/lib/timetable-generator';
+import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets, shouldSkipPreferredSlot } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -676,6 +676,7 @@ export default function TimetableGenerate() {
             };
 
             const rotation = stableRotation(`${levelKey}:${cls.id}:${assignment.subject_id}:${assignment.teacher_id}`);
+            const preferredSlotIds = new Set(preferredLessonSlots.map((preferred: any) => String(preferred.id)));
             const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean, rotationOffset: number) => {
               // Reserve configured double-lesson weekdays for pair placement, then
               // rotate the deterministic search order per class/subject/teacher.
@@ -702,7 +703,7 @@ export default function TimetableGenerate() {
                 if (!availableDays.includes(dayName)) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of rotatedSlots) {
-                  if (skipPreferredStarts && preferredLessonSlots.some((preferred: any) => preferred.id === slot.id)) continue;
+                  if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
                   const useDoubleBlock = isDoubleLesson
                     && configuredDoubleDays.includes(dayName)
                     && scheduled + 1 < lessonsToSchedule;
