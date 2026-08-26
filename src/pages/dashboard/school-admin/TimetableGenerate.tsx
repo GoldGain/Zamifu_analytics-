@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateSlots, getLessonCountForLevel, getLevelConfig, resolveLessonTargets, shouldSkipPreferredSlot } from '@/lib/timetable-generator';
+import { generateSlots, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -337,6 +337,7 @@ export default function TimetableGenerate() {
         availableDays: string[];
         isDoubleLesson: boolean;
         configuredDoubleDays: string[];
+        dayUsage: Map<number, number>;
         lessonSlots: any[];
         nextLessonById: Map<string, any>;
         config: FrontendConfig;
@@ -733,6 +734,7 @@ export default function TimetableGenerate() {
                 teacherKeys: keys.map(({ teacherKey }) => teacherKey),
                 entries: allEntries.slice(-unitSlots.length),
               });
+              placementContext.dayUsage.set(day, (placementContext.dayUsage.get(day) || 0) + 1);
               return unitSize;
             };
 
@@ -750,6 +752,7 @@ export default function TimetableGenerate() {
               availableDays,
               isDoubleLesson,
               configuredDoubleDays,
+              dayUsage: new Map<number, number>(),
               lessonSlots,
               nextLessonById,
               config,
@@ -757,11 +760,16 @@ export default function TimetableGenerate() {
               getDaySlotTiming,
             };
             assignmentContexts.set(placementContext.assignmentKey, placementContext);
-            const schedulePass = (slotsToTry: any[], skipPreferredStarts: boolean, rotationOffset: number) => {
+            const schedulePass = (
+              slotsToTry: any[],
+              skipPreferredStarts: boolean,
+              rotationOffset: number,
+              allowRepeatedDays: boolean,
+            ) => {
               // Reserve configured double-lesson weekdays for pair placement, then
               // rotate the deterministic search order per class/subject/teacher.
-              // This prevents every class from claiming the same early periods and
-              // leaves fewer conflicts for shared teachers and CRE assignments.
+              // For non-double assignments, every unused weekday is exhausted before
+              // a fallback pass is allowed to reuse a day.
               const baseDayOrder = [1, 2, 3, 4, 5].sort((a, b) => {
                 const aName = TIMETABLE_DAYS[a - 1];
                 const bName = TIMETABLE_DAYS[b - 1];
@@ -769,12 +777,12 @@ export default function TimetableGenerate() {
                 const bDoubleDay = isDoubleLesson && configuredDoubleDays.includes(bName);
                 return Number(bDoubleDay) - Number(aDoubleDay) || a - b;
               });
-              const doubleDays = baseDayOrder.filter((day) => isDoubleLesson && configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]));
-              const regularDays = baseDayOrder.filter((day) => !doubleDays.includes(day));
-              const dayOrder = [
-                ...rotateList(doubleDays, rotationOffset),
-                ...rotateList(regularDays, rotationOffset),
-              ];
+              const dayOrder = orderAssignmentDays(
+                baseDayOrder,
+                placementContext.dayUsage,
+                rotationOffset,
+                allowRepeatedDays,
+              );
               const rotatedSlots = rotateList(slotsToTry, rotationOffset + 1);
 
               for (const day of dayOrder) {
@@ -797,11 +805,11 @@ export default function TimetableGenerate() {
               }
             };
 
-            schedulePass(candidateLessonSlots, false, rotation % 5);
+            schedulePass(candidateLessonSlots, false, rotation % 5, false);
             // If the preferred band cannot fit all weekly lessons because of
             // teacher/class conflicts, fill remaining units in other slots
             // rather than silently dropping the subject.
-            if (scheduled < lessonsToSchedule) schedulePass(lessonSlots, true, (rotation + 2) % 5);
+            if (scheduled < lessonsToSchedule) schedulePass(lessonSlots, true, (rotation + 2) % 5, true);
             if (scheduled < lessonsToSchedule) {
               underScheduled.push({
                 className: `${cls.name || 'Class'}${cls.stream ? ` (${cls.stream})` : ''}`,
@@ -815,6 +823,9 @@ export default function TimetableGenerate() {
         }
 
         const removePlacement = (placement: LessonPlacementRecord) => {
+          const currentDayUsage = placement.context.dayUsage.get(placement.day) || 0;
+          if (currentDayUsage <= 1) placement.context.dayUsage.delete(placement.day);
+          else placement.context.dayUsage.set(placement.day, currentDayUsage - 1);
           placement.entries.forEach((entry) => {
             const index = allEntries.indexOf(entry);
             if (index >= 0) allEntries.splice(index, 1);
@@ -902,6 +913,7 @@ export default function TimetableGenerate() {
             classBusy.add(key);
             context.classSubjectBySlot.set(key, context.subjectName);
           });
+          context.dayUsage.set(day, (context.dayUsage.get(day) || 0) + 1);
           const placement = { context, unitSize, day, slots: unitSlots, classKeys, teacherKeys, entries };
           placementRecords.push(placement);
           return placement;
@@ -924,7 +936,11 @@ export default function TimetableGenerate() {
             guard += 1;
             let repaired = false;
             const remaining = gap.configured - gap.scheduled;
-            const dayOrder = [1, 2, 3, 4, 5];
+            const dayOrder = [
+              ...orderAssignmentDays([1, 2, 3, 4, 5], context.dayUsage, 0, false),
+              ...orderAssignmentDays([1, 2, 3, 4, 5], context.dayUsage, 0, true)
+                .filter((day) => !orderAssignmentDays([1, 2, 3, 4, 5], context.dayUsage, 0, false).includes(day)),
+            ];
             for (const day of dayOrder) {
               if (repaired) break;
               const dayName = TIMETABLE_DAYS[day - 1];

@@ -356,14 +356,14 @@ export default function ClassList() {
             <div className="p-12 text-center text-gray-500 text-sm">No active learners in this class.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-full border-collapse text-sm">
                 <thead className="bg-gray-50 text-left">
                   <tr>
-                    <th className="px-3 py-2 font-semibold text-gray-600 sticky left-0 bg-gray-50">#</th>
-                    <th className="px-3 py-2 font-semibold text-gray-600 sticky left-8 bg-gray-50">Adm No.</th>
-                    <th className="px-3 py-2 font-semibold text-gray-600 sticky left-28 bg-gray-50 min-w-[160px]">Name</th>
+                    <th className="border border-gray-200 px-3 py-2 font-semibold text-gray-600 sticky left-0 bg-gray-50">#</th>
+                    <th className="border border-gray-200 px-3 py-2 font-semibold text-gray-600 sticky left-8 bg-gray-50">Adm No.</th>
+                    <th className="border border-gray-200 px-3 py-2 font-semibold text-gray-600 sticky left-28 bg-gray-50 min-w-[160px]">Name</th>
                     {columns.map((col) => (
-                      <th key={col.id} className="px-3 py-2 font-semibold text-gray-600 min-w-[120px]">
+                      <th key={col.id} className="border border-gray-200 px-3 py-2 font-semibold text-gray-600 min-w-[120px]">
                         <div className="flex items-center gap-2">
                           <span>{col.column_name}</span>
                           <button type="button" onClick={() => deleteColumn(col.id)} className="text-red-400 hover:text-red-600">
@@ -377,16 +377,16 @@ export default function ClassList() {
                 <tbody>
                   {students.map((s, idx) => (
                     <tr key={s.id} className="border-t border-gray-50 hover:bg-slate-50/60">
-                      <td className="px-3 py-2 text-gray-400 sticky left-0 bg-white">{idx + 1}</td>
-                      <td className="px-3 py-2 font-mono text-xs sticky left-8 bg-white">{s.admission_number}</td>
-                      <td className="px-3 py-2 font-medium text-gray-800 sticky left-28 bg-white">
+                      <td className="border border-gray-200 px-3 py-2 text-gray-400 sticky left-0 bg-white">{idx + 1}</td>
+                      <td className="border border-gray-200 px-3 py-2 font-mono text-xs sticky left-8 bg-white">{s.admission_number}</td>
+                      <td className="border border-gray-200 px-3 py-2 font-medium text-gray-800 sticky left-28 bg-white">
                         {s.first_name} {s.last_name}
                       </td>
                       {columns.map((col) => {
                         const isEditing = editingCell?.studentId === s.id && editingCell?.columnId === col.id;
                         const value = cellData[s.id]?.[col.id] || '';
                         return (
-                          <td key={col.id} className="px-2 py-1">
+                          <td key={col.id} className="border border-gray-200 px-2 py-1">
                             {isEditing ? (
                               <div className="flex items-center gap-1">
                                 <input
@@ -419,7 +419,7 @@ export default function ClassList() {
                         );
                       })}
                       {columns.length === 0 && (
-                        <td className="px-4 py-3 text-gray-300 italic">No columns yet — click Add Column</td>
+                        <td className="border border-gray-200 px-4 py-3 text-gray-300 italic">No columns yet — click Add Column</td>
                       )}
                     </tr>
                   ))}

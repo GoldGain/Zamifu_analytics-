@@ -150,6 +150,29 @@ export function shouldSkipPreferredSlot(
     && preferredSlotIds.has(slotId);
 }
 
+/**
+ * Order weekdays for assignment placement.
+ *
+ * Non-double assignments should use each available weekday once before a
+ * fallback pass is allowed to repeat a day. This prevents a five-lesson
+ * assignment from clustering twice on one day when another weekday is still
+ * available, while still allowing six-or-more lessons to fit after the unique
+ * weekdays have been exhausted.
+ */
+export function orderAssignmentDays(
+  dayOrder: readonly number[],
+  dayUsage: ReadonlyMap<number, number>,
+  rotationOffset = 0,
+  allowRepeatedDays = false,
+): number[] {
+  const unusedDays = dayOrder.filter((day) => (dayUsage.get(day) || 0) === 0);
+  const usedDays = dayOrder.filter((day) => (dayUsage.get(day) || 0) > 0);
+  const orderedDays = allowRepeatedDays ? [...unusedDays, ...usedDays] : unusedDays;
+  if (orderedDays.length === 0) return [];
+  const start = ((rotationOffset % orderedDays.length) + orderedDays.length) % orderedDays.length;
+  return [...orderedDays.slice(start), ...orderedDays.slice(0, start)];
+}
+
 export function getAfterLunchCount(level: string, override?: number | null): number {
   if (typeof override === 'number' && override >= 0 && override <= 3) return override;
   const config = getLevelConfig(level);
