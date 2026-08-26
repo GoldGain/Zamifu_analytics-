@@ -647,9 +647,13 @@ export default function TimetableGenerate() {
               const bSciencePriority = Boolean(bBand === 'morning' && /integrated\s*science/.test(bName));
               const aDoublePriority = a.is_double_lesson === true;
               const bDoublePriority = b.is_double_lesson === true;
+              const aLessons = Number(a.lessons_per_week || 0);
+              const bLessons = Number(b.lessons_per_week || 0);
               return Number(bDoublePriority) - Number(aDoublePriority)
                 || Number(bSciencePriority) - Number(aSciencePriority)
-                || (bandOrder[aBand] ?? 3) - (bandOrder[bBand] ?? 3);
+                || (bandOrder[aBand] ?? 3) - (bandOrder[bBand] ?? 3)
+                || bLessons - aLessons
+                || aName.localeCompare(bName);
             });
           for (const assignment of classAssignments) {
             const lessonsToSchedule = Number(assignment.lessons_per_week || 0);
