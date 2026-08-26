@@ -335,6 +335,7 @@ export default function TimetableGenerate() {
         isScience: boolean;
         preferredLessonSlots: any[];
         availableDays: string[];
+        lessonsPerWeek: number;
         isDoubleLesson: boolean;
         configuredDoubleDays: string[];
         dayUsage: Map<number, number>;
@@ -750,6 +751,7 @@ export default function TimetableGenerate() {
               isScience,
               preferredLessonSlots,
               availableDays,
+              lessonsPerWeek: lessonsToSchedule,
               isDoubleLesson,
               configuredDoubleDays,
               dayUsage: new Map<number, number>(),
@@ -856,6 +858,8 @@ export default function TimetableGenerate() {
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
+          if (unitSize === 1 && !context.isDoubleLesson && context.lessonsPerWeek <= TIMETABLE_DAYS.length
+            && (context.dayUsage.get(day) || 0) > 0) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
           const timings = unitSlots.map((slot: any) =>
             times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
@@ -1006,6 +1010,67 @@ export default function TimetableGenerate() {
         // Repair every known shortfall before persisting entries. A repaired
         // warning is updated to its final count and is not shown as an error.
         underScheduled.forEach(tryRepairGap);
+
+        const restorePlacement = (placement: LessonPlacementRecord) => {
+          allEntries.push(...placement.entries);
+          placement.teacherKeys.forEach((key) => teacherBusy.add(key));
+          placement.classKeys.forEach((key) => {
+            classBusy.add(key);
+            placement.context.classSubjectBySlot.set(key, placement.context.subjectName);
+          });
+          placement.context.dayUsage.set(placement.day, (placement.context.dayUsage.get(placement.day) || 0) + 1);
+          placementRecords.push(placement);
+        };
+
+        const normalizeNonDoubleDayDistribution = (context: AssignmentPlacementContext) => {
+          // Five-or-fewer non-double lessons should normally occupy distinct
+          // weekdays. Only move a lesson when an unused valid weekday has a
+          // conflict-free slot; otherwise retain the safe existing placement.
+          if (context.isDoubleLesson || context.lessonsPerWeek > TIMETABLE_DAYS.length) return;
+          const availableDayNumbers = context.availableDays
+            .map((dayName) => TIMETABLE_DAYS.indexOf(dayName) + 1)
+            .filter((day) => day > 0);
+          let guard = 0;
+          while (guard < context.lessonsPerWeek * TIMETABLE_DAYS.length) {
+            guard += 1;
+            const repeatedDay = availableDayNumbers
+              .filter((day) => (context.dayUsage.get(day) || 0) > 1)
+              .sort((a, b) => (context.dayUsage.get(b) || 0) - (context.dayUsage.get(a) || 0))[0];
+            if (!repeatedDay) break;
+
+            const unusedDays = orderAssignmentDays(availableDayNumbers, context.dayUsage, 0, false);
+            if (unusedDays.length === 0) break;
+            const sourcePlacements = placementRecords
+              .filter((placement) => placement.context === context && placement.unitSize === 1 && placement.day === repeatedDay)
+              .sort((a, b) => Number(b.slots[0]?.slot_order || 0) - Number(a.slots[0]?.slot_order || 0));
+            let moved = false;
+
+            for (const sourcePlacement of sourcePlacements) {
+              let target: { day: number; slot: any } | null = null;
+              for (const day of unusedDays) {
+                for (const slot of orderedRepairSlots(context)) {
+                  if (canPlaceContextAt(context, slot, day, 1)) {
+                    target = { day, slot };
+                    break;
+                  }
+                }
+                if (target) break;
+              }
+              if (!target) continue;
+
+              removePlacement(sourcePlacement);
+              const replacement = addPlacementAt(context, target.slot, target.day, 1);
+              if (replacement) {
+                moved = true;
+                break;
+              }
+              restorePlacement(sourcePlacement);
+            }
+            if (!moved) break;
+          }
+        };
+
+        assignmentContexts.forEach(normalizeNonDoubleDayDistribution);
 
         // Unassigned lesson slots intentionally remain blank. Do not insert
         // synthetic REVISION or SELF-STUDY activities: the viewer can then
