@@ -5,7 +5,8 @@
 
 -- Per-school platform pricing (KES per learner per term)
 ALTER TABLE public.schools
-  ADD COLUMN IF NOT EXISTS fee_per_learner_per_term INTEGER DEFAULT 50;
+  ADD COLUMN IF NOT EXISTS fee_per_learner_per_term INTEGER DEFAULT 20,
+  ADD COLUMN IF NOT EXISTS fee_per_learner_per_year INTEGER DEFAULT 50;
 
 -- Portal locks (School Admin + Dean of Studies only)
 ALTER TABLE public.schools
@@ -25,7 +26,8 @@ ALTER TABLE public.schools
 
 -- Default fee on resellers (optional default when creating schools)
 ALTER TABLE public.resellers
-  ADD COLUMN IF NOT EXISTS default_fee_per_learner INTEGER DEFAULT 50;
+  ADD COLUMN IF NOT EXISTS default_fee_per_learner INTEGER DEFAULT 20,
+  ADD COLUMN IF NOT EXISTS default_fee_per_learner_per_year INTEGER DEFAULT 50;
 
 -- Subscription payments (school platform fees paid to reseller / platform)
 CREATE TABLE IF NOT EXISTS public.school_subscription_payments (
@@ -35,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.school_subscription_payments (
   school_name TEXT,
   reseller_name TEXT,
   learners_count INTEGER DEFAULT 0,
-  fee_per_learner INTEGER DEFAULT 50,
+  fee_per_learner INTEGER DEFAULT 20,
   amount INTEGER NOT NULL DEFAULT 0,
   currency TEXT DEFAULT 'KES',
   term_label TEXT,
@@ -102,8 +104,14 @@ CREATE POLICY "school_insert_sub_payments" ON public.school_subscription_payment
 
 -- Backfill defaults
 UPDATE public.schools
-SET fee_per_learner_per_term = COALESCE(fee_per_learner_per_term, 50)
-WHERE fee_per_learner_per_term IS NULL;
+SET fee_per_learner_per_term = COALESCE(fee_per_learner_per_term, 20),
+    fee_per_learner_per_year = COALESCE(fee_per_learner_per_year, 50)
+WHERE fee_per_learner_per_term IS NULL OR fee_per_learner_per_year IS NULL;
+
+UPDATE public.resellers
+SET default_fee_per_learner = COALESCE(default_fee_per_learner, 20),
+    default_fee_per_learner_per_year = COALESCE(default_fee_per_learner_per_year, 50)
+WHERE default_fee_per_learner IS NULL OR default_fee_per_learner_per_year IS NULL;
 
 UPDATE public.schools
 SET admin_portal_locked = COALESCE(admin_portal_locked, FALSE),

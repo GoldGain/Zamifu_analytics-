@@ -43,7 +43,7 @@ export default function ResellerPricing() {
       list.forEach((s: any) => {
         const termFee = feeOrDefault(s.fee_per_learner_per_term);
         map[s.id] = termFee;
-        annualMap[s.id] = feeOrDefault(s.fee_per_learner_per_year, defaultAnnualFee);
+        annualMap[s.id] = feeOrDefault(s.fee_per_learner_per_year, DEFAULT_ANNUAL_FEE_PER_LEARNER);
       });
       setFees(map);
       setAnnualFees(annualMap);
@@ -81,7 +81,7 @@ export default function ResellerPricing() {
     setSavingId(schoolId);
     try {
       const value = feeOrDefault(fees[schoolId]);
-      const annualValue = feeOrDefault(annualFees[schoolId], value * 3);
+      const annualValue = feeOrDefault(annualFees[schoolId], DEFAULT_ANNUAL_FEE_PER_LEARNER);
       if (!resellerId) throw new Error('Reseller account not found');
       const { error } = await (supabase as any)
         .from('schools')

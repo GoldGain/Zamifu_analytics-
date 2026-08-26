@@ -86,7 +86,7 @@ export default function StudentReportCard() {
     try {
       const { data } = await supabaseUntyped
         .from('schools')
-        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date')
+        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on')
         .eq('id', schoolId)
         .maybeSingle();
       if (data) {
@@ -99,6 +99,8 @@ export default function StudentReportCard() {
           phone: data.phone || '',
           email: data.email || '',
           next_term_start_date: data.next_term_start_date || null,
+          school_closes_on: data.school_closes_on || null,
+          school_opens_on: data.school_opens_on || data.next_term_start_date || null,
         });
         setSignatures(prev => ({
           ...prev,
@@ -111,7 +113,7 @@ export default function StudentReportCard() {
       try {
         const { data } = await supabaseUntyped
           .from('schools')
-          .select('name, motto, logo_url, principal_name, address, phone, email, next_term_start_date')
+          .select('name, motto, logo_url, principal_name, address, phone, email, next_term_start_date, school_closes_on, school_opens_on')
           .eq('id', schoolId)
           .maybeSingle();
         if (data) {
@@ -124,6 +126,8 @@ export default function StudentReportCard() {
             phone: data.phone || '',
             email: data.email || '',
             next_term_start_date: data.next_term_start_date || null,
+          school_closes_on: data.school_closes_on || null,
+          school_opens_on: data.school_opens_on || data.next_term_start_date || null,
           });
         } else {
           setSchoolInfo({ name: 'School' });

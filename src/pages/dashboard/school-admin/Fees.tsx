@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
-import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText } from 'lucide-react';
+import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -50,6 +50,7 @@ export default function SchoolAdminFees() {
       supabaseUntyped.from('fee_invoices')
         .select('*, students(first_name, last_name, admission_number), terms(name, academic_year)')
         .eq('school_id', schoolId)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false }),
       supabaseUntyped.from('students')
         .select('id, first_name, last_name, admission_number, class_id')
@@ -143,6 +144,25 @@ export default function SchoolAdminFees() {
     fetchData();
   };
 
+  const handleDeleteInvoice = async (invoice: any) => {
+    if (!user?.schoolId || !invoice?.id) return;
+    const studentName = `${invoice.students?.first_name || ''} ${invoice.students?.last_name || ''}`.trim() || 'this learner';
+    const confirmed = window.confirm(`Delete the invoice for ${studentName}? The invoice will be removed from active fee views, while any payment history remains preserved.`);
+    if (!confirmed) return;
+    try {
+      const { error } = await supabaseUntyped
+        .from('fee_invoices')
+        .update({ deleted_at: new Date().toISOString(), deleted_by: user.id, deletion_reason: 'Deleted by School Admin' })
+        .eq('id', invoice.id)
+        .eq('school_id', user.schoolId);
+      if (error) throw error;
+      toast.success('Invoice deleted from active fee records. Payment history was preserved.');
+      await fetchData();
+    } catch (error: any) {
+      toast.error(`Could not delete invoice: ${error.message}`);
+    }
+  };
+
   // Record payment
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,6 +183,7 @@ export default function SchoolAdminFees() {
           .select('*')
           .eq('student_id', paymentData.student_id)
           .eq('school_id', user?.schoolId)
+          .is('deleted_at', null)
           .neq('status', 'paid')
           .order('created_at', { ascending: false })
           .limit(1)
@@ -218,7 +239,7 @@ export default function SchoolAdminFees() {
       await supabaseUntyped.from('fee_invoices').update({
         amount_paid: currentPaid,
         status: newStatus,
-      }).eq('id', invoiceId);
+      }).eq('id', invoiceId).eq('school_id', user?.schoolId).is('deleted_at', null);
 
       toast.success(`✅ Payment of Ksh ${amount.toLocaleString()} recorded! Receipt: ${receiptNumber}`);
       generateReceipt(paymentData.student_id, amount, paymentData.payment_method, paymentData.mpesa_reference, receiptNumber);
@@ -421,13 +442,14 @@ export default function SchoolAdminFees() {
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Paid</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Balance</th>
                   <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-500">Loading...</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">Loading...</td></tr>
                 ) : invoices.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-500">No invoices found. Generate one above.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">No invoices found. Generate one above.</td></tr>
                 ) : (
                   invoices.map((inv: any) => (
                     <tr key={inv.id} className="border-b hover:bg-gray-50">
@@ -446,6 +468,7 @@ export default function SchoolAdminFees() {
                           {statusIcon(inv.status)} {inv.status}
                         </span>
                       </td>
+                      <td className="px-6 py-4"><button onClick={() => handleDeleteInvoice(inv)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100" title="Delete invoice"><Trash2 className="w-3.5 h-3.5" /> Delete</button></td>
                     </tr>
                   ))
                 )}

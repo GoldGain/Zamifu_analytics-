@@ -1,8 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { ClipboardList, Check, X, Loader2, Save, Printer, FileText } from 'lucide-react';
+import { CalendarDays, Check, ClipboardList, FileText, Loader2, Printer, Save, ShieldCheck, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
+
+type LearnerSummary = {
+  total: number;
+  present: number;
+  absent: number;
+  late: number;
+  excused: number;
+  unmarked: number;
+};
+
+const emptySummary = (): LearnerSummary => ({ total: 0, present: 0, absent: 0, late: 0, excused: 0, unmarked: 0 });
+
+const teacherStatusOptions = [
+  { key: 'present', label: 'Present', color: 'bg-green-500', icon: <Check className="w-3 h-3" /> },
+  { key: 'absent', label: 'Absent', color: 'bg-red-500', icon: <X className="w-3 h-3" /> },
+  { key: 'late', label: 'Late', color: 'bg-yellow-500', icon: <ClipboardList className="w-3 h-3" /> },
+  { key: 'excused', label: 'Excused', color: 'bg-blue-500', icon: <ClipboardList className="w-3 h-3" /> },
+  { key: 'on_leave', label: 'On leave', color: 'bg-purple-500', icon: <ClipboardList className="w-3 h-3" /> },
+];
 
 export default function SchoolAdminAttendance() {
   const { user } = useAuth();
@@ -11,48 +30,106 @@ export default function SchoolAdminAttendance() {
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendance, setAttendance] = useState<Record<string, string>>({});
+  const [classSummaries, setClassSummaries] = useState<Record<string, LearnerSummary>>({});
+  const [teacherRows, setTeacherRows] = useState<any[]>([]);
+  const [teacherAttendance, setTeacherAttendance] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<'learners' | 'teachers'>('learners');
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [teacherSaving, setTeacherSaving] = useState(false);
 
   useEffect(() => {
     if (user?.schoolId) {
-      fetchClasses();
+      fetchClasses(user.schoolId);
+      fetchClassSummaries(user.schoolId, selectedDate);
+      fetchTeacherAttendance(user.schoolId, selectedDate);
     }
-  }, [user?.schoolId]);
+  }, [user?.schoolId, selectedDate]);
 
-  const fetchClasses = async () => {
-    const { data } = await supabaseUntyped
+  const fetchClasses = async (schoolId: string) => {
+    const { data, error } = await supabaseUntyped
       .from('classes')
-      .select('*')
-      .eq('school_id', user?.schoolId)
+      .select('id, name, stream, is_active')
+      .eq('school_id', schoolId)
+      .eq('is_active', true)
       .order('name', { ascending: true });
+    if (error) toast.error(`Failed to load classes: ${error.message}`);
     setClasses(data || []);
   };
 
-  const fetchStudents = async (classId: string) => {
+  const fetchClassSummaries = async (schoolId: string, date: string) => {
+    const [{ data: learnerRows }, { data: attendanceRows }] = await Promise.all([
+      supabaseUntyped.from('students').select('id, class_id').eq('school_id', schoolId).eq('is_active', true),
+      supabaseUntyped.from('attendance').select('student_id, class_id, status').eq('school_id', schoolId).eq('date', date),
+    ]);
+    const summary: Record<string, LearnerSummary> = {};
+    const studentClassById = new Map<string, string>();
+    (learnerRows || []).forEach((learner: any) => {
+      studentClassById.set(learner.id, learner.class_id);
+      const current = summary[learner.class_id] || emptySummary();
+      current.total += 1;
+      current.unmarked += 1;
+      summary[learner.class_id] = current;
+    });
+    const countedStudents = new Set<string>();
+    (attendanceRows || []).forEach((record: any) => {
+      const classId = record.class_id || studentClassById.get(record.student_id);
+      if (!classId) return;
+      const current = summary[classId] || emptySummary();
+      if (!countedStudents.has(record.student_id)) {
+        current.unmarked = Math.max(0, current.unmarked - 1);
+        countedStudents.add(record.student_id);
+      }
+      if (record.status === 'present') current.present += 1;
+      else if (record.status === 'absent') current.absent += 1;
+      else if (record.status === 'late') current.late += 1;
+      else if (record.status === 'excused') current.excused += 1;
+      summary[classId] = current;
+    });
+    setClassSummaries(summary);
+  };
+
+  const fetchTeacherAttendance = async (schoolId: string, date: string) => {
+    const [{ data: teacherData }, { data: existing }] = await Promise.all([
+      supabaseUntyped
+        .from('teachers')
+        .select('id, first_name, last_name, teacher_number, is_active')
+        .eq('school_id', schoolId)
+        .eq('is_active', true)
+        .order('teacher_number'),
+      supabaseUntyped
+        .from('teacher_attendance')
+        .select('teacher_id, status, remarks')
+        .eq('school_id', schoolId)
+        .eq('date', date),
+    ]);
+    const map: Record<string, string> = {};
+    (existing || []).forEach((record: any) => { map[record.teacher_id] = record.status; });
+    setTeacherRows(teacherData || []);
+    setTeacherAttendance(map);
+  };
+
+  const fetchStudents = async (classId: string, date: string) => {
     setLoading(true);
     try {
-      const { data } = await supabaseUntyped
-        .from('students')
-        .select('id, first_name, last_name, admission_number')
-        .eq('class_id', classId)
-        .eq('is_active', true)
-        .order('first_name', { ascending: true });
-      setStudents(data || []);
-
-      // Check existing attendance
-      const { data: existing } = await supabaseUntyped
-        .from('attendance')
-        .select('*')
-        .eq('class_id', classId)
-        .eq('date', selectedDate);
-      
+      const [{ data: studentRows }, { data: existing }] = await Promise.all([
+        supabaseUntyped
+          .from('students')
+          .select('id, first_name, last_name, admission_number')
+          .eq('class_id', classId)
+          .eq('is_active', true)
+          .order('admission_number'),
+        supabaseUntyped
+          .from('attendance')
+          .select('student_id, status')
+          .eq('class_id', classId)
+          .eq('date', date),
+      ]);
       const map: Record<string, string> = {};
-      existing?.forEach(a => { map[a.student_id] = a.status; });
+      (existing || []).forEach((record: any) => { map[record.student_id] = record.status; });
+      setStudents(studentRows || []);
       setAttendance(map);
-    } catch (err) {
-      toast.error('Failed to load students');
+    } catch (error: any) {
+      toast.error(`Failed to load learner attendance: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -60,284 +137,104 @@ export default function SchoolAdminAttendance() {
 
   const handleClassChange = (classId: string) => {
     setSelectedClass(classId);
-    setSaved(false);
-    if (classId) fetchStudents(classId);
-    else setStudents([]);
+    setStudents([]);
+    setAttendance({});
+    if (classId) fetchStudents(classId, selectedDate);
   };
 
-  const handleDateChange = (date: string) => {
-    setSelectedDate(date);
-    setSaved(false);
-    if (selectedClass) fetchStudents(selectedClass);
-  };
-
-  const toggleStatus = (studentId: string, status: string) => {
-    setAttendance(prev => ({ ...prev, [studentId]: prev[studentId] === status ? '' : status }));
-    setSaved(false);
-  };
-
-  const handleSave = async () => {
-    if (!selectedClass) return;
-    setSaving(true);
+  const saveTeacherAttendance = async () => {
+    if (!user?.schoolId) return;
+    setTeacherSaving(true);
     try {
-      const records = Object.entries(attendance)
+      const { error: deleteError } = await supabaseUntyped
+        .from('teacher_attendance')
+        .delete()
+        .eq('school_id', user.schoolId)
+        .eq('date', selectedDate);
+      if (deleteError) throw deleteError;
+
+      const records = Object.entries(teacherAttendance)
         .filter(([_, status]) => status)
-        .map(([studentId, status]) => ({
-          school_id: user?.schoolId,
-          student_id: studentId,
-          class_id: selectedClass,
+        .map(([teacherId, status]) => ({
+          school_id: user.schoolId,
+          teacher_id: teacherId,
           date: selectedDate,
           status,
-          // For school admin, we don't necessarily have a teacher_id, 
-          // but we can leave it null or find the class teacher
+          marked_by: user.id,
         }));
-      
-      // Delete existing for this date/class
-      await supabaseUntyped
-        .from('attendance')
-        .delete()
-        .eq('class_id', selectedClass)
-        .eq('date', selectedDate);
-      
       if (records.length > 0) {
-        const { error } = await supabaseUntyped.from('attendance').insert(records);
-        if (!error) {
-          setSaved(true);
-          toast.success(`Attendance saved for ${records.length} students!`);
-        } else {
-          throw error;
-        }
-      } else {
-        toast.info('No attendance marked.');
+        const { error: insertError } = await supabaseUntyped.from('teacher_attendance').insert(records);
+        if (insertError) throw insertError;
       }
-    } catch (err: any) {
-      toast.error('Failed to save attendance: ' + err.message);
+      toast.success(`Teacher attendance saved for ${records.length} teachers.`);
+      await fetchTeacherAttendance(user.schoolId, selectedDate);
+    } catch (error: any) {
+      toast.error(`Failed to save teacher attendance: ${error.message}`);
     } finally {
-      setSaving(false);
+      setTeacherSaving(false);
     }
   };
 
-  const statusConfig = [
-    { key: 'present', label: 'Present', color: 'bg-green-500', icon: <Check className="w-3 h-3" /> },
-    { key: 'absent', label: 'Absent', color: 'bg-red-500', icon: <X className="w-3 h-3" /> },
-    { key: 'late', label: 'Late', color: 'bg-yellow-500', icon: <ClipboardList className="w-3 h-3" /> },
-    { key: 'excused', label: 'Excused', color: 'bg-blue-500', icon: <ClipboardList className="w-3 h-3" /> },
-  ];
-
-  const summary = {
-    present: students.filter(s => attendance[s.id] === 'present').length,
-    absent: students.filter(s => attendance[s.id] === 'absent').length,
-    late: students.filter(s => attendance[s.id] === 'late').length,
-    excused: students.filter(s => attendance[s.id] === 'excused').length,
-    unmarked: students.filter(s => !attendance[s.id]).length,
-  };
-  const markedCount = summary.present + summary.absent + summary.late + summary.excused;
-
   const handlePrint = () => {
-    const className = classes.find(c => c.id === selectedClass)?.name || 'Unknown';
+    if (!selectedClass) return;
+    const className = classes.find((classRow) => classRow.id === selectedClass)?.name || 'Unknown';
+    const selectedSummary = classSummaries[selectedClass] || emptySummary();
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Attendance Report - ${className}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h1 { font-size: 18px; margin-bottom: 5px; }
-          .meta { font-size: 12px; color: #666; margin-bottom: 15px; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background: #f5f5f5; font-weight: bold; }
-          .present { color: green; font-weight: bold; }
-          .absent { color: red; font-weight: bold; }
-          .late { color: orange; font-weight: bold; }
-          .excused { color: blue; font-weight: bold; }
-          .summary { margin-top: 15px; padding: 10px; background: #f9f9f9; border-radius: 5px; font-size: 12px; }
-          @media print { .no-print { display: none; } }
-        </style>
-      </head>
-      <body>
-        <h1>Attendance Report</h1>
-        <div class="meta">
-          <strong>Class:</strong> ${className} | 
-          <strong>Date:</strong> ${selectedDate} | 
-          <strong>Total Students:</strong> ${students.length}
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Admission #</th>
-              <th>Student Name</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${students.map((s, i) => {
-              const status = attendance[s.id] || 'Not Marked';
-              const statusClass = attendance[s.id] || '';
-              return `<tr>
-                <td>${i + 1}</td>
-                <td>${s.admission_number || '-'}</td>
-                <td>${s.first_name} ${s.last_name}</td>
-                <td class="${statusClass}">${status.charAt(0).toUpperCase() + status.slice(1)}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-        <div class="summary">
-          <strong>Summary:</strong> 
-          Present: ${summary.present} | 
-          Absent: ${summary.absent} | 
-          Late: ${summary.late} | 
-          Excused: ${summary.excused} | 
-          Unmarked: ${summary.unmarked}
-        </div>
-        <div class="no-print" style="margin-top: 20px; text-align: center;">
-          <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; cursor: pointer;">Print Report</button>
-        </div>
-      </body>
-      </html>
-    `;
+      <!DOCTYPE html><html><head><title>Attendance Report - ${className}</title>
+      <style>body{font-family:Arial,sans-serif;padding:20px}h1{font-size:18px;margin-bottom:5px}.meta{font-size:12px;color:#666;margin-bottom:15px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5;font-weight:bold}.summary{margin-top:15px;padding:10px;background:#f9f9f9;border-radius:5px;font-size:12px}@media print{.no-print{display:none}}</style>
+      </head><body><h1>Attendance Report</h1><div class="meta"><strong>Class:</strong> ${className} | <strong>Date:</strong> ${selectedDate} | <strong>Total Students:</strong> ${students.length}</div>
+      <table><thead><tr><th>#</th><th>Admission #</th><th>Student Name</th><th>Status</th></tr></thead><tbody>
+      ${students.map((student, index) => { const status = attendance[student.id] || 'Not Marked'; return `<tr><td>${index + 1}</td><td>${student.admission_number || '-'}</td><td>${student.first_name} ${student.last_name}</td><td>${status.charAt(0).toUpperCase() + status.slice(1)}</td></tr>`; }).join('')}
+      </tbody></table><div class="summary"><strong>Summary:</strong> Present: ${selectedSummary.present} | Absent: ${selectedSummary.absent} | Late: ${selectedSummary.late} | Excused: ${selectedSummary.excused} | Unmarked: ${selectedSummary.unmarked}</div>
+      <div class="no-print" style="margin-top:20px;text-align:center"><button onclick="window.print()" style="padding:10px 20px;font-size:14px;cursor:pointer">Print Report</button></div></body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
   };
 
+  const markedTeacherCount = Object.values(teacherAttendance).filter(Boolean).length;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#111111]">School Attendance</h1>
-          <p className="text-sm text-[#666666]">Monitor and manage attendance across all classes</p>
+          <h1 className="text-2xl font-bold text-[#111111]">Attendance</h1>
+          <p className="text-sm text-[#666666]">Review learner attendance across all classes and mark the teacher register.</p>
         </div>
-        {selectedClass && students.length > 0 && (
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
-          >
-            <Printer className="w-4 h-4" /> Print Report
-          </button>
-        )}
+        <div className="flex items-center gap-2 text-sm text-gray-600"><CalendarDays className="w-4 h-4" /> {selectedDate}</div>
       </div>
-      
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Select Class</label>
-            <select 
-              value={selectedClass} 
-              onChange={e => handleClassChange(e.target.value)} 
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
-            >
-              <option value="">-- Select Class --</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name} {c.stream && `(${c.stream})`}</option>)}
-            </select>
+
+      <div className="flex flex-wrap gap-2 border-b border-gray-200">
+        <button onClick={() => setActiveTab('learners')} className={`px-4 py-2.5 text-sm font-semibold border-b-2 ${activeTab === 'learners' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}><Users className="inline w-4 h-4 mr-1" /> Learner summaries</button>
+        <button onClick={() => setActiveTab('teachers')} className={`px-4 py-2.5 text-sm font-semibold border-b-2 ${activeTab === 'teachers' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}><ShieldCheck className="inline w-4 h-4 mr-1" /> Teacher attendance register</button>
+      </div>
+
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+        <label className="block text-xs font-medium text-gray-500 mb-1">Attendance date</label>
+        <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="w-full sm:w-64 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+      </div>
+
+      {activeTab === 'learners' ? (
+        <>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-5 border-b border-gray-100"><h2 className="font-bold text-gray-900">All-class learner attendance summary</h2><p className="text-xs text-gray-500 mt-1">School Admin can review all classes here. Learner attendance is marked only by the assigned class teacher.</p></div>
+            <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="bg-gray-50 border-b"><th className="px-4 py-3">Class</th><th className="px-4 py-3">Learners</th><th className="px-4 py-3 text-green-700">Present</th><th className="px-4 py-3 text-red-700">Absent</th><th className="px-4 py-3 text-yellow-700">Late</th><th className="px-4 py-3 text-blue-700">Excused</th><th className="px-4 py-3 text-gray-500">Unmarked</th></tr></thead><tbody>
+              {classes.length === 0 ? <tr><td colSpan={7} className="text-center py-8 text-gray-500">No active classes found.</td></tr> : classes.map((classRow) => { const summary = classSummaries[classRow.id] || emptySummary(); return <tr key={classRow.id} className="border-b last:border-0 hover:bg-gray-50"><td className="px-4 py-3 font-semibold">{classRow.name}{classRow.stream ? ` (${classRow.stream})` : ''}</td><td className="px-4 py-3">{summary.total}</td><td className="px-4 py-3 text-green-700">{summary.present}</td><td className="px-4 py-3 text-red-700">{summary.absent}</td><td className="px-4 py-3 text-yellow-700">{summary.late}</td><td className="px-4 py-3 text-blue-700">{summary.excused}</td><td className="px-4 py-3 text-gray-500">{summary.unmarked}</td></tr>; })}
+            </tbody></table></div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Select Date</label>
-            <input 
-              type="date" 
-              value={selectedDate} 
-              onChange={e => handleDateChange(e.target.value)} 
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" 
-            />
+
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5"><div><h2 className="font-bold text-gray-900">Class attendance detail</h2><p className="text-xs text-gray-500 mt-1">This view is read-only for School Admin.</p></div><div className="flex gap-2"><select value={selectedClass} onChange={(event) => handleClassChange(event.target.value)} className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white"><option value="">Select class</option>{classes.map((classRow) => <option key={classRow.id} value={classRow.id}>{classRow.name}{classRow.stream ? ` (${classRow.stream})` : ''}</option>)}</select>{selectedClass && students.length > 0 && <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-200"><Printer className="w-4 h-4" /> Print</button>}</div></div>
+            {!selectedClass ? <div className="text-center py-10 text-sm text-gray-500">Select a class to view learner attendance details.</div> : loading ? <div className="flex justify-center py-10"><Loader2 className="w-7 h-7 animate-spin text-blue-600" /></div> : students.length === 0 ? <div className="text-center py-10 text-sm text-gray-500">No learners found in this class.</div> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="bg-gray-50 border-b"><th className="px-3 py-2">#</th><th className="px-3 py-2">Admission #</th><th className="px-3 py-2">Learner</th><th className="px-3 py-2">Status</th></tr></thead><tbody>{students.map((student, index) => <tr key={student.id} className="border-b last:border-0"><td className="px-3 py-2">{index + 1}</td><td className="px-3 py-2">{student.admission_number}</td><td className="px-3 py-2 font-medium">{student.first_name} {student.last_name}</td><td className="px-3 py-2">{attendance[student.id] || 'Not Marked'}</td></tr>)}</tbody></table></div>}
           </div>
+        </>
+      ) : (
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5"><div><h2 className="font-bold text-gray-900">Teacher attendance register</h2><p className="text-xs text-gray-500 mt-1">School Admin records attendance for active teachers on the selected date.</p></div><button onClick={saveTeacherAttendance} disabled={teacherSaving} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">{teacherSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {teacherSaving ? 'Saving...' : `Save register (${markedTeacherCount}/${teacherRows.length})`}</button></div>
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="bg-gray-50 border-b"><th className="px-3 py-3">#</th><th className="px-3 py-3">Teacher</th><th className="px-3 py-3">Status</th></tr></thead><tbody>{teacherRows.length === 0 ? <tr><td colSpan={3} className="text-center py-10 text-gray-500">No active teachers found.</td></tr> : teacherRows.map((teacher) => <tr key={teacher.id} className="border-b last:border-0"><td className="px-3 py-3">{teacher.teacher_number ? String(teacher.teacher_number).padStart(2, '0') : '—'}</td><td className="px-3 py-3 font-medium">{teacher.first_name} {teacher.last_name}</td><td className="px-3 py-3"><div className="flex flex-wrap gap-2">{teacherStatusOptions.map((status) => <button key={status.key} onClick={() => setTeacherAttendance((current) => ({ ...current, [teacher.id]: current[teacher.id] === status.key ? '' : status.key }))} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium ${teacherAttendance[teacher.id] === status.key ? `${status.color} text-white` : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50'}`}>{status.icon}{status.label}</button>)}</div></td></tr>)}</tbody></table></div>
         </div>
-
-        {selectedClass ? (
-          <>
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-              </div>
-            ) : students.length === 0 ? (
-              <div className="text-center py-12 text-sm text-gray-500">No students found in this class.</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-3">
-                  {students.map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">
-                          {s.first_name[0]}{s.last_name[0]}
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-gray-900">{s.first_name} {s.last_name}</div>
-                          <div className="text-xs text-gray-500">{s.admission_number}</div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {statusConfig.map(st => (
-                          <button 
-                            key={st.key} 
-                            onClick={() => toggleStatus(s.id, st.key)}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                              attendance[s.id] === st.key 
-                                ? `${st.color} text-white shadow-sm` 
-                                : 'bg-white text-gray-400 hover:bg-gray-100 border border-gray-200'
-                            }`}
-                          >
-                            {st.icon} {st.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-bold text-blue-900">Summary ({markedCount}/{students.length} marked)</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div className="bg-white p-2 rounded-lg text-center shadow-sm">
-                      <div className="text-lg font-bold text-green-600">{summary.present}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-semibold">Present</div>
-                    </div>
-                    <div className="bg-white p-2 rounded-lg text-center shadow-sm">
-                      <div className="text-lg font-bold text-red-600">{summary.absent}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-semibold">Absent</div>
-                    </div>
-                    <div className="bg-white p-2 rounded-lg text-center shadow-sm">
-                      <div className="text-lg font-bold text-yellow-600">{summary.late}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-semibold">Late</div>
-                    </div>
-                    <div className="bg-white p-2 rounded-lg text-center shadow-sm">
-                      <div className="text-lg font-bold text-blue-600">{summary.excused}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-semibold">Excused</div>
-                    </div>
-                    <div className="bg-white p-2 rounded-lg text-center shadow-sm">
-                      <div className="text-lg font-bold text-gray-400">{summary.unmarked}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-semibold">Unmarked</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-2">
-                  <button 
-                    onClick={handleSave} 
-                    disabled={saving} 
-                    className="bg-[#2563EB] text-white px-8 py-3 rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 transition-all shadow-md"
-                  >
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save Attendance
-                  </button>
-                  {saved && <span className="text-sm text-green-600 font-bold flex items-center gap-1"><Check className="w-4 h-4" /> Changes Saved</span>}
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="text-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-            <ClipboardList className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-gray-900">No Class Selected</h3>
-            <p className="text-sm text-gray-500">Please select a class and date to view or mark attendance.</p>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

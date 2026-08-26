@@ -10,7 +10,7 @@ type ImportRow = Record<string, string>;
 type ImportResult = { row: number; admission_number: string; name: string; email: string; password: string; status: 'created' | 'failed'; message?: string };
 
 const TEMPLATE_HEADERS = [
-  'admission_number', 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
+  'assessment_number', 'admission_number', 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
   'gender', 'date_of_birth', 'birth_cert_number', 'nationality', 'county', 'sub_county',
   'boarding_status', 'disability_status', 'curriculum', 'parent_name', 'parent_phone', 'parent_email',
 ];
@@ -94,12 +94,12 @@ export default function BulkStudentImport() {
   const validation = useMemo(() => {
     const seen = new Set<string>();
     return rows.map((row, index) => {
-      const admission = row.admission_number?.trim();
+      const admission = row.assessment_number?.trim() || row.admission_number?.trim();
       const first = row.first_name?.trim();
       const last = row.last_name?.trim();
       const className = row.class_name?.trim().toLowerCase();
       const issues: string[] = [];
-      if (!admission) issues.push('missing admission_number');
+      if (!admission) issues.push('missing assessment_number or admission_number');
       if (!first) issues.push('missing first_name');
       if (!last) issues.push('missing last_name');
       if (!className) issues.push('missing class_name');
@@ -127,7 +127,7 @@ export default function BulkStudentImport() {
 
       for (let index = 0; index < rows.length; index += 1) {
         const row = rows[index];
-        const admission = row.admission_number.trim();
+        const admission = (row.assessment_number?.trim() || row.admission_number?.trim() || '');
         const admissionKey = admission.toLowerCase();
         const classRow = classByName.get(row.class_name.trim().toLowerCase());
         const fallbackEmail = `${admission.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`;
@@ -151,7 +151,7 @@ export default function BulkStudentImport() {
             school_id: user.schoolId,
             admission_number: admission,
             class_id: classRow.id,
-            metadata: { assessment_number: admission, admission_number: admission, class_id: classRow.id },
+            metadata: { assessment_number: row.assessment_number?.trim() || admission, admission_number: row.admission_number?.trim() || admission, class_id: classRow.id },
           });
           const { data: studentData, error } = await supabaseUntyped.from('students').insert({
             profile_id: authData.user.id,
@@ -227,9 +227,11 @@ export default function BulkStudentImport() {
         <section className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap gap-2 items-center justify-between">
             <h2 className="font-black text-gray-900 flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={18} /> Step 1: Prepare CSV</h2>
-            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS,           ['ADM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', '', '']])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
+            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS,                       ['ASM001', 'ADM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', '', '']
+])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
           </div>
-          <p className="text-xs text-gray-600">Required columns are <strong>admission_number, first_name, last_name, and class_name</strong>. Email and curriculum are optional; blank curriculum values default to <strong>CBE</strong>, while blank email values receive a unique generated student email. The default temporary password is the admission number followed by <strong>@2025</strong>.</p>
+          <p className="text-xs text-gray-600">Required columns are <strong>assessment_number (or admission_number), first_name, last_name, and class_name</strong>.
+ Email and curriculum are optional; blank curriculum values default to <strong>CBE</strong>, while blank email values receive a unique generated student email. The default temporary password is the admission number followed by <strong>@2025</strong>.</p>
           <label className="border-2 border-dashed border-blue-200 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blue-50 transition">
             <Upload className="text-blue-600 mb-2" />
             <span className="font-bold text-blue-800">Choose CSV file</span>

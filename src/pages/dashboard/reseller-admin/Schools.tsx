@@ -156,7 +156,7 @@ export default function ResellerSchools() {
       fee_per_learner_per_term: feeOrDefault(s.fee_per_learner_per_term),
       fee_per_learner_per_year: feeOrDefault(
         s.fee_per_learner_per_year,
-        resellerDefaults.annual,
+        DEFAULT_ANNUAL_FEE_PER_LEARNER,
       ),
     });
     setEditingId(s.id);
@@ -245,8 +245,8 @@ export default function ResellerSchools() {
               setEditingId(null);
               setForm({
                 ...defaultForm,
-                fee_per_learner_per_term: resellerDefaults.term,
-                fee_per_learner_per_year: resellerDefaults.annual,
+                fee_per_learner_per_term: DEFAULT_FEE_PER_LEARNER,
+                fee_per_learner_per_year: DEFAULT_ANNUAL_FEE_PER_LEARNER,
               });
             }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"

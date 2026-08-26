@@ -140,7 +140,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
-        supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date').eq('id', schoolId).maybeSingle(),
+        supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
       ]);
       setResults((resultsData[0].data as any[]) || []);
@@ -167,6 +167,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         phone: sch.phone || '',
         email: sch.email || '',
         next_term_start_date: sch.next_term_start_date || null,
+        school_closes_on: sch.school_closes_on || null,
+        school_opens_on: sch.school_opens_on || sch.next_term_start_date || null,
       });
       setPrincipalSignatureUrl(sch.principal_signature_url || null);
     }

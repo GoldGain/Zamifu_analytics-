@@ -102,6 +102,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Promote Grade', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/promote-class' },
     { label: 'Announcements', icon: <Bell className="w-5 h-5" />, path: '/school-admin/announcements' },
     { label: 'Branding & Notifications', icon: <Palette className="w-5 h-5" />, path: '/school-admin/branding' },
+    { label: 'School Calendar Settings', icon: <Calendar className="w-5 h-5" />, path: '/school-admin/settings' },
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
   ],

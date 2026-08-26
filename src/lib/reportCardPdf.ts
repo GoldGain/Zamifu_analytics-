@@ -14,6 +14,8 @@ export interface SchoolInfo {
   phone?: string;
   email?: string;
   next_term_start_date?: string | null;
+  school_closes_on?: string | null;
+  school_opens_on?: string | null;
 }
 
 export interface SignatureInfo {
@@ -539,7 +541,17 @@ export async function addSignaturesToPDF(
   const sigImgH = COMPACT_MODE ? 8 : 16;
   const sigImgY = COMPACT_MODE ? 0.5 : 3;
   const sigLabelY = COMPACT_MODE ? 9 : 22;
-  y = ensureReportCardSpace(doc, y, sigBlockH + (schoolInfo?.next_term_start_date ? 8 : 5));
+  const closingDate = schoolInfo?.school_closes_on ? new Date(`${schoolInfo.school_closes_on}T00:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+  const openingDate = schoolInfo?.school_opens_on
+    ? new Date(`${schoolInfo.school_opens_on}T00:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : schoolInfo?.next_term_start_date
+      ? new Date(`${schoolInfo.next_term_start_date}T00:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : '';
+  const calendarNoticeLines = [
+    closingDate ? `School closes on: ${closingDate}` : '',
+    openingDate ? `School opens on: ${openingDate}` : '',
+  ].filter(Boolean);
+  y = ensureReportCardSpace(doc, y, sigBlockH + (calendarNoticeLines.length > 0 ? (COMPACT_MODE ? 12 : 15) : 5));
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
   doc.setFontSize(COMPACT_MODE ? 6 : 7);
@@ -610,16 +622,13 @@ export async function addSignaturesToPDF(
   doc.setTextColor(150, 150, 155);
   doc.text('OFFICIAL STAMP', 134, y + sigImgY + sigImgH / 2, { align: 'center' });
 
-  // Move "Next term begins on" to AFTER the signatures as requested
-  if (schoolInfo?.next_term_start_date) {
-    const dateObj = new Date(schoolInfo.next_term_start_date);
-    const formattedDate = dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  if (calendarNoticeLines.length > 0) {
     doc.setTextColor(0, 102, 102);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
-    doc.text(`Next term begins on: ${formattedDate}`, 14, y + sigBlockH + (COMPACT_MODE ? 4 : 4));
+    doc.setFontSize(COMPACT_MODE ? 7.2 : 8);
+    doc.text(calendarNoticeLines, 14, y + sigBlockH + (COMPACT_MODE ? 4 : 5), { maxWidth: 180 });
     doc.setTextColor(0, 0, 0);
-    return y + sigBlockH + (COMPACT_MODE ? 8 : 10);
+    return y + sigBlockH + (COMPACT_MODE ? 12 : 16);
   }
 
   return y + sigBlockH;

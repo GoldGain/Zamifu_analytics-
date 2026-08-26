@@ -5,11 +5,35 @@ import { createScopedUser } from '@/lib/supabase/createUser';
 import { deleteScopedUser } from '@/lib/supabase/accountActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeachers } from '@/hooks/useSupabaseData';
-import { Search, Plus, Loader2, KeyRound, Pencil, Trash2, X } from 'lucide-react';
+import { Search, Plus, Loader2, KeyRound, Pencil, Trash2, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import type { GenderType } from '@/types/database';
 
 const DEFAULT_TEACHER_PASSWORD = 'Teacher@2025';
+const TEACHER_TIMETABLE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const DAY_NAMES: Record<number, string> = { 1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday' };
+
+type AdminTeacherTimetableEntry = {
+  teacher_id: string;
+  day_of_week: number;
+  entry_type?: string;
+  activity_name?: string | null;
+  timetable_time_slots?: { start_time?: string; end_time?: string } | null;
+  subjects?: { name?: string } | null;
+  classes?: { name?: string } | null;
+};
+
+const shortTime = (value?: string | null) => value ? value.toString().slice(0, 5) : '';
+
+const teacherDisplayName = (teacher: any) => `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() || 'Teacher';
+
+const teacherSlotLabel = (entry: AdminTeacherTimetableEntry) => {
+  const subject = entry.subjects?.name || entry.activity_name || (entry.entry_type === 'activity' ? 'Activity' : 'Learning Area');
+  const className = entry.classes?.name || '';
+  return className ? `${subject}\n${className}` : subject;
+};
 
 export default function SchoolAdminTeachers() {
   const { user, schoolData } = useAuth();
@@ -45,6 +69,7 @@ export default function SchoolAdminTeachers() {
   // Delete state
   const [deletingTeacher, setDeletingTeacher] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exportingTimetables, setExportingTimetables] = useState(false);
 
   const nextTeacherNumber = useMemo(() => {
     const maxNumber = teachers.reduce((max, teacher: any) => Math.max(max, Number(teacher.teacher_number || 0)), 0);
@@ -52,6 +77,91 @@ export default function SchoolAdminTeachers() {
   }, [teachers]);
 
   const nextTeacherNumberLabel = String(nextTeacherNumber).padStart(2, '0');
+
+  const exportAllTeacherTimetables = async () => {
+    if (!user?.schoolId || teachers.length === 0) {
+      toast.error('No teachers are available to export.');
+      return;
+    }
+    setExportingTimetables(true);
+    try {
+      const { data: entries, error } = await supabaseUntyped
+        .from('timetable_entries')
+        .select('teacher_id, day_of_week, entry_type, activity_name, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
+        .eq('school_id', user.schoolId)
+        .not('teacher_id', 'is', null)
+        .in('entry_type', ['lesson', 'class', 'activity']);
+      if (error) throw error;
+
+      const entriesByTeacher = new Map<string, AdminTeacherTimetableEntry[]>();
+      (entries || []).forEach((entry: AdminTeacherTimetableEntry) => {
+        const current = entriesByTeacher.get(entry.teacher_id) || [];
+        current.push(entry);
+        entriesByTeacher.set(entry.teacher_id, current);
+      });
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      teachers.forEach((teacher: any, teacherIndex: number) => {
+        if (teacherIndex > 0) doc.addPage();
+        const teacherEntries = (entriesByTeacher.get(teacher.id) || []).sort((a, b) => {
+          const dayDelta = (a.day_of_week || 0) - (b.day_of_week || 0);
+          if (dayDelta !== 0) return dayDelta;
+          return shortTime(a.timetable_time_slots?.start_time).localeCompare(shortTime(b.timetable_time_slots?.start_time));
+        });
+        const timeRanges = Array.from(new Set(teacherEntries.map((entry) => {
+          const start = shortTime(entry.timetable_time_slots?.start_time);
+          const end = shortTime(entry.timetable_time_slots?.end_time);
+          return `${start}-${end}`;
+        }).filter((range) => range !== '-'))).sort();
+        const rowRanges = timeRanges.length > 0 ? timeRanges : [''];
+        const rows = rowRanges.map((range) => {
+          const [start, end] = range.split('-');
+          const row = [range ? `${start} – ${end}` : 'No generated entries'];
+          TEACHER_TIMETABLE_DAYS.forEach((day) => {
+            const cellEntries = teacherEntries.filter((entry) => (
+              DAY_NAMES[entry.day_of_week] === day
+              && shortTime(entry.timetable_time_slots?.start_time) === start
+              && shortTime(entry.timetable_time_slots?.end_time) === end
+            ));
+            row.push(cellEntries.map(teacherSlotLabel).join('\n'));
+          });
+          return row;
+        });
+
+        doc.setFillColor(37, 99, 235);
+        doc.rect(0, 0, 297, 30, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(16);
+        doc.text('PERSONALISED TEACHER TIMETABLE', 14, 13);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text(`${schoolData?.name || 'School'} · ${teacherDisplayName(teacher)} · Generated ${new Date().toLocaleDateString()}`, 14, 21);
+        doc.setTextColor(0, 0, 0);
+
+        autoTable(doc, {
+          startY: 38,
+          head: [['Time', ...TEACHER_TIMETABLE_DAYS]],
+          body: rows,
+          styles: { fontSize: 8, cellPadding: 3, valign: 'middle', lineColor: [210, 220, 235], lineWidth: 0.2 },
+          headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold', halign: 'center' },
+          alternateRowStyles: { fillColor: [239, 246, 255] },
+          columnStyles: { 0: { cellWidth: 31, fontStyle: 'bold' } },
+          margin: { left: 12, right: 12 },
+        });
+        doc.setFontSize(7);
+        doc.setTextColor(100, 100, 100);
+        doc.text('Zamifu Analytics School Management System', 148.5, 200, { align: 'center' });
+      });
+
+      doc.save(`personalised-teacher-timetables-${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success(`Personalised timetables exported for ${teachers.length} teachers.`);
+    } catch (error: any) {
+      toast.error(`Could not export teacher timetables: ${error.message || 'Unknown error'}`);
+    } finally {
+      setExportingTimetables(false);
+    }
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -206,7 +316,17 @@ export default function SchoolAdminTeachers() {
           <h1 className="text-2xl font-black">Teachers</h1>
           <p className="text-sm text-gray-500">{filtered.length} total teachers. New teachers receive automatic numbers like 01, 02, 03.</p>
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 bg-[#2563EB] text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-[#1d4ed8]"><Plus className="w-4 h-4" /> Add Teacher</button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={exportAllTeacherTimetables}
+            disabled={exportingTimetables || loading || teachers.length === 0}
+            className="flex items-center gap-2 border border-[#2563EB] text-[#2563EB] px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-50 disabled:opacity-50"
+          >
+            {exportingTimetables ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {exportingTimetables ? 'Preparing PDF...' : 'Download All Timetables'}
+          </button>
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 bg-[#2563EB] text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-[#1d4ed8]"><Plus className="w-4 h-4" /> Add Teacher</button>
+        </div>
       </div>
 
       {showAdd && (
