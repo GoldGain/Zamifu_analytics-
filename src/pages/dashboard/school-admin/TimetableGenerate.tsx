@@ -855,6 +855,15 @@ export default function TimetableGenerate() {
               getDaySlotTiming,
             };
             assignmentContexts.set(placementContext.assignmentKey, placementContext);
+            // When one teacher teaches the same learning area in multiple
+            // classes, alternate the preferred column pattern by peer class.
+            // This keeps Grade 8 and Grade 9 CRE from selecting the same L7/L8
+            // cells and leaving one class with only a single lesson.
+            const sameTeacherSubjectPeerIndex = assignments
+              .filter((peer: any) => peer.teacher_id === assignment.teacher_id && peer.subject_id === assignment.subject_id)
+              .sort((a: any, b: any) => String(a.class_id).localeCompare(String(b.class_id)))
+              .findIndex((peer: any) => peer.class_id === assignment.class_id);
+            const teacherSubjectSlotOffset = Math.max(0, sameTeacherSubjectPeerIndex);
             const schedulePass = (
               slotsToTry: any[],
               skipPreferredStarts: boolean,
@@ -884,7 +893,7 @@ export default function TimetableGenerate() {
                 // Rotate preferred columns by weekday. This prevents a five-
                 // lesson afternoon subject from occupying the same L7/L8
                 // column every day and blocking another class’s CRE teacher.
-                const rotatedSlots = rotateList(slotsToTry, rotationOffset + day);
+                const rotatedSlots = rotateList(slotsToTry, rotationOffset + day + teacherSubjectSlotOffset);
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
