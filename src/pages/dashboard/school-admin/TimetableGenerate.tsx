@@ -366,6 +366,7 @@ export default function TimetableGenerate() {
         subjectName: string;
         isMath: boolean;
         isScience: boolean;
+        priorityBand: string;
         preferredLessonSlots: any[];
         availableDays: string[];
         lessonsPerWeek: number;
@@ -751,7 +752,18 @@ export default function TimetableGenerate() {
               const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
               const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
               const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(config.lunch_start);
-              if (startsInMorning && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) return 0;
+              // The school’s explicit Mid Morning Science rule is authoritative:
+              // a configured Science double must be able to occupy Lessons 3–4,
+              // even when Mathematics is Lesson 2. Otherwise the generic
+              // adjacency safeguard silently forces Science out of its selected
+              // priority window and prevents the requested practical block.
+              const isExplicitMidMorningScienceDouble = isScience
+                && unitSize === 2
+                && hasExplicitPriority
+                && priorityBand === 'mid_morning';
+              if (startsInMorning
+                && !isExplicitMidMorningScienceDouble
+                && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) return 0;
 
               unitSlots.forEach((slot: any, index: number) => {
                 const timing = timings[index];
@@ -794,6 +806,7 @@ export default function TimetableGenerate() {
               subjectName,
               isMath,
               isScience,
+              priorityBand,
               preferredLessonSlots,
               availableDays,
               lessonsPerWeek: lessonsToSchedule,
@@ -934,7 +947,12 @@ export default function TimetableGenerate() {
           const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
           const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
           const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(context.config.lunch_start);
-          if (startsInMorning && ((context.isMath && earlierIsScience) || (context.isScience && earlierIsMath))) return false;
+          const isExplicitMidMorningScienceDouble = context.isScience
+            && unitSize === 2
+            && context.priorityBand === 'mid_morning';
+          if (startsInMorning
+            && !isExplicitMidMorningScienceDouble
+            && ((context.isMath && earlierIsScience) || (context.isScience && earlierIsMath))) return false;
           return true;
         };
 
