@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateSlots, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot } from '@/lib/timetable-generator';
+import { canUseAssignmentDay, generateSlots, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -730,6 +730,7 @@ export default function TimetableGenerate() {
               const secondSlot = unitSize === 2 ? nextLessonById.get(String(startSlot.id)) : null;
               if (unitSize === 2 && !secondSlot) return 0;
               if (unitSize === 2 && (!isDoubleLesson || !configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
+              if (unitSize === 1 && !canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule)) return 0;
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const timings = unitSlots.map((slot: any) =>
                 daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
@@ -911,8 +912,7 @@ export default function TimetableGenerate() {
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
-          if (unitSize === 1 && !context.isDoubleLesson && context.lessonsPerWeek <= TIMETABLE_DAYS.length
-            && (context.dayUsage.get(day) || 0) > 0) return false;
+          if (unitSize === 1 && !canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek)) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
           const timings = unitSlots.map((slot: any) =>
             times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },

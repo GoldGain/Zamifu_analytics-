@@ -173,6 +173,24 @@ export function orderAssignmentDays(
   return [...orderedDays.slice(start), ...orderedDays.slice(0, start)];
 }
 
+/**
+ * Decide whether a placement unit may use a weekday for an assignment.
+ *
+ * A non-double assignment with five or fewer weekly lessons must not place a
+ * second single lesson on a weekday while an unused available weekday exists.
+ * This guard belongs at the actual placement boundary as well as in day-order
+ * helpers, otherwise a slot conflict can bypass the intended one-per-day rule.
+ */
+export function canUseAssignmentDay(
+  dayUsage: ReadonlyMap<number, number>,
+  day: number,
+  isDoubleLesson: boolean,
+  lessonsPerWeek: number,
+): boolean {
+  if (isDoubleLesson || lessonsPerWeek > 5) return true;
+  return (dayUsage.get(day) || 0) === 0;
+}
+
 export function getAfterLunchCount(level: string, override?: number | null): number {
   if (typeof override === 'number' && override >= 0 && override <= 3) return override;
   const config = getLevelConfig(level);

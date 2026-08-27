@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { orderAssignmentDays } from '../src/lib/timetable-generator';
+import { canUseAssignmentDay, orderAssignmentDays } from '../src/lib/timetable-generator';
 
 const weekdays = [1, 2, 3, 4, 5];
 
@@ -34,6 +34,27 @@ assert.deepEqual(
   orderAssignmentDays(weekdays, fiveLessonUsage, 0, true),
   weekdays,
   'fallback placement may reuse a weekday only after unique weekdays are exhausted',
+);
+
+assert.equal(
+  canUseAssignmentDay(new Map([[3, 1]]), 3, false, 4),
+  false,
+  'a non-double assignment must reject a second single lesson on the same weekday',
+);
+assert.equal(
+  canUseAssignmentDay(new Map([[3, 1]]), 4, false, 4),
+  true,
+  'a non-double assignment may use an unused weekday',
+);
+assert.equal(
+  canUseAssignmentDay(new Map([[3, 1]]), 3, true, 5),
+  true,
+  'a configured double assignment may reuse a weekday for its paired unit',
+);
+assert.equal(
+  canUseAssignmentDay(new Map([[3, 1]]), 3, false, 6),
+  true,
+  'assignments above five weekly lessons may reuse weekdays when required',
 );
 
 console.log('PASS: non-double assignments exhaust unused weekdays before repeating a day');
