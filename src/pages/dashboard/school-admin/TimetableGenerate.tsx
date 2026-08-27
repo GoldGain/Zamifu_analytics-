@@ -1031,14 +1031,32 @@ export default function TimetableGenerate() {
         };
 
         const orderedRepairSlots = (context: AssignmentPlacementContext) => {
-          // Repair must respect an explicitly saved priority band. Expanding a
-          // Mid Morning Science repair into Lesson 1 or an afternoon slot would
-          // recreate the exact mismatch seen in the live Grade 7 timetable.
+          const preferredIds = new Set(context.preferredLessonSlots.map((slot: any) => String(slot.id)));
+          const preferred = context.preferredLessonSlots;
+          // CRE and other explicitly Afternoon assignments must never be
+          // repaired into morning slots. Integrated Science is the special
+          // morning practical case: keep it before lunch when its exact Mid
+          // Morning pair is blocked by the same teacher serving another class.
+          if (context.priorityBand === 'afternoon') return preferred;
+          if (context.isScience && context.priorityBand === 'mid_morning') {
+            const lateMorning = context.lessonSlots.filter((slot: any) => {
+              const number = lessonNumberOf(slot);
+              return number >= 5 && number <= 6 && !preferredIds.has(String(slot.id));
+            });
+            const earlyMorning = context.lessonSlots.filter((slot: any) => {
+              const number = lessonNumberOf(slot);
+              return number >= 1 && number <= 2 && !preferredIds.has(String(slot.id));
+            });
+            return [...preferred, ...lateMorning, ...earlyMorning];
+          }
           // For assignments without a priority band, preferredLessonSlots is
-          // already the complete lesson-slot list, so no fallback is lost.
-          return context.preferredLessonSlots.length > 0
-            ? context.preferredLessonSlots
-            : context.lessonSlots;
+          // already the complete lesson-slot list. Other prioritized subjects
+          // may use a remaining slot during repair so a teacher conflict does
+          // not silently remove a configured weekly lesson.
+          return [
+            ...preferred,
+            ...context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id))),
+          ];
         };
 
         const tryRepairGap = (gap: typeof underScheduled[number]) => {
