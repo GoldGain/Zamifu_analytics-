@@ -1031,11 +1031,14 @@ export default function TimetableGenerate() {
         };
 
         const orderedRepairSlots = (context: AssignmentPlacementContext) => {
-          const preferredIds = new Set(context.preferredLessonSlots.map((slot: any) => String(slot.id)));
-          return [
-            ...context.preferredLessonSlots,
-            ...context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id))),
-          ];
+          // Repair must respect an explicitly saved priority band. Expanding a
+          // Mid Morning Science repair into Lesson 1 or an afternoon slot would
+          // recreate the exact mismatch seen in the live Grade 7 timetable.
+          // For assignments without a priority band, preferredLessonSlots is
+          // already the complete lesson-slot list, so no fallback is lost.
+          return context.preferredLessonSlots.length > 0
+            ? context.preferredLessonSlots
+            : context.lessonSlots;
         };
 
         const tryRepairGap = (gap: typeof underScheduled[number]) => {
