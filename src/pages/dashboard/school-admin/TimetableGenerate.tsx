@@ -1051,10 +1051,18 @@ export default function TimetableGenerate() {
           // Morning pair is blocked by the same teacher serving another class.
           if (context.priorityBand === 'afternoon') return preferred;
           if (context.isScience && context.priorityBand === 'mid_morning') {
-            // Integrated Science configured for Mid Morning is a hard L3–L4
-            // window. Its remaining singles may use L3 or L4 on other days,
-            // but must never be repaired into L1–L2, L5–L6, or afternoon.
-            return preferred;
+            // Keep the configured practical double in L3–L4. If shared-teacher
+            // conflicts block a remaining single, use another pre-lunch pair
+            // only; never repair Integrated Science into the afternoon.
+            const lateMorning = context.lessonSlots.filter((slot: any) => {
+              const number = lessonNumberOf(slot);
+              return number >= 5 && number <= 6 && !preferredIds.has(String(slot.id));
+            });
+            const earlyMorning = context.lessonSlots.filter((slot: any) => {
+              const number = lessonNumberOf(slot);
+              return number >= 1 && number <= 2 && !preferredIds.has(String(slot.id));
+            });
+            return [...preferred, ...lateMorning, ...earlyMorning];
           }
           // For assignments without a priority band, preferredLessonSlots is
           // already the complete lesson-slot list. Other prioritized subjects
