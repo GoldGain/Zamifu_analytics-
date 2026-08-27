@@ -68,10 +68,21 @@ const normalizeDayName = (value: unknown): string => {
   return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
 };
 
-const normalizeDayNames = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? value.map(normalizeDayName).filter((day): day is string => TIMETABLE_DAYS.includes(day as typeof TIMETABLE_DAYS[number]))
-    : [];
+const normalizeDayNames = (value: unknown): string[] => {
+  let values: unknown[] = [];
+  if (Array.isArray(value)) values = value;
+  else if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      values = Array.isArray(parsed) ? parsed : value.split(',');
+    } catch {
+      values = value.split(',');
+    }
+  }
+  return values
+    .map(normalizeDayName)
+    .filter((day): day is string => TIMETABLE_DAYS.includes(day as typeof TIMETABLE_DAYS[number]));
+};
 
 const isEnabledFlag = (value: unknown): boolean =>
   value === true || value === 1 || value === '1' || String(value).trim().toLowerCase() === 'true';
@@ -703,6 +714,7 @@ export default function TimetableGenerate() {
                     ? prioritySlots.afternoon
                     : lessonSlots;
             const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
+            const hasExplicitPriority = priorityBand !== 'none';
             let scheduled = 0;
 
             // A double lesson is an atomic unit. We validate the whole pair before
@@ -842,7 +854,17 @@ export default function TimetableGenerate() {
             // If the preferred band cannot fit all weekly lessons because of
             // teacher/class conflicts, fill remaining units in other slots
             // rather than silently dropping the subject.
-            if (scheduled < lessonsToSchedule) schedulePass(lessonSlots, true, (rotation + 2) % 5, true);
+            if (scheduled < lessonsToSchedule) {
+              // Explicit priority is a hard placement window. Retry within the
+              // selected band across available days, but never move a subject
+              // into another band during fallback.
+              schedulePass(
+                hasExplicitPriority ? candidateLessonSlots : lessonSlots,
+                hasExplicitPriority ? false : true,
+                (rotation + 2) % 5,
+                true,
+              );
+            }
             if (scheduled < lessonsToSchedule) {
               underScheduled.push({
                 className: `${cls.name || 'Class'}${cls.stream ? ` (${cls.stream})` : ''}`,
