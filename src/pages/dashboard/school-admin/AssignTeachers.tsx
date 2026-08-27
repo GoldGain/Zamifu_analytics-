@@ -156,10 +156,6 @@ export default function AssignTeachers() {
       setError('Please fill in all required fields.');
       return;
     }
-    if (formData.is_double_lesson && formData.lessons_per_week % 2 !== 0) {
-      setError('Double Lesson requires an even Lessons / Week total (for example, 4 periods = two practical blocks).');
-      return;
-    }
     if (formData.is_double_lesson && formData.double_lesson_days.length === 0) {
       setError('Select at least one weekday for the double lesson.');
       return;
@@ -474,7 +470,7 @@ export default function AssignTeachers() {
                     className="mt-0.5 h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
                   />
                   <span>
-                    <span className="font-semibold">Use double lesson on selected days</span>
+                    <span className="font-semibold">Use double lesson on selected days</span><span className="mt-1 block text-xs text-gray-500">Each selected day receives two consecutive lessons without a break or activity between them. Remaining weekly lessons stay single.</span>
                     <span className="block text-xs text-purple-700">
                       The two periods stay consecutive and cannot cross a break, lunch, or activity. Choose the exact weekdays below.
                     </span>

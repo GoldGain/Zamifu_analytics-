@@ -63,6 +63,28 @@ const timeToMinutes = (value: string | null | undefined): number => {
 const toMinutes = timeToMinutes;
 const TIMETABLE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 
+const normalizeDayName = (value: unknown): string => {
+  const raw = String(value ?? '').trim().toLowerCase();
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
+};
+
+const normalizeDayNames = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.map(normalizeDayName).filter((day): day is string => TIMETABLE_DAYS.includes(day as typeof TIMETABLE_DAYS[number]))
+    : [];
+
+const isEnabledFlag = (value: unknown): boolean =>
+  value === true || value === 1 || value === '1' || String(value).trim().toLowerCase() === 'true';
+
+const normalizePriorityBand = (value: unknown, isPriority = false): string => {
+  const raw = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (raw === 'morning' || raw === 'early' || raw === 'early_morning') return 'early_morning';
+  if (raw === 'mid' || raw === 'mid_morning') return 'mid_morning';
+  if (raw === 'late' || raw === 'late_morning') return 'late_morning';
+  if (raw === 'afternoon') return 'afternoon';
+  return isPriority ? 'early_morning' : 'none';
+};
+
 const stableRotation = (value: string): number => {
   let hash = 0;
   for (let index = 0; index < value.length; index++) hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
@@ -641,14 +663,14 @@ export default function TimetableGenerate() {
             .sort((a, b) => {
               const aName = String(a.subjects?.name || '').toLowerCase();
               const bName = String(b.subjects?.name || '').toLowerCase();
-              const aBand = a.priority_band || (a.is_priority ? 'early_morning' : 'none');
-              const bBand = b.priority_band || (b.is_priority ? 'early_morning' : 'none');
+              const aBand = normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority));
+              const bBand = normalizePriorityBand(b.priority_band, isEnabledFlag(b.is_priority));
               const bandOrder: Record<string, number> = { early_morning: 0, morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
               const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
-              const aSciencePriority = Boolean(aBand === 'morning' && /integrated\s*science/.test(aName));
-              const bSciencePriority = Boolean(bBand === 'morning' && /integrated\s*science/.test(bName));
-              const aDoublePriority = a.is_double_lesson === true;
-              const bDoublePriority = b.is_double_lesson === true;
+              const aSciencePriority = Boolean(aBand === 'early_morning' && /integrated\s*science/.test(aName));
+              const bSciencePriority = Boolean(bBand === 'early_morning' && /integrated\s*science/.test(bName));
+              const aDoublePriority = isEnabledFlag(a.is_double_lesson);
+              const bDoublePriority = isEnabledFlag(b.is_double_lesson);
               const aLessons = Number(a.lessons_per_week || 0);
               const bLessons = Number(b.lessons_per_week || 0);
               return coreOrder(aName) - coreOrder(bName)
@@ -660,17 +682,17 @@ export default function TimetableGenerate() {
             });
           for (const assignment of classAssignments) {
             const lessonsToSchedule = Number(assignment.lessons_per_week || 0);
-            const isDoubleLesson = assignment.is_double_lesson === true;
-            const availableDays = Array.isArray(assignment.available_days) && assignment.available_days.length > 0
-              ? assignment.available_days.map((day: unknown) => String(day))
-              : [...TIMETABLE_DAYS];
-            const configuredDoubleDays = Array.isArray(assignment.double_lesson_days) && assignment.double_lesson_days.length > 0
-              ? assignment.double_lesson_days.map((day: unknown) => String(day))
-              : (isDoubleLesson ? availableDays : []);
+            const isDoubleLesson = isEnabledFlag(assignment.is_double_lesson);
+            const rawAvailableDays = normalizeDayNames(assignment.available_days);
+            const availableDays = rawAvailableDays.length > 0 ? rawAvailableDays : [...TIMETABLE_DAYS];
+            const rawDoubleDays = normalizeDayNames(assignment.double_lesson_days);
+            const configuredDoubleDays = rawDoubleDays.length > 0
+              ? rawDoubleDays.filter((day) => availableDays.includes(day))
+              : (isDoubleLesson ? [...availableDays] : []);
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
-            const priorityBand = assignment.priority_band || (assignment.is_priority ? 'early_morning' : 'none');
+            const priorityBand = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
             const preferredLessonSlots = priorityBand === 'early_morning' || priorityBand === 'morning'
               ? prioritySlots.early_morning
               : priorityBand === 'mid_morning'
@@ -695,6 +717,7 @@ export default function TimetableGenerate() {
             ): number => {
               const secondSlot = unitSize === 2 ? nextLessonById.get(String(startSlot.id)) : null;
               if (unitSize === 2 && !secondSlot) return 0;
+              if (unitSize === 2 && (!isDoubleLesson || !configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const timings = unitSlots.map((slot: any) =>
                 daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
@@ -803,10 +826,9 @@ export default function TimetableGenerate() {
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of rotatedSlots) {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
-                  const useDoubleBlock = isDoubleLesson
-                    && configuredDoubleDays.includes(dayName)
-                    && scheduled + 1 < lessonsToSchedule;
-                  const unitSize: 1 | 2 = useDoubleBlock ? 2 : 1;
+                  const onConfiguredDoubleDay = isDoubleLesson && configuredDoubleDays.includes(dayName);
+                  if (onConfiguredDoubleDay && scheduled + 2 > lessonsToSchedule) continue;
+                  const unitSize: 1 | 2 = onConfiguredDoubleDay ? 2 : 1;
                   const placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, unitSize);
                   if (placed > 0) {
                     scheduled += placed;
@@ -958,11 +980,9 @@ export default function TimetableGenerate() {
               if (repaired) break;
               const dayName = TIMETABLE_DAYS[day - 1];
               if (!context.availableDays.includes(dayName)) continue;
-              const desiredUnit: 1 | 2 = context.isDoubleLesson
-                && context.configuredDoubleDays.includes(dayName)
-                && remaining > 1
-                ? 2
-                : 1;
+              const onConfiguredDoubleDay = context.isDoubleLesson && context.configuredDoubleDays.includes(dayName);
+              if (onConfiguredDoubleDay && remaining < 2) continue;
+              const desiredUnit: 1 | 2 = onConfiguredDoubleDay ? 2 : 1;
               for (const slot of repairSlots) {
                 if (canPlaceContextAt(context, slot, day, desiredUnit)) {
                   if (addPlacementAt(context, slot, day, desiredUnit)) {
