@@ -878,10 +878,13 @@ export default function TimetableGenerate() {
                 rotationOffset,
                 allowRepeatedDays,
               );
-              const rotatedSlots = rotateList(slotsToTry, rotationOffset + 1);
 
               for (const day of dayOrder) {
                 if (scheduled >= lessonsToSchedule) break;
+                // Rotate preferred columns by weekday. This prevents a five-
+                // lesson afternoon subject from occupying the same L7/L8
+                // column every day and blocking another class’s CRE teacher.
+                const rotatedSlots = rotateList(slotsToTry, rotationOffset + day);
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
