@@ -558,6 +558,40 @@ export default function TimetableGenerate() {
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
         const classSubjectBySlot = new Map<string, string>();
+        // Reserve each teacher’s configured double-day priority window before
+        // any single lesson is placed. Without this, Grade 7 Science singles
+        // can consume Wednesday Lesson 3/4 and make Grade 8 Science’s explicitly
+        // configured Wednesday double impossible when the same teacher serves
+        // both classes.
+        const teacherDoubleReservedSlotKeys = new Set<string>();
+        const classesInLevel = new Set(classesToProcess.map((classItem: any) => String(classItem.id)));
+        assignments.forEach((assignment: any) => {
+          if (!classesInLevel.has(String(assignment.class_id)) || !isEnabledFlag(assignment.is_double_lesson)) return;
+          const assignmentBand = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
+          const assignmentPreferredSlots = assignmentBand === 'early_morning' || assignmentBand === 'morning'
+            ? prioritySlots.early_morning
+            : assignmentBand === 'mid_morning'
+              ? prioritySlots.mid_morning
+              : assignmentBand === 'late_morning'
+                ? prioritySlots.late_morning
+                : assignmentBand === 'afternoon'
+                  ? prioritySlots.afternoon
+                  : lessonSlots;
+          const reservationSlots = assignmentPreferredSlots.length > 0 ? assignmentPreferredSlots : lessonSlots;
+          const assignmentAvailableDays = normalizeDayNames(assignment.available_days);
+          const assignmentDoubleDays = normalizeDayNames(assignment.double_lesson_days)
+            .filter((dayName) => assignmentAvailableDays.length === 0 || assignmentAvailableDays.includes(dayName));
+          const reservationDays = assignmentDoubleDays.length > 0
+            ? assignmentDoubleDays
+            : (assignmentAvailableDays.length > 0 ? assignmentAvailableDays : [...TIMETABLE_DAYS]);
+          reservationDays.forEach((dayName) => {
+            const dayNumber = TIMETABLE_DAYS.indexOf(dayName) + 1;
+            if (dayNumber < 1) return;
+            reservationSlots.forEach((slot: any) => {
+              teacherDoubleReservedSlotKeys.add(`${assignment.teacher_id}-${dayNumber}-${slot.id}`);
+            });
+          });
+        });
         const overlaps = (startA: string, endA: string, startB: string, endB: string) =>
           toMinutes(startA) < toMinutes(endB) && toMinutes(endA) > toMinutes(startB);
         const matchesTarget = (activity: ScheduledActivity, cls: any) => {
@@ -732,6 +766,7 @@ export default function TimetableGenerate() {
               if (unitSize === 2 && !secondSlot) return 0;
               if (unitSize === 2 && (!isDoubleLesson || !configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
+              if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${assignment.teacher_id}-${day}-${startSlot.id}`)) return 0;
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const timings = unitSlots.map((slot: any) =>
                 daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
@@ -926,6 +961,7 @@ export default function TimetableGenerate() {
           if (!context.availableDays.includes(dayName)) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
+          if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${startSlot.id}`)) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
           const timings = unitSlots.map((slot: any) =>
             times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
