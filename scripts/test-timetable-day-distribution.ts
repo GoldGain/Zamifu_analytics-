@@ -47,9 +47,19 @@ assert.equal(
   'a non-double assignment may use an unused weekday',
 );
 assert.equal(
-  canUseAssignmentDay(new Map([[3, 1]]), 3, true, 5),
+  canUseAssignmentDay(new Map([[3, 1]]), 3, true, 5, 1),
+  false,
+  'a double-enabled assignment must not add a single lesson to its configured double day',
+);
+assert.equal(
+  canUseAssignmentDay(new Map(), 3, true, 5, 2),
   true,
-  'a configured double assignment may reuse a weekday for its paired unit',
+  'a configured double assignment may use an unused weekday for its paired unit',
+);
+assert.equal(
+  canUseAssignmentDay(new Map([[3, 1]]), 4, true, 5, 1),
+  true,
+  'a double-enabled assignment may place a remaining single on another weekday',
 );
 assert.equal(
   canUseAssignmentDay(new Map([[3, 1]]), 3, false, 6),

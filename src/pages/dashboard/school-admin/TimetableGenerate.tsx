@@ -731,7 +731,7 @@ export default function TimetableGenerate() {
               const secondSlot = unitSize === 2 ? nextLessonById.get(String(startSlot.id)) : null;
               if (unitSize === 2 && !secondSlot) return 0;
               if (unitSize === 2 && (!isDoubleLesson || !configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
-              if (unitSize === 1 && !canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule)) return 0;
+              if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const timings = unitSlots.map((slot: any) =>
                 daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
@@ -925,7 +925,7 @@ export default function TimetableGenerate() {
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
-          if (unitSize === 1 && !canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek)) return false;
+          if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
           const timings = unitSlots.map((slot: any) =>
             times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },

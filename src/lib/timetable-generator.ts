@@ -186,9 +186,18 @@ export function canUseAssignmentDay(
   day: number,
   isDoubleLesson: boolean,
   lessonsPerWeek: number,
+  unitSize: 1 | 2 = 1,
 ): boolean {
-  if (isDoubleLesson || lessonsPerWeek > 5) return true;
-  return (dayUsage.get(day) || 0) === 0;
+  const alreadyUsed = (dayUsage.get(day) || 0) > 0;
+  // A double is one atomic placement and may only be placed on an otherwise
+  // unused day. Its two consecutive slots are represented by unitSize=2.
+  if (unitSize === 2) return !alreadyUsed;
+  // For five-or-fewer weekly lessons, including assignments that contain one
+  // configured double day, remaining single units must use other weekdays.
+  // This prevents a double pair plus an accidental extra single on the same
+  // day when the fallback pass is allowed to reuse days.
+  if (lessonsPerWeek <= 5) return !alreadyUsed;
+  return true;
 }
 
 export function getAfterLunchCount(level: string, override?: number | null): number {
