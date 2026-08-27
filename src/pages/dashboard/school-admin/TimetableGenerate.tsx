@@ -518,8 +518,9 @@ export default function TimetableGenerate() {
           return Number.isFinite(parsed) ? parsed : lessonSlots.indexOf(slot) + 1;
         };
         const prioritySlots = {
-          morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 3),
-          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 4 && lessonNumberOf(slot) <= 6),
+          early_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 2),
+          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 3 && lessonNumberOf(slot) <= 4),
+          late_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 5 && lessonNumberOf(slot) <= 6),
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
         const classSubjectBySlot = new Map<string, string>();
@@ -640,18 +641,20 @@ export default function TimetableGenerate() {
             .sort((a, b) => {
               const aName = String(a.subjects?.name || '').toLowerCase();
               const bName = String(b.subjects?.name || '').toLowerCase();
-              const aBand = a.priority_band || (a.is_priority ? 'morning' : 'none');
-              const bBand = b.priority_band || (b.is_priority ? 'morning' : 'none');
-              const bandOrder: Record<string, number> = { morning: 0, mid_morning: 1, afternoon: 2, none: 3 };
+              const aBand = a.priority_band || (a.is_priority ? 'early_morning' : 'none');
+              const bBand = b.priority_band || (b.is_priority ? 'early_morning' : 'none');
+              const bandOrder: Record<string, number> = { early_morning: 0, morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
+              const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
               const aSciencePriority = Boolean(aBand === 'morning' && /integrated\s*science/.test(aName));
               const bSciencePriority = Boolean(bBand === 'morning' && /integrated\s*science/.test(bName));
               const aDoublePriority = a.is_double_lesson === true;
               const bDoublePriority = b.is_double_lesson === true;
               const aLessons = Number(a.lessons_per_week || 0);
               const bLessons = Number(b.lessons_per_week || 0);
-              return Number(bDoublePriority) - Number(aDoublePriority)
+              return coreOrder(aName) - coreOrder(bName)
+                || (bandOrder[aBand] ?? 4) - (bandOrder[bBand] ?? 4)
+                || Number(bDoublePriority) - Number(aDoublePriority)
                 || Number(bSciencePriority) - Number(aSciencePriority)
-                || (bandOrder[aBand] ?? 3) - (bandOrder[bBand] ?? 3)
                 || bLessons - aLessons
                 || aName.localeCompare(bName);
             });
@@ -667,14 +670,16 @@ export default function TimetableGenerate() {
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
-            const priorityBand = assignment.priority_band || (assignment.is_priority ? 'morning' : 'none');
-            const preferredLessonSlots = priorityBand === 'morning'
-              ? prioritySlots.morning
+            const priorityBand = assignment.priority_band || (assignment.is_priority ? 'early_morning' : 'none');
+            const preferredLessonSlots = priorityBand === 'early_morning' || priorityBand === 'morning'
+              ? prioritySlots.early_morning
               : priorityBand === 'mid_morning'
                 ? prioritySlots.mid_morning
-                : priorityBand === 'afternoon'
-                  ? prioritySlots.afternoon
-                  : lessonSlots;
+                : priorityBand === 'late_morning'
+                  ? prioritySlots.late_morning
+                  : priorityBand === 'afternoon'
+                    ? prioritySlots.afternoon
+                    : lessonSlots;
             const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
             let scheduled = 0;
 

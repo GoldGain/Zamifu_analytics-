@@ -232,7 +232,7 @@ export default function ClassList() {
     }
     setDownloading(true);
     try {
-      const doc = new jsPDF({ orientation: columns.length > 3 ? 'landscape' : 'portrait' });
+      const doc = new jsPDF({ orientation: columns.length > 0 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
       const className = classes.find((c) => c.id === selectedClass)?.name || 'Class';
       doc.setFontSize(14);
       doc.text(`Class List — ${className}`, 14, 16);
@@ -249,10 +249,29 @@ export default function ClassList() {
 
       autoTable(doc, {
         startY: 28,
+        margin: { left: 8, right: 8 },
         head,
         body,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [37, 99, 235] },
+        theme: 'grid',
+        tableWidth: 'auto',
+        showHead: 'everyPage',
+        styles: {
+          fontSize: columns.length > 6 ? 5.5 : columns.length > 3 ? 6.5 : 8,
+          cellPadding: columns.length > 6 ? 1 : 1.5,
+          overflow: 'linebreak',
+          lineColor: [210, 214, 220],
+          lineWidth: 0.1,
+          valign: 'middle',
+        },
+        headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 9, halign: 'center' },
+          1: { cellWidth: 25 },
+          2: { cellWidth: columns.length > 5 ? 38 : 48 },
+        },
+        didParseCell: (data) => {
+          if (data.section === 'head') data.cell.styles.minCellHeight = 8;
+        },
       });
       doc.save(`class-list-${className.replace(/\s+/g, '-').toLowerCase()}.pdf`);
       toast.success('PDF downloaded');

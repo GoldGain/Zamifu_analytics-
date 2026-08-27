@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
-import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText, Trash2 } from 'lucide-react';
+import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText, Trash2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -17,6 +17,7 @@ export default function SchoolAdminFees() {
   const [showRecord, setShowRecord] = useState(false);
   const [showStructure, setShowStructure] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [editingStructureId, setEditingStructureId] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [activeTab, setActiveTab] = useState<'invoices' | 'structures'>('invoices');
 
@@ -92,24 +93,74 @@ export default function SchoolAdminFees() {
       return;
     }
 
-    const rows = feeTypes.map(f => ({
-      school_id: user?.schoolId,
-      class_id: structureData.class_id,
-      term_id: structureData.term_id,
-      academic_year: new Date().getFullYear().toString(),
-      fee_type: f.type,
-      amount: f.amount,
-      is_mandatory: true,
-      description: structureData.description || null,
-    }));
-
-    const { error } = await supabaseUntyped.from('fee_structures').insert(rows);
-    if (error) { toast.error('Failed to add fee structure: ' + error.message); return; }
-
-    toast.success(`Fee structure added! ${feeTypes.length} fee type(s) saved.`);
+    if (editingStructureId) {
+      if (feeTypes.length !== 1) {
+        toast.error('Edit one fee type at a time. Enter only the amount you want to change.');
+        return;
+      }
+      const { error } = await supabaseUntyped
+        .from('fee_structures')
+        .update({
+          class_id: structureData.class_id,
+          term_id: structureData.term_id,
+          fee_type: feeTypes[0].type,
+          amount: feeTypes[0].amount,
+          description: structureData.description || null,
+        })
+        .eq('id', editingStructureId)
+        .eq('school_id', user?.schoolId);
+      if (error) { toast.error('Failed to update fee structure: ' + error.message); return; }
+      toast.success('Fee structure updated successfully.');
+    } else {
+      const rows = feeTypes.map(f => ({
+        school_id: user?.schoolId,
+        class_id: structureData.class_id,
+        term_id: structureData.term_id,
+        academic_year: new Date().getFullYear().toString(),
+        fee_type: f.type,
+        amount: f.amount,
+        is_mandatory: true,
+        description: structureData.description || null,
+      }));
+      const { error } = await supabaseUntyped.from('fee_structures').insert(rows);
+      if (error) { toast.error('Failed to add fee structure: ' + error.message); return; }
+      toast.success(`Fee structure added! ${feeTypes.length} fee type(s) saved.`);
+    }
+    setEditingStructureId(null);
     setShowStructure(false);
     setStructureData({ class_id: '', term_id: '', tuition_fee: '', activity_fee: '', exam_fee: '', other_fee: '', description: '' });
     fetchData();
+  };
+
+  const handleEditStructure = (fee: any, group: any) => {
+    const fieldByType: Record<string, 'tuition_fee' | 'activity_fee' | 'exam_fee' | 'other_fee'> = {
+      Tuition: 'tuition_fee', Activity: 'activity_fee', Exam: 'exam_fee', Other: 'other_fee',
+    };
+    const field = fieldByType[fee.type];
+    setEditingStructureId(fee.id);
+    setStructureData({
+      class_id: group.class_id,
+      term_id: group.term_id,
+      tuition_fee: field === 'tuition_fee' ? String(fee.amount) : '',
+      activity_fee: field === 'activity_fee' ? String(fee.amount) : '',
+      exam_fee: field === 'exam_fee' ? String(fee.amount) : '',
+      other_fee: field === 'other_fee' ? String(fee.amount) : '',
+      description: fee.description || '',
+    });
+    setShowStructure(true);
+  };
+
+  const handleDeleteStructure = async (fee: any) => {
+    if (!fee?.id || !user?.schoolId) return;
+    if (!window.confirm(`Delete the ${fee.type} fee structure? This does not delete invoices or payment history.`)) return;
+    const { error } = await supabaseUntyped
+      .from('fee_structures')
+      .delete()
+      .eq('id', fee.id)
+      .eq('school_id', user.schoolId);
+    if (error) { toast.error('Could not delete fee structure: ' + error.message); return; }
+    toast.success('Fee structure deleted.');
+    await fetchData();
   };
 
   // Generate invoice for a student
@@ -302,9 +353,9 @@ export default function SchoolAdminFees() {
   const groupedStructures = feeStructures.reduce((acc: any, fs: any) => {
     const key = `${fs.class_id}_${fs.term_id}`;
     if (!acc[key]) {
-      acc[key] = { class: fs.classes?.name, term: `${fs.terms?.name} ${fs.terms?.academic_year}`, fees: [], total: 0 };
+      acc[key] = { class_id: fs.class_id, term_id: fs.term_id, class: fs.classes?.name, term: `${fs.terms?.name} ${fs.terms?.academic_year}`, fees: [], total: 0 };
     }
-    acc[key].fees.push({ type: fs.fee_type, amount: fs.amount });
+    acc[key].fees.push({ id: fs.id, type: fs.fee_type, amount: fs.amount, description: fs.description });
     acc[key].total += parseFloat(fs.amount) || 0;
     return acc;
   }, {});
@@ -332,7 +383,7 @@ export default function SchoolAdminFees() {
       {/* Add Fee Structure Form */}
       {showStructure && (
         <div className="bg-white rounded-2xl p-6 shadow-sm border">
-          <h3 className="text-lg font-semibold mb-4">Add Fee Structure</h3>
+          <h3 className="text-lg font-semibold mb-4">{editingStructureId ? 'Edit Fee Structure' : 'Add Fee Structure'}</h3>
           <form onSubmit={handleAddStructure} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <select value={structureData.class_id} onChange={e => setStructureData({...structureData, class_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Class *</option>
@@ -348,8 +399,8 @@ export default function SchoolAdminFees() {
             <input type="number" placeholder="Other Fee (Ksh)" value={structureData.other_fee} onChange={e => setStructureData({...structureData, other_fee: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" min="0" />
             <input placeholder="Description (optional)" value={structureData.description} onChange={e => setStructureData({...structureData, description: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm md:col-span-2" />
             <div className="flex gap-3 md:col-span-3">
-              <button type="submit" className="bg-[#2563EB] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8]">Save Structure</button>
-              <button type="button" onClick={() => setShowStructure(false)} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+              <button type="submit" className="bg-[#2563EB] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8]">{editingStructureId ? 'Update Structure' : 'Save Structure'}</button>
+              <button type="button" onClick={() => { setShowStructure(false); setEditingStructureId(null); }} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
             </div>
           </form>
         </div>
@@ -498,9 +549,13 @@ export default function SchoolAdminFees() {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {group.fees.map((f: any, j: number) => (
-                    <div key={j} className="bg-gray-50 rounded-lg p-3 text-center">
+                    <div key={f.id || j} className="bg-gray-50 rounded-lg p-3 text-center">
                       <p className="text-xs text-gray-500">{f.type}</p>
                       <p className="text-sm font-semibold">Ksh {parseFloat(f.amount).toLocaleString()}</p>
+                      <div className="mt-2 flex justify-center gap-1.5">
+                        <button type="button" onClick={() => handleEditStructure(f, group)} className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100" title="Edit fee structure"><Pencil className="h-3 w-3" /> Edit</button>
+                        <button type="button" onClick={() => handleDeleteStructure(f)} className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100" title="Delete fee structure"><Trash2 className="h-3 w-3" /> Delete</button>
+                      </div>
                     </div>
                   ))}
                 </div>

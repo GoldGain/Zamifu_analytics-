@@ -228,15 +228,15 @@ export default function TeacherAttendance() {
              students.length === 0 ? <div className="text-center py-8 text-sm text-[#666666]">No students in this class</div> :
              <div className="space-y-3">
                {students.map(s => (
-                 <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                   <div className="flex items-center gap-3">
+                 <div key={s.id} className="flex flex-col gap-3 p-3 bg-gray-50 rounded-xl sm:flex-row sm:items-center sm:justify-between">
+                   <div className="flex min-w-0 items-center gap-3">
                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">{s.first_name[0]}{s.last_name[0]}</div>
                      <div><span className="text-sm font-medium">{s.first_name} {s.last_name}</span><br/><span className="text-xs text-[#666666]">{s.admission_number}</span></div>
                    </div>
-                   <div className="flex gap-2">
+                   <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
                      {statusConfig.map(st => (
                        <button key={st.key} onClick={() => toggleStatus(s.id, st.key)}
-                         className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${attendance[s.id] === st.key ? `${st.color} text-white` : 'bg-white text-gray-400 hover:bg-gray-100'}`}>
+                         className={`flex min-h-10 w-full items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-all sm:min-h-0 sm:w-auto sm:px-3 sm:py-1.5 ${attendance[s.id] === st.key ? `${st.color} text-white` : 'bg-white text-gray-400 hover:bg-gray-100'}`}>
                          {st.icon} {st.label}
                        </button>
                      ))}
