@@ -787,11 +787,10 @@ export default function TimetableGenerate() {
               const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
               const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
               const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(config.lunch_start);
-              // The school’s explicit Mid Morning Science rule is authoritative:
-              // a configured Science double must be able to occupy Lessons 3–4,
-              // even when Mathematics is Lesson 2. Otherwise the generic
-              // adjacency safeguard silently forces Science out of its selected
-              // priority window and prevents the requested practical block.
+              // Integrated Science must never be followed by Mathematics.
+              // Preserve the school’s requested Science double in Lessons 3–4
+              // after the early morning sequence, but never allow a Maths slot
+              // immediately after Science.
               const isExplicitMidMorningScienceDouble = isScience
                 && unitSize === 2
                 && hasExplicitPriority
@@ -1064,14 +1063,15 @@ export default function TimetableGenerate() {
             });
             return [...preferred, ...lateMorning, ...earlyMorning];
           }
+          // Every explicit priority band is authoritative during repair. A
+          // conflict must remain visible as an under-scheduled warning rather
+          // than silently moving Kiswahili, Agriculture, Social Studies, or
+          // another prioritized subject into the wrong lesson window.
+          if (context.priorityBand !== 'none') return preferred;
           // For assignments without a priority band, preferredLessonSlots is
-          // already the complete lesson-slot list. Other prioritized subjects
-          // may use a remaining slot during repair so a teacher conflict does
-          // not silently remove a configured weekly lesson.
-          return [
-            ...preferred,
-            ...context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id))),
-          ];
+          // already the complete lesson-slot list, so all lesson slots remain
+          // eligible during repair.
+          return context.lessonSlots;
         };
 
         const tryRepairGap = (gap: typeof underScheduled[number]) => {
