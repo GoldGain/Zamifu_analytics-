@@ -573,14 +573,18 @@ export default function TimetableGenerate() {
           afternoon: prioritySlots.afternoon.length * TIMETABLE_DAYS.length,
         };
         const classesByTeacherBand = new Map<string, number>();
+        const classesByBand = new Map<string, number>();
+        const classNameById = new Map(classesToProcess.map((classItem: any) => [String(classItem.id), String(classItem.name || 'Class')]));
         assignments
-          .filter((assignment: any) => classesInLevel?.has?.(String(assignment.class_id)))
+          .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
           .forEach((assignment: any) => {
             const band = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
             if (band === 'none') return;
             const lessons = Math.max(0, Number(assignment.lessons_per_week || 0));
             const teacherBandKey = `${assignment.teacher_id}:${band}`;
+            const classBandKey = `${assignment.class_id}:${band}`;
             classesByTeacherBand.set(teacherBandKey, (classesByTeacherBand.get(teacherBandKey) || 0) + lessons);
+            classesByBand.set(classBandKey, (classesByBand.get(classBandKey) || 0) + lessons);
           });
         classesByTeacherBand.forEach((demand, teacherBandKey) => {
           const [teacherId, band] = teacherBandKey.split(':');
@@ -588,6 +592,15 @@ export default function TimetableGenerate() {
           if (demand > capacity) {
             priorityCapacityWarnings.push(`${band.replace('_', ' ')} demand ${demand} cells exceeds ${capacity}-cell weekly teacher capacity`);
             console.warn('[timetable] shared teacher priority capacity exceeded', { teacherId, band, demand, capacity });
+          }
+        });
+        classesByBand.forEach((demand, classBandKey) => {
+          const [classId, band] = classBandKey.split(':');
+          const capacity = priorityCapacityByBand[band] || 0;
+          if (demand > capacity) {
+            const className = classNameById.get(classId) || 'Class';
+            priorityCapacityWarnings.push(`${className} ${band.replace('_', ' ')} demand ${demand} cells exceeds ${capacity}-cell weekly class capacity`);
+            console.warn('[timetable] class priority capacity exceeded', { classId, band, demand, capacity });
           }
         });
         // Reserve each teacher’s configured double-day priority window before
@@ -815,20 +828,23 @@ export default function TimetableGenerate() {
                 .filter((slot: any) => slot.slot_order < startSlot.slot_order)
                 .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
               const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
-              const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
               const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
               const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(config.lunch_start);
               // Integrated Science must never be followed by Mathematics.
               // Preserve the school’s requested Science double in Lessons 3–4
               // after the early morning sequence, but never allow a Maths slot
               // immediately after Science.
-              const isExplicitMidMorningScienceDouble = isScience
-                && unitSize === 2
-                && hasExplicitPriority
-                && priorityBand === 'mid_morning';
-              if (startsInMorning
-                && !isExplicitMidMorningScienceDouble
-                && ((isMath && earlierIsScience) || (isScience && earlierIsMath))) return 0;
+              if (startsInMorning && isMath && earlierIsScience) return 0;
+              const finalSlot = unitSlots[unitSlots.length - 1];
+              const nextLesson = lessonSlots
+                .filter((slot: any) => slot.slot_order > finalSlot.slot_order)
+                .sort((a: any, b: any) => a.slot_order - b.slot_order)[0];
+              const later = nextLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${nextLesson.id}`) : undefined;
+              const laterIsMath = Boolean(later && /mathemat/.test(later));
+              // A Maths lesson may not immediately follow Integrated Science.
+              // The reverse order (Maths → Science) is valid and supports the
+              // requested early sequence followed by the Science practical.
+              if (startsInMorning && isScience && laterIsMath) return 0;
 
               unitSlots.forEach((slot: any, index: number) => {
                 const timing = timings[index];
@@ -1022,15 +1038,18 @@ export default function TimetableGenerate() {
           const earlier = previousLesson
             ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${previousLesson.id}`)
             : undefined;
-          const earlierIsMath = Boolean(earlier && /mathemat/.test(earlier));
           const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
           const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(context.config.lunch_start);
-          const isExplicitMidMorningScienceDouble = context.isScience
-            && unitSize === 2
-            && context.priorityBand === 'mid_morning';
-          if (startsInMorning
-            && !isExplicitMidMorningScienceDouble
-            && ((context.isMath && earlierIsScience) || (context.isScience && earlierIsMath))) return false;
+          if (startsInMorning && context.isMath && earlierIsScience) return false;
+          const finalSlot = unitSlots[unitSlots.length - 1];
+          const nextLesson = context.lessonSlots
+            .filter((slot: any) => slot.slot_order > finalSlot.slot_order)
+            .sort((a: any, b: any) => a.slot_order - b.slot_order)[0];
+          const later = nextLesson
+            ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${nextLesson.id}`)
+            : undefined;
+          const laterIsMath = Boolean(later && /mathemat/.test(later));
+          if (startsInMorning && context.isScience && laterIsMath) return false;
           return true;
         };
 
