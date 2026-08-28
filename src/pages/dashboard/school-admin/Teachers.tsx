@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { createScopedUser } from '@/lib/supabase/createUser';
-import { deleteScopedUser } from '@/lib/supabase/accountActions';
+import { deleteScopedUser, syncTeacherAccount } from '@/lib/supabase/accountActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeachers } from '@/hooks/useSupabaseData';
 import { Search, Plus, Loader2, KeyRound, Pencil, Trash2, X, Download } from 'lucide-react';
@@ -262,7 +262,8 @@ export default function SchoolAdminTeachers() {
     if (!editingTeacher) return;
     setSaving(true);
     try {
-      const { error } = await supabaseUntyped.from('teachers').update({
+      const result = await syncTeacherAccount({
+        teacher_id: editingTeacher.id,
         first_name: editForm.first_name.trim(),
         last_name: editForm.last_name.trim(),
         email: editForm.email.trim().toLowerCase(),
@@ -271,9 +272,8 @@ export default function SchoolAdminTeachers() {
         qualification: editForm.qualification.trim() || null,
         specialization: editForm.specialization.trim() || null,
         tsc_number: editForm.tsc_number.trim() || null,
-      }).eq('id', editingTeacher.id);
-      if (error) throw new Error(error.message);
-      toast.success('Teacher updated successfully!');
+      });
+      toast.success(result?.created_auth_account ? 'Teacher updated and login account created.' : 'Teacher and login account updated successfully!');
       setEditingTeacher(null);
       refetch();
     } catch (err: any) {

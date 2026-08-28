@@ -58,6 +58,27 @@ export async function syncParentAccounts(input: ParentSyncInput) {
   }>('sync-parent-account', input as unknown as Record<string, unknown>, 'Parent account synchronization failed.');
 }
 
+export async function syncTeacherAccount(input: {
+  teacher_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string | null;
+  gender?: string | null;
+  qualification?: string | null;
+  specialization?: string | null;
+  tsc_number?: string | null;
+}) {
+  return invokeWithSession<{
+    success: boolean;
+    teacher_id: string;
+    auth_user_id: string;
+    created_auth_account: boolean;
+    email: string;
+    message: string;
+  }>('sync-teacher-account', input as unknown as Record<string, unknown>, 'Teacher/Auth synchronization failed.');
+}
+
 export async function deleteScopedUser(input: {
   record_id?: string;
   target_user_id?: string;

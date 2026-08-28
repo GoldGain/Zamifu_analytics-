@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
     } else if (recordId && targetType === "teacher") {
       const { data: teacher, error } = await adminClient
         .from("teachers")
-        .select("id, profile_id, school_id")
+        .select("id, profile_id, school_id, email")
         .eq("id", recordId)
         .maybeSingle();
       if (error || !teacher) return json(404, { error: "Teacher record not found" });
@@ -105,6 +105,11 @@ Deno.serve(async (req) => {
       targetSchoolId = teacher.school_id;
       recordId = teacher.id;
       resolvedRole = "teacher";
+      if (!targetUserId && teacher.email) {
+        const { data: usersPage } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        const matchedUser = usersPage?.users?.find((candidate) => normalizeEmail(candidate.email) === normalizeEmail(teacher.email));
+        targetUserId = matchedUser?.id || null;
+      }
     } else if (recordId && targetType === "school_admin") {
       const { data: schoolAdmin, error } = await adminClient
         .from("school_admins")
