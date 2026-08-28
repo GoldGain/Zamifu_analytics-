@@ -198,16 +198,24 @@ export default function SchoolAdminFees() {
   const handleDeleteInvoice = async (invoice: any) => {
     if (!user?.schoolId || !invoice?.id) return;
     const studentName = `${invoice.students?.first_name || ''} ${invoice.students?.last_name || ''}`.trim() || 'this learner';
-    const confirmed = window.confirm(`Delete the invoice for ${studentName}? The invoice will be removed from active fee views, while any payment history remains preserved.`);
+    const confirmed = window.confirm(`Delete the invoice for ${studentName}? This permanently deletes the invoice and all payments attached to it.`);
     if (!confirmed) return;
     try {
-      const { error } = await supabaseUntyped
+      // Delete child payments first so the invoice cannot leave orphaned history.
+      const { error: paymentsError } = await supabaseUntyped
+        .from('fee_payments')
+        .delete()
+        .eq('invoice_id', invoice.id)
+        .eq('school_id', user.schoolId);
+      if (paymentsError) throw paymentsError;
+
+      const { error: invoiceError } = await supabaseUntyped
         .from('fee_invoices')
-        .update({ deleted_at: new Date().toISOString(), deleted_by: user.id, deletion_reason: 'Deleted by School Admin' })
+        .delete()
         .eq('id', invoice.id)
         .eq('school_id', user.schoolId);
-      if (error) throw error;
-      toast.success('Invoice deleted from active fee records. Payment history was preserved.');
+      if (invoiceError) throw invoiceError;
+      toast.success('Invoice and all attached payment records were permanently deleted.');
       await fetchData();
     } catch (error: any) {
       toast.error(`Could not delete invoice: ${error.message}`);
@@ -287,10 +295,12 @@ export default function SchoolAdminFees() {
       const newBalance = Math.max(0, currentTotal - currentPaid);
       const newStatus = newBalance <= 0 ? 'paid' : currentPaid > 0 ? 'partial' : 'unpaid';
 
-      await supabaseUntyped.from('fee_invoices').update({
+      const { error: invoiceUpdateError } = await supabaseUntyped.from('fee_invoices').update({
         amount_paid: currentPaid,
+        balance: newBalance,
         status: newStatus,
       }).eq('id', invoiceId).eq('school_id', user?.schoolId).is('deleted_at', null);
+      if (invoiceUpdateError) throw invoiceUpdateError;
 
       toast.success(`✅ Payment of Ksh ${amount.toLocaleString()} recorded! Receipt: ${receiptNumber}`);
       generateReceipt(paymentData.student_id, amount, paymentData.payment_method, paymentData.mpesa_reference, receiptNumber);

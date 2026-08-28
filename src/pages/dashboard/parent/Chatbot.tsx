@@ -72,8 +72,8 @@ export default function ParentChatbot() {
     // Fee balance
     if (q.includes('fee') || q.includes('balance') || q.includes('ada') || q.includes('salio')) {
       if (child) {
-        const { data: invoices } = await supabaseUntyped.from('fee_invoices').select('balance, total_amount, amount_paid').eq('student_id', child.id);
-        const balance = invoices?.reduce((s: number, i: any) => s + (i.balance || 0), 0) || 0;
+        const { data: invoices } = await supabaseUntyped.from('fee_invoices').select('balance, total_amount, amount_paid').eq('student_id', child.id).is('deleted_at', null);
+        const balance = invoices?.reduce((s: number, i: any) => s + Number(i.balance ?? Math.max(0, Number(i.total_amount || 0) - Number(i.amount_paid || 0))), 0) || 0;
         const total = invoices?.reduce((s: number, i: any) => s + (i.total_amount || 0), 0) || 0;
         const paid = invoices?.reduce((s: number, i: any) => s + (i.amount_paid || 0), 0) || 0;
         return t(

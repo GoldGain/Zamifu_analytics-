@@ -59,17 +59,21 @@ export default function SchoolAdminDashboard() {
       const { count: teachersCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       const { count: classesCount } = await supabase.from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       
-      const { data: invoices } = await supabaseUntyped.from('fee_invoices').select('total_amount, amount_paid').eq('school_id', schoolId);
+      const { data: invoices } = await supabaseUntyped
+        .from('fee_invoices')
+        .select('total_amount, amount_paid, balance')
+        .eq('school_id', schoolId)
+        .is('deleted_at', null);
       
-      const totalFees = (invoices || []).reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0);
-      const totalPaid = (invoices || []).reduce((sum: number, inv: any) => sum + (inv.amount_paid || 0), 0);
+      const totalFees = (invoices || []).reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0);
+      const totalPaid = (invoices || []).reduce((sum: number, inv: any) => sum + Number(inv.amount_paid || 0), 0);
       
       setStats({
         totalStudents: studentsCount || 0,
         totalTeachers: teachersCount || 0,
         totalClasses: classesCount || 0,
         feeCollection: totalPaid,
-        pendingFees: totalFees - totalPaid,
+        pendingFees: (invoices || []).reduce((sum: number, inv: any) => sum + Number(inv.balance ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.amount_paid || 0))), 0),
       });
 
       const { data: anns } = await supabaseUntyped.from('announcements').select('*').eq('school_id', schoolId).eq('is_published', true).order('created_at', { ascending: false }).limit(5);

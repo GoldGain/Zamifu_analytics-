@@ -54,10 +54,10 @@ export default function ParentDashboard() {
     setSelectedChild(child);
     const [{ data: results }, { data: invoices }] = await Promise.all([
       supabase.from('results').select('*, subjects(name)').eq('student_id', child.id).order('created_at', { ascending: false }).limit(5),
-      supabase.from('fee_invoices').select('balance').eq('student_id', child.id),
+      supabase.from('fee_invoices').select('balance, total_amount, amount_paid').eq('student_id', child.id).is('deleted_at', null),
     ]);
     setChildResults((results || []) as unknown as ResultRecord[]);
-    setChildFees(((invoices as any[]) || []).reduce((s, i: any) => s + (i.balance || 0), 0) || 0);
+    setChildFees(((invoices as any[]) || []).reduce((s, i: any) => s + Number(i.balance ?? Math.max(0, Number(i.total_amount || 0) - Number(i.amount_paid || 0))), 0) || 0);
   };
 
   const gradeColor = (grade: string | null) => {

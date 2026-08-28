@@ -763,10 +763,13 @@ export default function TimetableGenerate() {
               const bDoublePriority = isEnabledFlag(b.is_double_lesson);
               const aLessons = Number(a.lessons_per_week || 0);
               const bLessons = Number(b.lessons_per_week || 0);
-              return coreOrder(aName) - coreOrder(bName)
-                || (bandOrder[aBand] ?? 4) - (bandOrder[bBand] ?? 4)
+              // Hard priority bands must be allocated before ordinary subjects;
+              // otherwise an unprioritized Maths/English assignment can consume
+              // the only cells reserved for a prioritized subject in the same class.
+              return (bandOrder[aBand] ?? 4) - (bandOrder[bBand] ?? 4)
                 || Number(bDoublePriority) - Number(aDoublePriority)
                 || Number(bSciencePriority) - Number(aSciencePriority)
+                || coreOrder(aName) - coreOrder(bName)
                 || bLessons - aLessons
                 || aName.localeCompare(bName);
             });

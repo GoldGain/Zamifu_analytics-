@@ -57,13 +57,13 @@ export default function StudentDashboard() {
       const schId = user?.schoolId ?? '';
       const [{ data: results }, { data: invoices }, { data: anns }, { data: hw }] = await Promise.all([
         supabaseUntyped.from('results').select('*, subjects(name), terms(name)').eq('student_id', sid).order('created_at', { ascending: false }).limit(5),
-        supabaseUntyped.from('fee_invoices').select('*').eq('student_id', sid),
+        supabaseUntyped.from('fee_invoices').select('*').eq('student_id', sid).is('deleted_at', null),
         supabaseUntyped.from('announcements').select('*').eq('school_id', schId).eq('is_published', true).order('created_at', { ascending: false }).limit(3),
         supabaseUntyped.from('homework').select('*, subjects(name)').eq('class_id', clId).eq('is_active', true).order('due_date').limit(3),
       ]);
       
       setRecentResults((results || []) as unknown as ResultRecord[]);
-      setFeeBalance(((invoices ?? []) as any[]).reduce((sum: number, inv: any) => sum + (inv.balance || 0), 0) || 0);
+      setFeeBalance(((invoices ?? []) as any[]).reduce((sum: number, inv: any) => sum + Number(inv.balance ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.amount_paid || 0))), 0) || 0);
       setAnnouncements((anns || []) as unknown as AnnouncementRecord[]);
       setHomework((hw || []) as unknown as HomeworkRecord[]);
     }

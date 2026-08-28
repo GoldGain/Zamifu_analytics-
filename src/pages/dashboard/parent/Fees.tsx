@@ -77,7 +77,7 @@ export default function ParentFees() {
     await fetchSchoolPaymentConfig(child?.school_id);
 
     const [{ data: invData }, { data: termsData }] = await Promise.all([
-      supabaseUntyped.from('fee_invoices').select('*, terms(name, academic_year), fee_payments(*)').eq('student_id', childId).order('created_at', { ascending: false }),
+      supabaseUntyped.from('fee_invoices').select('*, terms(name, academic_year), fee_payments(*)').eq('student_id', childId).is('deleted_at', null).order('created_at', { ascending: false }),
       supabaseUntyped.from('terms').select('*').eq('school_id', child?.school_id).order('academic_year', { ascending: false }),
     ]);
     setInvoices(invData || []);
@@ -234,7 +234,7 @@ export default function ParentFees() {
     setGeneratingStatement(false);
   };
 
-  const totalBalance = invoices.reduce((s, i) => s + (i.balance || 0), 0);
+  const totalBalance = invoices.reduce((s, i) => s + Number(i.balance ?? Math.max(0, Number(i.total_amount || 0) - Number(i.amount_paid || 0))), 0);
   const canPayOnline = Boolean(schoolPayment?.enabledForTheophillus);
 
   const statusColor = (status: string) => {

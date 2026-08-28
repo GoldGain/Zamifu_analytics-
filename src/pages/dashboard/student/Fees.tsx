@@ -14,13 +14,13 @@ export default function StudentFees() {
     setLoading(true);
     const { data: student } = await supabaseUntyped.from('students').select('id').eq('profile_id', user?.id).single();
     if (student) {
-      const { data } = await supabaseUntyped.from('fee_invoices').select('*, terms(name)').eq('student_id', student.id).order('created_at', { ascending: false });
+      const { data } = await supabaseUntyped.from('fee_invoices').select('*, terms(name)').eq('student_id', student.id).is('deleted_at', null).order('created_at', { ascending: false });
       setInvoices(data || []);
     }
     setLoading(false);
   };
 
-  const totalBalance = invoices.reduce((s, i) => s + (i.balance || 0), 0);
+  const totalBalance = invoices.reduce((s, i) => s + Number(i.balance ?? Math.max(0, Number(i.total_amount || 0) - Number(i.amount_paid || 0))), 0);
   const totalPaid = invoices.reduce((s, i) => s + (i.amount_paid || 0), 0);
   const totalDue = invoices.reduce((s, i) => s + (i.total_amount || 0), 0);
 
