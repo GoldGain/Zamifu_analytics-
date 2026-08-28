@@ -43,6 +43,7 @@ import {
   FileSpreadsheet,
   Shield,
   WalletCards,
+  Trash2,
 } from 'lucide-react';
 
 interface NavItem {
@@ -80,6 +81,7 @@ const navConfig: Record<string, NavItem[]> = {
   'school-admin': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/school-admin' },
     { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/school-admin/students' },
+    { label: 'Recycle Bin', icon: <Trash2 className="w-5 h-5" />, path: '/school-admin/recycle-bin' },
     { label: 'Bulk Student Upload', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/school-admin/students/bulk-import' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/school-admin/attendance' },
     { label: 'Graduated Students', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/graduated-students' },

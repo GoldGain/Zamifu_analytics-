@@ -32,7 +32,7 @@ export function useStudents(schoolId?: string) {
   const fetchStudents = useCallback(async () => {
     try {
       setLoading(true);
-      let query = supabase.from('students').select('*, classes(name)').order('created_at', { ascending: false });
+      let query = supabase.from('students').select('*, classes(name)').eq('is_active', true).order('created_at', { ascending: false });
       if (schoolId) query = query.eq('school_id', schoolId);
       const { data, error } = await query;
       if (error) throw error;

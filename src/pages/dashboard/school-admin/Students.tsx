@@ -12,6 +12,8 @@ import type { GenderType } from '@/types/database';
 import PromoteStudentModal from '@/components/PromoteStudentModal';
 import PhotoUpload from '@/components/PhotoUpload';
 import { useTrial } from '@/contexts/TrialContext';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type SortField = 'name' | 'assessment_number' | 'class' | 'gender';
 type SortDir = 'asc' | 'desc';
@@ -325,12 +327,13 @@ export default function SchoolAdminStudents() {
     if (!deletingStudent) return;
     setDeleting(true);
     try {
-      await deleteScopedUser({
-        record_id: deletingStudent.id,
-        target_type: 'student',
-        school_id: user?.schoolId,
-      });
-      toast.success(`Learner "${deletingStudent.first_name} ${deletingStudent.last_name}" and login account deleted.`);
+      const { error } = await supabaseUntyped
+        .from('students')
+        .update({ is_active: false })
+        .eq('id', deletingStudent.id)
+        .eq('school_id', user?.schoolId);
+      if (error) throw error;
+      toast.success(`Learner "${deletingStudent.first_name} ${deletingStudent.last_name}" moved to Recycle Bin.`);
       setDeletingStudent(null);
       refetch();
     } catch (err: any) {
@@ -423,6 +426,24 @@ export default function SchoolAdminStudents() {
 
   const handlePrint = () => window.print();
 
+  const downloadClassList = () => {
+    if (!filterClassId) { toast.info('Select a class first to download its learner list.'); return; }
+    const selectedClass = classes.find((item: any) => item.id === filterClassId);
+    const rows = students.filter((student: any) => student.class_id === filterClassId);
+    if (!selectedClass || rows.length === 0) { toast.info('No learners found in the selected class.'); return; }
+    const doc = new jsPDF();
+    doc.setFontSize(16); doc.text(`${selectedClass.name} - Learner List`, 14, 16);
+    doc.setFontSize(11); doc.text(`Generated ${new Date().toLocaleDateString()}`, 14, 24);
+    autoTable(doc, {
+      startY: 32,
+      head: [['#', 'Admission No.', 'Learner Name', 'Gender', 'Parent', 'Parent Phone']],
+      body: rows.map((student: any, index: number) => [index + 1, student.admission_number || '-', `${student.first_name} ${student.middle_name || ''} ${student.last_name}`.replace(/\s+/g, ' ').trim(), student.gender || '-', student.parent_name || '-', student.parent_phone || '-']),
+      styles: { fontSize: 8 }, headStyles: { fillColor: [37, 99, 235] },
+    });
+    doc.save(`learner_list_${String(selectedClass.name).replace(/[^a-z0-9]+/gi, '_')}.pdf`);
+    toast.success(`Downloaded all ${rows.length} learners in ${selectedClass.name}.`);
+  };
+
   // If trial is expired, show payment lock
   if (trialStatus?.isExpired) {
     return (
@@ -485,6 +506,9 @@ export default function SchoolAdminStudents() {
             ))}
           </select>
         </div>
+        <button type="button" onClick={downloadClassList} disabled={!filterClassId} className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-2xl text-sm font-medium disabled:opacity-50">
+          <Download className="w-4 h-4" /> Download Class PDF
+        </button>
       </div>
 
       {showAdd && (
