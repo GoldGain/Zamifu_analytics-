@@ -558,13 +558,44 @@ export default function TimetableGenerate() {
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
         const classSubjectBySlot = new Map<string, string>();
+        const classesInLevel = new Set(classesToProcess.map((classItem: any) => String(classItem.id)));
+
+        // A priority band is a preferred placement window, not extra capacity.
+        // Report impossible demand before allocation so a shared teacher conflict
+        // is visible to the administrator instead of being mistaken for a lost
+        // priority. Capacity is counted in lesson cells, because a double lesson
+        // consumes two consecutive cells even though it is one atomic unit.
+        const priorityCapacityWarnings: string[] = [];
+        const priorityCapacityByBand: Record<string, number> = {
+          early_morning: prioritySlots.early_morning.length * TIMETABLE_DAYS.length,
+          mid_morning: prioritySlots.mid_morning.length * TIMETABLE_DAYS.length,
+          late_morning: prioritySlots.late_morning.length * TIMETABLE_DAYS.length,
+          afternoon: prioritySlots.afternoon.length * TIMETABLE_DAYS.length,
+        };
+        const classesByTeacherBand = new Map<string, number>();
+        assignments
+          .filter((assignment: any) => classesInLevel?.has?.(String(assignment.class_id)))
+          .forEach((assignment: any) => {
+            const band = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
+            if (band === 'none') return;
+            const lessons = Math.max(0, Number(assignment.lessons_per_week || 0));
+            const teacherBandKey = `${assignment.teacher_id}:${band}`;
+            classesByTeacherBand.set(teacherBandKey, (classesByTeacherBand.get(teacherBandKey) || 0) + lessons);
+          });
+        classesByTeacherBand.forEach((demand, teacherBandKey) => {
+          const [teacherId, band] = teacherBandKey.split(':');
+          const capacity = priorityCapacityByBand[band] || 0;
+          if (demand > capacity) {
+            priorityCapacityWarnings.push(`${band.replace('_', ' ')} demand ${demand} cells exceeds ${capacity}-cell weekly teacher capacity`);
+            console.warn('[timetable] shared teacher priority capacity exceeded', { teacherId, band, demand, capacity });
+          }
+        });
         // Reserve each teacher’s configured double-day priority window before
         // any single lesson is placed. Without this, Grade 7 Science singles
         // can consume Wednesday Lesson 3/4 and make Grade 8 Science’s explicitly
         // configured Wednesday double impossible when the same teacher serves
         // both classes.
         const teacherDoubleReservedSlotKeys = new Set<string>();
-        const classesInLevel = new Set(classesToProcess.map((classItem: any) => String(classItem.id)));
         assignments.forEach((assignment: any) => {
           if (!classesInLevel.has(String(assignment.class_id)) || !isEnabledFlag(assignment.is_double_lesson)) return;
           const assignmentBand = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
@@ -1067,6 +1098,16 @@ export default function TimetableGenerate() {
           // conflict must remain visible as an under-scheduled warning rather
           // than silently moving Kiswahili, Agriculture, Social Studies, or
           // another prioritized subject into the wrong lesson window.
+          // Explicit priority remains authoritative for late-morning and
+          // afternoon assignments. Early and mid-morning subjects may use a
+          // lower-priority lesson only when their preferred cells are exhausted;
+          // this preserves “where possible” semantics for Maths and English while
+          // preventing silent loss of their configured weekly lessons. Science is
+          // handled above and remains pre-lunch, with its configured pair first.
+          if (context.priorityBand === 'early_morning' || context.priorityBand === 'morning') {
+            const nonPreferred = context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
+            return [...preferred, ...nonPreferred];
+          }
           if (context.priorityBand !== 'none') return preferred;
           // For assignments without a priority band, preferredLessonSlots is
           // already the complete lesson-slot list, so all lesson slots remain
@@ -1151,6 +1192,9 @@ export default function TimetableGenerate() {
         // Repair every known shortfall before persisting entries. A repaired
         // warning is updated to its final count and is not shown as an error.
         underScheduled.forEach(tryRepairGap);
+        if (priorityCapacityWarnings.length > 0) {
+          generatedSummary.push(`Priority capacity notes: ${priorityCapacityWarnings.join('; ')}`);
+        }
 
         const restorePlacement = (placement: LessonPlacementRecord) => {
           allEntries.push(...placement.entries);
