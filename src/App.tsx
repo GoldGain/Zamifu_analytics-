@@ -116,6 +116,7 @@ import TermsOfService from '@/pages/legal/TermsOfService';
 import CookiePolicy from '@/pages/legal/CookiePolicy';
 import DataProcessingAgreement from '@/pages/legal/DataProcessingAgreement';
 import Confidentiality from '@/pages/legal/Confidentiality';
+import AccountDeletion from '@/pages/legal/AccountDeletion';
 
 function LoadingSpinner() {
   return (
@@ -302,6 +303,7 @@ function AppRoutes() {
       <Route path="/cookie-policy" element={<PublicRoute><CookiePolicy /></PublicRoute>} />
       <Route path="/data-processing-agreement" element={<PublicRoute><DataProcessingAgreement /></PublicRoute>} />
       <Route path="/confidentiality" element={<PublicRoute><Confidentiality /></PublicRoute>} />
+      <Route path="/delete-account" element={<PublicRoute><AccountDeletion /></PublicRoute>} />
 
       {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />
