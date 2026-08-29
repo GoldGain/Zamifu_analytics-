@@ -9,3 +9,12 @@ dist/
 .env*
 deploy_payload.json
 file_tree.json
+
+# Android / Capacitor local build and signing material
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+*.jks
+*.keystore
+keystore.properties

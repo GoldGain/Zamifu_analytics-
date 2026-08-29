@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/lib/supabase/client';
 import type { UserRole, Profile } from '@/types/database';
 
@@ -175,9 +176,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
-    });
+    const redirectTo = Capacitor.isNativePlatform()
+      ? 'https://zamifu.company/auth/reset-password'
+      : `${window.location.origin}/auth/reset-password`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     return { error: error?.message || null };
   };
 
