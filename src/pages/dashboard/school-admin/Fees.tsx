@@ -311,6 +311,11 @@ export default function SchoolAdminFees() {
       toast.error('Please enter a valid positive payment amount');
       return;
     }
+    const schoolId = user?.schoolId;
+    if (!schoolId) {
+      toast.error('Your school account is not fully loaded. Please sign in again.');
+      return;
+    }
     setRecording(true);
     try {
       // Find or create invoice
@@ -323,7 +328,7 @@ export default function SchoolAdminFees() {
           .from('fee_invoices')
           .select('*')
           .eq('student_id', paymentData.student_id)
-          .eq('school_id', user?.schoolId)
+          .eq('school_id', schoolId)
           .is('deleted_at', null)
           .neq('status', 'paid')
           .order('created_at', { ascending: false })
@@ -336,9 +341,12 @@ export default function SchoolAdminFees() {
         } else {
           // Create a quick invoice
           const term = terms[0]; // Use latest term
+          if (!term?.id) {
+            throw new Error('No active term is configured for this school. Create a term before recording a payment.');
+          }
           const { data: newInv, error: invErr } = await supabaseUntyped.from('fee_invoices').insert([{
             student_id: paymentData.student_id,
-            school_id: user?.schoolId,
+            school_id: schoolId,
             term_id: term?.id,
             academic_year: new Date().getFullYear().toString(),
             total_amount: amount,
@@ -379,7 +387,7 @@ export default function SchoolAdminFees() {
         amount_paid: currentPaid,
         balance: newBalance,
         status: newStatus,
-      }).eq('id', invoiceId).eq('school_id', user?.schoolId).is('deleted_at', null);
+      }).eq('id', invoiceId).eq('school_id', schoolId).is('deleted_at', null);
       if (invoiceUpdateError) throw invoiceUpdateError;
 
       toast.success(`✅ Payment of Ksh ${amount.toLocaleString()} recorded! Receipt: ${receiptNumber}`);
