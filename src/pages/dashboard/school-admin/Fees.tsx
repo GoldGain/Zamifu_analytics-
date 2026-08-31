@@ -260,10 +260,9 @@ export default function SchoolAdminFees() {
       ? await supabaseUntyped.from('fee_invoices').update({
           total_amount: totalAmount,
           due_date: dueDate,
-          balance: Math.max(0, totalAmount - Number(existingInvoice.amount_paid || 0)),
           status: Number(existingInvoice.amount_paid || 0) >= totalAmount ? 'paid' : Number(existingInvoice.amount_paid || 0) > 0 ? 'partial' : 'unpaid',
         }).eq('id', existingInvoice.id).eq('school_id', user.schoolId)
-      : await supabaseUntyped.from('fee_invoices').insert([{ ...invoicePayload, amount_paid: 0, balance: totalAmount, status: 'unpaid' }]);
+      : await supabaseUntyped.from('fee_invoices').insert([{ ...invoicePayload, amount_paid: 0, status: 'unpaid' }]);
 
     if (error) { toast.error('Failed to save invoice: ' + error.message); return; }
     toast.success(existingInvoice ? 'Existing invoice updated successfully!' : 'Invoice generated successfully!');
@@ -366,7 +365,7 @@ export default function SchoolAdminFees() {
       const { error: payErr } = await supabaseUntyped.from('fee_payments').insert([{
         student_id: paymentData.student_id,
         invoice_id: invoiceId,
-        school_id: user?.schoolId,
+        school_id: schoolId,
         amount,
         payment_method: paymentData.payment_method,
         mpesa_reference: paymentData.mpesa_reference || null,
@@ -377,15 +376,13 @@ export default function SchoolAdminFees() {
       }]);
       if (payErr) throw payErr;
 
-      // Update invoice balance
+            // `balance` is a generated column (total_amount - amount_paid); update only its inputs.
       const currentPaid = (invoice?.amount_paid || 0) + amount;
       const currentTotal = invoice?.total_amount || amount;
       const newBalance = Math.max(0, currentTotal - currentPaid);
       const newStatus = newBalance <= 0 ? 'paid' : currentPaid > 0 ? 'partial' : 'unpaid';
-
       const { error: invoiceUpdateError } = await supabaseUntyped.from('fee_invoices').update({
         amount_paid: currentPaid,
-        balance: newBalance,
         status: newStatus,
       }).eq('id', invoiceId).eq('school_id', schoolId).is('deleted_at', null);
       if (invoiceUpdateError) throw invoiceUpdateError;
