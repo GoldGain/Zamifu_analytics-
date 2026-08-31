@@ -54,7 +54,7 @@ type SchoolRow = {
   dos_portal_locked: boolean | null;
 };
 
-type SchoolScopedRow = { id: string; school_id: string | null; parent_id?: string | null };
+type SchoolScopedRow = { id: string; school_id: string | null; parent_id?: string | null; is_active?: boolean | null };
 type ParentLinkRow = { parent_id: string | null; student_id: string | null };
 
 function countBySchool(rows: SchoolScopedRow[]): Map<string, number> {
@@ -95,7 +95,7 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
 
   const schoolIds = schools.map((school) => school.id);
   const [studentsResponse, teachersResponse, adminsResponse, parentLinksResponse] = await Promise.all([
-    supabaseUntyped.from('students').select('id, school_id, parent_id').in('school_id', schoolIds),
+    supabaseUntyped.from('students').select('id, school_id, parent_id, is_active').in('school_id', schoolIds).eq('is_active', true),
     supabaseUntyped.from('teachers').select('id, school_id').in('school_id', schoolIds),
     supabaseUntyped.from('school_admins').select('id, school_id').in('school_id', schoolIds),
     supabaseUntyped.from('parent_student_links').select('parent_id, student_id'),

@@ -63,7 +63,7 @@ export default function Login() {
           .maybeSingle();
 
         if (studentError || !student) {
-          setError('❌ Admission number not found. Please check with your school.');
+          setError('❌ Admission No/Assessment No not found. Please check with your school.');
           setLoading(false);
           return;
         }
@@ -86,7 +86,7 @@ export default function Login() {
       });
 
       if (loginError) {
-        setError('❌ Invalid credentials. Please check your email/admission number and password.');
+        setError('❌ Invalid credentials. Please check your email or Admission No/Assessment No and password.');
         setLoading(false);
         return;
       }
@@ -203,19 +203,19 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[#111111] mb-1.5">
-                {loginMethod === 'email' ? 'Email Address' : 'Assessment Number'}
+                {loginMethod === 'email' ? 'Email Address' : 'Admission No/Assessment No'}
               </label>
               <input
                 type={loginMethod === 'email' ? 'email' : 'text'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., GFA-2025-001'}
+                placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., ADM001 / ASM001'}
                 className="w-full min-h-12 px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
                 required
                 autoFocus
               />
               {loginMethod === 'admission' && (
-                <p className="text-xs text-gray-500 mt-1">Enter the assessment number given by your school</p>
+                <p className="text-xs text-gray-500 mt-1">Enter the Admission No/Assessment No given by your school</p>
               )}
             </div>
 

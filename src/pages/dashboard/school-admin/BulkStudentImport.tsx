@@ -9,8 +9,10 @@ import { deleteScopedUser, syncParentAccounts } from '@/lib/supabase/accountActi
 type ImportRow = Record<string, string>;
 type ImportResult = { row: number; admission_number: string; name: string; email: string; password: string; status: 'created' | 'failed'; message?: string };
 
+const IDENTIFIER_HEADER = 'admission_no_assessment_no';
+
 const TEMPLATE_HEADERS = [
-  'assessment_number', 'admission_number', 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
+  IDENTIFIER_HEADER, 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
   'gender', 'date_of_birth', 'birth_cert_number', 'nationality', 'county', 'sub_county',
   'boarding_status', 'disability_status', 'curriculum', 'parent_name', 'parent_phone', 'parent_email',
 ];
@@ -37,9 +39,15 @@ function parseCsv(text: string): ImportRow[] {
   }
   if (cell || row.length) { row.push(cell.trim()); if (row.some(Boolean)) lines.push(row); }
   if (lines.length < 2) return [];
-  const headers = lines[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
+  const headers = lines[0].map((h) => {
+    const normalized = h.trim().toLowerCase().replace(/[\s/]+/g, '_');
+    return ['assessment_number', 'admission_number', 'assessment_no', 'admission_no', 'admission_no_assessment_no'].includes(normalized)
+      ? IDENTIFIER_HEADER
+      : normalized;
+  });
   return lines.slice(1).map((values) => headers.reduce<ImportRow>((obj, header, index) => {
-    obj[header] = (values[index] || '').trim();
+    const value = (values[index] || '').trim();
+    obj[header] = header === IDENTIFIER_HEADER && obj[header] && value ? `${obj[header]} / ${value}` : value;
     return obj;
   }, {}));
 }
@@ -94,18 +102,18 @@ export default function BulkStudentImport() {
   const validation = useMemo(() => {
     const seen = new Set<string>();
     return rows.map((row, index) => {
-      const admission = row.assessment_number?.trim() || row.admission_number?.trim();
+      const admission = row[IDENTIFIER_HEADER]?.trim();
       const first = row.first_name?.trim();
       const last = row.last_name?.trim();
       const className = row.class_name?.trim().toLowerCase();
       const issues: string[] = [];
-      if (!admission) issues.push('missing assessment_number or admission_number');
+      if (!admission) issues.push('missing admission_no_assessment_no');
       if (!first) issues.push('missing first_name');
       if (!last) issues.push('missing last_name');
       if (!className) issues.push('missing class_name');
       else if (!classByName.has(className)) issues.push('class not found');
       const key = admission?.toLowerCase() || `row-${index}`;
-      if (seen.has(key)) issues.push('duplicate admission_number in CSV');
+      if (seen.has(key)) issues.push('duplicate admission_no_assessment_no in CSV');
       seen.add(key);
       return { row, rowNumber: index + 2, issues };
     });
@@ -127,7 +135,7 @@ export default function BulkStudentImport() {
 
       for (let index = 0; index < rows.length; index += 1) {
         const row = rows[index];
-        const admission = (row.assessment_number?.trim() || row.admission_number?.trim() || '');
+        const admission = (row[IDENTIFIER_HEADER]?.trim() || '');
         const admissionKey = admission.toLowerCase();
         const classRow = classByName.get(row.class_name.trim().toLowerCase());
         const fallbackEmail = `${admission.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`;
@@ -151,7 +159,7 @@ export default function BulkStudentImport() {
             school_id: user.schoolId,
             admission_number: admission,
             class_id: classRow.id,
-            metadata: { assessment_number: row.assessment_number?.trim() || admission, admission_number: row.admission_number?.trim() || admission, class_id: classRow.id },
+            metadata: { admission_no_assessment_no: admission, admission_number: admission, class_id: classRow.id },
           });
           const { data: studentData, error } = await supabaseUntyped.from('students').insert({
             profile_id: authData.user.id,
@@ -211,7 +219,7 @@ export default function BulkStudentImport() {
   const downloadCredentials = () => {
     const created = results.filter((result) => result.status === 'created');
     downloadCsv('zamifu-student-login-credentials.csv', [
-      ['admission_number', 'student_name', 'email', 'temporary_password'],
+      [IDENTIFIER_HEADER, 'student_name', 'email', 'temporary_password'],
       ...created.map((result) => [result.admission_number, result.name, result.email, result.password]),
     ]);
   };
@@ -227,10 +235,10 @@ export default function BulkStudentImport() {
         <section className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap gap-2 items-center justify-between">
             <h2 className="font-black text-gray-900 flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={18} /> Step 1: Prepare CSV</h2>
-            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS,                       ['ASM001', 'ADM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', '', '']
+            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS, ['ADM001 / ASM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', '', '']
 ])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
           </div>
-          <p className="text-xs text-gray-600">Required columns are <strong>assessment_number (or admission_number), first_name, last_name, and class_name</strong>.
+          <p className="text-xs text-gray-600">Required columns are <strong>admission_no_assessment_no, first_name, last_name, and class_name</strong>.
  Email and curriculum are optional; blank curriculum values default to <strong>CBE</strong>, while blank email values receive a unique generated student email. The default temporary password is the admission number followed by <strong>@2025</strong>.</p>
           <label className="border-2 border-dashed border-blue-200 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blue-50 transition">
             <Upload className="text-blue-600 mb-2" />
@@ -255,7 +263,7 @@ export default function BulkStudentImport() {
             <div><h2 className="font-black text-gray-900">Step 2: Review {rows.length} rows</h2><p className="text-xs text-gray-500">{invalidCount ? `${invalidCount} rows require correction.` : 'All required fields and class names are valid.'}</p></div>
             <button type="button" disabled={importing || invalidCount > 0} onClick={importStudents} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 flex items-center gap-2">{importing ? <Loader2 className="animate-spin" size={16} /> : <Users size={16} />} {importing ? 'Creating accounts...' : 'Create learner accounts'}</button>
           </div>
-          <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-left border-b"><th className="p-2">Row</th><th className="p-2">Admission</th><th className="p-2">Name</th><th className="p-2">Class</th><th className="p-2">Validation</th></tr></thead><tbody>{validation.slice(0, 100).map((item) => <tr key={item.rowNumber} className="border-b last:border-0"><td className="p-2">{item.rowNumber}</td><td className="p-2 font-semibold">{item.row.admission_number}</td><td className="p-2">{[item.row.first_name, item.row.middle_name, item.row.last_name].filter(Boolean).join(' ')}</td><td className="p-2">{item.row.class_name}</td><td className={`p-2 ${item.issues.length ? 'text-red-600' : 'text-green-700'}`}>{item.issues.length ? item.issues.join(', ') : 'Ready'}</td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-left border-b"><th className="p-2">Row</th><th className="p-2">Admission No/Assessment No</th><th className="p-2">Name</th><th className="p-2">Class</th><th className="p-2">Validation</th></tr></thead><tbody>{validation.slice(0, 100).map((item) => <tr key={item.rowNumber} className="border-b last:border-0"><td className="p-2">{item.rowNumber}</td><td className="p-2 font-semibold">{item.row[IDENTIFIER_HEADER]}</td><td className="p-2">{[item.row.first_name, item.row.middle_name, item.row.last_name].filter(Boolean).join(' ')}</td><td className="p-2">{item.row.class_name}</td><td className={`p-2 ${item.issues.length ? 'text-red-600' : 'text-green-700'}`}>{item.issues.length ? item.issues.join(', ') : 'Ready'}</td></tr>)}</tbody></table></div>
         </section>
       )}
 

@@ -300,13 +300,41 @@ export function drawTrendGraph(
   height: number,
   band: SchoolLevelBand
 ): number {
-  // REMOVED: Performance Trend Graph is no longer displayed on report cards
-  // This function is kept for backward compatibility but returns immediately
-  return y;
-  
-  // Original code below (disabled):
-  // Performance trend graph has been removed to fit report cards on one page
-  // The graph drawing code is intentionally removed for compact layout
+  if (!trendData.length || width <= 20 || height <= 12) return y;
+  const safeValues = trendData.map((item) => Math.max(0, Math.min(100, Number(item.avg) || 0)));
+  const maxValue = 100;
+  const left = x + 18;
+  const top = y + 8;
+  const graphWidth = Math.max(20, width - 24);
+  const graphHeight = Math.max(12, height - 22);
+  doc.setDrawColor(210, 210, 210);
+  doc.setFillColor(250, 250, 252);
+  doc.roundedRect(x, y, width, height, 2, 2, 'FD');
+  doc.setFontSize(6.5);
+  doc.setTextColor(90, 90, 90);
+  doc.text('Performance trend (%)', x + 4, y + 6);
+  [0, 50, 100].forEach((value) => {
+    const gridY = top + graphHeight - (value / maxValue) * graphHeight;
+    doc.setDrawColor(232, 232, 232);
+    doc.line(left, gridY, left + graphWidth, gridY);
+    doc.setTextColor(120, 120, 120);
+    doc.text(String(value), x + 3, gridY + 2);
+  });
+  const step = safeValues.length > 1 ? graphWidth / (safeValues.length - 1) : graphWidth;
+  const points = safeValues.map((value, index) => ({
+    x: left + (safeValues.length > 1 ? index * step : graphWidth / 2),
+    y: top + graphHeight - (value / maxValue) * graphHeight,
+  }));
+  doc.setDrawColor(106, 27, 154);
+  doc.setFillColor(106, 27, 154);
+  points.forEach((point, index) => {
+    if (index > 0) doc.line(points[index - 1].x, points[index - 1].y, point.x, point.y);
+    doc.circle(point.x, point.y, 1.2, 'F');
+    const label = String(trendData[index].term || '').slice(0, 10);
+    doc.setTextColor(90, 90, 90);
+    doc.text(label, point.x, y + height - 5, { align: 'center' });
+  });
+  return y + height;
 }
 
 // ── Add Logo to PDF ──────────────────────────────────────────────────────────

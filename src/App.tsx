@@ -32,6 +32,7 @@ import ResellerChangePassword from '@/pages/dashboard/reseller-admin/ChangePassw
 import ResellerAccessControl from '@/pages/dashboard/reseller-admin/AccessControl';
 import ResellerPricing from '@/pages/dashboard/reseller-admin/Pricing';
 import ResellerStudents from '@/pages/dashboard/reseller-admin/Students';
+import ResellerCommunicate from '@/pages/dashboard/reseller-admin/Communicate';
 import SchoolPortalLockGate from '@/components/SchoolPortalLockGate';
 // Dashboard pages
 import SuperAdminDashboard from '@/pages/dashboard/super-admin/Dashboard';
@@ -200,6 +201,7 @@ function AppRoutes() {
       <Route path="/reseller-admin/pricing" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerPricing /></ProtectedRoute>} />
       <Route path="/reseller-admin/access-control" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerAccessControl /></ProtectedRoute>} />
       <Route path="/reseller-admin/students" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerStudents /></ProtectedRoute>} />
+      <Route path="/reseller-admin/communicate" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerCommunicate /></ProtectedRoute>} />
       <Route path="/reseller-admin/change-password" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerChangePassword /></ProtectedRoute>} />
       {/* Super Admin routes */}
       <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminDashboard /></ProtectedRoute>} />

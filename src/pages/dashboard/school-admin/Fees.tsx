@@ -220,7 +220,7 @@ export default function SchoolAdminFees() {
   // Generate invoice for a student
   const handleGenerateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!invoiceData.student_id || !invoiceData.term_id) {
+    if (!invoiceData.student_id || !invoiceData.term_id || !user?.schoolId) {
       toast.error('Please select student and term');
       return;
     }
@@ -231,19 +231,42 @@ export default function SchoolAdminFees() {
       return;
     }
 
-    const { error } = await supabaseUntyped.from('fee_invoices').insert([{
+    const selectedTerm = terms.find((term: any) => term.id === invoiceData.term_id);
+    const academicYear = String(selectedTerm?.academic_year || new Date().getFullYear());
+    const dueDate = invoiceData.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const invoicePayload = {
       student_id: invoiceData.student_id,
-      school_id: user?.schoolId,
+      school_id: user.schoolId,
       term_id: invoiceData.term_id,
-      academic_year: new Date().getFullYear().toString(),
+      academic_year: academicYear,
       total_amount: totalAmount,
-      amount_paid: 0,
-      status: 'unpaid',
-      due_date: invoiceData.due_date || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    }]);
+      due_date: dueDate,
+    };
 
-    if (error) { toast.error('Failed to generate invoice: ' + error.message); return; }
-    toast.success('Invoice generated successfully!');
+    // The database key is one invoice per learner, term and academic year.
+    // Update an existing active invoice rather than issuing a duplicate INSERT.
+    const { data: existingInvoice, error: lookupError } = await supabaseUntyped
+      .from('fee_invoices')
+      .select('id, amount_paid')
+      .eq('student_id', invoicePayload.student_id)
+      .eq('school_id', invoicePayload.school_id)
+      .eq('term_id', invoicePayload.term_id)
+      .eq('academic_year', invoicePayload.academic_year)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (lookupError) { toast.error('Could not check existing invoice: ' + lookupError.message); return; }
+
+    const { error } = existingInvoice
+      ? await supabaseUntyped.from('fee_invoices').update({
+          total_amount: totalAmount,
+          due_date: dueDate,
+          balance: Math.max(0, totalAmount - Number(existingInvoice.amount_paid || 0)),
+          status: Number(existingInvoice.amount_paid || 0) >= totalAmount ? 'paid' : Number(existingInvoice.amount_paid || 0) > 0 ? 'partial' : 'unpaid',
+        }).eq('id', existingInvoice.id).eq('school_id', user.schoolId)
+      : await supabaseUntyped.from('fee_invoices').insert([{ ...invoicePayload, amount_paid: 0, balance: totalAmount, status: 'unpaid' }]);
+
+    if (error) { toast.error('Failed to save invoice: ' + error.message); return; }
+    toast.success(existingInvoice ? 'Existing invoice updated successfully!' : 'Invoice generated successfully!');
     setShowInvoice(false);
     setInvoiceData({ student_id: '', term_id: '', total_amount: '', due_date: '' });
     fetchData();
@@ -283,6 +306,11 @@ export default function SchoolAdminFees() {
       toast.error('Please select a student and enter amount');
       return;
     }
+    const amount = parseFloat(paymentData.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Please enter a valid positive payment amount');
+      return;
+    }
     setRecording(true);
     try {
       // Find or create invoice
@@ -307,7 +335,6 @@ export default function SchoolAdminFees() {
           invoice = existingInv;
         } else {
           // Create a quick invoice
-          const amount = parseFloat(paymentData.amount);
           const term = terms[0]; // Use latest term
           const { data: newInv, error: invErr } = await supabaseUntyped.from('fee_invoices').insert([{
             student_id: paymentData.student_id,
@@ -325,7 +352,6 @@ export default function SchoolAdminFees() {
         }
       }
 
-      const amount = parseFloat(paymentData.amount);
       const receiptNumber = `RCP-${Date.now()}`;
 
       // Insert payment
