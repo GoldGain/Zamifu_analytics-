@@ -3,6 +3,7 @@ import { useTrial } from '@/contexts/TrialContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lucide-react';
+import { ANNUAL_PRICE_PER_LEARNER } from '@/lib/trial';
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
@@ -48,7 +49,7 @@ export const TrialCountdown: React.FC = () => {
   }
 
   const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
-  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 50;
+  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : ANNUAL_PRICE_PER_LEARNER;
   const selectedFee = billingPeriod === 'annual' ? annualFee : pricePerLearner;
   const annualBaseline = pricePerLearner * 3;
   const annualSavings = Math.max(0, annualBaseline - annualFee);

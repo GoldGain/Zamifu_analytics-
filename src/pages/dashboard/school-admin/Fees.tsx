@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { sendSMS } from '@/lib/sms';
 import { useAuth } from '@/contexts/AuthContext';
-import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText, Trash2, Pencil } from 'lucide-react';
+import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText, Trash2, Pencil, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -10,6 +10,7 @@ import autoTable from 'jspdf-autotable';
 export default function SchoolAdminFees() {
   const { user, schoolData } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
@@ -20,8 +21,13 @@ export default function SchoolAdminFees() {
   const [showInvoice, setShowInvoice] = useState(false);
   const [editingStructureId, setEditingStructureId] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
-  const [activeTab, setActiveTab] = useState<'invoices' | 'structures' | 'class-balances'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'payments' | 'structures' | 'class-balances'>('invoices');
   const [selectedFeeClass, setSelectedFeeClass] = useState('');
+  const [feeSearch, setFeeSearch] = useState('');
+  const [selectedInvoiceClass, setSelectedInvoiceClass] = useState('');
+  const [editingPayment, setEditingPayment] = useState<any | null>(null);
+  const [editPaymentData, setEditPaymentData] = useState({ amount: '', payment_method: 'cash' as 'cash' | 'mpesa' | 'bank' | 'cheque' | 'other', mpesa_reference: '', notes: '' });
+  const [savingPayment, setSavingPayment] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
 
   // Fee structure form: multiple fee types per class/term
@@ -52,15 +58,15 @@ export default function SchoolAdminFees() {
 
     const [{ data: inv }, { data: paymentRows }, { data: stds }, { data: cls }, { data: trms }, { data: fs }] = await Promise.all([
       supabaseUntyped.from('fee_invoices')
-        .select('*, students(first_name, last_name, admission_number), terms(name, academic_year)')
+        .select('*, students(first_name, last_name, admission_number, assessment_number, class_id), terms(name, academic_year)')
         .eq('school_id', schoolId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false }),
       supabaseUntyped.from('fee_payments')
-        .select('invoice_id, amount')
+        .select('id, invoice_id, student_id, amount, payment_method, mpesa_reference, receipt_number, payment_date, notes')
         .eq('school_id', schoolId),
       supabaseUntyped.from('students')
-        .select('id, first_name, last_name, admission_number, class_id, parent_name, parent_phone, parent2_name, parent2_phone')
+        .select('id, first_name, last_name, admission_number, assessment_number, class_id, parent_name, parent_phone, parent2_name, parent2_phone')
         .eq('school_id', schoolId).eq('is_active', true),
       supabaseUntyped.from('classes')
         .select('id, name, level').eq('school_id', schoolId).order('level'),
@@ -85,6 +91,7 @@ export default function SchoolAdminFees() {
     });
 
     setInvoices(reconciledInvoices);
+    setPayments(paymentRows || []);
     setStudents(stds || []);
     setClasses(cls || []);
     setTerms(trms || []);
@@ -94,8 +101,99 @@ export default function SchoolAdminFees() {
 
   const invoiceBalance = (invoice: any) => Number(invoice.balance ?? Math.max(0, Number(invoice.total_amount || 0) - Number(invoice.amount_paid || 0)));
 
+  const learnerSortValue = (student: any) => String(student?.admission_number || student?.assessment_number || '').trim();
+
+  const compareLearners = (a: any, b: any) => {
+    const primary = learnerSortValue(a).localeCompare(learnerSortValue(b), undefined, { numeric: true, sensitivity: 'base' });
+    if (primary !== 0) return primary;
+    const secondary = String(a?.assessment_number || '').localeCompare(String(b?.assessment_number || ''), undefined, { numeric: true, sensitivity: 'base' });
+    if (secondary !== 0) return secondary;
+    return `${a?.first_name || ''} ${a?.last_name || ''}`.localeCompare(`${b?.first_name || ''} ${b?.last_name || ''}`);
+  };
+
+  const matchesFeeSearch = (student: any) => {
+    const query = feeSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [student?.admission_number, student?.assessment_number, student?.first_name, student?.last_name]
+      .some((value) => String(value || '').toLowerCase().includes(query));
+  };
+
+  const filteredInvoiceRows = invoices
+    .filter((invoice: any) => !selectedInvoiceClass || invoice.students?.class_id === selectedInvoiceClass)
+    .filter((invoice: any) => matchesFeeSearch(invoice.students))
+    .sort((a: any, b: any) => compareLearners(a.students, b.students));
+
+  const studentById = new Map(students.map((student: any) => [student.id, student]));
+  const invoiceById = new Map(invoices.map((invoice: any) => [invoice.id, invoice]));
+  const filteredPaymentRows = payments
+    .map((payment: any) => ({
+      ...payment,
+      student: studentById.get(payment.student_id) || invoiceById.get(payment.invoice_id)?.students,
+      invoice: invoiceById.get(payment.invoice_id),
+    }))
+    .filter((payment: any) => !selectedInvoiceClass || payment.student?.class_id === selectedInvoiceClass)
+    .filter((payment: any) => matchesFeeSearch(payment.student))
+    .sort((a: any, b: any) => compareLearners(a.student, b.student) || String(b.payment_date || '').localeCompare(String(a.payment_date || '')));
+
+  const openEditPayment = (payment: any) => {
+    setEditingPayment(payment);
+    setEditPaymentData({
+      amount: String(payment.amount ?? ''),
+      payment_method: payment.payment_method || 'cash',
+      mpesa_reference: payment.mpesa_reference || '',
+      notes: payment.notes || '',
+    });
+  };
+
+  const handleSavePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPayment?.id || !user?.schoolId) return;
+    const amount = Number(editPaymentData.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid positive payment amount.');
+      return;
+    }
+    setSavingPayment(true);
+    try {
+      const { error: paymentError } = await supabaseUntyped
+        .from('fee_payments')
+        .update({
+          amount,
+          payment_method: editPaymentData.payment_method,
+          mpesa_reference: editPaymentData.mpesa_reference || null,
+          notes: editPaymentData.notes || null,
+        })
+        .eq('id', editingPayment.id)
+        .eq('school_id', user.schoolId);
+      if (paymentError) throw paymentError;
+
+      if (editingPayment.invoice_id) {
+        const [{ data: invoice }, { data: invoicePayments }] = await Promise.all([
+          supabaseUntyped.from('fee_invoices').select('total_amount').eq('id', editingPayment.invoice_id).eq('school_id', user.schoolId).maybeSingle(),
+          supabaseUntyped.from('fee_payments').select('amount').eq('invoice_id', editingPayment.invoice_id).eq('school_id', user.schoolId),
+        ]);
+        const paid = (invoicePayments || []).reduce((sum: number, row: any) => sum + Number(row.amount || 0), 0);
+        const total = Number(invoice?.total_amount || 0);
+        const balance = Math.max(0, total - paid);
+        const { error: invoiceError } = await supabaseUntyped
+          .from('fee_invoices')
+          .update({ amount_paid: paid, status: balance <= 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid' })
+          .eq('id', editingPayment.invoice_id)
+          .eq('school_id', user.schoolId);
+        if (invoiceError) throw invoiceError;
+      }
+      toast.success('Payment updated and invoice balance recalculated.');
+      setEditingPayment(null);
+      await fetchData();
+    } catch (error: any) {
+      toast.error('Failed to update payment: ' + error.message);
+    } finally {
+      setSavingPayment(false);
+    }
+  };
+
   const classBalanceRows = (classId: string) => {
-    const classStudents = students.filter((student: any) => student.class_id === classId);
+    const classStudents = students.filter((student: any) => student.class_id === classId).sort(compareLearners);
     return classStudents.map((student: any) => {
       const studentInvoices = invoices.filter((invoice: any) => invoice.student_id === student.id);
       return {
@@ -598,10 +696,37 @@ export default function SchoolAdminFees() {
         </div>
       )}
 
+      {editingPayment && (
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-blue-100">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold">Edit Payment</h3>
+              <p className="text-xs text-gray-500 mt-1">Update the payment record; the linked invoice balance will be recalculated.</p>
+            </div>
+            <button type="button" onClick={() => setEditingPayment(null)} className="text-gray-500 hover:text-gray-800">Cancel</button>
+          </div>
+          <form onSubmit={handleSavePayment} className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <input type="number" min="1" step="0.01" placeholder="Amount (Ksh) *" value={editPaymentData.amount} onChange={e => setEditPaymentData({ ...editPaymentData, amount: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl text-sm" required />
+            <select value={editPaymentData.payment_method} onChange={e => setEditPaymentData({ ...editPaymentData, payment_method: e.target.value as any })} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white">
+              <option value="cash">Cash</option><option value="mpesa">M-Pesa</option><option value="bank">Bank Transfer</option><option value="cheque">Cheque</option><option value="other">Other</option>
+            </select>
+            <input placeholder="M-Pesa Reference" value={editPaymentData.mpesa_reference} onChange={e => setEditPaymentData({ ...editPaymentData, mpesa_reference: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
+            <input placeholder="Notes (optional)" value={editPaymentData.notes} onChange={e => setEditPaymentData({ ...editPaymentData, notes: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
+            <div className="md:col-span-4 flex gap-3">
+              <button type="submit" disabled={savingPayment} className="bg-[#2563EB] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50">{savingPayment ? 'Saving...' : 'Save Payment'}</button>
+              <button type="button" onClick={() => setEditingPayment(null)} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        <button onClick={() => setActiveTab('invoices')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'invoices' ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-          Invoices ({invoices.length})
+      <div className="flex gap-2 border-b overflow-x-auto">
+        <button onClick={() => setActiveTab('invoices')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${activeTab === 'invoices' ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          Invoices ({filteredInvoiceRows.length})
+        </button>
+        <button onClick={() => setActiveTab('payments')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${activeTab === 'payments' ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+          Payments ({filteredPaymentRows.length})
         </button>
         <button onClick={() => setActiveTab('structures')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'structures' ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
           Fee Structures ({Object.keys(groupedStructures).length})
@@ -613,6 +738,16 @@ export default function SchoolAdminFees() {
 
       {activeTab === 'invoices' && (
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+          <div className="p-4 border-b bg-gray-50 flex flex-col md:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input value={feeSearch} onChange={e => setFeeSearch(e.target.value)} placeholder="Search Admission No., Assessment No., or learner name" className="w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm bg-white" />
+            </div>
+            <select value={selectedInvoiceClass} onChange={e => setSelectedInvoiceClass(e.target.value)} className="md:w-56 px-4 py-2.5 border rounded-xl text-sm bg-white">
+              <option value="">All classes</option>
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+            </select>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -629,14 +764,14 @@ export default function SchoolAdminFees() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">Loading...</td></tr>
-                ) : invoices.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">No invoices found. Generate one above.</td></tr>
+                ) : filteredInvoiceRows.length === 0 ? (
+                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">No invoices match the current search or class filter.</td></tr>
                 ) : (
-                  invoices.map((inv: any) => (
+                  filteredInvoiceRows.map((inv: any) => (
                     <tr key={inv.id} className="border-b hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div className="text-sm font-medium">{inv.students?.first_name} {inv.students?.last_name}</div>
-                        <div className="text-xs text-gray-500">{inv.students?.admission_number}</div>
+                        <div className="text-xs text-gray-500">Adm: {inv.students?.admission_number || '-'} · Ass: {inv.students?.assessment_number || '-'}</div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{inv.terms?.name} {inv.terms?.academic_year}</td>
                       <td className="px-6 py-4 text-sm">Ksh {(inv.total_amount || 0).toLocaleString()}</td>
@@ -649,10 +784,44 @@ export default function SchoolAdminFees() {
                           {statusIcon(inv.status)} {inv.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4"><button onClick={() => handleDeleteInvoice(inv)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100" title="Delete invoice"><Trash2 className="w-3.5 h-3.5" /> Delete</button></td>
+                      <td className="px-6 py-4"><div className="flex flex-wrap gap-1.5"><button onClick={() => { setPaymentData({ student_id: inv.student_id, invoice_id: inv.id, amount: '', payment_method: 'cash', mpesa_reference: '', notes: '' }); setShowRecord(true); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100" title="Record payment"><CreditCard className="w-3.5 h-3.5" /> Record</button><button onClick={() => handleDeleteInvoice(inv)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100" title="Delete invoice"><Trash2 className="w-3.5 h-3.5" /> Delete</button></div></td>
                     </tr>
                   ))
                 )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'payments' && (
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+          <div className="p-4 border-b bg-gray-50 flex flex-col md:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input value={feeSearch} onChange={e => setFeeSearch(e.target.value)} placeholder="Search Admission No., Assessment No., or learner name" className="w-full pl-9 pr-4 py-2.5 border rounded-xl text-sm bg-white" />
+            </div>
+            <select value={selectedInvoiceClass} onChange={e => setSelectedInvoiceClass(e.target.value)} className="md:w-56 px-4 py-2.5 border rounded-xl text-sm bg-white">
+              <option value="">All classes</option>
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+            </select>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead><tr className="border-b bg-gray-50"><th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Learner</th><th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Invoice / Receipt</th><th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Amount</th><th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Method</th><th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Date</th><th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase">Actions</th></tr></thead>
+              <tbody>
+                {filteredPaymentRows.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-500">No payments match the current search or class filter.</td></tr>
+                ) : filteredPaymentRows.map((payment: any) => (
+                  <tr key={payment.id} className="border-b hover:bg-gray-50">
+                    <td className="px-6 py-4"><div className="text-sm font-medium">{payment.student?.first_name} {payment.student?.last_name}</div><div className="text-xs text-gray-500">Adm: {payment.student?.admission_number || '-'} · Ass: {payment.student?.assessment_number || '-'}</div></td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{payment.receipt_number || '-'}<div className="text-xs text-gray-400">{payment.invoice?.terms?.name || ''} {payment.invoice?.terms?.academic_year || ''}</div></td>
+                    <td className="px-6 py-4 text-sm font-semibold text-green-600">Ksh {Number(payment.amount || 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm capitalize">{payment.payment_method || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '-'}</td>
+                    <td className="px-6 py-4"><button type="button" onClick={() => openEditPayment(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Pencil className="w-3.5 h-3.5" /> Edit</button></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

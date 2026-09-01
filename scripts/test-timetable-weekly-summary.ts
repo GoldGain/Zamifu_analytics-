@@ -43,4 +43,25 @@ assert.deepEqual(
 
 assert.equal(summary.some((row) => row.label === 'PPI'), false, 'PPI must not appear as a learning-area count');
 assert.equal(summary.some((row) => row.label === 'Science'), false, 'break/lunch entries must not be counted');
+
+const compared = buildWeeklyLessonSummary(
+  classes,
+  slots,
+  (day, classId, slot) => cells[`${day}-${classId}-${slot.id}`] || [],
+  [
+    { class_id: 'A', subject_id: 'math', subject_name: 'Mathematics', lessons_per_week: 3 },
+    { class_id: 'A', subject_id: 'science', subject_name: 'Integrated Science', lessons_per_week: 2 },
+    { class_id: 'B', subject_id: 'math', subject_name: 'Mathematics', lessons_per_week: 1 },
+    { class_id: 'B', subject_id: 'science', subject_name: 'Integrated Science', lessons_per_week: 4 },
+    { class_id: 'B', subject_id: 'art', subject_name: 'Creative Arts', lessons_per_week: 2 },
+  ],
+);
+assert.deepEqual(
+  compared.map(({ key, requiredLessons, totalLessons, requiredPerClass, perClass, status }) => ({ key, requiredLessons, totalLessons, requiredPerClass, perClass, status })),
+  [
+    { key: 'art', requiredLessons: 2, totalLessons: 1, requiredPerClass: { A: 0, B: 2 }, perClass: { A: 0, B: 1 }, status: 'under' },
+    { key: 'science', requiredLessons: 6, totalLessons: 4, requiredPerClass: { A: 2, B: 4 }, perClass: { A: 1, B: 3 }, status: 'under' },
+    { key: 'math', requiredLessons: 4, totalLessons: 5, requiredPerClass: { A: 3, B: 1 }, perClass: { A: 3, B: 2 }, status: 'over' },
+  ],
+);
 console.log('Weekly timetable summary invariants passed.');

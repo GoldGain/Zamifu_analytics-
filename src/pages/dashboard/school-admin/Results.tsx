@@ -27,8 +27,10 @@ import {
   drawAchievements,
   drawReportFooter,
   SUBJECT_ORDER,
+  buildPerformanceTrend,
   type SchoolInfo,
   type SignatureInfo,
+  type PerformanceTrendRecord,
 } from '@/lib/reportCardPdf';
 
 function sortSubjects(subjects: string[]) {
@@ -370,7 +372,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchClassResults = async () => {
     const effectiveClassId = scope === 'class_teacher' ? scopedClassId : selectedClass;
-    const { data, error } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level), school_exams(name, type)').eq('class_id', effectiveClassId).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    let query = supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level), school_exams(name, type)').eq('class_id', effectiveClassId).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    if (selectedExam) query = query.eq('exam_id', selectedExam);
+    const { data, error } = await query;
     if (error) throw error;
     return data;
   };
@@ -778,19 +782,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const weakestSubject = sortedBest[sortedBest.length - 1]?.[0] || 'some learning areas';
       const studentFullName = `${s.student?.first_name || ''} ${s.student?.last_name || ''}`;
       
-      const { data: allResults } = await supabaseUntyped.from('results').select('percentage, marks, out_of, term_id, terms(name, academic_year)').eq('student_id', s.studentId).order('terms(academic_year)', { ascending: true }).order('terms(name)', { ascending: true });
-      let trendData: { term: string; avg: number }[] = [];
-      if (allResults) {
-        const termMap: Record<string, { term: string; total: number; count: number }> = {};
-        allResults.forEach((r: any) => {
-          const tname = r.terms?.name || ''; const year = r.terms?.academic_year || '';
-          const key = `${year}-${tname}`;
-          const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
-          if (!termMap[key]) termMap[key] = { term: `${tname} ${year}`, total: 0, count: 0 };
-          termMap[key].total += pct; termMap[key].count++;
-        });
-        trendData = Object.values(termMap).map(t => ({ term: t.term, avg: t.count > 0 ? t.total / t.count : 0 }));
-      }
+      const { data: allResults } = await supabaseUntyped
+        .from('results')
+        .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+        .eq('student_id', s.studentId)
+        .order('terms(academic_year)', { ascending: true })
+        .order('terms(name)', { ascending: true });
+      const trendData = buildPerformanceTrend((allResults || []) as PerformanceTrendRecord[]);
 
       const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
         name,
@@ -823,8 +821,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
       }
       currentY = drawSummaryBox(doc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${summaries.length}`, classObj, currentY + 4);
-      currentY = drawDeviation(doc, deviation, prevAvg, null, currentY);
-      
+            currentY = drawDeviation(doc, deviation, prevAvg, null, currentY);
+      if (trendData.length >= 2) {
+        currentY = drawTrendGraph(doc, trendData, 14, currentY, 182, 34, band) + 2;
+      }
       const bulkBestPerSubject = computeBestPerSubject(results.filter(r => r.class_id === selectedClass && r.term_id === selectedTerm), classObj);
       const studentBests = bulkBestPerSubject.filter(b => b.studentId === s.studentId);
       currentY = drawAchievements(doc, studentBests, currentY + 2);
@@ -868,21 +868,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
       const bulkBestPerSubject = computeBestPerSubject(rawResults, classObj);
 
-      // Pre-fetch all student trends in one pass
+      // Pre-fetch all student trends in one pass so every learner PDF can show
+      // distinct previous assessments, including legacy term-only results.
       const studentTrends: Record<string, { term: string; avg: number }[]> = {};
       for (const s of summaries) {
-        const { data: allResults } = await supabaseUntyped.from('results').select('percentage, marks, out_of, term_id, terms(name, academic_year)').eq('student_id', s.studentId).order('terms(academic_year)', { ascending: true }).order('terms(name)', { ascending: true });
-        if (allResults) {
-          const termMap: Record<string, { term: string; total: number; count: number }> = {};
-          allResults.forEach((r: any) => {
-            const tname = r.terms?.name || ''; const year = r.terms?.academic_year || '';
-            const key = `${year}-${tname}`;
-            const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
-            if (!termMap[key]) termMap[key] = { term: `${tname} ${year}`, total: 0, count: 0 };
-            termMap[key].total += pct; termMap[key].count++;
-          });
-          studentTrends[s.studentId] = Object.values(termMap).map(t => ({ term: t.term, avg: t.count > 0 ? t.total / t.count : 0 }));
-        }
+        const { data: allResults } = await supabaseUntyped
+          .from('results')
+          .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+          .eq('student_id', s.studentId)
+          .order('terms(academic_year)', { ascending: true })
+          .order('terms(name)', { ascending: true });
+        studentTrends[s.studentId] = buildPerformanceTrend((allResults || []) as PerformanceTrendRecord[]);
       }
 
       // Generate a single optimized PDF for all learners
@@ -913,7 +909,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           name,
           percentage: pct,
           grade: calculateCompetencyGrade(pct, band).subLevel,
-          previousPercentage: studentTrends[s.studentId]?.slice(-2)[0]?.pct ?? null,
+          previousPercentage: studentTrends[s.studentId]?.slice(-2)[0]?.avg ?? null,
         }));
         const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, totalStudents, isNew, classObj, allSubjectResults);
 
@@ -956,8 +952,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${totalStudents}`, classObj, currentY + 4);
         
-        currentY = drawDeviation(mainDoc, deviation, prevAvg, null, currentY);
-
+                currentY = drawDeviation(mainDoc, deviation, prevAvg, null, currentY);
+        const studentTrend = studentTrends[s.studentId] || [];
+        if (studentTrend.length >= 2) {
+          currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY, 182, 34, band) + 2;
+        }
         const bulkStudentBests = bulkBestPerSubject.filter(b => b.studentId === (s.student?.id || s.studentId));
         currentY = drawAchievements(mainDoc, bulkStudentBests, currentY + 2);
 

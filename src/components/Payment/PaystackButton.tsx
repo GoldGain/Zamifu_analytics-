@@ -4,7 +4,7 @@ import { useTrial } from '@/contexts/TrialContext';
 import { supabase } from '@/lib/supabase/client';
 import { Loader2, Lock, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
-import { PRICE_PER_LEARNER } from '@/lib/trial';
+import { ANNUAL_PRICE_PER_LEARNER, PRICE_PER_LEARNER } from '@/lib/trial';
 
 interface PaystackButtonProps {
   learnersCount: number;
@@ -26,7 +26,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
   const { user } = useAuth();
   const { pricePerLearner, annualPricePerLearner, refreshTrialStatus } = useTrial();
   const [processing, setProcessing] = useState(false);
-  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : 50;
+  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : ANNUAL_PRICE_PER_LEARNER;
   const [resolvedFee, setResolvedFee] = useState(
     billingPeriod === 'annual' ? annualFee : (feePerLearner || pricePerLearner || PRICE_PER_LEARNER),
   );

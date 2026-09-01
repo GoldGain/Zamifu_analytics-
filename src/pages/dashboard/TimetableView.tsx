@@ -18,7 +18,7 @@ import {
   timeIntervalsOverlap,
 } from '@/lib/timetable-activity';
 import { getSubjectCode } from '@/lib/timetable-subject-code';
-import { buildWeeklyLessonSummary } from '@/lib/timetable-summary';
+import { buildWeeklyLessonSummary, type TimetableSummaryRequirement } from '@/lib/timetable-summary';
 
 interface SchoolClass {
   id: string;
@@ -523,6 +523,7 @@ export default function TimetableView() {
   const [entries, setEntries] = useState<TimetableEntry[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [levelConfigs, setLevelConfigs] = useState<Record<string, any>>({});
+  const [lessonRequirements, setLessonRequirements] = useState<TimetableSummaryRequirement[]>([]);
   const [teacherKey, setTeacherKey] = useState<TeacherKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -546,6 +547,7 @@ export default function TimetableView() {
         fetchTimeSlots(),
         fetchLevelConfigs(),
         fetchEntries(),
+        fetchLessonRequirements(),
         fetchTeacherKey(),
       ]);
     } catch (err) {
@@ -631,6 +633,26 @@ export default function TimetableView() {
       subject_code: entry.subjects?.code,
     }));
     setEntries(mapped);
+  };
+
+  const fetchLessonRequirements = async () => {
+    const { data, error: requirementsError } = await supabase
+      .from('teacher_subject_assignments')
+      .select('class_id, subject_id, lessons_per_week, subjects(name, code)')
+      .eq('school_id', user?.schoolId)
+      .eq('is_active', true);
+    if (requirementsError) {
+      console.warn('lesson requirements', requirementsError);
+      setLessonRequirements([]);
+      return;
+    }
+    setLessonRequirements((data || []).map((assignment: any) => ({
+      class_id: assignment.class_id,
+      subject_id: assignment.subject_id,
+      subject_name: assignment.subjects?.name || null,
+      subject_code: assignment.subjects?.code || null,
+      lessons_per_week: Number(assignment.lessons_per_week) || 0,
+    })));
   };
 
   const fetchTeacherKey = async () => {
@@ -1048,6 +1070,15 @@ export default function TimetableView() {
     .tt-summary-table tbody th {
       text-align: left;
     }
+    .tt-summary-subhead {
+      display: block;
+      margin-top: 2px;
+      font-size: 0.5rem;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: none;
+      opacity: 0.8;
+    }
     .tt-summary-table tbody tr:nth-child(even) {
       background: #f8fafc;
     }
@@ -1055,10 +1086,27 @@ export default function TimetableView() {
       color: #1e293b;
       font-weight: 700;
     }
+    .tt-summary-required {
+      color: #475569 !important;
+      font-weight: 900;
+    }
     .tt-summary-total {
       color: #1d4ed8 !important;
       font-weight: 900;
     }
+    .tt-summary-status {
+      display: inline-flex;
+      min-width: 42px;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 3px 7px;
+      font-size: 0.62rem;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+    .tt-summary-status-ok { background: #dcfce7; color: #166534; }
+    .tt-summary-status-under { background: #fef3c7; color: #92400e; }
+    .tt-summary-status-over { background: #fee2e2; color: #991b1b; }
     .tt-weekly-table .tt-time-header {
       min-width: 72px;
       padding: 5px 3px;
@@ -1306,8 +1354,11 @@ export default function TimetableView() {
     }
 
     const lessonSummary = countLessons(slotsForTable);
-    const weeklyLessonSummary = buildWeeklyLessonSummary(classesToRender, slotsForTable, (day, classId, slot) =>
-      getEntries(day, classId, slot)
+    const weeklyLessonSummary = buildWeeklyLessonSummary(
+      classesToRender,
+      slotsForTable,
+      (day, classId, slot) => getEntries(day, classId, slot),
+      lessonRequirements,
     );
 
     // Breaks, lunch, and lesson clocks are shared by every class in the level.
@@ -1365,9 +1416,11 @@ export default function TimetableView() {
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
           <div>
             <h3 className="tt-summary-title">Weekly learning-area summary</h3>
-            <p className="tt-summary-note">Count of scheduled subject lessons across Monday–Friday. Activities, breaks, and lunch are not counted as learning areas.</p>
+            <p className="tt-summary-note">Compare configured Required / week with scheduled Total / week. Activities, breaks, and lunch are not counted as learning areas.</p>
           </div>
-          <span className="tt-summary-badge">{weeklyLessonSummary.reduce((sum, row) => sum + row.totalLessons, 0)} scheduled cells</span>
+          <span className="tt-summary-badge">
+            {weeklyLessonSummary.reduce((sum, row) => sum + row.totalLessons, 0)} scheduled / {weeklyLessonSummary.reduce((sum, row) => sum + row.requiredLessons, 0)} required
+          </span>
         </div>
         {weeklyLessonSummary.length === 0 ? (
           <p className="tt-summary-empty">No scheduled learning-area lessons yet. Add or generate subject entries to see the weekly totals here.</p>
@@ -1377,9 +1430,11 @@ export default function TimetableView() {
               <thead>
                 <tr>
                   <th>Learning area</th>
+                  <th>Required / week</th>
                   <th>Total / week</th>
+                  <th>Status</th>
                   {classesToRender.length > 1 && classesToRender.map((cls) => (
-                    <th key={cls.id}>{displayClassName(cls)}</th>
+                    <th key={cls.id}>{displayClassName(cls)}<span className="tt-summary-subhead">total / required</span></th>
                   ))}
                 </tr>
               </thead>
@@ -1387,9 +1442,15 @@ export default function TimetableView() {
                 {weeklyLessonSummary.map((row) => (
                   <tr key={row.key}>
                     <th scope="row">{row.label}</th>
+                    <td className="tt-summary-required">{row.requiredLessons}</td>
                     <td className="tt-summary-total">{row.totalLessons}</td>
+                    <td>
+                      <span className={`tt-summary-status tt-summary-status-${row.status}`}>
+                        {row.status === 'ok' ? 'OK' : row.status === 'under' ? 'Under' : 'Over'}
+                      </span>
+                    </td>
                     {classesToRender.length > 1 && classesToRender.map((cls) => (
-                      <td key={cls.id}>{row.perClass[cls.id] || 0}</td>
+                      <td key={cls.id}>{row.perClass[cls.id] || 0} / {row.requiredPerClass[cls.id] || 0}</td>
                     ))}
                   </tr>
                 ))}

@@ -5,6 +5,7 @@ import {
   buildTrialStatus,
   calculatePaymentAmount,
   PRICE_PER_LEARNER,
+  ANNUAL_PRICE_PER_LEARNER,
   type ServerBillingRecord,
   type TrialStatus,
 } from '@/lib/trial';
@@ -26,7 +27,7 @@ const TrialContext = createContext<TrialContextType>({
   billingError: null,
   refreshTrialStatus: async () => {},
   pricePerLearner: PRICE_PER_LEARNER,
-  annualPricePerLearner: 50,
+  annualPricePerLearner: ANNUAL_PRICE_PER_LEARNER,
   paymentAmount: 0,
   trialDays: 60,
 });
@@ -37,7 +38,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [billingError, setBillingError] = useState<string | null>(null);
   const [pricePerLearner, setPricePerLearner] = useState(PRICE_PER_LEARNER);
-  const [annualPricePerLearner, setAnnualPricePerLearner] = useState(50);
+  const [annualPricePerLearner, setAnnualPricePerLearner] = useState(ANNUAL_PRICE_PER_LEARNER);
 
   const schoolId = user?.schoolId || '';
 
@@ -72,7 +73,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
       const fee = Number(data.fee_per_learner_per_term);
       const annualFee = Number(data.fee_per_learner_per_year);
       setPricePerLearner(fee > 0 ? fee : PRICE_PER_LEARNER);
-      setAnnualPricePerLearner(annualFee > 0 ? annualFee : 50);
+      setAnnualPricePerLearner(annualFee > 0 ? annualFee : ANNUAL_PRICE_PER_LEARNER);
       setBillingError(null);
     } catch (error) {
       console.error('[billing] failed to load server subscription status', error);

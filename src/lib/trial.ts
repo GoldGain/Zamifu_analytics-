@@ -4,8 +4,11 @@
 // intentionally does not read or write browser storage.
 // ============================================================
 
+import { DEFAULT_ANNUAL_FEE_PER_LEARNER, DEFAULT_FEE_PER_LEARNER } from './reseller';
+
 export const TRIAL_DAYS = 60;
-export const PRICE_PER_LEARNER = 20;
+export const PRICE_PER_LEARNER = DEFAULT_FEE_PER_LEARNER;
+export const ANNUAL_PRICE_PER_LEARNER = DEFAULT_ANNUAL_FEE_PER_LEARNER;
 
 export interface TrialData {
   trialStartDate: string;

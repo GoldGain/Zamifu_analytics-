@@ -19,8 +19,10 @@ import {
   drawNextTermStartDate,
   getPercentage,
   formatPosition,
+  buildPerformanceTrend,
   type SchoolInfo,
   type SignatureInfo,
+  type PerformanceTrendRecord,
 } from '@/lib/reportCardPdf';
 import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
@@ -201,29 +203,16 @@ export default function StudentReportCard() {
     if (!student) return;
     const { data: allResults } = await supabaseUntyped
       .from('results')
-      .select('percentage, marks, out_of, term_id, terms(name, academic_year)')
+        .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
       .eq('student_id', student.id)
       .order('terms(academic_year)', { ascending: true })
       .order('terms(name)', { ascending: true });
-    if (!allResults) return;
+    if (!allResults) {
+      setTrendData([]);
+      return;
+    }
 
-    const termMap: Record<string, { term: string; total: number; count: number }> = {};
-    allResults.forEach((r: any) => {
-      const tid = r.term_id;
-      const tname = r.terms?.name || '';
-      const year = r.terms?.academic_year || '';
-      const key = `${year}-${tname}`;
-      const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
-      if (!termMap[key]) termMap[key] = { term: `${tname} ${year}`, total: 0, count: 0 };
-      termMap[key].total += pct;
-      termMap[key].count++;
-    });
-
-    const trend = Object.values(termMap).map(t => ({
-      term: t.term,
-      avg: t.count > 0 ? t.total / t.count : 0,
-    }));
-    setTrendData(trend);
+    setTrendData(buildPerformanceTrend(allResults as PerformanceTrendRecord[]));
   };
 
   const fetchPreviousAvg = async () => {
@@ -321,7 +310,7 @@ export default function StudentReportCard() {
       const devEndY = drawDeviation(doc, deviation, previousAvg, null, summaryEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2) {
-        trendEndY = drawTrendGraph(doc, trendData, 14, devEndY, 182, 50, band);
+        trendEndY = drawTrendGraph(doc, trendData, 14, devEndY, 182, 34, band) + 2;
       }
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);

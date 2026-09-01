@@ -17,9 +17,11 @@ import {
   drawAIComment,
   getPercentage,
   formatPosition,
+  buildPerformanceTrend,
   drawPathwayPerformance,
   type SchoolInfo,
   type SignatureInfo,
+  type PerformanceTrendRecord,
 } from '@/lib/reportCardPdf';
 import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
@@ -278,22 +280,15 @@ export default function ParentChildReportCard() {
     if (!selectedChild) return;
     const { data: allResults } = await supabaseUntyped
       .from('results')
-      .select('percentage, marks, out_of, term_id, terms(name, academic_year)')
+      .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
       .eq('student_id', selectedChild.id)
       .order('terms(academic_year)', { ascending: true })
       .order('terms(name)', { ascending: true });
-    if (!allResults) return;
-    const termMap: Record<string, { term: string; total: number; count: number }> = {};
-    allResults.forEach((r: any) => {
-      const tname = r.terms?.name || '';
-      const year = r.terms?.academic_year || '';
-      const key = `${year}-${tname}`;
-      const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
-      if (!termMap[key]) termMap[key] = { term: `${tname} ${year}`, total: 0, count: 0 };
-      termMap[key].total += pct;
-      termMap[key].count++;
-    });
-    setTrendData(Object.values(termMap).map(t => ({ term: t.term, avg: t.count > 0 ? t.total / t.count : 0 })));
+    if (!allResults) {
+      setTrendData([]);
+      return;
+    }
+    setTrendData(buildPerformanceTrend(allResults as PerformanceTrendRecord[]));
   };
 
   const fetchPreviousAvg = async () => {
@@ -371,8 +366,7 @@ export default function ParentChildReportCard() {
       currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
       currentY = drawDeviation(doc, deviation, previousAvg, position, currentY + 6);
       if (trendData.length >= 2) {
-        drawTrendGraph(doc, trendData, 14, currentY, 182, 40, getSchoolLevelBand(classDataForGrading));
-        currentY += 42;
+        currentY = drawTrendGraph(doc, trendData, 14, currentY, 182, 34, getSchoolLevelBand(classDataForGrading)) + 2;
       }
       const studentBests = classBestList.filter(b => b.studentId === selectedChild.id);
       if (studentBests.length > 0) {

@@ -290,7 +290,83 @@ export function generateUniqueAIComment(
     .replace('{avgPct}', avgPct.toFixed(1));
 }
 
-// ── Performance Trend Graph Drawing ──────────────────────────────────────────
+// ── Performance Trend Data and Graph Drawing ──────────────────────────────────
+export interface PerformanceTrendRecord {
+  percentage?: number | null;
+  marks?: number | null;
+  out_of?: number | null;
+  term_id?: string | null;
+  exam_id?: string | null;
+  terms?: { name?: string | null; academic_year?: string | number | null } | null;
+  school_exams?: { name?: string | null; type?: string | null } | null;
+  exam_name?: string | null;
+}
+
+const termOrder = (name: string): number => {
+  const normalized = name.toLowerCase();
+  if (/\b(term|trimester|semester)?\s*1\b/.test(normalized)) return 1;
+  if (/\b(term|trimester|semester)?\s*2\b/.test(normalized)) return 2;
+  if (/\b(term|trimester|semester)?\s*3\b/.test(normalized)) return 3;
+  return 99;
+};
+
+/**
+ * Groups a learner's result rows by distinct term and assessment, then orders
+ * them chronologically. Older rows without an exam link still fall back to a
+ * term-level point, so historic data remains visible in the graph.
+ */
+export function buildPerformanceTrend(records: PerformanceTrendRecord[]): { term: string; avg: number }[] {
+  const groups = new Map<string, {
+    label: string;
+    year: number;
+    term: number;
+    firstIndex: number;
+    total: number;
+    count: number;
+  }>();
+
+  records.forEach((record, index) => {
+    const termName = String(record.terms?.name || '').trim();
+    const yearText = String(record.terms?.academic_year || '').trim();
+    const year = Number(yearText) || 0;
+    const examName = String(record.school_exams?.name || record.exam_name || '').trim();
+    const termKey = String(record.term_id || `${yearText}-${termName}`);
+    const assessmentKey = String(record.exam_id || examName || 'term');
+    const key = `${termKey}-${assessmentKey}`;
+    const labelBase = [termName, yearText].filter(Boolean).join(' ');
+    const label = examName
+      ? `${examName}${labelBase ? ` · ${labelBase}` : ''}`
+      : labelBase || 'Assessment';
+    const percentage = record.percentage !== undefined && record.percentage !== null
+      ? Number(record.percentage)
+      : Number(record.out_of) > 0
+        ? (Number(record.marks) || 0) / Number(record.out_of) * 100
+        : 0;
+    const safePercentage = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : 0;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.total += safePercentage;
+      existing.count += 1;
+      return;
+    }
+    groups.set(key, {
+      label,
+      year,
+      term: termOrder(termName),
+      firstIndex: index,
+      total: safePercentage,
+      count: 1,
+    });
+  });
+
+  return Array.from(groups.values())
+    .sort((a, b) => a.year - b.year || a.term - b.term || a.firstIndex - b.firstIndex)
+    .map((group) => ({
+      term: group.label,
+      avg: group.count > 0 ? group.total / group.count : 0,
+    }));
+}
+
 export function drawTrendGraph(
   doc: jsPDF,
   trendData: { term: string; avg: number }[],
@@ -298,21 +374,25 @@ export function drawTrendGraph(
   y: number,
   width: number,
   height: number,
-  band: SchoolLevelBand
+  _band: SchoolLevelBand
 ): number {
   if (!trendData.length || width <= 20 || height <= 12) return y;
+  // Compact report cards must keep the chart and every following section on
+  // the same A4 page. Move the chart into the safe area instead of letting it
+  // render below the page or disappear behind the footer.
+  const graphY = ensureReportCardSpace(doc, y, height + 1);
   const safeValues = trendData.map((item) => Math.max(0, Math.min(100, Number(item.avg) || 0)));
   const maxValue = 100;
   const left = x + 18;
-  const top = y + 8;
+  const top = graphY + 8;
   const graphWidth = Math.max(20, width - 24);
   const graphHeight = Math.max(12, height - 22);
   doc.setDrawColor(210, 210, 210);
   doc.setFillColor(250, 250, 252);
-  doc.roundedRect(x, y, width, height, 2, 2, 'FD');
+  doc.roundedRect(x, graphY, width, height, 2, 2, 'FD');
   doc.setFontSize(6.5);
   doc.setTextColor(90, 90, 90);
-  doc.text('Performance trend (%)', x + 4, y + 6);
+  doc.text('Previous-exam performance (%)', x + 4, graphY + 6);
   [0, 50, 100].forEach((value) => {
     const gridY = top + graphHeight - (value / maxValue) * graphHeight;
     doc.setDrawColor(232, 232, 232);
@@ -330,11 +410,11 @@ export function drawTrendGraph(
   points.forEach((point, index) => {
     if (index > 0) doc.line(points[index - 1].x, points[index - 1].y, point.x, point.y);
     doc.circle(point.x, point.y, 1.2, 'F');
-    const label = String(trendData[index].term || '').slice(0, 10);
+    const label = String(trendData[index].term || '').slice(0, 14);
     doc.setTextColor(90, 90, 90);
-    doc.text(label, point.x, y + height - 5, { align: 'center' });
+    doc.text(label, point.x, graphY + height - 5, { align: 'center' });
   });
-  return y + height;
+  return graphY + height;
 }
 
 // ── Add Logo to PDF ──────────────────────────────────────────────────────────
