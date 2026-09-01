@@ -115,7 +115,7 @@ export default function SchoolAdminDashboard() {
     { label: 'Learners', value: stats.totalStudents, icon: <Users className="w-5 h-5" />, color: 'bg-blue-500', link: '/school-admin/students' },
     { label: 'Teachers', value: stats.totalTeachers, icon: <Users className="w-5 h-5" />, color: 'bg-green-500', link: '/school-admin/teachers' },
     { label: 'Classes', value: stats.totalClasses, icon: <BookOpen className="w-5 h-5" />, color: 'bg-purple-500', link: '/school-admin/classes' },
-    { label: 'Fee Collection', value: `Ksh ${(stats.feeCollection / 1000).toFixed(0)}K`, icon: <CreditCard className="w-5 h-5" />, color: 'bg-orange-500', link: '/school-admin/fees' },
+    { label: 'Fee Collection', value: `Ksh ${stats.feeCollection.toLocaleString()}`, icon: <CreditCard className="w-5 h-5" />, color: 'bg-orange-500', link: '/school-admin/fees' },
     { label: 'Assessments', value: 'Manage', icon: <BookOpen className="w-5 h-5" />, color: 'bg-indigo-500', link: '/school-admin/assessments' },
   ];
 
