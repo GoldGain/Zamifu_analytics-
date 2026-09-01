@@ -192,11 +192,12 @@ export function canUseAssignmentDay(
   // A double is one atomic placement and may only be placed on an otherwise
   // unused day. Its two consecutive slots are represented by unitSize=2.
   if (unitSize === 2) return !alreadyUsed;
-  // For five-or-fewer weekly lessons, including assignments that contain one
-  // configured double day, remaining single units must use other weekdays.
-  // This prevents a double pair plus an accidental extra single on the same
-  // day when the fallback pass is allowed to reuse days.
-  if (lessonsPerWeek <= 5) return !alreadyUsed;
+  // Day ordering already prefers unused weekdays before used weekdays. At the
+  // actual placement boundary, however, a used day must remain available as a
+  // fallback when another slot on that day is free but all unused-day slots are
+  // blocked by teacher, class, activity, or adjacency constraints. Rejecting
+  // every reused day here silently drops valid single lessons.
+  if (lessonsPerWeek <= 5) return true;
   return true;
 }
 
