@@ -56,6 +56,8 @@ export default function Marklist() {
   const [editingCell, setEditingCell] = useState<{ studentId: string; columnId: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [selectedAggregateColumns, setSelectedAggregateColumns] = useState<string[]>([]);
+  const [aggregating, setAggregating] = useState(false);
 
   // Fetch teacher record and classes on mount
   useEffect(() => {
@@ -350,6 +352,43 @@ export default function Marklist() {
     return cellData[studentId]?.[columnId] || '';
   };
 
+  const combineSelectedColumns = async () => {
+    if (!teacherId || !selectedClass || selectedAggregateColumns.length < 2) {
+      toast.error('Select at least two CAT columns to combine.');
+      return;
+    }
+    const sourceColumns = columns.filter((column) => selectedAggregateColumns.includes(column.id));
+    const aggregateName = `Combined ${sourceColumns.map((column) => column.column_name).join(' + ')} Average`;
+    setAggregating(true);
+    try {
+      const { data: aggregateColumn, error: columnError } = await supabaseUntyped
+        .from('marklist_columns')
+        .insert({ teacher_id: teacherId, class_id: selectedClass, column_name: aggregateName.slice(0, 120), column_type: 'number', column_order: columns.length })
+        .select()
+        .single();
+      if (columnError) throw columnError;
+      const rows = students.map((student) => {
+        const values = sourceColumns.map((column) => Number(getCellValue(student.id, column.id))).filter((value) => Number.isFinite(value));
+        return { marklist_column_id: aggregateColumn.id, student_id: student.id, value: values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2) : '' };
+      }).filter((row) => row.value !== '');
+      if (rows.length) {
+        const { error: dataError } = await supabaseUntyped.from('marklist_data').upsert(rows, { onConflict: 'marklist_column_id,student_id' });
+        if (dataError) throw dataError;
+      }
+      setColumns((previous) => [...previous, aggregateColumn]);
+      setCellData((previous) => ({
+        ...previous,
+        ...rows.reduce((acc: Record<string, Record<string, string>>, row) => ({ ...acc, [row.student_id]: { ...(previous[row.student_id] || {}), [aggregateColumn.id]: row.value } }), {}),
+      }));
+      setSelectedAggregateColumns([]);
+      toast.success(`Combined exam created: ${aggregateName}`);
+    } catch (error: any) {
+      toast.error(`Failed to combine exams: ${error.message}`);
+    } finally {
+      setAggregating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -441,6 +480,16 @@ export default function Marklist() {
             <Plus className="w-4 h-4" />
             Add Column
           </button>
+          {columns.filter((column) => /cat|exam/i.test(column.column_name) && !/combined/i.test(column.column_name)).length >= 2 && (
+            <button
+              onClick={combineSelectedColumns}
+              disabled={aggregating || selectedAggregateColumns.length < 2}
+              className="flex items-center gap-2 px-4 py-2.5 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors text-sm font-medium disabled:opacity-50"
+            >
+              {aggregating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Combine Selected CATs
+            </button>
+          )}
         </div>
       )}
 
@@ -507,7 +556,12 @@ export default function Marklist() {
                     {columns.map((col) => (
                       <th key={col.id} className="px-4 py-3 text-xs font-semibold uppercase whitespace-nowrap min-w-[120px]">
                         <div className="flex items-center justify-between gap-2">
-                          <span>{col.column_name}</span>
+                          <span className="flex items-center gap-2">
+                            {/cat|exam/i.test(col.column_name) && !/combined/i.test(col.column_name) && (
+                              <input type="checkbox" checked={selectedAggregateColumns.includes(col.id)} onChange={(event) => setSelectedAggregateColumns((previous) => event.target.checked ? [...previous, col.id] : previous.filter((id) => id !== col.id))} aria-label={`Select ${col.column_name} for combination`} />
+                            )}
+                            {col.column_name}
+                          </span>
                           <button
                             onClick={() => handleDeleteColumn(col.id)}
                             className="text-white/70 hover:text-white transition-colors"

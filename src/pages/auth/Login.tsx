@@ -58,8 +58,8 @@ export default function Login() {
       if (loginMethod === 'admission') {
         const { data: student, error: studentError } = await supabase
           .from('students')
-          .select('student_email, admission_number')
-          .eq('admission_number', identifier.toUpperCase())
+          .select('student_email, admission_number, assessment_number')
+          .or(`admission_number.ilike.${identifier.trim()},assessment_number.ilike.${identifier.trim()}`)
           .maybeSingle();
 
         if (studentError || !student) {
@@ -209,7 +209,7 @@ export default function Login() {
                 type={loginMethod === 'email' ? 'email' : 'text'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., ADM001 / ASM001'}
+                placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., ADM001 or ASM001'}
                 className="w-full min-h-12 px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
                 required
                 autoFocus
@@ -268,7 +268,7 @@ export default function Login() {
 
           <div className="mt-6 text-center text-xs text-gray-400">
             <p>📧 School Admin / Teacher / Parent: Use Email Login</p>
-            <p className="mt-1">🎓 Learners: Use Assessment Number Login or Email Login</p>
+            <p className="mt-1">🎓 Learners: Use Admission No / Assessment No or Email Login</p>
           </div>
         </div>
       </div>

@@ -137,7 +137,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
@@ -189,6 +189,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       r.students?.first_name?.toLowerCase().includes(searchLower) ||
       r.students?.last_name?.toLowerCase().includes(searchLower) ||
       r.students?.admission_number?.toLowerCase().includes(searchLower) ||
+      r.students?.assessment_number?.toLowerCase().includes(searchLower) ||
       r.subjects?.name?.toLowerCase().includes(searchLower)
     );
   });
@@ -808,7 +809,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const cardAssessment = s.examName || assessmentLabel || '';
       const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
       
-      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 38, cardAssessment);
+      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 38, cardAssessment, s.student?.assessment_number || undefined);
 
       const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({
         subjects: { name: subName },
@@ -936,7 +937,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           termObj?.academic_year || '',
           studentPosition,
           38,
-          cardAssessment
+          cardAssessment,
+          s.student?.assessment_number || undefined
         );
 
         const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({

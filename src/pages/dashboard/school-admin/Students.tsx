@@ -15,7 +15,7 @@ import { useTrial } from '@/contexts/TrialContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type SortField = 'name' | 'assessment_number' | 'class' | 'gender';
+type SortField = 'name' | 'admission_number' | 'assessment_number' | 'class' | 'gender';
 type SortDir = 'asc' | 'desc';
 type ViewMode = 'list' | 'by-grade';
 
@@ -44,7 +44,8 @@ export default function SchoolAdminStudents() {
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
 
   const defaultForm = {
-    assessment_number: '', 
+    admission_number: '',
+    assessment_number: '',
     student_email: '',
     first_name: '', 
     middle_name: '',
@@ -118,17 +119,16 @@ export default function SchoolAdminStudents() {
     e.preventDefault();
     setAdding(true);
     try {
-      // Check for duplicate admission number in this class only (allowing any number as long as it's not already used)
+      const admissionNumber = formData.admission_number.trim();
+      const assessmentNumber = formData.assessment_number.trim();
+      if (!admissionNumber && !assessmentNumber) throw new Error('Provide an admission number or assessment number.');
       const { data: existingStudent } = await supabaseUntyped
         .from('students')
         .select('id')
-        .eq('class_id', formData.class_id)
-        .eq('admission_number', formData.assessment_number)
+        .eq('school_id', user?.schoolId)
+        .or(`admission_number.ilike.${admissionNumber || '__none__'},assessment_number.ilike.${assessmentNumber || '__none__'}`)
         .maybeSingle();
-      
-      if (existingStudent) {
-        throw new Error('Admission number already exists in this class. Please use a different number.');
-      }
+      if (existingStudent) throw new Error('Admission or assessment number already exists in this school.');
       
       // Check for duplicate email
       const { data: emailExists } = await supabaseUntyped
@@ -143,8 +143,9 @@ export default function SchoolAdminStudents() {
       
       // Make student email unique to this school to avoid cross-school conflicts
       const schoolPrefix = user?.schoolId ? user.schoolId.split('-')[0] : 'student';
-      const studentEmail = formData.student_email || `${formData.assessment_number.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
-      const studentPassword = `${formData.assessment_number}@2025`;
+      const loginIdentifier = admissionNumber || assessmentNumber;
+      const studentEmail = formData.student_email || `${loginIdentifier.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
+      const studentPassword = `${loginIdentifier}@2025`;
       
       const authData = await createScopedUser({
         email: studentEmail,
@@ -153,10 +154,7 @@ export default function SchoolAdminStudents() {
         last_name: formData.last_name,
         role: 'student',
         school_id: user?.schoolId || null,
-        metadata: { 
-          assessment_number: formData.assessment_number,
-          class_id: formData.class_id // Pass class_id in metadata for Edge Function check
-        },
+          metadata: { admission_number: admissionNumber || null, assessment_number: assessmentNumber || null, class_id: formData.class_id },
       });
       const studentUserId = authData.user.id;
       const { data: studentData, error: studentError } = await supabaseUntyped
@@ -164,7 +162,8 @@ export default function SchoolAdminStudents() {
         .insert({
           profile_id: studentUserId,
           school_id: user?.schoolId,
-          admission_number: formData.assessment_number,
+          admission_number: admissionNumber || assessmentNumber,
+          assessment_number: assessmentNumber || null,
           first_name: formData.first_name,
           middle_name: formData.middle_name || null,
           last_name: formData.last_name,
@@ -373,14 +372,15 @@ export default function SchoolAdminStudents() {
     .filter((s: any) => {
       const matchesSearch = 
         (s.first_name + ' ' + (s.middle_name || '') + ' ' + s.last_name).toLowerCase().includes(search.toLowerCase()) ||
-        (s.admission_number || s.assessment_number)?.toLowerCase().includes(search.toLowerCase());
+        [s.admission_number, s.assessment_number].filter(Boolean).some((value: string) => value.toLowerCase().includes(search.toLowerCase()));
       const matchesClass = filterClassId ? s.class_id === filterClassId : true;
       return matchesSearch && matchesClass;
     })
     .sort((a: any, b: any) => {
       let aVal = '', bVal = '';
       if (sortField === 'name') { aVal = `${a.first_name} ${a.last_name}`; bVal = `${b.first_name} ${b.last_name}`; }
-      if (sortField === 'assessment_number') { aVal = a.admission_number || ''; bVal = b.admission_number || ''; }
+      if (sortField === 'admission_number') { aVal = a.admission_number || ''; bVal = b.admission_number || ''; }
+      if (sortField === 'assessment_number') { aVal = a.assessment_number || ''; bVal = b.assessment_number || ''; }
       if (sortField === 'class') { aVal = a.classes?.name || ''; bVal = b.classes?.name || ''; }
       if (sortField === 'gender') { aVal = a.gender || ''; bVal = b.gender || ''; }
       return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
@@ -436,8 +436,8 @@ export default function SchoolAdminStudents() {
     doc.setFontSize(11); doc.text(`Generated ${new Date().toLocaleDateString()}`, 14, 24);
     autoTable(doc, {
       startY: 32,
-      head: [['#', 'Admission No.', 'Learner Name', 'Gender', 'Parent', 'Parent Phone']],
-      body: rows.map((student: any, index: number) => [index + 1, student.admission_number || '-', `${student.first_name} ${student.middle_name || ''} ${student.last_name}`.replace(/\s+/g, ' ').trim(), student.gender || '-', student.parent_name || '-', student.parent_phone || '-']),
+      head: [['#', 'Admission No.', 'Assessment No.', 'Learner Name', 'Gender', 'Parent', 'Parent Phone']],
+      body: rows.map((student: any, index: number) => [index + 1, student.admission_number || '-', student.assessment_number || '-', `${student.first_name} ${student.middle_name || ''} ${student.last_name}`.replace(/\s+/g, ' ').trim(), student.gender || '-', student.parent_name || '-', student.parent_phone || '-']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [37, 99, 235] },
     });
     doc.save(`learner_list_${String(selectedClass.name).replace(/[^a-z0-9]+/gi, '_')}.pdf`);
@@ -514,13 +514,14 @@ export default function SchoolAdminStudents() {
       {showAdd && (
         <div className="bg-white rounded-2xl p-6 shadow-sm border">
           <h3 className="text-lg font-semibold mb-2">Add New Learner</h3>
-          <p className="text-xs text-blue-600 mb-1">Learner password: <strong>[Assessment Number]@2025</strong></p>
+          <p className="text-xs text-blue-600 mb-1">Learner password: <strong>[Admission Number or Assessment Number]@2025</strong></p>
           <p className="text-xs text-green-600 mb-4">Parent account auto-created with password: <strong>Parent@2025</strong></p>
           <form onSubmit={handleAdd}>
             {/* Section: Basic Info */}
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Basic Information</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <input placeholder="Assessment Number *" value={formData.assessment_number} onChange={e => setFormData({...formData, assessment_number: e.target.value})} className={inputCls} required />
+              <input placeholder="Admission Number (optional)" value={formData.admission_number} onChange={e => setFormData({...formData, admission_number: e.target.value})} className={inputCls} />
+              <input placeholder="Assessment Number (optional)" value={formData.assessment_number} onChange={e => setFormData({...formData, assessment_number: e.target.value})} className={inputCls} />
               <input placeholder="First Name *" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} className={inputCls} required />
               <input placeholder="Middle Name (optional)" value={formData.middle_name} onChange={e => setFormData({...formData, middle_name: e.target.value})} className={inputCls} />
               <input placeholder="Last Name / Surname *" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} className={inputCls} required />
@@ -598,6 +599,9 @@ export default function SchoolAdminStudents() {
               <thead>
                 <tr className="border-b bg-gray-50">
                   <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase">Photo</th>
+                  <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase cursor-pointer select-none hover:text-blue-600" onClick={() => toggleSort('admission_number')}>
+                    Admission # <SortIcon field="admission_number" />
+                  </th>
                   <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase cursor-pointer select-none hover:text-blue-600" onClick={() => toggleSort('assessment_number')}>
                     Assessment # <SortIcon field="assessment_number" />
                   </th>
@@ -616,9 +620,9 @@ export default function SchoolAdminStudents() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">Loading...</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-500">Loading...</td></tr>
                 ) : filteredStudents.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-500">No learners found</td></tr>
+                  <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-500">No learners found</td></tr>
                 ) : (
                   (() => {
                     const grouped = filteredStudents.reduce((acc: Record<string, any[]>, s: any) => {
@@ -631,7 +635,7 @@ export default function SchoolAdminStudents() {
                     return sortedClassNames.map((className) => (
                       <React.Fragment key={className}>
                         <tr className="bg-blue-50 border-y border-blue-100">
-                          <td colSpan={7} className="px-4 py-2">
+                          <td colSpan={8} className="px-4 py-2">
                             <div className="flex items-center gap-2">
                               <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
                                 <span className="text-xs font-bold text-blue-600">{className[0]}</span>
@@ -648,7 +652,8 @@ export default function SchoolAdminStudents() {
                                 {s.photo_url ? <img src={s.photo_url} alt="" className="w-full h-full object-cover" /> : <span className="text-xs font-bold text-gray-400">{(s.first_name?.[0] || '?').toUpperCase()}</span>}
                               </div>
                             </td>
-                            <td className="px-4 py-4 text-sm font-medium">{s.admission_number || s.assessment_number}</td>
+                            <td className="px-4 py-4 text-sm font-medium">{s.admission_number || '-'}</td>
+                            <td className="px-4 py-4 text-sm font-medium">{s.assessment_number || '-'}</td>
                             <td className="px-4 py-4">
                               <div className="text-sm font-medium">{s.first_name} {s.middle_name ? s.middle_name + ' ' : ''}{s.last_name}</div>
                               <div className="text-xs text-gray-500">{s.student_email}</div>
@@ -799,6 +804,7 @@ export default function SchoolAdminStudents() {
                             <tr className="border-b bg-gray-50">
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Admission #</th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Assessment #</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Name</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Gender</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Parent</th>
@@ -807,12 +813,13 @@ export default function SchoolAdminStudents() {
                           </thead>
                           <tbody>
                             {group.students.length === 0 ? (
-                              <tr><td colSpan={6} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
+                              <tr><td colSpan={7} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
                             ) : (
                               group.students.map((student: any, idx: number) => (
                                 <tr key={student.id} className="border-b hover:bg-gray-50">
                                   <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
                                   <td className="px-4 py-3 text-gray-600">{student.admission_number || '-'}</td>
+                                  <td className="px-4 py-3 text-gray-600">{student.assessment_number || '-'}</td>
                                   <td className="px-4 py-3 font-medium">{student.first_name} {student.last_name}</td>
                                   <td className="px-4 py-3">
                                     <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -878,7 +885,7 @@ export default function SchoolAdminStudents() {
               <h2 className="text-lg font-semibold">Edit Learner</h2>
               <button onClick={() => setEditingStudent(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
-            <p className="text-xs text-gray-500 mb-4">Assessment #: <strong>{editingStudent.admission_number}</strong></p>
+            <p className="text-xs text-gray-500 mb-4">Admission #: <strong>{editingStudent.admission_number || '-'}</strong> · Assessment #: <strong>{editingStudent.assessment_number || '-'}</strong></p>
             <form onSubmit={handleSaveEdit}>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Basic Information</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">

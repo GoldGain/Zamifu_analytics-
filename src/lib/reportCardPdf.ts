@@ -681,14 +681,16 @@ export function drawStudentInfo(
   academicYear: string,
   position: string,
   y: number = 38,
-  assessmentName?: string
+  assessmentName?: string,
+  assessmentNumber?: string
 ) {
   // Compact: two-column grid, denser rows so the info block uses <= 14mm
   const fs = COMPACT_MODE ? 8 : 9;
   doc.setTextColor(0, 0, 0); doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
   doc.text(`Learner: ${studentName}`, 14, y);
-  doc.text(`Adm No: ${admissionNo}`, 14, y + ROW);
-  doc.text(`Class: ${className}`, 14, y + ROW * 2);
+  doc.text(`Adm No: ${admissionNo || 'N/A'}`, 14, y + ROW);
+  doc.text(`Assessment No: ${assessmentNumber || 'N/A'}`, 14, y + ROW * 2);
+  doc.text(`Class: ${className}`, 14, y + ROW * 3);
   doc.text(`Term: ${termName} ${academicYear}`, 120, y);
   if (assessmentName) {
     doc.text(`Assessment: ${assessmentName}`, 120, y + ROW);
@@ -697,7 +699,7 @@ export function drawStudentInfo(
     doc.text(`Position: ${position}`, 120, y + ROW);
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + ROW * 2);
   }
-  doc.setDrawColor(106, 27, 154); doc.line(14, y + ROW * 2 + 3, 196, y + ROW * 2 + 3);
+  doc.setDrawColor(106, 27, 154); doc.line(14, y + ROW * 3 + 3, 196, y + ROW * 3 + 3);
 }
 
 // ── Draw Results Table ───────────────────────────────────────────────────────

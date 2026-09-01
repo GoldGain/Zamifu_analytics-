@@ -47,8 +47,8 @@ export default function ForgotPassword() {
         if (resetMethod === 'admission') {
           const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('email, admission_number, first_name, last_name')
-            .eq('admission_number', identifier.toUpperCase())
+            .select('email, student_email, admission_number, assessment_number, first_name, last_name')
+            .or(`admission_number.ilike.${identifier.trim()},assessment_number.ilike.${identifier.trim()}`)
             .maybeSingle() as any;
 
           if (studentError || !student) {
@@ -57,13 +57,14 @@ export default function ForgotPassword() {
             return;
           }
 
-          if (!student.email) {
-            setError('❌ No email linked to this admission number. Please contact your school administrator.');
+          const linkedEmail = student.email || student.student_email;
+          if (!linkedEmail) {
+            setError('❌ No email linked to this Admission No / Assessment No. Please contact your school administrator.');
             setLoading(false);
             return;
           }
 
-          email = student.email;
+          email = linkedEmail;
           setFoundEmail(email);
           toast.success(`Found student: ${student.first_name} ${student.last_name}`);
         }

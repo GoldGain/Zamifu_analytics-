@@ -313,6 +313,7 @@ export default function StudentReportCard() {
         positionStr,
         34,
         results[0]?.school_exams?.name || undefined,
+        student.assessment_number || undefined,
       );
 
       const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
