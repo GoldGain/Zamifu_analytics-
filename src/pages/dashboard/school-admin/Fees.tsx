@@ -50,12 +50,15 @@ export default function SchoolAdminFees() {
     const schoolId = user?.schoolId;
     if (!schoolId) { setLoading(false); return; }
 
-    const [{ data: inv }, { data: stds }, { data: cls }, { data: trms }, { data: fs }] = await Promise.all([
+    const [{ data: inv }, { data: paymentRows }, { data: stds }, { data: cls }, { data: trms }, { data: fs }] = await Promise.all([
       supabaseUntyped.from('fee_invoices')
         .select('*, students(first_name, last_name, admission_number), terms(name, academic_year)')
         .eq('school_id', schoolId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false }),
+      supabaseUntyped.from('fee_payments')
+        .select('invoice_id, amount')
+        .eq('school_id', schoolId),
       supabaseUntyped.from('students')
         .select('id, first_name, last_name, admission_number, class_id, parent_name, parent_phone, parent2_name, parent2_phone')
         .eq('school_id', schoolId).eq('is_active', true),
@@ -68,7 +71,20 @@ export default function SchoolAdminFees() {
         .eq('school_id', schoolId).order('created_at', { ascending: false }),
     ]);
 
-    setInvoices(inv || []);
+    const paymentsByInvoice = new Map<string, number>();
+    (paymentRows || []).forEach((payment: any) => {
+      const invoiceId = String(payment.invoice_id || '');
+      if (!invoiceId) return;
+      paymentsByInvoice.set(invoiceId, (paymentsByInvoice.get(invoiceId) || 0) + Number(payment.amount || 0));
+    });
+    const reconciledInvoices = (inv || []).map((invoice: any) => {
+      const invoiceId = String(invoice.id || '');
+      return paymentsByInvoice.has(invoiceId)
+        ? { ...invoice, amount_paid: paymentsByInvoice.get(invoiceId) || 0 }
+        : invoice;
+    });
+
+    setInvoices(reconciledInvoices);
     setStudents(stds || []);
     setClasses(cls || []);
     setTerms(trms || []);
