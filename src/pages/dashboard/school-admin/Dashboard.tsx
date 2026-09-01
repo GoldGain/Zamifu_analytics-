@@ -59,21 +59,47 @@ export default function SchoolAdminDashboard() {
       const { count: teachersCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       const { count: classesCount } = await supabase.from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       
-      const { data: invoices } = await supabaseUntyped
-        .from('fee_invoices')
-        .select('total_amount, amount_paid, balance')
-        .eq('school_id', schoolId)
-        .is('deleted_at', null);
-      
-      const totalFees = (invoices || []).reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0);
-      const totalPaid = (invoices || []).reduce((sum: number, inv: any) => sum + Number(inv.amount_paid || 0), 0);
+      const [{ data: invoices, error: invoicesError }, { data: paymentRows, error: paymentsError }] = await Promise.all([
+        supabaseUntyped
+          .from('fee_invoices')
+          .select('id, total_amount, amount_paid')
+          .eq('school_id', schoolId)
+          .is('deleted_at', null),
+        supabaseUntyped
+          .from('fee_payments')
+          .select('invoice_id, amount')
+          .eq('school_id', schoolId),
+      ]);
+
+      if (invoicesError) throw invoicesError;
+      if (paymentsError) throw paymentsError;
+
+      // Payment rows are authoritative. Retain amount_paid only for legacy
+      // invoices that have no corresponding payment rows yet.
+      const paymentsByInvoice = new Map<string, number>();
+      (paymentRows || []).forEach((payment: any) => {
+        const invoiceId = String(payment.invoice_id || '');
+        if (!invoiceId) return;
+        paymentsByInvoice.set(invoiceId, (paymentsByInvoice.get(invoiceId) || 0) + Number(payment.amount || 0));
+      });
+
+      let totalPaid = 0;
+      let pendingFees = 0;
+      (invoices || []).forEach((invoice: any) => {
+        const invoiceId = String(invoice.id || '');
+        const paid = paymentsByInvoice.has(invoiceId)
+          ? paymentsByInvoice.get(invoiceId) || 0
+          : Number(invoice.amount_paid || 0);
+        totalPaid += paid;
+        pendingFees += Math.max(0, Number(invoice.total_amount || 0) - paid);
+      });
       
       setStats({
         totalStudents: studentsCount || 0,
         totalTeachers: teachersCount || 0,
         totalClasses: classesCount || 0,
         feeCollection: totalPaid,
-        pendingFees: (invoices || []).reduce((sum: number, inv: any) => sum + Number(inv.balance ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.amount_paid || 0))), 0),
+        pendingFees,
       });
 
       const { data: anns } = await supabaseUntyped.from('announcements').select('*').eq('school_id', schoolId).eq('is_published', true).order('created_at', { ascending: false }).limit(5);
