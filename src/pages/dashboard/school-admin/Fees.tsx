@@ -294,20 +294,36 @@ export default function SchoolAdminFees() {
     if (!confirmed) return;
     try {
       // Delete child payments first so the invoice cannot leave orphaned history.
-      const { error: paymentsError } = await supabaseUntyped
+      const { data: deletedPayments, error: paymentsError } = await supabaseUntyped
         .from('fee_payments')
         .delete()
         .eq('invoice_id', invoice.id)
-        .eq('school_id', user.schoolId);
+        .eq('school_id', user.schoolId)
+        .select('id');
       if (paymentsError) throw paymentsError;
 
-      const { error: invoiceError } = await supabaseUntyped
+      const { data: remainingPayments, error: remainingPaymentsError } = await supabaseUntyped
+        .from('fee_payments')
+        .select('id')
+        .eq('invoice_id', invoice.id)
+        .eq('school_id', user.schoolId)
+        .limit(10);
+      if (remainingPaymentsError) throw remainingPaymentsError;
+      if ((remainingPayments || []).length > 0) {
+        throw new Error('The database did not remove all payment records attached to this invoice. The invoice was not deleted.');
+      }
+
+      const { data: deletedInvoices, error: invoiceError } = await supabaseUntyped
         .from('fee_invoices')
         .delete()
         .eq('id', invoice.id)
-        .eq('school_id', user.schoolId);
+        .eq('school_id', user.schoolId)
+        .select('id');
       if (invoiceError) throw invoiceError;
-      toast.success('Invoice and all attached payment records were permanently deleted.');
+      if ((deletedInvoices || []).length !== 1) {
+        throw new Error('The database did not remove the invoice. No financial record was reported as deleted.');
+      }
+      toast.success(`Invoice and ${deletedPayments?.length || 0} attached payment record(s) were permanently deleted.`);
       await fetchData();
     } catch (error: any) {
       toast.error(`Could not delete invoice: ${error.message}`);
