@@ -625,9 +625,11 @@ export default function TimetableGenerate() {
           const assignmentAvailableDays = normalizeDayNames(assignment.available_days);
           const assignmentDoubleDays = normalizeDayNames(assignment.double_lesson_days)
             .filter((dayName) => assignmentAvailableDays.length === 0 || assignmentAvailableDays.includes(dayName));
-          const reservationDays = assignmentDoubleDays.length > 0
-            ? assignmentDoubleDays
-            : (assignmentAvailableDays.length > 0 ? assignmentAvailableDays : [...TIMETABLE_DAYS]);
+          // A double flag without selected weekdays means “double days not yet
+          // configured”, not “reserve every day”. Do not block ordinary lessons
+          // for this teacher until the administrator explicitly chooses days.
+          if (assignmentDoubleDays.length === 0) return;
+          const reservationDays = assignmentDoubleDays;
           reservationDays.forEach((dayName) => {
             const dayNumber = TIMETABLE_DAYS.indexOf(dayName) + 1;
             if (dayNumber < 1) return;
@@ -779,9 +781,13 @@ export default function TimetableGenerate() {
             const rawAvailableDays = normalizeDayNames(assignment.available_days);
             const availableDays = rawAvailableDays.length > 0 ? rawAvailableDays : [...TIMETABLE_DAYS];
             const rawDoubleDays = normalizeDayNames(assignment.double_lesson_days);
+            // Only explicitly selected weekdays are double days. The Teacher
+            // Assignments screen displays “Set double days” when the double flag
+            // is on but no weekdays have been chosen; those lessons must remain
+            // schedulable as singles instead of turning the whole week into pairs.
             const configuredDoubleDays = rawDoubleDays.length > 0
               ? rawDoubleDays.filter((day) => availableDays.includes(day))
-              : (isDoubleLesson ? [...availableDays] : []);
+              : [];
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
