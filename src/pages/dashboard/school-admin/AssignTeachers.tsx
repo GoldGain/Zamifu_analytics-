@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Trash2, AlertCircle, CheckCircle, Users, BookOpen, Calendar, Save } from 'lucide-react';
+import { getDefaultPriorityBand } from '@/lib/timetable-generator';
 
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-type PriorityBand = 'none' | 'early_morning' | 'mid_morning' | 'late_morning' | 'afternoon' | 'morning';
+type PriorityBand = 'auto' | 'none' | 'morning' | 'mid_morning' | 'afternoon';
 
 interface TeacherAssignment {
   id: string;
@@ -57,7 +58,7 @@ export default function AssignTeachers() {
     class_id: '',
     subject_id: '',
     lessons_per_week: 5,
-    priority_band: 'none' as PriorityBand,
+    priority_band: 'auto' as PriorityBand,
     is_double_lesson: false,
     double_lesson_days: [...ALL_DAYS],
     available_days: [...ALL_DAYS],
@@ -138,7 +139,12 @@ export default function AssignTeachers() {
       subject_name: a.subjects?.name || '',
       lessons_per_week: a.lessons_per_week || 5,
       is_priority: a.is_priority || false,
-      priority_band: a.priority_band || (a.is_priority ? 'early_morning' : 'none'),
+      priority_band: a.priority_band === 'early_morning'
+        ? 'morning'
+        : a.priority_band === 'late_morning'
+          ? 'mid_morning'
+          : (a.priority_band || (a.is_priority ? 'morning' : 'auto')),
+
       is_double_lesson: a.is_double_lesson === true,
       double_lesson_days: Array.isArray(a.double_lesson_days) && a.double_lesson_days.length > 0
         ? a.double_lesson_days
@@ -173,7 +179,7 @@ export default function AssignTeachers() {
           subject_id: formData.subject_id,
           lessons_per_week: formData.lessons_per_week,
           priority_band: formData.priority_band,
-          is_priority: formData.priority_band !== 'none',
+          is_priority: formData.priority_band !== 'none' && formData.priority_band !== 'auto',
           is_double_lesson: formData.is_double_lesson,
           double_lesson_days: formData.is_double_lesson ? formData.double_lesson_days : [],
           available_days: formData.available_days,
@@ -185,7 +191,7 @@ export default function AssignTeachers() {
       if (insertError) throw insertError;
 
       setSuccess('Assignment saved successfully!');
-      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'none', is_double_lesson: false, double_lesson_days: [...ALL_DAYS], available_days: [...ALL_DAYS] });
+      setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'auto', is_double_lesson: false, double_lesson_days: [...ALL_DAYS], available_days: [...ALL_DAYS] });
       await fetchAssignments();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -199,12 +205,12 @@ export default function AssignTeachers() {
     try {
       const { error } = await supabase
         .from('teacher_subject_assignments')
-        .update({ priority_band: priorityBand, is_priority: priorityBand !== 'none' })
+        .update({ priority_band: priorityBand, is_priority: priorityBand !== 'none' && priorityBand !== 'auto' })
         .eq('id', assignment.id)
         .eq('school_id', user?.schoolId);
       if (error) throw error;
       setAssignments((prev) => prev.map((item) => item.id === assignment.id
-        ? { ...item, priority_band: priorityBand, is_priority: priorityBand !== 'none' }
+        ? { ...item, priority_band: priorityBand, is_priority: priorityBand !== 'none' && priorityBand !== 'auto' }
         : item));
       setSuccess('Priority updated. Generate the timetable again to apply it.');
       setTimeout(() => setSuccess(null), 3000);
@@ -418,7 +424,17 @@ export default function AssignTeachers() {
                 <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Learning Area</label>
                 <select
                   value={formData.subject_id}
-                  onChange={(e) => setFormData({ ...formData, subject_id: e.target.value })}
+                  onChange={(e) => {
+                    const subjectId = e.target.value;
+                    const selectedSubject = subjects.find((subject) => subject.id === subjectId);
+                    setFormData({
+                      ...formData,
+                      subject_id: subjectId,
+                      priority_band: formData.priority_band === 'none'
+                        ? getDefaultPriorityBand(selectedSubject?.name)
+                        : formData.priority_band,
+                    });
+                  }}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -446,13 +462,13 @@ export default function AssignTeachers() {
                   onChange={(e) => setFormData({ ...formData, priority_band: e.target.value as typeof formData.priority_band })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="auto">Automatic subject default</option>
                   <option value="none">No fixed priority</option>
-                  <option value="early_morning">Early Morning Priority (Lessons 1–2)</option>
-                  <option value="mid_morning">Mid Morning Priority (Lessons 3–4)</option>
-                  <option value="late_morning">Late Morning Priority (Lessons 5–6)</option>
+                  <option value="morning">Morning Priority (Lessons 1–3)</option>
+                  <option value="mid_morning">Mid Morning Priority (Lessons 4–6)</option>
                   <option value="afternoon">Afternoon Priority (Lesson 7+)</option>
                 </select>
-                <p className="text-[11px] text-gray-500 mt-1">The generator prefers the selected band and only falls back when the band cannot fit all weekly lessons. For Kaplelach, assign Maths to Early Morning and English to Early Morning; Maths is processed first so English follows it where conflicts allow.</p>
+                <p className="text-[11px] text-gray-500 mt-1">Automatic defaults place Maths in Lesson 1, English in Lesson 2, Integrated Science in Lessons 4–6, Agriculture and Pre-Technical Studies in Lessons 4–6, and humanities in Lesson 7 or later. You can change any assignment or choose No fixed priority.</p>
               </div>
 
               <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-3 text-sm text-purple-900">
@@ -605,15 +621,15 @@ export default function AssignTeachers() {
                           <td className="px-4 py-3 text-center text-gray-700">{a.lessons_per_week}</td>
                           <td className="px-4 py-3 text-center">
                             <select
-                              value={a.priority_band === 'morning' ? 'early_morning' : a.priority_band}
+                              value={a.priority_band}
                               onChange={(e) => handlePriorityChange(a, e.target.value as PriorityBand)}
                               className="max-w-[170px] rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700"
                               aria-label={`Priority for ${a.subject_name} in ${a.class_name}`}
                             >
+                              <option value="auto">Automatic subject default</option>
                               <option value="none">No fixed priority</option>
-                              <option value="early_morning">Early Morning · L1–2</option>
-                              <option value="mid_morning">Mid Morning · L3–4</option>
-                              <option value="late_morning">Late Morning · L5–6</option>
+                              <option value="morning">Morning · L1–3</option>
+                              <option value="mid_morning">Mid Morning · L4–6</option>
                               <option value="afternoon">Afternoon · L7+</option>
                             </select>
                           </td>

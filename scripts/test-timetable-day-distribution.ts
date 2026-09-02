@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
-import { canUseAssignmentDay, orderAssignmentDays } from '../src/lib/timetable-generator';
+import {
+  canUseAssignmentDay,
+  getDefaultPriorityBand,
+  getDefaultPriorityLesson,
+  orderAssignmentDays,
+  violatesMathScienceSequence,
+} from '../src/lib/timetable-generator';
 
 const weekdays = [1, 2, 3, 4, 5];
 
@@ -67,4 +73,16 @@ assert.equal(
   'assignments above five weekly lessons may reuse weekdays when required',
 );
 
-console.log('PASS: non-double assignments exhaust unused weekdays before repeating a day');
+assert.equal(getDefaultPriorityBand('Mathematics'), 'morning');
+assert.equal(getDefaultPriorityLesson('Mathematics'), 1);
+assert.equal(getDefaultPriorityBand('English Language'), 'morning');
+assert.equal(getDefaultPriorityLesson('English Language'), 2);
+assert.equal(getDefaultPriorityBand('Integrated Science'), 'mid_morning');
+assert.equal(getDefaultPriorityBand('Social Studies'), 'afternoon');
+assert.equal(getDefaultPriorityBand('Kiswahili'), 'none');
+
+assert.equal(violatesMathScienceSequence('Mathematics', 'Integrated Science'), true);
+assert.equal(violatesMathScienceSequence('Integrated Science', 'Mathematics'), true);
+assert.equal(violatesMathScienceSequence('Mathematics', 'English'), false);
+
+console.log('PASS: day distribution, three-window defaults, and Math/Science sequence rules');

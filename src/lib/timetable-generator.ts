@@ -133,6 +133,44 @@ export function getLessonCountForLevel(level: string, override?: number | null):
   return 8;
 }
 
+export type TimetablePriorityBand = 'auto' | 'none' | 'morning' | 'mid_morning' | 'afternoon';
+
+/** Return true when two adjacent lesson subjects violate the Math/Science rule. */
+export function violatesMathScienceSequence(
+  currentSubject: string | null | undefined,
+  adjacentSubject: string | null | undefined,
+): boolean {
+  const current = String(currentSubject || '').trim().toLowerCase();
+  const adjacent = String(adjacentSubject || '').trim().toLowerCase();
+  const currentIsMath = /mathemat/.test(current);
+  const currentIsScience = /integrated\s*science|\bscience\b|environment/.test(current);
+  const adjacentIsMath = /mathemat/.test(adjacent);
+  const adjacentIsScience = /integrated\s*science|\bscience\b|environment/.test(adjacent);
+  return (currentIsMath && adjacentIsScience) || (currentIsScience && adjacentIsMath);
+}
+
+/**
+ * Default subject placement policy used when an administrator creates an
+ * assignment and has not yet selected a custom band. These are preferences,
+ * not hard overrides: an explicit assignment priority remains authoritative.
+ */
+export function getDefaultPriorityBand(subjectName: string | null | undefined): TimetablePriorityBand {
+  const name = String(subjectName || '').trim().toLowerCase();
+  if (/mathemat/.test(name) || /\benglish\b/.test(name)) return 'morning';
+  if (/integrated\s*science|\bscience\b/.test(name)) return 'mid_morning';
+  if (/agricultur|pre[\s-]*technical|pre[\s-]*tech/.test(name)) return 'mid_morning';
+  if (/social\s*stud|religious|\bcre\b|christian|islamic|creative\s*arts?/.test(name)) return 'afternoon';
+  return 'none';
+}
+
+/** Default exact lesson anchors for the two core morning subjects. */
+export function getDefaultPriorityLesson(subjectName: string | null | undefined): number | null {
+  const name = String(subjectName || '').trim().toLowerCase();
+  if (/mathemat/.test(name)) return 1;
+  if (/\benglish\b/.test(name)) return 2;
+  return null;
+}
+
 /**
  * Decide whether a fallback scheduling pass should skip a slot that belongs to
  * the preferred priority band. When an assignment has no priority band, its
@@ -192,12 +230,13 @@ export function canUseAssignmentDay(
   // A double is one atomic placement and may only be placed on an otherwise
   // unused day. Its two consecutive slots are represented by unitSize=2.
   if (unitSize === 2) return !alreadyUsed;
-  // Day ordering already prefers unused weekdays before used weekdays. At the
-  // actual placement boundary, however, a used day must remain available as a
-  // fallback when another slot on that day is free but all unused-day slots are
-  // blocked by teacher, class, activity, or adjacency constraints. Rejecting
-  // every reused day here silently drops valid single lessons.
-  if (lessonsPerWeek <= 5) return true;
+  // For five or fewer weekly lessons, a single placement must use a weekday
+  // only once. Day ordering prefers unused weekdays first, but this boundary
+  // guard is required because teacher, class, activity, and adjacency conflicts
+  // can otherwise bypass that preference during fallback and repair passes.
+  if (lessonsPerWeek <= 5) return !alreadyUsed;
+  // More than five weekly lessons cannot fit one per weekday, so reuse is
+  // explicitly allowed once every valid weekday has been considered.
   return true;
 }
 

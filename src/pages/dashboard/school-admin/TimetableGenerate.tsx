@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { canUseAssignmentDay, generateSlots, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot } from '@/lib/timetable-generator';
+import { canUseAssignmentDay, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, violatesMathScienceSequence } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -87,14 +87,27 @@ const normalizeDayNames = (value: unknown): string[] => {
 const isEnabledFlag = (value: unknown): boolean =>
   value === true || value === 1 || value === '1' || String(value).trim().toLowerCase() === 'true';
 
-const normalizePriorityBand = (value: unknown, isPriority = false): string => {
+const normalizePriorityBand = (value: unknown, isPriority = false, subjectName?: string): string => {
   const raw = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  if (raw === 'morning' || raw === 'early' || raw === 'early_morning') return 'early_morning';
-  if (raw === 'mid' || raw === 'mid_morning') return 'mid_morning';
-  if (raw === 'late' || raw === 'late_morning') return 'late_morning';
+  // The database contains legacy four-window values. Canonicalize them to the
+  // current three-window contract: Morning L1–3, Mid Morning L4–6, Afternoon L7+.
+  if (raw === 'auto' || raw === 'automatic' || raw === 'default') return getDefaultPriorityBand(subjectName);
+  if (raw === 'morning' || raw === 'early' || raw === 'early_morning') return 'morning';
+  if (raw === 'mid' || raw === 'mid_morning' || raw === 'late' || raw === 'late_morning') return 'mid_morning';
   if (raw === 'afternoon') return 'afternoon';
-  return isPriority ? 'early_morning' : 'none';
+  if (isPriority) return 'morning';
+  // Null/undefined values predate the priority-band column. Apply the subject
+  // default only for those legacy rows; an explicit "none" remains unprioritized.
+  return value == null ? getDefaultPriorityBand(subjectName) : 'none';
 };
+
+const priorityBandLabel = (band: string): string => ({
+  morning: 'Morning (Lessons 1–3)',
+  mid_morning: 'Mid Morning (Lessons 4–6)',
+  afternoon: 'Afternoon (Lesson 7+)',
+  auto: 'Automatic subject default',
+  none: 'No fixed priority',
+}[band] || band);
 
 const stableRotation = (value: string): number => {
   let hash = 0;
@@ -158,6 +171,13 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
 // Display info for each level's lesson structure
 // Senior (Grade 10-12): 9 lessons/day, 3 after lunch
 // Form 3 & 4 (8-4-4): 9 lessons/day, 3 after lunch
+type GenerationReport = {
+  kind: 'success' | 'warning' | 'error';
+  title: string;
+  details: string[];
+  suggestions: string[];
+};
+
 const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; note: string }> = {
   'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
   'lower-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
@@ -180,6 +200,7 @@ export default function TimetableGenerate() {
   const [lastGenerated, setLastGenerated] = useState<string | null>(null);
   const [selectedLevels, setSelectedLevels] = useState<Set<string>>(new Set(['lower-primary']));
   const [scheduledActivities, setScheduledActivities] = useState<ScheduledActivity[]>([]);
+  const [generationReport, setGenerationReport] = useState<GenerationReport | null>(null);
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -265,10 +286,18 @@ export default function TimetableGenerate() {
 
   const handleGenerateTimetable = async () => {
     if (selectedLevels.size === 0) {
-      toast.error('Please select at least one level to generate');
+      const report: GenerationReport = {
+        kind: 'error',
+        title: 'Timetable generation stopped',
+        details: ['No level group is selected.'],
+        suggestions: ['Select at least one level group and try again.'],
+      };
+      setGenerationReport(report);
+      toast.error(report.title);
       return;
     }
 
+    setGenerationReport(null);
     try {
       setGenerating(true);
       const schoolId = user?.schoolId;
@@ -289,7 +318,11 @@ export default function TimetableGenerate() {
 
       // Fetch all active classes
       const { data: allClasses } = await supabase.from('classes').select('id, name, level, grade_level, stream, school_id, is_active').eq('school_id', schoolId).eq('is_active', true);
-      const { data: assignments } = await supabase.from('teacher_subject_assignments').select('*, subjects(name, code)').eq('school_id', schoolId).eq('is_active', true);
+      const { data: assignments } = await supabase
+        .from('teacher_subject_assignments')
+        .select('*, subjects(name, code), teachers(first_name, last_name, teacher_number)')
+        .eq('school_id', schoolId)
+        .eq('is_active', true);
 
       if (!allClasses?.length || !assignments?.length) {
         throw new Error('Classes or assignments missing. Please set up classes and teacher assignments first.');
@@ -394,7 +427,16 @@ export default function TimetableGenerate() {
       const assignmentContexts = new Map<string, AssignmentPlacementContext>();
       const placementRecords: LessonPlacementRecord[] = [];
       const generatedSummary: string[] = [];
-      const underScheduled: Array<{ className: string; subjectName: string; configured: number; scheduled: number; assignmentKey: string }> = [];
+      const underScheduled: Array<{
+        className: string;
+        subjectName: string;
+        teacherName: string;
+        priorityBand: string;
+        configured: number;
+        scheduled: number;
+        assignmentKey: string;
+      }> = [];
+      const generationNotes: string[] = [];
 
       // Process each selected level group
       for (const levelKey of Array.from(selectedLevels)) {
@@ -416,9 +458,8 @@ export default function TimetableGenerate() {
         const requiredFields = ['school_start', 'first_break_start', 'first_break_end', 'second_break_start', 'second_break_end', 'lunch_start', 'lunch_end'];
         for (const field of requiredFields) {
           if (!config[field as keyof FrontendConfig]) {
-            toast.error(`Missing ${field} in configuration for ${LEVEL_GROUPS.find(l => l.key === levelKey)?.label}. Please configure it first.`);
-            setGenerating(false);
-            return;
+            const levelLabel = LEVEL_GROUPS.find((level) => level.key === levelKey)?.label || levelKey;
+            throw new Error(`Missing ${field.replace(/_/g, ' ')} for ${levelLabel}. Save the complete Timetable Setup (start, breaks, and lunch) before generating.`);
           }
         }
 
@@ -552,9 +593,9 @@ export default function TimetableGenerate() {
           return Number.isFinite(parsed) ? parsed : lessonSlots.indexOf(slot) + 1;
         };
         const prioritySlots = {
-          early_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 2),
-          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 3 && lessonNumberOf(slot) <= 4),
-          late_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 5 && lessonNumberOf(slot) <= 6),
+          // Current contract: Morning L1–3, Mid Morning L4–6, Afternoon L7+.
+          morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 3),
+          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 4 && lessonNumberOf(slot) <= 6),
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
         const classSubjectBySlot = new Map<string, string>();
@@ -567,9 +608,8 @@ export default function TimetableGenerate() {
         // consumes two consecutive cells even though it is one atomic unit.
         const priorityCapacityWarnings: string[] = [];
         const priorityCapacityByBand: Record<string, number> = {
-          early_morning: prioritySlots.early_morning.length * TIMETABLE_DAYS.length,
+          morning: prioritySlots.morning.length * TIMETABLE_DAYS.length,
           mid_morning: prioritySlots.mid_morning.length * TIMETABLE_DAYS.length,
-          late_morning: prioritySlots.late_morning.length * TIMETABLE_DAYS.length,
           afternoon: prioritySlots.afternoon.length * TIMETABLE_DAYS.length,
         };
         const classesByTeacherBand = new Map<string, number>();
@@ -578,7 +618,11 @@ export default function TimetableGenerate() {
         assignments
           .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
           .forEach((assignment: any) => {
-            const band = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
+            const band = normalizePriorityBand(
+              assignment.priority_band,
+              isEnabledFlag(assignment.is_priority),
+              String(assignment.subjects?.name || ''),
+            );
             if (band === 'none') return;
             const lessons = Math.max(0, Number(assignment.lessons_per_week || 0));
             const teacherBandKey = `${assignment.teacher_id}:${band}`;
@@ -590,7 +634,9 @@ export default function TimetableGenerate() {
           const [teacherId, band] = teacherBandKey.split(':');
           const capacity = priorityCapacityByBand[band] || 0;
           if (demand > capacity) {
-            priorityCapacityWarnings.push(`${band.replace('_', ' ')} demand ${demand} cells exceeds ${capacity}-cell weekly teacher capacity`);
+            const teacher = assignments.find((assignment: any) => String(assignment.teacher_id) === teacherId)?.teachers;
+            const teacherName = [teacher?.first_name, teacher?.last_name].filter(Boolean).join(' ') || `Teacher ${teacherId}`;
+            priorityCapacityWarnings.push(`${teacherName}: ${priorityBandLabel(band)} demand is ${demand} cells, above the ${capacity}-cell weekly capacity`);
             console.warn('[timetable] shared teacher priority capacity exceeded', { teacherId, band, demand, capacity });
           }
         });
@@ -599,7 +645,7 @@ export default function TimetableGenerate() {
           const capacity = priorityCapacityByBand[band] || 0;
           if (demand > capacity) {
             const className = classNameById.get(classId) || 'Class';
-            priorityCapacityWarnings.push(`${className} ${band.replace('_', ' ')} demand ${demand} cells exceeds ${capacity}-cell weekly class capacity`);
+            priorityCapacityWarnings.push(`${className}: ${priorityBandLabel(band)} demand is ${demand} cells, above the ${capacity}-cell weekly class capacity`);
             console.warn('[timetable] class priority capacity exceeded', { classId, band, demand, capacity });
           }
         });
@@ -611,16 +657,18 @@ export default function TimetableGenerate() {
         const teacherDoubleReservedSlotKeys = new Set<string>();
         assignments.forEach((assignment: any) => {
           if (!classesInLevel.has(String(assignment.class_id)) || !isEnabledFlag(assignment.is_double_lesson)) return;
-          const assignmentBand = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
-          const assignmentPreferredSlots = assignmentBand === 'early_morning' || assignmentBand === 'morning'
-            ? prioritySlots.early_morning
+          const assignmentBand = normalizePriorityBand(
+            assignment.priority_band,
+            isEnabledFlag(assignment.is_priority),
+            String(assignment.subjects?.name || ''),
+          );
+          const assignmentPreferredSlots = assignmentBand === 'morning'
+            ? prioritySlots.morning
             : assignmentBand === 'mid_morning'
               ? prioritySlots.mid_morning
-              : assignmentBand === 'late_morning'
-                ? prioritySlots.late_morning
-                : assignmentBand === 'afternoon'
-                  ? prioritySlots.afternoon
-                  : lessonSlots;
+              : assignmentBand === 'afternoon'
+                ? prioritySlots.afternoon
+                : lessonSlots;
           const reservationSlots = assignmentPreferredSlots.length > 0 ? assignmentPreferredSlots : lessonSlots;
           const assignmentAvailableDays = normalizeDayNames(assignment.available_days);
           const assignmentDoubleDays = normalizeDayNames(assignment.double_lesson_days)
@@ -755,12 +803,12 @@ export default function TimetableGenerate() {
             .sort((a, b) => {
               const aName = String(a.subjects?.name || '').toLowerCase();
               const bName = String(b.subjects?.name || '').toLowerCase();
-              const aBand = normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority));
-              const bBand = normalizePriorityBand(b.priority_band, isEnabledFlag(b.is_priority));
-              const bandOrder: Record<string, number> = { early_morning: 0, morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
+              const aBand = normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority), aName);
+              const bBand = normalizePriorityBand(b.priority_band, isEnabledFlag(b.is_priority), bName);
+              const bandOrder: Record<string, number> = { morning: 0, mid_morning: 1, afternoon: 2, none: 3 };
               const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
-              const aSciencePriority = Boolean(aBand === 'early_morning' && /integrated\s*science/.test(aName));
-              const bSciencePriority = Boolean(bBand === 'early_morning' && /integrated\s*science/.test(bName));
+              const aSciencePriority = Boolean(aBand === 'mid_morning' && /integrated\s*science/.test(aName));
+              const bSciencePriority = Boolean(bBand === 'mid_morning' && /integrated\s*science/.test(bName));
               const aDoublePriority = isEnabledFlag(a.is_double_lesson);
               const bDoublePriority = isEnabledFlag(b.is_double_lesson);
               const aLessons = Number(a.lessons_per_week || 0);
@@ -791,16 +839,24 @@ export default function TimetableGenerate() {
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
-            const priorityBand = normalizePriorityBand(assignment.priority_band, isEnabledFlag(assignment.is_priority));
-            const preferredLessonSlots = priorityBand === 'early_morning' || priorityBand === 'morning'
-              ? prioritySlots.early_morning
+            const priorityBand = normalizePriorityBand(
+              assignment.priority_band,
+              isEnabledFlag(assignment.is_priority),
+              subjectName,
+            );
+            const preferredBandSlots = priorityBand === 'morning'
+              ? prioritySlots.morning
               : priorityBand === 'mid_morning'
                 ? prioritySlots.mid_morning
-                : priorityBand === 'late_morning'
-                  ? prioritySlots.late_morning
-                  : priorityBand === 'afternoon'
-                    ? prioritySlots.afternoon
-                    : lessonSlots;
+                : priorityBand === 'afternoon'
+                  ? prioritySlots.afternoon
+                  : lessonSlots;
+            const defaultAnchor = priorityBand === 'morning'
+              ? getDefaultPriorityLesson(subjectName)
+              : null;
+            const preferredLessonSlots = defaultAnchor
+              ? preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) === defaultAnchor)
+              : preferredBandSlots;
             const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
             const hasExplicitPriority = priorityBand !== 'none';
             let scheduled = 0;
@@ -837,23 +893,19 @@ export default function TimetableGenerate() {
                 .filter((slot: any) => slot.slot_order < startSlot.slot_order)
                 .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
               const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
-              const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
               const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(config.lunch_start);
-              // Integrated Science must never be followed by Mathematics.
-              // Preserve the school’s requested Science double in Lessons 3–4
-              // after the early morning sequence, but never allow a Maths slot
-              // immediately after Science.
-              if (startsInMorning && isMath && earlierIsScience) return 0;
               const finalSlot = unitSlots[unitSlots.length - 1];
               const nextLesson = lessonSlots
                 .filter((slot: any) => slot.slot_order > finalSlot.slot_order)
                 .sort((a: any, b: any) => a.slot_order - b.slot_order)[0];
               const later = nextLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${nextLesson.id}`) : undefined;
-              const laterIsMath = Boolean(later && /mathemat/.test(later));
-              // A Maths lesson may not immediately follow Integrated Science.
-              // The reverse order (Maths → Science) is valid and supports the
-              // requested early sequence followed by the Science practical.
-              if (startsInMorning && isScience && laterIsMath) return 0;
+              // Mathematics and Science may not be adjacent in either order.
+              // The check applies to both sides of a placement unit so repair
+              // passes cannot reintroduce the forbidden sequence.
+              if (startsInMorning && (
+                violatesMathScienceSequence(subjectName, earlier)
+                || violatesMathScienceSequence(subjectName, later)
+              )) return 0;
 
               unitSlots.forEach((slot: any, index: number) => {
                 const timing = timings[index];
@@ -982,9 +1034,13 @@ export default function TimetableGenerate() {
               );
             }
             if (scheduled < lessonsToSchedule) {
+              const teacher = assignment.teachers;
+              const teacherName = [teacher?.first_name, teacher?.last_name].filter(Boolean).join(' ') || `Teacher ${assignment.teacher_id}`;
               underScheduled.push({
                 className: `${cls.name || 'Class'}${cls.stream ? ` (${cls.stream})` : ''}`,
                 subjectName: String(assignment.subjects?.name || 'Learning area'),
+                teacherName,
+                priorityBand,
                 configured: lessonsToSchedule,
                 scheduled,
                 assignmentKey: placementContext.assignmentKey,
@@ -1047,9 +1103,7 @@ export default function TimetableGenerate() {
           const earlier = previousLesson
             ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${previousLesson.id}`)
             : undefined;
-          const earlierIsScience = Boolean(earlier && /integrated\s*science|science|environment/.test(earlier));
           const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(context.config.lunch_start);
-          if (startsInMorning && context.isMath && earlierIsScience) return false;
           const finalSlot = unitSlots[unitSlots.length - 1];
           const nextLesson = context.lessonSlots
             .filter((slot: any) => slot.slot_order > finalSlot.slot_order)
@@ -1057,8 +1111,10 @@ export default function TimetableGenerate() {
           const later = nextLesson
             ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${nextLesson.id}`)
             : undefined;
-          const laterIsMath = Boolean(later && /mathemat/.test(later));
-          if (startsInMorning && context.isScience && laterIsMath) return false;
+          if (startsInMorning && (
+            violatesMathScienceSequence(context.subjectName, earlier)
+            || violatesMathScienceSequence(context.subjectName, later)
+          )) return false;
           return true;
         };
 
@@ -1105,34 +1161,25 @@ export default function TimetableGenerate() {
           const preferred = context.preferredLessonSlots;
           // CRE and other explicitly Afternoon assignments must never be
           // repaired into morning slots. Integrated Science is the special
-          // morning practical case: keep it before lunch when its exact Mid
-          // Morning pair is blocked by the same teacher serving another class.
+          // mid-morning practical case: keep it before lunch when its preferred
+          // cells are blocked by the same teacher serving another class.
           if (context.priorityBand === 'afternoon') return preferred;
           if (context.isScience && context.priorityBand === 'mid_morning') {
-            // Keep the configured practical double in L3–L4. If shared-teacher
-            // conflicts block a remaining single, use another pre-lunch pair
-            // only; never repair Integrated Science into the afternoon.
-            const lateMorning = context.lessonSlots.filter((slot: any) => {
+            const otherPreLunch = context.lessonSlots.filter((slot: any) => {
               const number = lessonNumberOf(slot);
-              return number >= 5 && number <= 6 && !preferredIds.has(String(slot.id));
+              return number >= 1 && number <= 6 && !preferredIds.has(String(slot.id));
             });
-            const earlyMorning = context.lessonSlots.filter((slot: any) => {
-              const number = lessonNumberOf(slot);
-              return number >= 1 && number <= 2 && !preferredIds.has(String(slot.id));
-            });
-            return [...preferred, ...lateMorning, ...earlyMorning];
+            return [...preferred, ...otherPreLunch];
           }
           // Every explicit priority band is authoritative during repair. A
           // conflict must remain visible as an under-scheduled warning rather
           // than silently moving Kiswahili, Agriculture, Social Studies, or
           // another prioritized subject into the wrong lesson window.
-          // Explicit priority remains authoritative for late-morning and
-          // afternoon assignments. Early and mid-morning subjects may use a
-          // lower-priority lesson only when their preferred cells are exhausted;
-          // this preserves “where possible” semantics for Maths and English while
-          // preventing silent loss of their configured weekly lessons. Science is
-          // handled above and remains pre-lunch, with its configured pair first.
-          if (context.priorityBand === 'early_morning' || context.priorityBand === 'morning') {
+          // Explicit Mid Morning and Afternoon priorities remain authoritative.
+          // Morning subjects may use a lower-priority lesson only when their
+          // preferred cells are exhausted; this preserves the Lesson 1/2 core
+          // anchors while preventing silent loss of their configured lessons.
+          if (context.priorityBand === 'morning') {
             const nonPreferred = context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
             return [...preferred, ...nonPreferred];
           }
@@ -1221,6 +1268,8 @@ export default function TimetableGenerate() {
         // warning is updated to its final count and is not shown as an error.
         underScheduled.forEach(tryRepairGap);
         if (priorityCapacityWarnings.length > 0) {
+          const levelLabel = LEVEL_GROUPS.find((level) => level.key === levelKey)?.label || levelKey;
+          priorityCapacityWarnings.forEach((warning) => generationNotes.push(`${levelLabel}: ${warning}`));
           generatedSummary.push(`Priority capacity notes: ${priorityCapacityWarnings.join('; ')}`);
         }
 
@@ -1297,23 +1346,62 @@ export default function TimetableGenerate() {
       }
 
       const levelLabels = Array.from(selectedLevels).map(k => LEVEL_GROUPS.find(l => l.key === k)?.label).join(', ');
-      toast.success(
-          `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
-          { duration: 8000 }
-        );
       const unresolvedGaps = underScheduled.filter((gap) => gap.scheduled < gap.configured);
+      const gapDetails = unresolvedGaps
+        .slice(0, 12)
+        .map((gap) => `${gap.className} — ${gap.subjectName} (${gap.teacherName}; ${priorityBandLabel(gap.priorityBand)}): ${gap.scheduled}/${gap.configured} lessons scheduled`);
+      const report: GenerationReport = unresolvedGaps.length > 0
+        ? {
+            kind: 'warning',
+            title: 'Timetable generated with unresolved assignment conflicts',
+            details: [...gapDetails, ...generationNotes],
+            suggestions: [
+              'Open Teacher Assignments and move the affected subject to a different priority window or reduce its weekly lesson count.',
+              'Check the named teacher’s availability and overlapping assignments in the same priority window.',
+              'Use a configured double lesson only on explicitly selected weekdays, then generate again.',
+            ],
+          }
+        : generationNotes.length > 0
+          ? {
+              kind: 'warning',
+              title: 'Timetable generated with priority capacity notes',
+              details: generationNotes,
+              suggestions: [
+                'Review the named teacher or class in Teacher Assignments.',
+                'Move one or more assignments to another priority window if the current window is intentionally over capacity.',
+              ],
+            }
+          : {
+              kind: 'success',
+              title: 'Timetable generated successfully',
+              details: [`Generated ${levelLabels}.`, ...generatedSummary],
+              suggestions: ['Review the timetable for each selected grade before publishing it to teachers and learners.'],
+            };
+      setGenerationReport(report);
+      toast.success(
+        `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
+        { duration: 8000 },
+      );
       if (unresolvedGaps.length > 0) {
-        const gapSummary = unresolvedGaps
-          .slice(0, 8)
-          .map((gap) => `${gap.className} — ${gap.subjectName}: ${gap.scheduled}/${gap.configured}`)
-          .join('; ');
         console.warn('[timetable] assignments still under-scheduled after repair', unresolvedGaps);
-        toast.warning(`Some assignments could not fit without double-booking a teacher: ${gapSummary}`, { duration: 12000 });
+        toast.warning(`Some assignments could not fit without double-booking a teacher: ${gapDetails.slice(0, 3).join('; ')}`, { duration: 12000 });
       }
       fetchData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      toast.error(err.message || 'Generation failed');
+      const message = err instanceof Error ? err.message : 'Generation failed for an unknown reason.';
+      const suggestions = /setup|configuration|missing timetable times/i.test(message)
+        ? ['Open Timetable Setup, complete the start, break, and lunch times for the selected level, save, and generate again.']
+        : /classes|assignments|teacher/i.test(message)
+          ? ['Confirm that the selected grades have active classes and every subject has an active teacher assignment with a weekly lesson count.']
+          : ['Review Teacher Assignments for unavailable days, conflicting double-lesson days, and incompatible priority windows, then generate again.'];
+      setGenerationReport({
+        kind: 'error',
+        title: 'Timetable generation failed',
+        details: [message],
+        suggestions,
+      });
+      toast.error(message);
     } finally {
       setGenerating(false);
     }
@@ -1469,6 +1557,41 @@ export default function TimetableGenerate() {
             {generating ? <Loader2 className="animate-spin" /> : <Zap fill="white" />}
             {generating ? 'Generating...' : `GENERATE TIMETABLE (${selectedLevels.size} level${selectedLevels.size !== 1 ? 's' : ''})`}
           </button>
+
+          {generationReport && (
+            <div
+              role="alert"
+              className={`rounded-xl border p-4 ${
+                generationReport.kind === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-950'
+                  : generationReport.kind === 'warning'
+                    ? 'border-amber-200 bg-amber-50 text-amber-950'
+                    : 'border-green-200 bg-green-50 text-green-950'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                {generationReport.kind === 'success'
+                  ? <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-600" />
+                  : <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />}
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-bold">{generationReport.title}</h3>
+                  {generationReport.details.length > 0 && (
+                    <div className="mt-2 space-y-1 text-sm">
+                      {generationReport.details.map((detail, index) => <p key={`${detail}-${index}`}>{detail}</p>)}
+                    </div>
+                  )}
+                  {generationReport.suggestions.length > 0 && (
+                    <div className="mt-3 border-t border-current/10 pt-2 text-sm">
+                      <p className="font-semibold">Suggested next steps</p>
+                      {generationReport.suggestions.map((suggestion, index) => (
+                        <p key={`${suggestion}-${index}`} className="mt-1">{index + 1}. {suggestion}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {lastGenerated && (
             <p className="text-center text-xs text-gray-400">Last generated: {lastGenerated}</p>
