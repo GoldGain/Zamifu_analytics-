@@ -11,7 +11,7 @@ const OLYMPUS_API_URL = "https://sms.ots.co.ke/api/v3/sms/send";
 // The token is supplied only through Supabase Edge Function secrets and is never
 // embedded in the browser bundle or committed source.
 const OLYMPUS_API_TOKEN = Deno.env.get("OLYMPUS_API_TOKEN") || "";
-const OLYMPUS_SENDER_ID = Deno.env.get("OLYMPUS_SENDER_ID") || "PROCALL";
+const OLYMPUS_SENDER_ID = Deno.env.get("OLYMPUS_SENDER_ID") || "ZAMIFU";
 
 type SmsResult = { success: boolean; messageId?: string; error?: string };
 type ResetAccount = {

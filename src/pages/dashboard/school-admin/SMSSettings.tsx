@@ -186,11 +186,11 @@ export default function SMSSettings() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Sender ID</label>
             <input
               type="text"
-              value="PROCALL"
+              value="ZAMIFU"
               disabled
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500"
             />
-            <p className="text-xs text-gray-500 mt-1">Olympus SMS uses a fixed sender ID. Cannot be changed.</p>
+            <p className="text-xs text-gray-500 mt-1">Olympus SMS uses the fixed sender ID ZAMIFU.</p>
           </div>
         )}
       </div>

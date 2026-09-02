@@ -233,7 +233,7 @@ export default function Communicate() {
         />
         <div className="flex items-center justify-between mt-2">
           <p className="text-xs text-gray-400">{message.length} characters</p>
-          <p className="text-xs text-gray-400">Sender: PROCALL</p>
+          <p className="text-xs text-gray-400">Sender: ZAMIFU</p>
         </div>
 
         <button

@@ -8,7 +8,7 @@ const OLYMPUS_API_URL = 'https://sms.ots.co.ke/api/v3/sms/send';
 // Public registration is migrated to the server function below; this is retained
 // only as a defensive empty fallback for callers that still provide a provider config.
 const OLYMPUS_API_TOKEN = '';
-const OLYMPUS_SENDER_ID = 'PROCALL';
+const OLYMPUS_SENDER_ID = 'ZAMIFU';
 
 interface SMSPayload {
   recipient: string;

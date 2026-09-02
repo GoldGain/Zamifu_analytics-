@@ -55,7 +55,7 @@ const PAGE_GUIDES: Record<string, string> = {
   '/school-admin/assessments':
     'Create and manage CATs, midterms, and end-term assessments. Assessment names appear on report cards, so keep titles clear and consistent for teachers and parents.',
   '/school-admin/results':
-    'Review uploaded marks, validate completeness, then publish. Publish and Notify can send Olympus SMS (sender PROCALL) so parents receive result alerts.',
+    'Review uploaded marks, validate completeness, then publish. Publish and Notify can send Olympus SMS (sender ZAMIFU) so parents receive result alerts.',
   '/school-admin/promote-class':
     'Promote whole classes at term or year end. Grade 9 and Grade 12 / Form 4 use GRADUATE instead of promote. Destination classes must be empty before promotion.',
   '/school-admin/timetable/setup':
@@ -197,7 +197,7 @@ function buildSystemPrompt(ctx: AiContext, liveNotes: string): string {
     '- Graduation: Grade 9 and Grade 12 / Form 4 graduate; Grades 1-8 and 10-11 promote to empty destination classes.',
     '- Timetable times are per school from Timetable Setup only. Never invent clock times. There is no School Ends field; use Activities Start/End when configured.',
     '- Default lesson counts when Setup is empty: Pre-Primary 6 (0 after lunch), Lower/Upper Primary 7 (1), Junior 8 (2), Senior 9 (3), 8-4-4 8 (2).',
-    '- SMS: Publish and Notify uses Olympus SMS sender PROCALL.',
+    '- SMS: Publish and Notify uses Olympus SMS sender ZAMIFU.',
     '- Teachers may only upload assigned learning areas.',
   ]
     .filter(Boolean)
@@ -489,7 +489,7 @@ async function offlineAnswer(question: string, ctx: AiContext): Promise<string> 
     return `About this page\n\n${page}\n\nAsk a specific task (e.g. “publish results”, “graduate grade 12”).`;
   }
   if (q.includes('publish') || q.includes('notify') || q.includes('sms')) {
-    return 'Publish & Notify\n\n1. School Admin → Results\n2. Filter class / term / assessment\n3. Click Publish & Notify\n4. Parents get Olympus SMS from PROCALL with a portal link.';
+    return 'Publish & Notify\n\n1. School Admin → Results\n2. Filter class / term / assessment\n3. Click Publish & Notify\n4. Parents get Olympus SMS from ZAMIFU with a portal link.';
   }
   if (q.includes('graduate') || q.includes('promote') || q.includes('grade 12') || q.includes('grade 9') || q.includes('form 4')) {
     return 'Promotion and Graduation\n\n1. School Admin → Promote Grade\n2. Select source class\n3. Grade 9 and Grade 12 / Form 4 → system switches to GRADUATE (status=graduated, year set)\n4. Other grades → choose an empty destination class\n5. Alumni appear under Graduated Students (filter by year).';
