@@ -49,6 +49,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const [exams, setExams] = useState<any[]>([]);
   const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
+  const [teacherIdentity, setTeacherIdentity] = useState<{ teacherId: string; profileId: string; schoolId: string | null } | null>(null);
   const [isDoS, setIsDoS] = useState(false);
   const [outOf, setOutOf] = useState(100);
 
@@ -83,6 +84,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
       const assignments = assignmentResult.assignments || [];
       setTeacherAssignments(assignments);
+      setTeacherIdentity(assignmentResult.identity);
       setAssignmentsLoaded(true);
 
       const assignedClassIds = [...new Set(assignments.map((a) => a.class_id).filter(Boolean))];
@@ -348,7 +350,17 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
     // DoS users may enter marks for any class and learning area; ordinary teachers remain assignment-scoped.
     const verification = isDoS
-      ? { allowed: true, teacherId: (await supabaseUntyped.from('teachers').select('id').eq('school_id', user?.schoolId).limit(1).maybeSingle()).data?.id, reason: '' }
+      ? {
+          allowed: true,
+          teacherId: teacherIdentity?.teacherId || (await supabaseUntyped
+            .from('teachers')
+            .select('id')
+            .eq('school_id', user?.schoolId)
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle()).data?.id || null,
+          reason: '',
+        }
       : await verifyTeacherSubjectAssignment(user?.id, selectedClass, selectedSubject);
     if (!verification.allowed || !verification.teacherId) {
       toast.error(verification.reason || 'You are not assigned to this learning area.');
@@ -577,10 +589,10 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
           <ArrowLeft className="w-4 h-4" /> {isDoS ? 'Results upload hub' : 'Assigned learning areas'}
         </Link>
         <h1 className="text-2xl font-bold text-[#111111]">Upload Results</h1>
-        <p className="text-sm text-[#666666]">{isDoS ? 'As Dean of Studies, you can enter marks for every class and learning area in your school.' : 'Enter marks only for learning areas assigned to you. Unassigned subjects are blocked.'}</p>
+        <p className="text-sm text-[#666666]">{isDoS ? (user?.role === 'school_admin' || privileged ? 'As a School Admin, you can enter marks for every class and learning area in your school.' : 'As Dean of Studies, you can enter marks for every class and learning area in your school.') : 'Enter marks only for learning areas assigned to you. Unassigned subjects are blocked.'}</p>
       </div>
 
-      {assignmentsLoaded && teacherAssignments.length === 0 && (
+      {!isDoS && assignmentsLoaded && teacherAssignments.length === 0 && (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-3">
           <AlertCircle className="w-5 h-5 text-red-600" />
           <span className="text-sm text-red-700">No learning areas have been assigned to you. Contact your school admin.</span>
