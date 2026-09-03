@@ -923,7 +923,6 @@ export default function TimetableGenerate() {
                 .filter((slot: any) => slot.slot_order < startSlot.slot_order)
                 .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
               const earlier = previousLesson ? classSubjectBySlot.get(`${cls.id}-${day}-${previousLesson.id}`) : undefined;
-              const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(config.lunch_start);
               const finalSlot = unitSlots[unitSlots.length - 1];
               const nextLesson = lessonSlots
                 .filter((slot: any) => slot.slot_order > finalSlot.slot_order)
@@ -932,10 +931,10 @@ export default function TimetableGenerate() {
               // Mathematics and Science may not be adjacent in either order.
               // The check applies to both sides of a placement unit so repair
               // passes cannot reintroduce the forbidden sequence.
-              if (startsInMorning && (
+              if (
                 violatesMathScienceSequence(subjectName, earlier)
                 || violatesMathScienceSequence(subjectName, later)
-              )) return 0;
+              ) return 0;
 
               unitSlots.forEach((slot: any, index: number) => {
                 const timing = timings[index];
@@ -1143,7 +1142,6 @@ export default function TimetableGenerate() {
           const earlier = previousLesson
             ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${previousLesson.id}`)
             : undefined;
-          const startsInMorning = toMinutes(timings[0].start_time) < toMinutes(context.config.lunch_start);
           const finalSlot = unitSlots[unitSlots.length - 1];
           const nextLesson = context.lessonSlots
             .filter((slot: any) => slot.slot_order > finalSlot.slot_order)
@@ -1151,10 +1149,10 @@ export default function TimetableGenerate() {
           const later = nextLesson
             ? context.classSubjectBySlot.get(`${context.cls.id}-${day}-${nextLesson.id}`)
             : undefined;
-          if (startsInMorning && (
+          if (
             violatesMathScienceSequence(context.subjectName, earlier)
             || violatesMathScienceSequence(context.subjectName, later)
-          )) return false;
+          ) return false;
           return true;
         };
 
