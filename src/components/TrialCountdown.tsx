@@ -225,58 +225,23 @@ export const TrialCountdown: React.FC = () => {
                   <div className={`text-xs ${subTextColor} space-y-1`}>
                     <p>Trial started: {new Date(trialStatus.trialData.trialStartDate).toLocaleDateString()}</p>
                     <p>Trial ends: {new Date(trialStatus.trialData.trialEndDate).toLocaleDateString()}</p>
-                    <p>Price: KES {pricePerLearner} per learner per term or KES {annualFee} per learner annually.</p>
-                    <p className="font-semibold">Annual payment saves KES {annualSavings} per learner compared with three terms.</p>
-                    <button
-                      onClick={() => setShowPayment(true)}
-                      className="mt-2 text-xs font-medium underline"
-                    >
-                      Subscribe early to avoid interruption
-                    </button>
+                    <p>Five subscription options are available below, including full access, results-only, timetabler-only, and generator-only plans.</p>
+                    <button onClick={() => setShowPayment(true)} className="mt-2 text-xs font-medium underline">View subscription plans</button>
                   </div>
                 </div>
               ) : (
                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
-                  <p className="text-xs font-semibold text-gray-700">Choose your payment period</p>
+                  <p className="text-xs font-semibold text-gray-700">Choose your subscription plan</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
-                    <button
-                      type="button"
-                      onClick={() => setBillingPeriod('term')}
-                      className={`rounded-lg border-2 p-3 transition-colors ${billingPeriod === 'term' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}
-                    >
-                      <span className="block text-xs font-bold text-gray-900">Pay per term</span>
-                      <span className="block text-[11px] text-gray-600">KES {pricePerLearner.toLocaleString()} per learner</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBillingPeriod('annual')}
-                      className={`rounded-lg border-2 p-3 transition-colors ${billingPeriod === 'annual' ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}`}
-                    >
-                      <span className="block text-xs font-bold text-gray-900">Pay annually</span>
-                      <span className="block text-[11px] text-gray-600">KES {annualFee.toLocaleString()} per learner per year</span>
-                      <span className="block text-[10px] font-semibold text-green-700 mt-1">Save KES {annualSavings} per learner</span>
-                    </button>
+                    {SUBSCRIPTION_PLANS.map((plan) => {
+                      const isSelected = selectedPlan.id === plan.id;
+                      const amount = plan.unit === 'learner' ? learnersCount * plan.price : plan.price;
+                      return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {plan.price.toLocaleString()}/{plan.unit}/term</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
+                    })}
                   </div>
-                  <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3">
-                    <span>Selected: {billingPeriod === 'annual' ? 'Annual' : 'Termly'}</span>
-                    <span className="font-bold text-gray-900">KES {(learnersCount * selectedFee).toLocaleString()}</span>
-                  </div>
-                  <PaystackButton
-                    learnersCount={learnersCount}
-                    feePerLearner={selectedFee}
-                    billingPeriod={billingPeriod}
-                    onSuccess={() => {
-                      setShowPayment(false);
-                      setExpanded(false);
-                    }}
-                    onClose={() => setShowPayment(false)}
-                  />
-                  <button
-                    onClick={() => setShowPayment(false)}
-                    className="w-full mt-2 text-[10px] text-gray-500 hover:text-gray-700"
-                  >
-                    Cancel
-                  </button>
+                  <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3"><span>Selected: {selectedPlan.name}</span><span className="font-bold text-gray-900">KES {selectedPlanAmount.toLocaleString()}</span></div>
+                  <PaystackButton learnersCount={learnersCount} feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined} fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined} subscriptionPlan={selectedPlan.id} billingPeriod={selectedPlan.unit === 'school' ? 'school-term' : 'term'} onSuccess={() => { setShowPayment(false); setExpanded(false); }} onClose={() => setShowPayment(false)} />
+                  <button onClick={() => setShowPayment(false)} className="w-full mt-2 text-[10px] text-gray-500 hover:text-gray-700">Cancel</button>
                 </div>
               )}
             </div>
