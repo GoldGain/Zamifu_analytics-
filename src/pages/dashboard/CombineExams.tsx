@@ -35,7 +35,7 @@ export default function CombineExams() {
       setLoading(true);
       const [{ data: classData, error: classError }, { data: termData, error: termError }, { data: examData, error: examError }] = await Promise.all([
         supabaseUntyped.from('classes').select('id, name, stream, level, grade_level').eq('school_id', user.schoolId).eq('is_active', true).order('level').order('name'),
-        supabaseUntyped.from('terms').select('id, name, academic_year, term_number').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('term_number'),
+        supabaseUntyped.from('terms').select('id, name, academic_year, start_date, end_date').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('start_date'),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, created_at').eq('school_id', user.schoolId).eq('is_active', true).order('created_at', { ascending: false }),
       ]);
       if (classError || termError || examError) toast.error('Could not load exam-combination data.');
