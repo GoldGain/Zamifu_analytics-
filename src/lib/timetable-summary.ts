@@ -38,8 +38,10 @@ export interface WeeklyLessonSummaryRow {
 /**
  * Count real subject cells in the generated five-day timetable and compare the
  * result with each class/subject's configured lessons_per_week requirement.
- * Activities, breaks, lunch, and empty cells are intentionally excluded. A
- * subject appearing twice in one cell is counted once for that cell.
+ * Activities, breaks, and lunch are intentionally excluded. A subject appearing
+ * twice in one cell is counted once for that cell. Status is evaluated per class
+ * before the aggregate row is rendered, so one class cannot hide another
+ * class’s shortfall by having extra lessons.
  */
 export function buildWeeklyLessonSummary(
   classes: TimetableSummaryClass[],
@@ -105,15 +107,21 @@ export function buildWeeklyLessonSummary(
   }
 
   return Array.from(rows.entries())
-    .map(([key, row]) => ({
-      key,
-      ...row,
-      status: row.totalLessons === row.requiredLessons
-        ? 'ok'
-        : row.totalLessons < row.requiredLessons
-          ? 'under'
-          : 'over',
-    }))
+    .map(([key, row]) => {
+      const hasUnder = classes.some((cls) =>
+        (row.perClass[cls.id] || 0) < (row.requiredPerClass[cls.id] || 0)
+      );
+      const hasOver = classes.some((cls) =>
+        (row.perClass[cls.id] || 0) > (row.requiredPerClass[cls.id] || 0)
+      );
+      return {
+        key,
+        ...row,
+        // Under takes precedence when a row contains both a shortfall and an
+        // overage across classes; the per-class columns expose both numbers.
+        status: hasUnder ? 'under' : hasOver ? 'over' : 'ok',
+      };
+    })
     .filter((row) => row.requiredLessons > 0 || row.totalLessons > 0)
     .sort((a, b) => a.label.localeCompare(b.label));
 }

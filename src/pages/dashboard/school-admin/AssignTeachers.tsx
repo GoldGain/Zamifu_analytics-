@@ -2,10 +2,20 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Trash2, AlertCircle, CheckCircle, Users, BookOpen, Calendar, Save } from 'lucide-react';
-import { getDefaultPriorityBand } from '@/lib/timetable-generator';
-
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-type PriorityBand = 'auto' | 'none' | 'morning' | 'mid_morning' | 'afternoon';
+type PriorityBand = 'auto' | 'none' | 'early_morning' | 'mid_morning' | 'late_morning' | 'afternoon';
+
+const normalizePriorityBand = (value: unknown, isPriority = false): PriorityBand => {
+  const raw = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (raw === 'morning' || raw === 'early' || raw === 'early_morning') return 'early_morning';
+  if (raw === 'mid' || raw === 'mid_morning') return 'mid_morning';
+  if (raw === 'late' || raw === 'late_morning') return 'late_morning';
+  if (raw === 'afternoon') return 'afternoon';
+  if (raw === 'none') return 'none';
+  if (raw === 'auto' || raw === 'automatic' || raw === 'default') return 'auto';
+  if (isPriority) return 'early_morning';
+  return 'auto';
+};
 
 interface TeacherAssignment {
   id: string;
@@ -139,11 +149,7 @@ export default function AssignTeachers() {
       subject_name: a.subjects?.name || '',
       lessons_per_week: a.lessons_per_week || 5,
       is_priority: a.is_priority || false,
-      priority_band: a.priority_band === 'early_morning'
-        ? 'morning'
-        : a.priority_band === 'late_morning'
-          ? 'mid_morning'
-          : (a.priority_band || (a.is_priority ? 'morning' : 'auto')),
+      priority_band: normalizePriorityBand(a.priority_band, a.is_priority === true),
 
       is_double_lesson: a.is_double_lesson === true,
       double_lesson_days: Array.isArray(a.double_lesson_days) && a.double_lesson_days.length > 0
@@ -426,13 +432,10 @@ export default function AssignTeachers() {
                   value={formData.subject_id}
                   onChange={(e) => {
                     const subjectId = e.target.value;
-                    const selectedSubject = subjects.find((subject) => subject.id === subjectId);
                     setFormData({
                       ...formData,
                       subject_id: subjectId,
-                      priority_band: formData.priority_band === 'none'
-                        ? getDefaultPriorityBand(selectedSubject?.name)
-                        : formData.priority_band,
+                      priority_band: formData.priority_band,
                     });
                   }}
                   required
@@ -464,11 +467,12 @@ export default function AssignTeachers() {
                 >
                   <option value="auto">Automatic subject default</option>
                   <option value="none">No fixed priority</option>
-                  <option value="morning">Morning Priority (Lessons 1–3)</option>
-                  <option value="mid_morning">Mid Morning Priority (Lessons 4–6)</option>
+                  <option value="early_morning">Early Morning Priority (Lessons 1–2)</option>
+                  <option value="mid_morning">Mid Morning Priority (Lessons 3–4)</option>
+                  <option value="late_morning">Late Morning Priority (Lessons 5–6)</option>
                   <option value="afternoon">Afternoon Priority (Lesson 7+)</option>
                 </select>
-                <p className="text-[11px] text-gray-500 mt-1">Automatic defaults place Maths in Lesson 1, English in Lesson 2, Integrated Science in Lessons 4–6, Agriculture and Pre-Technical Studies in Lessons 4–6, and humanities in Lesson 7 or later. You can change any assignment or choose No fixed priority.</p>
+                <p className="text-[11px] text-gray-500 mt-1">Automatic defaults place Mathematics in Lesson 1, English in Lesson 2, Integrated Science, Agriculture, and Pre-Technical Studies in Lessons 3–4, languages such as Kiswahili in Lessons 5–6, and humanities or Creative Arts in Lesson 7 or later. You can change any assignment or choose No fixed priority.</p>
               </div>
 
               <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-3 text-sm text-purple-900">
@@ -628,8 +632,9 @@ export default function AssignTeachers() {
                             >
                               <option value="auto">Automatic subject default</option>
                               <option value="none">No fixed priority</option>
-                              <option value="morning">Morning · L1–3</option>
-                              <option value="mid_morning">Mid Morning · L4–6</option>
+                              <option value="early_morning">Early Morning · L1–2</option>
+                              <option value="mid_morning">Mid Morning · L3–4</option>
+                              <option value="late_morning">Late Morning · L5–6</option>
                               <option value="afternoon">Afternoon · L7+</option>
                             </select>
                           </td>

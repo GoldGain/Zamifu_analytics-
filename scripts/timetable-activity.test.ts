@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { generateSlots, resolveLessonTargets } from '../src/lib/timetable-generator.ts';
+import {
+  generateSlots,
+  getDefaultPriorityBand,
+  getDefaultPriorityLesson,
+  resolveLessonTargets,
+} from '../src/lib/timetable-generator.ts';
 import {
   isPostLessonActivity,
   resolveActivityLessonSlot,
   timeIntervalsOverlap,
 } from '../src/lib/timetable-activity.ts';
+import { buildWeeklyLessonSummary } from '../src/lib/timetable-summary.ts';
 
 const juniorConfig = {
   lesson_duration: 40,
@@ -45,6 +51,47 @@ assert.equal(juniorSlots.find((slot) => slot.label === 'Lesson 1')?.start_time, 
 assert.equal(juniorSlots.find((slot) => slot.label === 'Lesson 1')?.end_time, '09:00');
 assert.equal(juniorSlots.find((slot) => slot.label === 'FIRST BREAK')?.start_time, '09:40');
 assert.equal(juniorSlots.find((slot) => slot.label === 'FIRST BREAK')?.end_time, '09:50');
+
+const lessonNumber = (label: string) => Number(label.match(/Lesson (\d+)/)?.[1]);
+const lessonsByBand = {
+  early_morning: juniorSlots.filter((slot) => slot.slot_type === 'lesson' && lessonNumber(slot.label) <= 2),
+  mid_morning: juniorSlots.filter((slot) => slot.slot_type === 'lesson' && lessonNumber(slot.label) >= 3 && lessonNumber(slot.label) <= 4),
+  late_morning: juniorSlots.filter((slot) => slot.slot_type === 'lesson' && lessonNumber(slot.label) >= 5 && lessonNumber(slot.label) <= 6),
+  afternoon: juniorSlots.filter((slot) => slot.slot_type === 'lesson' && lessonNumber(slot.label) >= 7),
+};
+assert.deepEqual(Object.fromEntries(Object.entries(lessonsByBand).map(([band, slots]) => [band, slots.length])), {
+  early_morning: 2,
+  mid_morning: 2,
+  late_morning: 2,
+  afternoon: 2,
+});
+assert.equal(getDefaultPriorityBand('Mathematics'), 'early_morning');
+assert.equal(getDefaultPriorityBand('English'), 'early_morning');
+assert.equal(getDefaultPriorityBand('Integrated Science'), 'mid_morning');
+assert.equal(getDefaultPriorityBand('Agriculture'), 'mid_morning');
+assert.equal(getDefaultPriorityBand('Kiswahili'), 'late_morning');
+assert.equal(getDefaultPriorityBand('Social Studies'), 'afternoon');
+assert.equal(getDefaultPriorityBand('Creative Arts'), 'afternoon');
+assert.equal(getDefaultPriorityLesson('Mathematics'), 1);
+assert.equal(getDefaultPriorityLesson('English'), 2);
+
+const summarySlots = juniorSlots.filter((slot) => slot.slot_type === 'lesson').map((slot, index) => ({
+  id: `summary-${index}`,
+  slot_type: slot.slot_type,
+}));
+const summary = buildWeeklyLessonSummary(
+  [{ id: 'class-a' }, { id: 'class-b' }],
+  summarySlots,
+  (day, classId, slot) => day === 1 && classId === 'class-a' && slot.id === 'summary-0'
+    ? [{ subject_id: 'math', subject_name: 'Mathematics' }, { subject_id: 'math', subject_name: 'Mathematics' }]
+    : [],
+  [
+    { class_id: 'class-a', subject_id: 'math', subject_name: 'Mathematics', lessons_per_week: 1 },
+    { class_id: 'class-b', subject_id: 'math', subject_name: 'Mathematics', lessons_per_week: 1 },
+  ],
+);
+assert.equal(summary[0]?.totalLessons, 1, 'a duplicated subject in one cell must count once');
+assert.equal(summary[0]?.status, 'under', 'a per-class shortfall must remain under');
 
 const legacyPpi = {
   activity_name: 'PPI',

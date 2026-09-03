@@ -133,7 +133,7 @@ export function getLessonCountForLevel(level: string, override?: number | null):
   return 8;
 }
 
-export type TimetablePriorityBand = 'auto' | 'none' | 'morning' | 'mid_morning' | 'afternoon';
+export type TimetablePriorityBand = 'auto' | 'none' | 'early_morning' | 'mid_morning' | 'late_morning' | 'afternoon';
 
 /** Return true when two adjacent lesson subjects violate the Math/Science rule. */
 export function violatesMathScienceSequence(
@@ -153,12 +153,17 @@ export function violatesMathScienceSequence(
  * Default subject placement policy used when an administrator creates an
  * assignment and has not yet selected a custom band. These are preferences,
  * not hard overrides: an explicit assignment priority remains authoritative.
+ *
+ * The canonical four windows are deliberately aligned with the school-day
+ * lesson numbers: Early Morning (L1–2), Mid Morning (L3–4), Late Morning
+ * (L5–6), and Afternoon (L7+).
  */
 export function getDefaultPriorityBand(subjectName: string | null | undefined): TimetablePriorityBand {
   const name = String(subjectName || '').trim().toLowerCase();
-  if (/mathemat/.test(name) || /\benglish\b/.test(name)) return 'morning';
+  if (/mathemat/.test(name) || /\benglish\b/.test(name)) return 'early_morning';
   if (/integrated\s*science|\bscience\b/.test(name)) return 'mid_morning';
   if (/agricultur|pre[\s-]*technical|pre[\s-]*tech/.test(name)) return 'mid_morning';
+  if (/kiswahili|\blanguage(?:s)?\b|french|german|arabic/.test(name)) return 'late_morning';
   if (/social\s*stud|religious|\bcre\b|christian|islamic|creative\s*arts?/.test(name)) return 'afternoon';
   return 'none';
 }

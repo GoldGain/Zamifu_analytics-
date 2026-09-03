@@ -89,21 +89,24 @@ const isEnabledFlag = (value: unknown): boolean =>
 
 const normalizePriorityBand = (value: unknown, isPriority = false, subjectName?: string): string => {
   const raw = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-  // The database contains legacy four-window values. Canonicalize them to the
-  // current three-window contract: Morning L1–3, Mid Morning L4–6, Afternoon L7+.
+  // Canonical four-window contract: Early Morning L1–2, Mid Morning L3–4,
+  // Late Morning L5–6, and Afternoon L7+. Keep legacy aliases readable.
   if (raw === 'auto' || raw === 'automatic' || raw === 'default') return getDefaultPriorityBand(subjectName);
-  if (raw === 'morning' || raw === 'early' || raw === 'early_morning') return 'morning';
-  if (raw === 'mid' || raw === 'mid_morning' || raw === 'late' || raw === 'late_morning') return 'mid_morning';
+  if (raw === 'morning' || raw === 'early' || raw === 'early_morning') return 'early_morning';
+  if (raw === 'mid' || raw === 'mid_morning') return 'mid_morning';
+  if (raw === 'late' || raw === 'late_morning') return 'late_morning';
   if (raw === 'afternoon') return 'afternoon';
-  if (isPriority) return 'morning';
+  if (isPriority) return 'early_morning';
   // Null/undefined values predate the priority-band column. Apply the subject
   // default only for those legacy rows; an explicit "none" remains unprioritized.
   return value == null ? getDefaultPriorityBand(subjectName) : 'none';
 };
 
 const priorityBandLabel = (band: string): string => ({
-  morning: 'Morning (Lessons 1–3)',
-  mid_morning: 'Mid Morning (Lessons 4–6)',
+  early_morning: 'Early Morning (Lessons 1–2)',
+  morning: 'Early Morning (Lessons 1–2)',
+  mid_morning: 'Mid Morning (Lessons 3–4)',
+  late_morning: 'Late Morning (Lessons 5–6)',
   afternoon: 'Afternoon (Lesson 7+)',
   auto: 'Automatic subject default',
   none: 'No fixed priority',
@@ -423,6 +426,7 @@ export default function TimetableGenerate() {
         classKeys: string[];
         teacherKeys: string[];
         entries: any[];
+        subjectDayKey: string;
       };
       const assignmentContexts = new Map<string, AssignmentPlacementContext>();
       const placementRecords: LessonPlacementRecord[] = [];
@@ -593,13 +597,23 @@ export default function TimetableGenerate() {
           return Number.isFinite(parsed) ? parsed : lessonSlots.indexOf(slot) + 1;
         };
         const prioritySlots = {
-          // Current contract: Morning L1–3, Mid Morning L4–6, Afternoon L7+.
-          morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 3),
-          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 4 && lessonNumberOf(slot) <= 6),
+          // Correct four-priority contract: Early Morning L1–2, Mid Morning
+          // L3–4, Late Morning L5–6, and Afternoon L7+.
+          early_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 2),
+          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 3 && lessonNumberOf(slot) <= 4),
+          late_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 5 && lessonNumberOf(slot) <= 6),
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
         const classSubjectBySlot = new Map<string, string>();
+        const subjectDayUsage = new Map<string, number>();
+        const subjectDemandByClass = new Map<string, number>();
         const classesInLevel = new Set(classesToProcess.map((classItem: any) => String(classItem.id)));
+        assignments
+          .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+          .forEach((assignment: any) => {
+            const key = `${assignment.class_id}:${assignment.subject_id}`;
+            subjectDemandByClass.set(key, (subjectDemandByClass.get(key) || 0) + Math.max(0, Number(assignment.lessons_per_week || 0)));
+          });
 
         // A priority band is a preferred placement window, not extra capacity.
         // Report impossible demand before allocation so a shared teacher conflict
@@ -608,8 +622,9 @@ export default function TimetableGenerate() {
         // consumes two consecutive cells even though it is one atomic unit.
         const priorityCapacityWarnings: string[] = [];
         const priorityCapacityByBand: Record<string, number> = {
-          morning: prioritySlots.morning.length * TIMETABLE_DAYS.length,
+          early_morning: prioritySlots.early_morning.length * TIMETABLE_DAYS.length,
           mid_morning: prioritySlots.mid_morning.length * TIMETABLE_DAYS.length,
+          late_morning: prioritySlots.late_morning.length * TIMETABLE_DAYS.length,
           afternoon: prioritySlots.afternoon.length * TIMETABLE_DAYS.length,
         };
         const classesByTeacherBand = new Map<string, number>();
@@ -662,13 +677,15 @@ export default function TimetableGenerate() {
             isEnabledFlag(assignment.is_priority),
             String(assignment.subjects?.name || ''),
           );
-          const assignmentPreferredSlots = assignmentBand === 'morning'
-            ? prioritySlots.morning
+          const assignmentPreferredSlots = assignmentBand === 'early_morning'
+            ? prioritySlots.early_morning
             : assignmentBand === 'mid_morning'
               ? prioritySlots.mid_morning
-              : assignmentBand === 'afternoon'
-                ? prioritySlots.afternoon
-                : lessonSlots;
+              : assignmentBand === 'late_morning'
+                ? prioritySlots.late_morning
+                : assignmentBand === 'afternoon'
+                  ? prioritySlots.afternoon
+                  : lessonSlots;
           const reservationSlots = assignmentPreferredSlots.length > 0 ? assignmentPreferredSlots : lessonSlots;
           const assignmentAvailableDays = normalizeDayNames(assignment.available_days);
           const assignmentDoubleDays = normalizeDayNames(assignment.double_lesson_days)
@@ -805,7 +822,7 @@ export default function TimetableGenerate() {
               const bName = String(b.subjects?.name || '').toLowerCase();
               const aBand = normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority), aName);
               const bBand = normalizePriorityBand(b.priority_band, isEnabledFlag(b.is_priority), bName);
-              const bandOrder: Record<string, number> = { morning: 0, mid_morning: 1, afternoon: 2, none: 3 };
+              const bandOrder: Record<string, number> = { early_morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
               const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
               const aSciencePriority = Boolean(aBand === 'mid_morning' && /integrated\s*science/.test(aName));
               const bSciencePriority = Boolean(bBand === 'mid_morning' && /integrated\s*science/.test(bName));
@@ -844,21 +861,27 @@ export default function TimetableGenerate() {
               isEnabledFlag(assignment.is_priority),
               subjectName,
             );
-            const preferredBandSlots = priorityBand === 'morning'
-              ? prioritySlots.morning
+            const preferredBandSlots = priorityBand === 'early_morning'
+              ? prioritySlots.early_morning
               : priorityBand === 'mid_morning'
                 ? prioritySlots.mid_morning
-                : priorityBand === 'afternoon'
-                  ? prioritySlots.afternoon
-                  : lessonSlots;
-            const defaultAnchor = priorityBand === 'morning'
-              ? getDefaultPriorityLesson(subjectName)
-              : null;
+                : priorityBand === 'late_morning'
+                  ? prioritySlots.late_morning
+                  : priorityBand === 'afternoon'
+                    ? prioritySlots.afternoon
+                    : lessonSlots;
+            // Mathematics and English are hard subject anchors regardless of
+            // whether the administrator chose Automatic or No fixed priority.
+            const defaultAnchor = getDefaultPriorityLesson(subjectName);
             const preferredLessonSlots = defaultAnchor
               ? preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) === defaultAnchor)
               : preferredBandSlots;
-            const candidateLessonSlots = preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots;
             const hasExplicitPriority = priorityBand !== 'none';
+            // An explicit band with zero slots is a real configuration
+            // conflict, not permission to spill into another band.
+            const candidateLessonSlots = preferredLessonSlots.length > 0 || !hasExplicitPriority
+              ? (preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots)
+              : [];
             let scheduled = 0;
 
             // A double lesson is an atomic unit. We validate the whole pair before
@@ -877,6 +900,13 @@ export default function TimetableGenerate() {
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
               if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${assignment.teacher_id}-${day}-${startSlot.id}`)) return 0;
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
+              const subjectDayKey = `${cls.id}-${day}-${assignment.subject_id}`;
+              const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
+              const subjectWeeklyDemand = subjectDemandByClass.get(`${cls.id}:${assignment.subject_id}`) || lessonsToSchedule;
+              // A subject may appear once per day by default. A configured
+              // double is the only normal two-cell exception; high-frequency
+              // subjects (>5 lessons/week) may reuse a weekday when necessary.
+              if (subjectAlreadyUsedToday && (unitSize === 2 || subjectWeeklyDemand <= 5)) return 0;
               const timings = unitSlots.map((slot: any) =>
                 daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
               );
@@ -933,13 +963,15 @@ export default function TimetableGenerate() {
                 classKeys: keys.map(({ classKey }) => classKey),
                 teacherKeys: keys.map(({ teacherKey }) => teacherKey),
                 entries: allEntries.slice(-unitSlots.length),
+                subjectDayKey,
               });
+              subjectDayUsage.set(subjectDayKey, (subjectDayUsage.get(subjectDayKey) || 0) + unitSize);
               placementContext.dayUsage.set(day, (placementContext.dayUsage.get(day) || 0) + 1);
               return unitSize;
             };
 
             const rotation = stableRotation(`${levelKey}:${cls.id}:${assignment.subject_id}:${assignment.teacher_id}`);
-            const preferredSlotIds = new Set(preferredLessonSlots.map((preferred: any) => String(preferred.id)));
+            const preferredSlotIds = new Set<string>(preferredLessonSlots.map((preferred: any) => String(preferred.id)));
             const placementContext: AssignmentPlacementContext = {
               assignmentKey: `${levelKey}:${cls.id}:${assignment.subject_id}:${assignment.teacher_id}`,
               assignment,
@@ -1023,12 +1055,13 @@ export default function TimetableGenerate() {
             // teacher/class conflicts, fill remaining units in other slots
             // rather than silently dropping the subject.
             if (scheduled < lessonsToSchedule) {
-              // Explicit priority is a hard placement window. Retry within the
-              // selected band across available days, but never move a subject
-              // into another band during fallback.
+              // Explicit priority and the two core subject anchors are hard
+              // placement windows. Retry within the selected cells, but never
+              // move them into another band or lesson number during fallback.
+              const hasHardPlacement = hasExplicitPriority || defaultAnchor !== null;
               schedulePass(
-                hasExplicitPriority ? candidateLessonSlots : lessonSlots,
-                hasExplicitPriority ? false : true,
+                hasHardPlacement ? candidateLessonSlots : lessonSlots,
+                hasHardPlacement ? false : true,
                 (rotation + 2) % 5,
                 true,
               );
@@ -1062,6 +1095,9 @@ export default function TimetableGenerate() {
             classBusy.delete(key);
             placement.context.classSubjectBySlot.delete(key);
           });
+          const subjectDayCount = (subjectDayUsage.get(placement.subjectDayKey) || 0) - placement.unitSize;
+          if (subjectDayCount > 0) subjectDayUsage.set(placement.subjectDayKey, subjectDayCount);
+          else subjectDayUsage.delete(placement.subjectDayKey);
           const recordIndex = placementRecords.indexOf(placement);
           if (recordIndex >= 0) placementRecords.splice(recordIndex, 1);
         };
@@ -1080,6 +1116,10 @@ export default function TimetableGenerate() {
         ) => {
           const unitSlots = getUnitSlots(context, startSlot, unitSize);
           if (!unitSlots) return false;
+          const subjectDayKey = `${context.cls.id}-${day}-${context.assignment.subject_id}`;
+          const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
+          const subjectWeeklyDemand = subjectDemandByClass.get(`${context.cls.id}:${context.assignment.subject_id}`) || context.lessonsPerWeek;
+          if (subjectAlreadyUsedToday && (unitSize === 2 || subjectWeeklyDemand <= 5)) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
@@ -1144,46 +1184,28 @@ export default function TimetableGenerate() {
           });
           const classKeys = unitSlots.map((slot: any) => `${context.cls.id}-${day}-${slot.id}`);
           const teacherKeys = unitSlots.map((slot: any) => `${context.assignment.teacher_id}-${day}-${slot.id}`);
+          const subjectDayKey = `${context.cls.id}-${day}-${context.assignment.subject_id}`;
           allEntries.push(...entries);
           teacherKeys.forEach((key) => teacherBusy.add(key));
           classKeys.forEach((key) => {
             classBusy.add(key);
             context.classSubjectBySlot.set(key, context.subjectName);
           });
+          subjectDayUsage.set(subjectDayKey, (subjectDayUsage.get(subjectDayKey) || 0) + unitSize);
           context.dayUsage.set(day, (context.dayUsage.get(day) || 0) + 1);
-          const placement = { context, unitSize, day, slots: unitSlots, classKeys, teacherKeys, entries };
+          const placement = { context, unitSize, day, slots: unitSlots, classKeys, teacherKeys, entries, subjectDayKey };
           placementRecords.push(placement);
           return placement;
         };
 
         const orderedRepairSlots = (context: AssignmentPlacementContext) => {
-          const preferredIds = new Set(context.preferredLessonSlots.map((slot: any) => String(slot.id)));
           const preferred = context.preferredLessonSlots;
-          // CRE and other explicitly Afternoon assignments must never be
-          // repaired into morning slots. Integrated Science is the special
-          // mid-morning practical case: keep it before lunch when its preferred
-          // cells are blocked by the same teacher serving another class.
-          if (context.priorityBand === 'afternoon') return preferred;
-          if (context.isScience && context.priorityBand === 'mid_morning') {
-            const otherPreLunch = context.lessonSlots.filter((slot: any) => {
-              const number = lessonNumberOf(slot);
-              return number >= 1 && number <= 6 && !preferredIds.has(String(slot.id));
-            });
-            return [...preferred, ...otherPreLunch];
-          }
           // Every explicit priority band is authoritative during repair. A
           // conflict must remain visible as an under-scheduled warning rather
-          // than silently moving Kiswahili, Agriculture, Social Studies, or
-          // another prioritized subject into the wrong lesson window.
-          // Explicit Mid Morning and Afternoon priorities remain authoritative.
-          // Morning subjects may use a lower-priority lesson only when their
-          // preferred cells are exhausted; this preserves the Lesson 1/2 core
-          // anchors while preventing silent loss of their configured lessons.
-          if (context.priorityBand === 'morning') {
-            const nonPreferred = context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
-            return [...preferred, ...nonPreferred];
-          }
-          if (context.priorityBand !== 'none') return preferred;
+          // than silently moving a prioritized subject into the wrong window.
+          // Early Morning is also hard, except that a subject’s exact default
+          // anchor (Maths L1 or English L2) remains first in the search order.
+          if (context.priorityBand !== 'none' || getDefaultPriorityLesson(context.subjectName) !== null) return preferred;
           // For assignments without a priority band, preferredLessonSlots is
           // already the complete lesson-slot list, so all lesson slots remain
           // eligible during repair.
@@ -1280,6 +1302,7 @@ export default function TimetableGenerate() {
             classBusy.add(key);
             placement.context.classSubjectBySlot.set(key, placement.context.subjectName);
           });
+          subjectDayUsage.set(placement.subjectDayKey, (subjectDayUsage.get(placement.subjectDayKey) || 0) + placement.unitSize);
           placement.context.dayUsage.set(placement.day, (placement.context.dayUsage.get(placement.day) || 0) + 1);
           placementRecords.push(placement);
         };
