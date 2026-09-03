@@ -74,6 +74,8 @@ export default function SchoolAdminStudents() {
   // Edit state
   const [editingStudent, setEditingStudent] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({
+    admission_number: '',
+    assessment_number: '',
     first_name: '',
     middle_name: '',
     last_name: '',
@@ -251,6 +253,8 @@ export default function SchoolAdminStudents() {
   const openEdit = (s: any) => {
     setEditingStudent(s);
     setEditForm({
+      admission_number: s.admission_number || '',
+      assessment_number: s.assessment_number || '',
       first_name: s.first_name || '',
       middle_name: s.middle_name || '',
       last_name: s.last_name || '',
@@ -279,6 +283,8 @@ export default function SchoolAdminStudents() {
     setSaving(true);
     try {
       const { error } = await supabaseUntyped.from('students').update({
+        admission_number: editForm.admission_number.trim() || null,
+        assessment_number: editForm.assessment_number.trim() || null,
         first_name: editForm.first_name.trim(),
         middle_name: editForm.middle_name.trim() || null,
         last_name: editForm.last_name.trim(),
@@ -883,7 +889,8 @@ export default function SchoolAdminStudents() {
       {/* Edit Learner Modal */}
       {editingStudent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-lg my-4">
+                      <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-lg my-4 max-h-[calc(100vh-2rem)] overflow-y-auto overscroll-contain">
+
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">Edit Learner</h2>
               <button onClick={() => setEditingStudent(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
@@ -892,6 +899,8 @@ export default function SchoolAdminStudents() {
             <form onSubmit={handleSaveEdit}>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Basic Information</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div><label className={labelCls}>Admission Number</label><input value={editForm.admission_number} onChange={e => setEditForm({...editForm, admission_number: e.target.value})} className={inputCls} /></div>
+                <div><label className={labelCls}>Assessment Number</label><input value={editForm.assessment_number} onChange={e => setEditForm({...editForm, assessment_number: e.target.value})} className={inputCls} /></div>
                 <div><label className={labelCls}>First Name *</label><input value={editForm.first_name} onChange={e => setEditForm({...editForm, first_name: e.target.value})} className={inputCls} required /></div>
                 <div><label className={labelCls}>Middle Name</label><input value={editForm.middle_name} onChange={e => setEditForm({...editForm, middle_name: e.target.value})} className={inputCls} /></div>
                 <div><label className={labelCls}>Last Name *</label><input value={editForm.last_name} onChange={e => setEditForm({...editForm, last_name: e.target.value})} className={inputCls} required /></div>

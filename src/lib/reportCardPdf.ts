@@ -768,8 +768,8 @@ export function drawStudentInfo(
   const fs = COMPACT_MODE ? 8 : 9;
   doc.setTextColor(0, 0, 0); doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
   doc.text(`Learner: ${studentName}`, 14, y);
-  doc.text(`Adm No: ${admissionNo || 'N/A'}`, 14, y + ROW);
-  doc.text(`Assessment No: ${assessmentNumber || 'N/A'}`, 14, y + ROW * 2);
+  doc.text(`Admission Number: ${admissionNo || 'N/A'}`, 14, y + ROW);
+  doc.text(`Assessment Number: ${assessmentNumber || 'N/A'}`, 14, y + ROW * 2);
   doc.text(`Class: ${className}`, 14, y + ROW * 3);
   doc.text(`Term: ${termName} ${academicYear}`, 120, y);
   if (assessmentName) {
