@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
 import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users } from 'lucide-react';
+import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
@@ -32,6 +33,12 @@ import {
   type SignatureInfo,
   type PerformanceTrendRecord,
 } from '@/lib/reportCardPdf';
+import {
+  configurePdfFontSize,
+  DEFAULT_PDF_FONT_SIZE,
+  type PdfFontSize,
+  pdfFontSize,
+} from '@/lib/pdfFontSize';
 
 function sortSubjects(subjects: string[]) {
   return [...subjects].sort((a, b) => {
@@ -115,6 +122,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [bestPerSubjectList, setBestPerSubjectList] = useState<BestInSubject[]>([]);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({ name: '' });
   const [principalSignatureUrl, setPrincipalSignatureUrl] = useState<string | null>(null);
+  const [pendingPdfDownload, setPendingPdfDownload] = useState<{
+    target: 'class-results' | 'bulk-report-cards' | 'report-card';
+    student?: any;
+  } | null>(null);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -412,7 +423,26 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return names.length === 1 ? (names[0] as string) : '';
   };
 
-  const downloadClassResultsPDF = async () => {
+  const openPdfFontSizeDialog = (target: 'class-results' | 'bulk-report-cards' | 'report-card', student?: any) => {
+    if (generatingPDF || generatingBulk) return;
+    setPendingPdfDownload({ target, student });
+  };
+
+  const closePdfFontSizeDialog = () => setPendingPdfDownload(null);
+
+  const confirmPdfFontSize = async (fontSize: PdfFontSize) => {
+    const request = pendingPdfDownload;
+    if (!request) return;
+    try {
+      if (request.target === 'class-results') await downloadClassResultsPDF(fontSize);
+      else if (request.target === 'bulk-report-cards') await downloadBulkReportCards(fontSize);
+      else if (request.student) await downloadSingleReportCard(request.student, fontSize);
+    } finally {
+      setPendingPdfDownload(null);
+    }
+  };
+
+  const downloadClassResultsPDF = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
     if (!(scope === 'class_teacher' ? scopedClassId : selectedClass) || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingPDF(true);
     try {
@@ -459,17 +489,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       }
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      configurePdfFontSize(doc, fontSize);
       const displaySchoolName = schoolInfo.name || schoolName || 'School';
 
       // ── PAGE 1: CLASS SUMMARY ────────────────────────────────────────────────────
       {
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 35, 'F');
         const logoAdded = schoolInfo.logo_url ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26) : false;
-        doc.setTextColor(26, 35, 126); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+        doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 16)); doc.setFont('helvetica', 'bold');
         doc.text(displaySchoolName, logoAdded ? 40 : 105, 13, { align: logoAdded ? 'left' : 'center' });
-        doc.setFontSize(11);
+        doc.setFontSize(pdfFontSize(doc, 11));
         doc.text('CLASS RESULTS SUMMARY', logoAdded ? 40 : 105, 22, { align: logoAdded ? 'left' : 'center' });
-        doc.setFontSize(9);
+        doc.setFontSize(pdfFontSize(doc, 9));
         const summarySubtitle = assessmentLabel
           ? `${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''} — ${assessmentLabel}`
           : `${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`;
@@ -494,7 +525,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const classMeanMarksOutOf = numSubjects * 100;
 
         doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 68, 'F');
-        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.setFontSize(pdfFontSize(doc, 8.5)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
         doc.text(`Boys: ${boys}`, 72, statsY + 8);
         doc.text(`Girls: ${girls}`, 108, statsY + 8);
@@ -510,8 +541,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         }
 
         const gradeDistY = statsY + 75;
-        doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
-        doc.text('PERFORMANCE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.setFontSize(pdfFontSize(doc, 11)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
+        doc.text('PERFORMANCE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
 
         const grades = isPrimary ? [
           { label: 'EE (Exceeding)', min: 75, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 41, color: [33, 150, 243] },
@@ -546,8 +577,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         }
 
         const top5Y = gradeDistY + (isPrimary ? 52 : 72);
-        doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
-        doc.text('TOP 5 PERFORMERS', 14, top5Y); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
+        doc.text('TOP 5 PERFORMERS', 14, top5Y); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         summaries.slice(0, 5).forEach((s: any, i: number) => {
           const gr = overallGradeWithBand(s.avgPct, band);
           doc.text(`${i + 1}. ${s.student?.first_name} ${s.student?.last_name} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? gr.grade : gr.subLevel}${!isPrimary ? ` (${gr.points}pts)` : ''}`, 20, top5Y + 7 + i * 6);
@@ -555,11 +586,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         const bestSubjY = top5Y + 42;
         if (bestPerSubjectList.length > 0) {
-          doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
-          doc.text('BEST LEARNER PER LEARNING AREA', 14, bestSubjY); doc.setTextColor(0, 0, 0); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+          doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
+          doc.text('BEST LEARNER PER LEARNING AREA', 14, bestSubjY); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal');
           bestPerSubjectList.slice(0, 10).forEach((b, i) => { const pts = b.points !== null ? ` (${b.points} pts)` : ''; doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 20, bestSubjY + 8 + i * 6); });
         }
-        doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+        doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
@@ -567,31 +598,31 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       doc.addPage();
       {
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
-        doc.setTextColor(26, 35, 126); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(14);
+        doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 14)); doc.setFont('helvetica', 'bold');
+        doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(pdfFontSize(doc, 14));
         doc.text(assessmentLabel ? `LEARNING AREA PERFORMANCE ANALYSIS — ${assessmentLabel}` : 'LEARNING AREA PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
 
         const chartTop = 27;
         const chartRowHeight = 7;
         const chartLabelWidth = 30;
         const chartWidth = 52;
-        doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
+        doc.setFontSize(pdfFontSize(doc, 14)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
         doc.text(previousTerm ? 'CURRENT VS PREVIOUS ASSESSMENT' : 'LEARNING AREA PERFORMANCE', 14, chartTop);
-        doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
+        doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
         doc.text(`Current: ${assessmentLabel || termObj?.name || 'Selected assessment'}`, 14, chartTop + 6);
         if (previousTerm) doc.text(`Previous: ${previousTerm.name} ${previousTerm.academic_year || ''}`, 112, chartTop + 6);
         subjectStats.forEach((subject, index) => {
           const y = chartTop + 12 + index * chartRowHeight;
           const previous = previousSubjectStats.get(subject.name) ?? 0;
           const label = subject.name.length > 20 ? `${subject.name.slice(0, 19)}…` : subject.name;
-          doc.setFontSize(10); doc.setTextColor(0, 0, 0); doc.text(label, 14, y + 3);
+          doc.setFontSize(pdfFontSize(doc, 10)); doc.setTextColor(0, 0, 0); doc.text(label, 14, y + 3);
           doc.setFillColor(225, 230, 240); doc.rect(14 + chartLabelWidth, y, chartWidth, 3, 'F');
           doc.setFillColor(37, 99, 235); doc.rect(14 + chartLabelWidth, y, chartWidth * Math.min(100, subject.mean) / 100, 3, 'F');
           if (previousTerm) {
             doc.setFillColor(225, 230, 240); doc.rect(112 + chartLabelWidth, y, chartWidth, 3, 'F');
             doc.setFillColor(106, 27, 154); doc.rect(112 + chartLabelWidth, y, chartWidth * Math.min(100, previous) / 100, 3, 'F');
           }
-          doc.setFontSize(9); doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 14 + chartLabelWidth + chartWidth + 2, y + 3);
+          doc.setFontSize(pdfFontSize(doc, 9)); doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 14 + chartLabelWidth + chartWidth + 2, y + 3);
           if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(`${previous.toFixed(1)}%`, 112 + chartLabelWidth + chartWidth + 2, y + 3); }
         });
 
@@ -606,8 +637,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           return [String(i + 1), displayName, `${s.mean.toFixed(1)}%`, gr, status];
         });
 
-        autoTable(doc, { startY: Math.min(150, chartTop + 20 + subjectStats.length * chartRowHeight), head: [['Rank', 'Learning Area', 'Average', 'Grade', 'Status']], body: subRows, styles: { fontSize: 14, cellPadding: 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 14, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] } });
-        doc.setFontSize(14); doc.setTextColor(150, 150, 150);
+        autoTable(doc, { startY: Math.min(150, chartTop + 20 + subjectStats.length * chartRowHeight), head: [['Rank', 'Learning Area', 'Average', 'Grade', 'Status']], body: subRows, styles: { fontSize: pdfFontSize(doc, 14), cellPadding: 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 14), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] } });
+        doc.setFontSize(pdfFontSize(doc, 14)); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
@@ -619,8 +650,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const pageHeight = doc.internal.pageSize.getHeight();
         const centerX = pageWidth / 2;
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, pageWidth, 20, 'F');
-        doc.setTextColor(26, 35, 126); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text(displaySchoolName, centerX, 8, { align: 'center' }); doc.setFontSize(10);
+        doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 14)); doc.setFont('helvetica', 'bold');
+        doc.text(displaySchoolName, centerX, 8, { align: 'center' }); doc.setFontSize(pdfFontSize(doc, 10));
         const tableSubtitle = assessmentLabel
           ? `LEARNER RESULTS TABLE — ${classObj?.name || ''} — ${termObj?.name || ''} ${termObj?.academic_year || ''} — ${assessmentLabel}`
           : `LEARNER RESULTS TABLE — ${classObj?.name || ''} — ${termObj?.name || ''} ${termObj?.academic_year || ''}`;
@@ -648,14 +679,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           head: [tableHeaders],
           body: tableRows,
           tableWidth: 'auto',
-          styles: { fontSize: 7, cellPadding: 1.5, overflow: 'linebreak', halign: 'center', valign: 'middle' },
-          headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 7, fontStyle: 'bold', halign: 'center' },
+          styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.5, overflow: 'linebreak', halign: 'center', valign: 'middle' },
+          headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold', halign: 'center' },
           alternateRowStyles: { fillColor: [232, 234, 246] },
           columnStyles: { 0: { cellWidth: 11 }, 1: { cellWidth: 38, halign: 'left' } },
           margin: { left: 10, right: 10 },
           showHead: 'everyPage',
         });
-        doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+        doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', centerX, pageHeight - 8, { align: 'center' });
       }
 
@@ -663,8 +694,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       doc.addPage('a4', 'portrait');
       {
         doc.setFillColor(37, 99, 235); doc.rect(0, 0, 210, 20, 'F');
-        doc.setTextColor(255, 255, 255); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(10);
+        doc.setTextColor(255, 255, 255); doc.setFontSize(pdfFontSize(doc, 14)); doc.setFont('helvetica', 'bold');
+        doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(pdfFontSize(doc, 10));
         doc.text('GENDER PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
 
         const maleSummaries = summaries.filter(s => s.gender === 'male');
@@ -684,7 +715,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         // Overview stats
         const gY = 28;
         doc.setFillColor(245, 247, 255); doc.rect(14, gY, 182, 28, 'F');
-        doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
+        doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         doc.text(`Total Learners: ${totalStudents}`, 20, gY + 8);
         doc.text(`Male: ${maleCount} (${totalStudents > 0 ? ((maleCount / totalStudents) * 100).toFixed(1) : 0}%)`, 75, gY + 8);
         doc.text(`Female: ${femaleCount} (${totalStudents > 0 ? ((femaleCount / totalStudents) * 100).toFixed(1) : 0}%)`, 130, gY + 8);
@@ -694,9 +725,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         // Visual comparison bar
         const barY = gY + 36;
-        doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+        doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold');
         doc.text('AVERAGE PERFORMANCE COMPARISON', 14, barY);
-        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal');
 
         if (maleCount > 0) {
           doc.setFillColor(37, 99, 235); doc.rect(14, barY + 8, 8, 8, 'F');
@@ -716,10 +747,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           const gap = Math.abs(maleAvg - femaleAvg);
           const leader = maleAvg >= femaleAvg ? 'Male' : 'Female';
           const gapY = barY + 55;
-          doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+          doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'bold');
           doc.setTextColor(gap > 10 ? 220 : gap > 5 ? 249 : 22, gap > 10 ? 38 : gap > 5 ? 115 : 163, gap > 10 ? 38 : gap > 5 ? 115 : 74);
           doc.text(`Gender Gap: ${gap.toFixed(1)}% — ${leader} learners lead by ${gap.toFixed(1)}%`, 14, gapY);
-          doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+          doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 8));
           if (gap > 10) doc.text('Significant gender gap detected. Consider targeted support for the lower-performing group.', 14, gapY + 7);
           else if (gap > 5) doc.text('Moderate gender gap. Monitor trends over subsequent terms.', 14, gapY + 7);
           else doc.text('Gender performance is well-balanced. Keep up the inclusive teaching approach!', 14, gapY + 7);
@@ -727,7 +758,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         // Per-learning-area gender breakdown table
         const subjGenderY = barY + (maleCount > 0 && femaleCount > 0 ? 72 : 55);
-        doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+        doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
         doc.text('LEARNING AREA-WISE GENDER BREAKDOWN', 14, subjGenderY);
 
         const genderSubjectRows = allSubjects.map(sub => {
@@ -749,8 +780,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           startY: subjGenderY + 6,
           head: [['Learning Area', 'Male Avg', 'Female Avg', 'Leader']],
           body: genderSubjectRows,
-          styles: { fontSize: 8, cellPadding: 2 },
-          headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: 8, fontStyle: 'bold' },
+          styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 },
+          headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
           alternateRowStyles: { fillColor: [245, 247, 255] },
           didParseCell: (data: any) => {
             if (data.section === 'body' && data.column.index === 3) {
@@ -766,7 +797,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         if (maleSummaries.length > 0) {
           const topMale = maleSummaries[0];
           const topMaleGr = overallGradeWithBand(topMale.avgPct, band);
-          doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(37, 99, 235);
+          doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'bold'); doc.setTextColor(37, 99, 235);
           doc.text('Top Male Learner:', 14, topGenderY);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
           doc.text(`${topMale.student?.first_name} ${topMale.student?.last_name} — ${topMale.avgPct.toFixed(1)}% — ${isPrimary ? (topMaleGr as any).grade : (topMaleGr as any).subLevel}`, 55, topGenderY);
@@ -774,16 +805,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         if (femaleSummaries.length > 0) {
           const topFemale = femaleSummaries[0];
           const topFemaleGr = overallGradeWithBand(topFemale.avgPct, band);
-          doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(236, 72, 153);
+          doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'bold'); doc.setTextColor(236, 72, 153);
           doc.text('Top Female Learner:', 14, topGenderY + 8);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
           doc.text(`${topFemale.student?.first_name} ${topFemale.student?.last_name} — ${topFemale.avgPct.toFixed(1)}% — ${isPrimary ? (topFemaleGr as any).grade : (topFemaleGr as any).subLevel}`, 55, topGenderY + 8);
         }
         if (unknownCount > 0) {
-          doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+          doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
           doc.text(`Note: ${unknownCount} learner(s) have no gender recorded and are excluded from gender analysis.`, 14, topGenderY + 20);
         }
-        doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+        doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
@@ -794,7 +825,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     setGeneratingPDF(false);
   };
 
-  const downloadSingleReportCard = async (s: any) => {
+  const downloadSingleReportCard = async (s: any, fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
     try {
       const classObj = classes.find(c => c.id === (scope === 'class_teacher' ? scopedClassId : selectedClass));
       const band = getSchoolLevelBand(classObj);
@@ -844,6 +875,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, summaries.length, isNew, classObj, allSubjectResults);
 
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      configurePdfFontSize(doc, fontSize);
       await drawReportHeader(doc, schoolInfo, {
         name: studentFullName,
         photoUrl: s.student?.photo_url,
@@ -885,7 +917,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     }
   };
 
-  const downloadBulkReportCards = async () => {
+  const downloadBulkReportCards = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
     if (!(scope === 'class_teacher' ? scopedClassId : selectedClass) || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingBulk(true);
     try {
@@ -928,6 +960,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
       // Generate a single optimized PDF for all learners
       const mainDoc = new jsPDF({ unit: 'mm', format: 'a4' });
+      configurePdfFontSize(mainDoc, fontSize);
       const BATCH_SIZE = 5;
       let addedFirstPage = false;
 
@@ -1098,12 +1131,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           </div>
         </div>
         <div className="flex flex-wrap gap-2 sm:gap-3">
-          <button onClick={downloadClassResultsPDF} disabled={generatingPDF || !selectedClass || !selectedTerm}
+          <button onClick={() => openPdfFontSizeDialog('class-results')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-[#2563EB] text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors shadow-sm">
             {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {generatingPDF ? 'Generating...' : 'Class Summary PDF'}
           </button>
-          <button onClick={downloadBulkReportCards} disabled={generatingBulk || !selectedClass || !selectedTerm}
+          <button onClick={() => openPdfFontSizeDialog('bulk-report-cards')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-green-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm">
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
@@ -1171,7 +1204,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center whitespace-nowrap">
-                        <button onClick={() => downloadSingleReportCard(s)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Download Report Card">
+                        <button onClick={() => openPdfFontSizeDialog('report-card', s)} disabled={generatingPDF || generatingBulk} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50" title="Download Report Card">
                           <Download className="w-4 h-4" />
                         </button>
                       </td>
@@ -1282,6 +1315,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             </form>
           </div>
         </div>
+      )}
+
+      {pendingPdfDownload && (
+        <PdfFontSizeDialog
+          open
+          title={pendingPdfDownload.target === 'class-results' ? 'Download Class Results' : pendingPdfDownload.target === 'bulk-report-cards' ? 'Download Bulk Report Cards' : 'Download Report Card'}
+          description="Choose the font size for the downloaded PDF. The default and recommended size is 14."
+          onCancel={closePdfFontSizeDialog}
+          onConfirm={confirmPdfFontSize}
+        />
       )}
 
       {/* Delete Confirmation Modal */}

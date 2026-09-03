@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Download, FileText, Loader2, Users, Share2, Lock, CreditCard, CheckCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import { toast } from 'sonner';
 import {
   generateUniqueAIComment,
@@ -23,6 +24,11 @@ import {
   type SignatureInfo,
   type PerformanceTrendRecord,
 } from '@/lib/reportCardPdf';
+import {
+  configurePdfFontSize,
+  DEFAULT_PDF_FONT_SIZE,
+  type PdfFontSize,
+} from '@/lib/pdfFontSize';
 import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
@@ -72,6 +78,7 @@ export default function ParentChildReportCard() {
   const [trendData, setTrendData] = useState<{ term: string; avg: number }[]>([]);
   const [totalStudents, setTotalStudents] = useState(0);
   const [childPhotoLoadError, setChildPhotoLoadError] = useState(false);
+  const [showFontSizeDialog, setShowFontSizeDialog] = useState(false);
 
   useEffect(() => { fetchChildren(); }, [user?.id]);
 
@@ -314,12 +321,13 @@ export default function ParentChildReportCard() {
   const classDataForGrading = selectedChild?.classes || {};
   const isPrimary = getSchoolLevelBand(classDataForGrading) === 'primary';
 
-  const doGeneratePDF = async () => {
+  const doGeneratePDF = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
     if (!results.length) { toast.error('No results found for this term'); return; }
     setGenerating(true);
     try {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF();
+      configurePdfFontSize(doc, fontSize);
       const term = terms.find(t => t.id === selectedTerm);
       const avgPercentage = results.length
         ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length
@@ -392,7 +400,7 @@ export default function ParentChildReportCard() {
         return;
       }
     }
-    doGeneratePDF();
+    setShowFontSizeDialog(true);
   };
 
   const handlePayment = async (type: 'pdf_report' | 'view_results') => {
@@ -607,6 +615,19 @@ export default function ParentChildReportCard() {
           )}
         </div>
       </div>
+
+      {showFontSizeDialog && (
+        <PdfFontSizeDialog
+          open
+          title="Download Child Report Card"
+          description="Choose the font size for the downloaded report card. The default and recommended size is 14."
+          onCancel={() => setShowFontSizeDialog(false)}
+          onConfirm={async (fontSize) => {
+            await doGeneratePDF(fontSize);
+            setShowFontSizeDialog(false);
+          }}
+        />
+      )}
     </div>
   );
 }

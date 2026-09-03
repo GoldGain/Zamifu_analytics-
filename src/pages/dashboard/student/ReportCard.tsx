@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Download, FileText, Loader2, Share2 } from 'lucide-react';
+import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import PhotoZoomModal from '@/components/PhotoZoomModal';
 import { toast } from 'sonner';
 import {
@@ -24,6 +25,11 @@ import {
   type SignatureInfo,
   type PerformanceTrendRecord,
 } from '@/lib/reportCardPdf';
+import {
+  configurePdfFontSize,
+  DEFAULT_PDF_FONT_SIZE,
+  type PdfFontSize,
+} from '@/lib/pdfFontSize';
 import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
@@ -44,6 +50,7 @@ export default function StudentReportCard() {
   const [signatures, setSignatures] = useState<SignatureInfo>({});
   const [classBestList, setClassBestList] = useState<BestInSubject[]>([]);
   const [trendData, setTrendData] = useState<{ term: string; avg: number }[]>([]);
+  const [showFontSizeDialog, setShowFontSizeDialog] = useState(false);
 
   useEffect(() => { fetchData(); }, [user?.id]);
 
@@ -240,12 +247,13 @@ export default function StudentReportCard() {
   const band = getSchoolLevelBand(classDataForGrading);
   const isPrimary = band === 'primary';
 
-  const generatePDF = async () => {
+  const generatePDF = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
     if (!results.length) { toast.error('No results found for this term'); return; }
     setGenerating(true);
     try {
       const { jsPDF } = await import('jspdf');
       const doc = new jsPDF();
+      configurePdfFontSize(doc, fontSize);
       const term = terms.find(t => t.id === selectedTerm);
 
       const avgPercentage = results.length
@@ -403,7 +411,7 @@ export default function StudentReportCard() {
             </h3>
             <div className="flex gap-2">
               <button
-                onClick={generatePDF}
+                onClick={() => setShowFontSizeDialog(true)}
                 disabled={generating}
                 className="flex items-center gap-2 bg-[#2563EB] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50"
               >
@@ -543,6 +551,19 @@ export default function StudentReportCard() {
           )}
         </div>
       )}
+      {showFontSizeDialog && (
+        <PdfFontSizeDialog
+          open
+          title="Download Report Card"
+          description="Choose the font size for your downloaded report card. The default and recommended size is 14."
+          onCancel={() => setShowFontSizeDialog(false)}
+          onConfirm={async (fontSize) => {
+            await generatePDF(fontSize);
+            setShowFontSizeDialog(false);
+          }}
+        />
+      )}
+
       {results.length === 0 && selectedTerm && (
         <div className="bg-white rounded-2xl p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] text-center">
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />

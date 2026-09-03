@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getSchoolLevelBand, calculateCompetencyGrade, generateSubjectSpecificComment } from './grading';
 import type { SchoolLevelBand, SubjectResult } from './grading';
+import { pdfFontSize } from './pdfFontSize';
 
 // ── Shared PDF Helper Functions for Report Cards ─────────────────────────────
 
@@ -390,7 +391,7 @@ export function drawTrendGraph(
   doc.setDrawColor(210, 210, 210);
   doc.setFillColor(250, 250, 252);
   doc.roundedRect(x, graphY, width, height, 2, 2, 'FD');
-  doc.setFontSize(6.5);
+  doc.setFontSize(pdfFontSize(doc, 6.5));
   doc.setTextColor(90, 90, 90);
   doc.text('Previous-exam performance (%)', x + 4, graphY + 6);
   [0, 50, 100].forEach((value) => {
@@ -534,7 +535,7 @@ export function drawLogoPlaceholder(
   doc.setLineWidth(0.6);
   doc.roundedRect(x, y, size, size, 2, 2, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(Math.max(8, size * 0.34));
+  doc.setFontSize(Math.max(pdfFontSize(doc, 8), pdfFontSize(doc, size * 0.34)));
   doc.setTextColor(106, 27, 154);
   doc.text(label, x + size / 2, y + size / 2 + size * 0.12, { align: 'center' });
   doc.setTextColor(0, 0, 0);
@@ -559,7 +560,7 @@ export function drawStudentPhotoPlaceholder(
   doc.setLineWidth(0.6);
   doc.roundedRect(x, y, size, size, 2, 2, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(Math.max(9, size * 0.42));
+  doc.setFontSize(Math.max(pdfFontSize(doc, 9), pdfFontSize(doc, size * 0.42)));
   doc.setTextColor(106, 27, 154);
   doc.text(initials, x + size / 2, y + size / 2 + size * 0.14, { align: 'center' });
   doc.setTextColor(0, 0, 0);
@@ -626,10 +627,10 @@ export async function drawReportHeader(
   // text cannot collide with either the logo or the learner image.
   const centerX = 105;
   doc.setTextColor(26, 35, 126);
-  doc.setFontSize(COMPACT_MODE ? 13 : 16);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 13 : 16));
   doc.setFont('helvetica', 'bold');
   doc.text(school.name || 'School Name', centerX, 28, { align: 'center', maxWidth: 180 });
-  doc.setFontSize(COMPACT_MODE ? 7.5 : 9);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.5 : 9));
   doc.setFont('helvetica', 'normal');
   doc.text(school.motto || '', centerX, 32, { align: 'center', maxWidth: 180 });
   const contactLine = `${school.address || ''} | ${school.phone || ''} | ${school.email || ''}`;
@@ -662,7 +663,7 @@ export async function addSignaturesToPDF(
   y = ensureReportCardSpace(doc, y, sigBlockH + (calendarNoticeLines.length > 0 ? (COMPACT_MODE ? 12 : 15) : 5));
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
-  doc.setFontSize(COMPACT_MODE ? 6 : 7);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6 : 7));
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(60, 60, 70);
   if (hasTeacherSig || hasPrincipalSig) {
@@ -683,7 +684,7 @@ export async function addSignaturesToPDF(
       doc.setDrawColor(150, 150, 155);
       doc.line(14, y + sigLabelY - 2, 56, y + sigLabelY - 2);
     }
-    doc.setFontSize(COMPACT_MODE ? 5.5 : 6);
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.5 : 6));
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 110);
     doc.text('Class Teacher Signature', 14, y + sigLabelY);
@@ -703,7 +704,7 @@ export async function addSignaturesToPDF(
       doc.setDrawColor(150, 150, 155);
       doc.line(118, y + sigLabelY - 2, 160, y + sigLabelY - 2);
     }
-    doc.setFontSize(COMPACT_MODE ? 5.5 : 6);
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.5 : 6));
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 110);
     doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 118, y + sigLabelY);
@@ -711,14 +712,14 @@ export async function addSignaturesToPDF(
     doc.setDrawColor(150, 150, 155);
     doc.line(14, y + (COMPACT_MODE ? 9 : 12), 75, y + (COMPACT_MODE ? 9 : 12));
     doc.line(118, y + (COMPACT_MODE ? 9 : 12), 181, y + (COMPACT_MODE ? 9 : 12));
-    doc.setFontSize(COMPACT_MODE ? 6 : 7);
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6 : 7));
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(80, 80, 85);
     doc.text('Class Teacher Signature', 14, y + (COMPACT_MODE ? 15 : 18));
     doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 118, y + (COMPACT_MODE ? 15 : 18));
   }
   // Date
-  doc.setFontSize(COMPACT_MODE ? 6 : 7);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6 : 7));
   doc.setTextColor(80, 80, 85);
   doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y + (COMPACT_MODE ? 12 : 27));
   // School stamp area
@@ -726,14 +727,14 @@ export async function addSignaturesToPDF(
   doc.setLineDashPattern([2, 2], 0);
   doc.rect(118, y + sigImgY, 32, sigImgH + 2);
   doc.setLineDashPattern([], 0);
-  doc.setFontSize(5.5);
+  doc.setFontSize(pdfFontSize(doc, 5.5));
   doc.setTextColor(150, 150, 155);
   doc.text('OFFICIAL STAMP', 134, y + sigImgY + sigImgH / 2, { align: 'center' });
 
   if (calendarNoticeLines.length > 0) {
     doc.setTextColor(0, 102, 102);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(COMPACT_MODE ? 7.2 : 8);
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8));
     doc.text(calendarNoticeLines, 14, y + sigBlockH + (COMPACT_MODE ? 4 : 5), { maxWidth: 180 });
     doc.setTextColor(0, 0, 0);
     return y + sigBlockH + (COMPACT_MODE ? 12 : 16);
@@ -745,7 +746,7 @@ export async function addSignaturesToPDF(
 // ── Draw Footer ──────────────────────────────────────────────────────────────
 export function drawReportFooter(doc: jsPDF) {
   const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setFontSize(8);
+  doc.setFontSize(pdfFontSize(doc, 8));
   doc.setTextColor(150, 150, 150);
   doc.setFont('helvetica', 'normal');
   doc.text('Zamifu Analytics School Management System | Support: tutorsultimate@gmail.com', 105, pageHeight - 6, { align: 'center' });
@@ -765,7 +766,7 @@ export function drawStudentInfo(
   assessmentNumber?: string
 ) {
   // Compact: two-column grid, denser rows so the info block uses <= 14mm
-  const fs = COMPACT_MODE ? 8 : 9;
+  const fs = pdfFontSize(doc, COMPACT_MODE ? 8 : 9);
   doc.setTextColor(0, 0, 0); doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
   doc.text(`Learner: ${studentName}`, 14, y);
   doc.text(`Admission Number: ${admissionNo || 'N/A'}`, 14, y + ROW);
@@ -807,8 +808,8 @@ export function drawResultsTable(
     body: tableBody,
     pageBreak: COMPACT_MODE ? 'avoid' : 'auto',
     rowPageBreak: 'avoid',
-    styles: { fontSize: COMPACT_MODE ? 6.8 : 8, cellPadding: COMPACT_MODE ? 0.6 : 1.5 },
-    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: COMPACT_MODE ? 7.2 : 8, cellPadding: 0.8 },
+    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8), cellPadding: COMPACT_MODE ? 0.6 : 1.5 },
+    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8), cellPadding: 0.8 },
     alternateRowStyles: { fillColor: [232, 234, 246] }, margin: { left: 14, right: 14 },
   });
   return (doc as any).lastAutoTable.finalY;
@@ -832,11 +833,11 @@ export function drawPathwayPerformance(
     const percentage = outOf > 0 ? (score / outOf) * 100 : 0;
     return [pathway, areasUsed || 'None', `${score}/${outOf}`, `${percentage.toFixed(1)}%`];
   });
-  doc.setFontSize(COMPACT_MODE ? 9 : 10); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 9 : 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
   doc.text('Pathway Performance Profile', 14, startY + (COMPACT_MODE ? 5 : 6));
   autoTable(doc, {
     startY: startY + (COMPACT_MODE ? 6 : 8), head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']], body: pathwayData,
-    styles: { fontSize: COMPACT_MODE ? 7.5 : 8, cellPadding: COMPACT_MODE ? 1 : 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255 },
+    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8), cellPadding: COMPACT_MODE ? 1 : 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8) },
     alternateRowStyles: { fillColor: [255, 248, 225] }, margin: { left: 14, right: 14 },
   });
   return (doc as any).lastAutoTable.finalY;
@@ -858,7 +859,7 @@ export function drawSummaryBox(
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const overallGrading = gradeFromPercentage(avgPercentage, classData);
   doc.setFillColor(0, 137, 123); doc.rect(14, startY, 182, boxH, 'F');
-  const fs = COMPACT_MODE ? 7.2 : 8;
+  const fs = pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8);
   const gap = COMPACT_MODE ? 5.8 : 8;
   doc.setFontSize(fs); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
   doc.text(`Learning Areas: ${results.length}`, 20, startY + gap);
@@ -885,7 +886,7 @@ export function drawNextTermStartDate(
   
   doc.setTextColor(0, 102, 102);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(COMPACT_MODE ? 7.5 : 8);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8));
   doc.text(`Next term begins on: ${formattedDate}`, 14, startY);
   doc.setTextColor(0, 0, 0);
   
@@ -905,15 +906,15 @@ export function drawDeviation(
     const arrow = deviation >= 0 ? '\u25B2' : '\u25BC';
     const sign = deviation >= 0 ? '+' : '';
     if (deviation >= 0) doc.setTextColor(76, 175, 80); else doc.setTextColor(244, 67, 54);
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(COMPACT_MODE ? 7 : 8);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
     doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous (Prev: ${previousAvg?.toFixed(1)}% - Pos: ${previousPosition || 'N/A'})`, 14, startY);
     doc.setTextColor(0, 0, 0);
   } else if (previousAvg !== null) {
-    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(COMPACT_MODE ? 7 : 8);
+    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
     doc.text(`Previous performance: ${previousAvg.toFixed(1)}% - Position: ${previousPosition || 'N/A'}`, 14, startY);
     doc.setTextColor(0, 0, 0);
   } else {
-    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(COMPACT_MODE ? 7 : 8);
+    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
     doc.text('First Term — No previous data for comparison', 14, startY);
     doc.setTextColor(0, 0, 0);
   }
@@ -932,7 +933,7 @@ export function drawAchievements(
   const boxHeight = 4 + visibleBestSubjects.length * rowH;
   startY = ensureReportCardSpace(doc, startY, boxHeight + (COMPACT_MODE ? 4 : 6));
   doc.setFillColor(255, 248, 225); doc.rect(14, startY, 182, boxHeight, 'F');
-  doc.setFontSize(COMPACT_MODE ? 6.5 : 7); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6.5 : 7)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
   doc.text('ACHIEVEMENT:', 18, startY + 3.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
   visibleBestSubjects.forEach((b, bi) => {
     const pts = b.points !== null ? ` (${b.points} pts)` : '';
@@ -951,7 +952,7 @@ export function drawAchievements(
 function wrapCommentText(doc: jsPDF, text: string): string[] {
   // Configure the exact font/size that the text will be drawn with.
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(COMPACT_MODE ? 7 : 7.5);
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 7.5));
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const textX = 18;
@@ -986,7 +987,7 @@ export function drawAIComment(
   comment: string,
   startY: number
 ): number {
-  const fontSize = COMPACT_MODE ? 7 : 7.5;
+  const fontSize = pdfFontSize(doc, COMPACT_MODE ? 7 : 7.5);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(fontSize);
   const commentLines = wrapCommentText(doc, (comment || 'No class teacher comment provided.').trim());
@@ -1009,7 +1010,7 @@ export function drawAIComment(
     doc.setLineWidth(0.5);
     doc.setFillColor(232, 234, 246);
     doc.rect(14, y, 182, boxHeight, 'FD');
-    doc.setFontSize(7.5);
+    doc.setFontSize(pdfFontSize(doc, 7.5));
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(26, 35, 126);
     doc.text("Class Teacher's Comment:", 18, y + 4);
@@ -1034,7 +1035,7 @@ export function drawAIComment(
     doc.setLineWidth(0.5);
     doc.setFillColor(232, 234, 246);
     doc.rect(14, y, 182, boxHeight, 'FD');
-    doc.setFontSize(8);
+    doc.setFontSize(pdfFontSize(doc, 8));
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(26, 35, 126);
     doc.text(isContinuation ? "Class Teacher's Comment (continued):" : "Class Teacher's Comment:", 18, y + 7);
