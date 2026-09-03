@@ -108,7 +108,7 @@ export const TrialCountdown: React.FC = () => {
                 return (
                   <button type="button" key={plan.id} onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border-2 p-4 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
                     <span className="block font-bold text-gray-900">{plan.name}</span>
-                    <span className="block text-sm text-gray-600">KES {plan.price.toLocaleString()}/{plan.unit}/term</span>
+                    <span className="block text-sm text-gray-600">KES {plan.price.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span>
                     <span className="block text-xs text-gray-500 mt-1">{plan.featureSummary}</span>
                     <span className="block text-xs font-semibold text-blue-700 mt-2">This payment: KES {amount.toLocaleString()}</span>
                   </button>
@@ -172,7 +172,7 @@ export const TrialCountdown: React.FC = () => {
               feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined}
               fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined}
               subscriptionPlan={selectedPlan.id}
-              billingPeriod={selectedPlan.unit === 'school' ? 'school-term' : 'term'}
+              billingPeriod={selectedPlan.period === 'annual' ? 'annual' : selectedPlan.unit === 'school' ? 'school-term' : 'term'}
               onSuccess={() => setShowPayment(false)}
               onClose={() => setShowPayment(false)}
             />
@@ -236,11 +236,11 @@ export const TrialCountdown: React.FC = () => {
                     {SUBSCRIPTION_PLANS.map((plan) => {
                       const isSelected = selectedPlan.id === plan.id;
                       const amount = plan.unit === 'learner' ? learnersCount * plan.price : plan.price;
-                      return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {plan.price.toLocaleString()}/{plan.unit}/term</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
+                      return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {plan.price.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
                     })}
                   </div>
                   <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3"><span>Selected: {selectedPlan.name}</span><span className="font-bold text-gray-900">KES {selectedPlanAmount.toLocaleString()}</span></div>
-                  <PaystackButton learnersCount={learnersCount} feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined} fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined} subscriptionPlan={selectedPlan.id} billingPeriod={selectedPlan.unit === 'school' ? 'school-term' : 'term'} onSuccess={() => { setShowPayment(false); setExpanded(false); }} onClose={() => setShowPayment(false)} />
+                  <PaystackButton learnersCount={learnersCount} feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined} fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined} subscriptionPlan={selectedPlan.id} billingPeriod={selectedPlan.period === 'annual' ? 'annual' : selectedPlan.unit === 'school' ? 'school-term' : 'term'} onSuccess={() => { setShowPayment(false); setExpanded(false); }} onClose={() => setShowPayment(false)} />
                   <button onClick={() => setShowPayment(false)} className="w-full mt-2 text-[10px] text-gray-500 hover:text-gray-700">Cancel</button>
                 </div>
               )}

@@ -106,7 +106,7 @@ create table if not exists public.subscription_plan_catalog (
 insert into public.subscription_plan_catalog (id, name, price_kes, billing_unit, billing_period, feature_summary, includes_sms)
 values
   ('full_access_20', 'Full Access (Per Learner)', 20, 'learner', 'term', 'Full access to all features', true),
-  ('full_access_50', 'Full Access (Per Learner)', 50, 'learner', 'term', 'Full access to all features', true),
+  ('full_access_50', 'Full Access (Per Learner)', 50, 'learner', 'annual', 'Full access to all features', true),
   ('results_only', 'Results Access Only', 1000, 'school', 'term', 'Results access only; SMS at KES 1 each', false),
   ('timetabler_only', 'Timetabler Access Only', 500, 'school', 'term', 'Timetable generation only', false),
   ('generator_only', 'Generator Access Only', 500, 'school', 'term', 'Exam Generator + Scheme of Work + Notes + Lesson Plan', false)
