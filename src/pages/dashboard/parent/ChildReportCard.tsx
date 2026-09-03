@@ -354,7 +354,7 @@ export default function ParentChildReportCard() {
         name: studentFullName,
         photoUrl: selectedChild.photo_url || null,
       });
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr, 34, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined);
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined);
       let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)

@@ -48,11 +48,11 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 8;
 // Readable multi-section layout: allow safe pagination instead of squeezing text into overlapping rows.
 export const COMPACT_MODE = true;
 const ROW = COMPACT_MODE ? 3.2 : 5;   // vertical row step for student info (further reduced)
-const HDR_H = COMPACT_MODE ? 26 : 28; // enough room for matching corner identity squares
+const HDR_H = COMPACT_MODE ? 40 : 42; // room for a centered logo and school identity
 
 export const REPORT_CARD_CORNER_SIZE = 22;
 export const REPORT_CARD_CORNER_Y = 3;
-export const REPORT_CARD_LOGO_X = 14;
+export const REPORT_CARD_LOGO_X = (210 - REPORT_CARD_CORNER_SIZE) / 2;
 export const REPORT_CARD_PHOTO_X = 174;
 
 /**
@@ -610,11 +610,11 @@ export async function drawReportHeader(
     doc,
     school.logo_url || '/logo.png',
     REPORT_CARD_LOGO_X,
-    REPORT_CARD_CORNER_Y,
+    2,
     REPORT_CARD_CORNER_SIZE,
     REPORT_CARD_CORNER_SIZE,
   );
-  if (!logoAdded) drawLogoPlaceholder(doc, 'ZA', REPORT_CARD_LOGO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE);
+  if (!logoAdded) drawLogoPlaceholder(doc, 'ZA', REPORT_CARD_LOGO_X, 2, REPORT_CARD_CORNER_SIZE);
   const photoAdded = learner?.photoUrl
     ? await addStudentPhotoToPDF(doc, learner.photoUrl, REPORT_CARD_PHOTO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE)
     : false;
@@ -628,13 +628,13 @@ export async function drawReportHeader(
   doc.setTextColor(26, 35, 126);
   doc.setFontSize(COMPACT_MODE ? 13 : 16);
   doc.setFont('helvetica', 'bold');
-  doc.text(school.name || 'School Name', centerX, 10, { align: 'center', maxWidth: 132 });
+  doc.text(school.name || 'School Name', centerX, 28, { align: 'center', maxWidth: 180 });
   doc.setFontSize(COMPACT_MODE ? 7.5 : 9);
   doc.setFont('helvetica', 'normal');
-  doc.text(school.motto || '', centerX, 15.5, { align: 'center', maxWidth: 132 });
+  doc.text(school.motto || '', centerX, 32, { align: 'center', maxWidth: 180 });
   const contactLine = `${school.address || ''} | ${school.phone || ''} | ${school.email || ''}`;
-  const contactLines = doc.splitTextToSize(contactLine, 132);
-  doc.text(contactLines, centerX, 21, { align: 'center' });
+  const contactLines = doc.splitTextToSize(contactLine, 180);
+  doc.text(contactLines, centerX, 37, { align: 'center' });
 }
 
 // ── Add Signatures to PDF ────────────────────────────────────────────────────

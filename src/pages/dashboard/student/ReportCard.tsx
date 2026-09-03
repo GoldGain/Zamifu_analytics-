@@ -300,7 +300,7 @@ export default function StudentReportCard() {
         term?.name || '',
         term?.academic_year || '',
         positionStr,
-        34,
+        48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
       );

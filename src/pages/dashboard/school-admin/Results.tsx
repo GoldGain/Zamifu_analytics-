@@ -852,7 +852,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const cardAssessment = s.examName || assessmentLabel || '';
       const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
       
-      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 38, cardAssessment, s.student?.assessment_number || undefined);
+      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined);
 
       const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({
         subjects: { name: subName },
@@ -977,7 +977,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           termObj?.name || '',
           termObj?.academic_year || '',
           studentPosition,
-          38,
+          48,
           cardAssessment,
           s.student?.assessment_number || undefined
         );
