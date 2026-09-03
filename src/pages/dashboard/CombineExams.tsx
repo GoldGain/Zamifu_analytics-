@@ -20,6 +20,7 @@ export default function CombineExams() {
   const [classes, setClasses] = useState<any[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
+  const [resultExamRefs, setResultExamRefs] = useState<Array<{ exam_id: string; term_id: string | null; class_id: string | null }>>([]);
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExams, setSelectedExams] = useState<string[]>([]);
@@ -33,15 +34,17 @@ export default function CombineExams() {
     if (!user?.schoolId) return;
     const load = async () => {
       setLoading(true);
-      const [{ data: classData, error: classError }, { data: termData, error: termError }, { data: examData, error: examError }] = await Promise.all([
+      const [{ data: classData, error: classError }, { data: termData, error: termError }, { data: examData, error: examError }, { data: resultRefs, error: resultRefsError }] = await Promise.all([
         supabaseUntyped.from('classes').select('id, name, stream, level, grade_level').eq('school_id', user.schoolId).eq('is_active', true).order('level').order('name'),
         supabaseUntyped.from('terms').select('id, name, academic_year, start_date, end_date').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('start_date'),
-        supabaseUntyped.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, created_at').eq('school_id', user.schoolId).eq('is_active', true).order('created_at', { ascending: false }),
+        supabaseUntyped.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, created_at, is_active').eq('school_id', user.schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('results').select('exam_id, term_id, class_id').eq('school_id', user.schoolId).not('exam_id', 'is', null).limit(5000),
       ]);
-      if (classError || termError || examError) toast.error('Could not load exam-combination data.');
+      if (classError || termError || examError || resultRefsError) toast.error('Could not load exam-combination data.');
       setClasses(classData || []);
       setTerms(termData || []);
       setExams(examData || []);
+      setResultExamRefs((resultRefs || []) as Array<{ exam_id: string; term_id: string | null; class_id: string | null }>);
       if (termData?.[0]?.id) setSelectedTerm(termData[0].id);
       setLoading(false);
     };
@@ -49,15 +52,17 @@ export default function CombineExams() {
   }, [user?.schoolId]);
 
   const availableExams = useMemo(() => exams.filter((exam) => {
+    const linkedRefs = resultExamRefs.filter((ref) => ref.exam_id === exam.id);
     if (selectedTerm && exam.term_id && exam.term_id !== selectedTerm) return false;
+    if (selectedTerm && !exam.term_id && !linkedRefs.some((ref) => ref.term_id === selectedTerm && (!selectedClass || ref.class_id === selectedClass))) return false;
     if (!selectedClass) return true;
     if (exam.target_type === 'class') return exam.target_class_id === selectedClass;
     if (exam.target_type === 'grade') {
       const cls = classes.find((item) => item.id === selectedClass);
       return String(exam.target_grade_level) === String(cls?.grade_level ?? cls?.level);
     }
-    return true;
-  }), [classes, exams, selectedClass, selectedTerm]);
+    return !selectedTerm || linkedRefs.length === 0 || linkedRefs.some((ref) => ref.term_id === selectedTerm && (!ref.class_id || ref.class_id === selectedClass));
+  }), [classes, exams, resultExamRefs, selectedClass, selectedTerm]);
 
   const toggleExam = (id: string) => setSelectedExams((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
