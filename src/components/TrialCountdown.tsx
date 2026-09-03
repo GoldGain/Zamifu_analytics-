@@ -3,7 +3,7 @@ import { useTrial } from '@/contexts/TrialContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lucide-react';
-import { ANNUAL_PRICE_PER_LEARNER } from '@/lib/trial';
+import { ANNUAL_PRICE_PER_LEARNER, SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '@/lib/trial';
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
@@ -12,6 +12,7 @@ export const TrialCountdown: React.FC = () => {
   const [showPayment, setShowPayment] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [billingPeriod, setBillingPeriod] = useState<'term' | 'annual'>('term');
+  const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>('full_access_20');
 
   // Auto-fetch learners count from Supabase
   const [learnersCount, setLearnersCount] = useState<number>(0);
@@ -51,6 +52,8 @@ export const TrialCountdown: React.FC = () => {
   const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
   const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : ANNUAL_PRICE_PER_LEARNER;
   const selectedFee = billingPeriod === 'annual' ? annualFee : pricePerLearner;
+  const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) || SUBSCRIPTION_PLANS[0];
+  const selectedPlanAmount = selectedPlan.unit === 'learner' ? learnersCount * selectedPlan.price : selectedPlan.price;
   const annualBaseline = pricePerLearner * 3;
   const annualSavings = Math.max(0, annualBaseline - annualFee);
 
@@ -98,17 +101,19 @@ export const TrialCountdown: React.FC = () => {
             <p className="text-sm text-gray-600 mb-4">
               Choose how you want to pay for each learner.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto mb-5 text-left">
-              <button type="button" onClick={() => setBillingPeriod('term')} className={`rounded-xl border-2 p-4 transition-colors ${billingPeriod === 'term' ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}>
-                <span className="block font-bold text-gray-900">Pay per term</span>
-                <span className="block text-sm text-gray-600">KES {pricePerLearner.toLocaleString()} per learner</span>
-                <span className="block text-xs text-gray-500 mt-1">KES {(learnersCount * pricePerLearner).toLocaleString()} for this payment</span>
-              </button>
-              <button type="button" onClick={() => setBillingPeriod('annual')} className={`rounded-xl border-2 p-4 transition-colors ${billingPeriod === 'annual' ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'}`}>
-                <span className="block font-bold text-gray-900">Pay annually</span>
-                <span className="block text-sm text-gray-600">KES {annualFee.toLocaleString()} per learner per year</span>
-                <span className="block text-xs font-semibold text-green-700 mt-1">Save KES {annualSavings} per learner ({annualBaseline > 0 ? Math.round((annualSavings / annualBaseline) * 100) : 0}% off)</span>
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto mb-5 text-left">
+              {SUBSCRIPTION_PLANS.map((plan) => {
+                const isSelected = selectedPlan.id === plan.id;
+                const amount = plan.unit === 'learner' ? learnersCount * plan.price : plan.price;
+                return (
+                  <button type="button" key={plan.id} onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border-2 p-4 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
+                    <span className="block font-bold text-gray-900">{plan.name}</span>
+                    <span className="block text-sm text-gray-600">KES {plan.price.toLocaleString()}/{plan.unit}/term</span>
+                    <span className="block text-xs text-gray-500 mt-1">{plan.featureSummary}</span>
+                    <span className="block text-xs font-semibold text-blue-700 mt-2">This payment: KES {amount.toLocaleString()}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Auto-calculated learner count summary */}
@@ -124,8 +129,8 @@ export const TrialCountdown: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-gray-200">
-                <span className="text-sm text-gray-600">Price per Learner</span>
-                <span className="text-sm font-semibold">KES {selectedFee.toLocaleString()} {billingPeriod === 'annual' ? 'per year' : 'per term'}</span>
+                <span className="text-sm text-gray-600">Selected Plan</span>
+                <span className="text-sm font-semibold text-right">{selectedPlan.name}</span>
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="text-sm font-bold text-gray-800">Total Amount</span>
@@ -133,7 +138,7 @@ export const TrialCountdown: React.FC = () => {
                   {fetchingLearners ? (
                     <Loader2 className="w-4 h-4 animate-spin inline" />
                   ) : (
-                    `KES ${(learnersCount * selectedFee).toLocaleString()}`
+                    `KES ${selectedPlanAmount.toLocaleString()}`
                   )}
                 </span>
               </div>
@@ -141,7 +146,7 @@ export const TrialCountdown: React.FC = () => {
 
             <button
               onClick={() => setShowPayment(true)}
-              disabled={fetchingLearners || learnersCount <= 0}
+              disabled={fetchingLearners || (selectedPlan.unit === 'learner' && learnersCount <= 0)}
               className="bg-green-600 text-white px-8 py-3 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 mx-auto"
             >
               {fetchingLearners ? (
@@ -152,7 +157,7 @@ export const TrialCountdown: React.FC = () => {
               ) : (
                 <>
                   <CreditCard className="w-4 h-4" />
-                  Subscribe Now — KES {(learnersCount * selectedFee).toLocaleString()} {billingPeriod === 'annual' ? 'annually' : 'per term'}
+                  Subscribe Now — KES {selectedPlanAmount.toLocaleString()} per term
                 </>
               )}
             </button>
@@ -164,8 +169,10 @@ export const TrialCountdown: React.FC = () => {
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <PaystackButton
               learnersCount={learnersCount}
-              feePerLearner={selectedFee}
-              billingPeriod={billingPeriod}
+              feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined}
+              fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined}
+              subscriptionPlan={selectedPlan.id}
+              billingPeriod={selectedPlan.unit === 'school' ? 'school-term' : 'term'}
               onSuccess={() => setShowPayment(false)}
               onClose={() => setShowPayment(false)}
             />

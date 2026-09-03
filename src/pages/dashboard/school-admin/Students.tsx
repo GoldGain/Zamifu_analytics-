@@ -37,7 +37,7 @@ export default function SchoolAdminStudents() {
   const [filterClassId, setFilterClassId] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortField, setSortField] = useState<SortField>('admission_number');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedLevel, setSelectedLevel] = useState<string>('');
@@ -54,7 +54,6 @@ export default function SchoolAdminStudents() {
     curriculum: 'CBE' as 'CBE',
     gender: '' as GenderType, 
     date_of_birth: '',
-    birth_cert_number: '',
     nationality: 'Kenyan',
     county: '',
     sub_county: '',
@@ -87,7 +86,6 @@ export default function SchoolAdminStudents() {
     parent2_email: '',
     gender: '' as GenderType,
     date_of_birth: '',
-    birth_cert_number: '',
     nationality: 'Kenyan',
     county: '',
     sub_county: '',
@@ -179,7 +177,6 @@ export default function SchoolAdminStudents() {
           curriculum: formData.curriculum,
           date_of_birth: formData.date_of_birth || null,
           gender: formData.gender || null,
-          birth_cert_number: formData.birth_cert_number || null,
           nationality: formData.nationality || 'Kenyan',
           county: formData.county || null,
           sub_county: formData.sub_county || null,
@@ -266,7 +263,6 @@ export default function SchoolAdminStudents() {
       parent2_email: s.parent2_email || '',
       gender: (s.gender || '') as GenderType,
       date_of_birth: s.date_of_birth || '',
-      birth_cert_number: s.birth_cert_number || '',
       nationality: s.nationality || 'Kenyan',
       county: s.county || '',
       sub_county: s.sub_county || '',
@@ -289,7 +285,6 @@ export default function SchoolAdminStudents() {
         class_id: editForm.class_id || null,
         gender: editForm.gender || null,
         date_of_birth: editForm.date_of_birth || null,
-        birth_cert_number: editForm.birth_cert_number.trim() || null,
         nationality: editForm.nationality || 'Kenyan',
         county: editForm.county || null,
         sub_county: editForm.sub_county.trim() || null,
@@ -377,13 +372,22 @@ export default function SchoolAdminStudents() {
       return matchesSearch && matchesClass;
     })
     .sort((a: any, b: any) => {
+      if (sortField === 'admission_number') {
+        const aValue = String(a.admission_number || '').trim();
+        const bValue = String(b.admission_number || '').trim();
+        const aNumber = Number(aValue.replace(/[^0-9.-]/g, ''));
+        const bNumber = Number(bValue.replace(/[^0-9.-]/g, ''));
+        const bothNumeric = Number.isFinite(aNumber) && Number.isFinite(bNumber) && aValue !== '' && bValue !== '';
+        const comparison = bothNumeric ? aNumber - bNumber : aValue.localeCompare(bValue, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDir === 'asc' ? comparison : -comparison;
+      }
       let aVal = '', bVal = '';
       if (sortField === 'name') { aVal = `${a.first_name} ${a.last_name}`; bVal = `${b.first_name} ${b.last_name}`; }
-      if (sortField === 'admission_number') { aVal = a.admission_number || ''; bVal = b.admission_number || ''; }
       if (sortField === 'assessment_number') { aVal = a.assessment_number || ''; bVal = b.assessment_number || ''; }
       if (sortField === 'class') { aVal = a.classes?.name || ''; bVal = b.classes?.name || ''; }
       if (sortField === 'gender') { aVal = a.gender || ''; bVal = b.gender || ''; }
-      return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      const comparison = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDir === 'asc' ? comparison : -comparison;
     });
 
   // ─── Grade View Data ─────────────────────────────────────────────────────────
@@ -531,7 +535,6 @@ export default function SchoolAdminStudents() {
                 <option value="female">Female</option>
               </select>
               <input type="date" placeholder="Date of Birth" value={formData.date_of_birth} onChange={e => setFormData({...formData, date_of_birth: e.target.value})} className={inputCls} />
-              <input placeholder="Birth Certificate Number" value={formData.birth_cert_number} onChange={e => setFormData({...formData, birth_cert_number: e.target.value})} className={inputCls} />
               <input placeholder="Nationality" value={formData.nationality} onChange={e => setFormData({...formData, nationality: e.target.value})} className={inputCls} />
               <input placeholder="Learner Email (optional)" value={formData.student_email} onChange={e => setFormData({...formData, student_email: e.target.value})} className={inputCls} />
             </div>
@@ -900,7 +903,6 @@ export default function SchoolAdminStudents() {
                   </select>
                 </div>
                 <div><label className={labelCls}>Date of Birth</label><input type="date" value={editForm.date_of_birth} onChange={e => setEditForm({...editForm, date_of_birth: e.target.value})} className={inputCls} /></div>
-                <div><label className={labelCls}>Birth Certificate Number</label><input value={editForm.birth_cert_number} onChange={e => setEditForm({...editForm, birth_cert_number: e.target.value})} className={inputCls} /></div>
                 <div><label className={labelCls}>Nationality</label><input value={editForm.nationality} onChange={e => setEditForm({...editForm, nationality: e.target.value})} className={inputCls} /></div>
               </div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">School Information</p>

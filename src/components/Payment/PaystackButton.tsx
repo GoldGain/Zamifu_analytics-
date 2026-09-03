@@ -11,7 +11,9 @@ interface PaystackButtonProps {
   onSuccess: () => void;
   onClose: () => void;
   feePerLearner?: number;
-  billingPeriod?: 'term' | 'annual';
+  billingPeriod?: 'term' | 'annual' | 'school-term';
+  subscriptionPlan?: string;
+  fixedAmountKsh?: number;
 }
 
 const PAYSTACK_PUBLIC_KEY = 'pk_live_c15b4c6c95f06f7408326b14395eb727147a8935';
@@ -22,6 +24,8 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
   onClose,
   feePerLearner,
   billingPeriod = 'term',
+  subscriptionPlan = 'full_access_20',
+  fixedAmountKsh,
 }) => {
   const { user } = useAuth();
   const { pricePerLearner, annualPricePerLearner, refreshTrialStatus } = useTrial();
@@ -30,6 +34,9 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
   const [resolvedFee, setResolvedFee] = useState(
     billingPeriod === 'annual' ? annualFee : (feePerLearner || pricePerLearner || PRICE_PER_LEARNER),
   );
+
+  const isFixedSchoolPlan = billingPeriod === 'school-term' && Number.isFinite(Number(fixedAmountKsh));
+  const amountKsh = isFixedSchoolPlan ? Math.max(0, Number(fixedAmountKsh)) : learnersCount * resolvedFee;
 
   useEffect(() => {
     if (billingPeriod === 'annual') {
@@ -58,7 +65,6 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
     void load();
   }, [user?.schoolId, feePerLearner, billingPeriod]);
 
-  const amountKsh = learnersCount * resolvedFee;
   const amount = amountKsh * 100;
 
   const loadPaystackScript = (): Promise<void> => new Promise((resolve, reject) => {
@@ -115,7 +121,8 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
           custom_fields: [
             { display_name: 'School', variable_name: 'school_id', value: user?.schoolId || 'unknown' },
             { display_name: 'Learners', variable_name: 'learners_count', value: String(learnersCount) },
-            { display_name: 'Fee per learner', variable_name: 'fee_per_learner', value: String(resolvedFee) },
+            { display_name: 'Fee per learner', variable_name: 'fee_per_learner', value: isFixedSchoolPlan ? 'N/A' : String(resolvedFee) },
+            { display_name: 'Subscription plan', variable_name: 'subscription_plan', value: subscriptionPlan },
             { display_name: 'Period', variable_name: 'period', value: billingPeriod === 'annual' ? 'Annual' : 'One Term' },
           ],
         },
@@ -166,10 +173,11 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
         </div>
         <div className="text-2xl font-bold text-gray-900">KES {amountKsh.toLocaleString()}</div>
         <p className="text-sm text-gray-600 mt-1">
-          for {learnersCount} learner{learnersCount !== 1 ? 's' : ''} {billingPeriod === 'annual' ? 'per year' : 'per term'}
+          for {learnersCount} learner{learnersCount !== 1 ? 's' : ''}           {isFixedSchoolPlan ? 'per school per term' : billingPeriod === 'annual' ? 'per year' : 'per term'}
+
         </p>
         <div className="mt-2 text-xs text-gray-500">
-          KES {resolvedFee.toLocaleString()} × {learnersCount} learners = KES {amountKsh.toLocaleString()}
+          {isFixedSchoolPlan ? 'School term plan' : `KES ${resolvedFee.toLocaleString()} × ${learnersCount} learners`} = KES {amountKsh.toLocaleString()}
         </div>
       </div>
 

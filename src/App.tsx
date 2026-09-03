@@ -109,6 +109,7 @@ import TeacherClassList from '@/pages/dashboard/teacher/ClassList';
 import PathwayFinder from '@/components/PathwayFinder';
 import SchoolAdminProfile from '@/pages/dashboard/school-admin/Profile';
 import SchoolAdminRecycleBin from '@/pages/dashboard/school-admin/RecycleBin';
+import CombineExams from '@/pages/dashboard/CombineExams';
 import ParentProfile from '@/pages/dashboard/parent/Profile';
 import ParentFeeTranscript from '@/pages/dashboard/parent/FeeTranscript';
 // Legal pages
@@ -220,6 +221,8 @@ function AppRoutes() {
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClasses /></ProtectedRoute>} />
       <Route path="/school-admin/fees" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminFees /></ProtectedRoute>} />
       <Route path="/school-admin/results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminResults /></ProtectedRoute>} />
+      <Route path="/school-admin/upload-results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><TeacherResultsUpload privileged /></ProtectedRoute>} />
+      <Route path="/school-admin/combine-exams" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><CombineExams /></ProtectedRoute>} />
       <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAnnouncements /></ProtectedRoute>} />
       <Route path="/school-admin/subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjects /></ProtectedRoute>} />
       <Route path="/school-admin/branding" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBranding /></ProtectedRoute>} />
@@ -270,6 +273,7 @@ function AppRoutes() {
       {/* Dean of Studies routes - accessible to teachers who are DoS */}
       <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><DeanOfStudiesDashboard /></ProtectedRoute>} />
       <Route path="/dean-of-studies/results" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><DoSResults /></ProtectedRoute>} />
+      <Route path="/dean-of-studies/combine-exams" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><CombineExams /></ProtectedRoute>} />
 
       {/* Student routes */}
       <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />

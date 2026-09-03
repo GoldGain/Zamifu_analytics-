@@ -34,7 +34,7 @@ interface ManualRow {
   marks: string; // string for input control
 }
 
-export default function TeacherResultsUpload() {
+export default function TeacherResultsUpload({ privileged = false }: { privileged?: boolean }) {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<'manual' | 'csv'>('manual');
@@ -72,7 +72,8 @@ export default function TeacherResultsUpload() {
           dosUser = schoolRecord?.dean_of_studies_id === teacherRecord.id;
         }
       }
-      setIsDoS(dosUser);
+      const canManageAll = privileged || user?.role === 'school_admin' || dosUser;
+      setIsDoS(canManageAll);
       const [{ data: c }, { data: t }, { data: ex }, assignmentResult] = await Promise.all([
         supabase.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
@@ -85,7 +86,7 @@ export default function TeacherResultsUpload() {
       setAssignmentsLoaded(true);
 
       const assignedClassIds = [...new Set(assignments.map((a) => a.class_id).filter(Boolean))];
-      const filteredClasses = dosUser ? (c || []) : (c || []).filter((cls: any) => assignedClassIds.includes(cls.id));
+      const filteredClasses = canManageAll ? (c || []) : (c || []).filter((cls: any) => assignedClassIds.includes(cls.id));
       setClasses(filteredClasses);
 
       const subjectMap = new Map<string, any>();
@@ -94,7 +95,7 @@ export default function TeacherResultsUpload() {
           subjectMap.set(a.subject_id, { id: a.subject_id, name: a.subject_name || 'Learning Area' });
         }
       });
-      if (dosUser) {
+      if (canManageAll) {
         const { data: allSubjects } = await supabaseUntyped.from('subjects').select('id, name').order('name');
         setSubjects(allSubjects || []);
       } else {
@@ -104,10 +105,10 @@ export default function TeacherResultsUpload() {
 
       const qClass = searchParams.get('classId') || '';
       const qSubject = searchParams.get('subjectId') || '';
-      if (qClass && (dosUser || assignedClassIds.includes(qClass))) {
+      if (qClass && (canManageAll || assignedClassIds.includes(qClass))) {
         setSelectedClass(qClass);
       }
-      if (qSubject && (dosUser || assignments.some((a) => a.subject_id === qSubject && (!qClass || a.class_id === qClass)))) {
+      if (qSubject && (canManageAll || assignments.some((a) => a.subject_id === qSubject && (!qClass || a.class_id === qClass)))) {
         setSelectedSubject(qSubject);
       }
 
@@ -347,7 +348,7 @@ export default function TeacherResultsUpload() {
 
     // DoS users may enter marks for any class and learning area; ordinary teachers remain assignment-scoped.
     const verification = isDoS
-      ? { allowed: true, teacherId: (await supabaseUntyped.from('teachers').select('id').eq('profile_id', user?.id).maybeSingle()).data?.id, reason: '' }
+      ? { allowed: true, teacherId: (await supabaseUntyped.from('teachers').select('id').eq('school_id', user?.schoolId).limit(1).maybeSingle()).data?.id, reason: '' }
       : await verifyTeacherSubjectAssignment(user?.id, selectedClass, selectedSubject);
     if (!verification.allowed || !verification.teacherId) {
       toast.error(verification.reason || 'You are not assigned to this learning area.');

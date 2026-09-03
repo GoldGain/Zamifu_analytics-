@@ -49,7 +49,6 @@ export default function SchoolAdminTeachers() {
     gender: '' as GenderType,
     qualification: '',
     specialization: '',
-    tsc_number: '',
   });
 
   // Edit state
@@ -62,7 +61,6 @@ export default function SchoolAdminTeachers() {
     gender: '' as GenderType,
     qualification: '',
     specialization: '',
-    tsc_number: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -201,7 +199,6 @@ export default function SchoolAdminTeachers() {
         gender: formData.gender || null,
         qualification: formData.qualification.trim() || null,
         specialization: formData.specialization.trim() || null,
-        tsc_number: formData.tsc_number.trim() || null,
         profile_id: authData.user.id,
         school_id: user.schoolId,
         is_active: true,
@@ -234,7 +231,7 @@ export default function SchoolAdminTeachers() {
 
       toast.success(`Teacher ${teacherNumberLabel} added. Login: ${formData.email.trim().toLowerCase()} | Password: ${DEFAULT_TEACHER_PASSWORD}`);
       setShowAdd(false);
-      setFormData({ first_name: '', last_name: '', email: '', phone: '', gender: '' as GenderType, qualification: '', specialization: '', tsc_number: '' });
+      setFormData({ first_name: '', last_name: '', email: '', phone: '', gender: '' as GenderType, qualification: '', specialization: '' });
       refetch();
     } catch (error: any) {
       toast.error(error.message || 'Failed to add teacher');
@@ -253,7 +250,6 @@ export default function SchoolAdminTeachers() {
       gender: (teacher.gender || '') as GenderType,
       qualification: teacher.qualification || '',
       specialization: teacher.specialization || '',
-      tsc_number: teacher.tsc_number || '',
     });
   };
 
@@ -271,7 +267,6 @@ export default function SchoolAdminTeachers() {
         gender: editForm.gender || null,
         qualification: editForm.qualification.trim() || null,
         specialization: editForm.specialization.trim() || null,
-        tsc_number: editForm.tsc_number.trim() || null,
       });
       toast.success(result?.created_auth_account ? 'Teacher updated and login account created.' : 'Teacher and login account updated successfully!');
       setEditingTeacher(null);
@@ -357,7 +352,6 @@ export default function SchoolAdminTeachers() {
             </select>
             <input placeholder="Qualification" value={formData.qualification} onChange={(e) => setFormData({ ...formData, qualification: e.target.value })} className="w-full px-4 py-2 border rounded-xl text-sm" />
             <input placeholder="Specialization" value={formData.specialization} onChange={(e) => setFormData({ ...formData, specialization: e.target.value })} className="w-full px-4 py-2 border rounded-xl text-sm" />
-            <input placeholder="TSC Number" value={formData.tsc_number} onChange={(e) => setFormData({ ...formData, tsc_number: e.target.value })} className="w-full px-4 py-2 border rounded-xl text-sm" />
             <div className="flex gap-3 md:col-span-3 pt-2">
               <button type="submit" disabled={adding} className="bg-[#2563EB] text-white px-6 py-2 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 flex items-center gap-2">{adding ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Add Teacher {nextTeacherNumberLabel}</button>
               <button type="button" onClick={() => setShowAdd(false)} className="border px-6 py-2 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
@@ -454,8 +448,6 @@ export default function SchoolAdminTeachers() {
                 <input value={editForm.specialization} onChange={e => setEditForm({...editForm, specialization: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">TSC Number</label>
-                <input value={editForm.tsc_number} onChange={e => setEditForm({...editForm, tsc_number: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
               </div>
               <div className="sm:col-span-2 flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setEditingTeacher(null)} className="px-6 py-2.5 border rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>

@@ -10,6 +10,26 @@ export const TRIAL_DAYS = 60;
 export const PRICE_PER_LEARNER = DEFAULT_FEE_PER_LEARNER;
 export const ANNUAL_PRICE_PER_LEARNER = DEFAULT_ANNUAL_FEE_PER_LEARNER;
 
+export type SubscriptionPlanId = 'full_access_20' | 'full_access_50' | 'results_only' | 'timetabler_only' | 'generator_only';
+
+export interface SubscriptionPlanOption {
+  id: SubscriptionPlanId;
+  name: string;
+  price: number;
+  unit: 'learner' | 'school';
+  period: 'term';
+  featureSummary: string;
+  includesSms: boolean;
+}
+
+export const SUBSCRIPTION_PLANS: SubscriptionPlanOption[] = [
+  { id: 'full_access_20', name: 'Full Access (Per Learner)', price: 20, unit: 'learner', period: 'term', featureSummary: 'Full access to all features', includesSms: true },
+  { id: 'full_access_50', name: 'Full Access (Per Learner)', price: 50, unit: 'learner', period: 'term', featureSummary: 'Full access to all features', includesSms: true },
+  { id: 'results_only', name: 'Results Access Only', price: 1000, unit: 'school', period: 'term', featureSummary: 'Results access only; SMS at KES 1 each', includesSms: false },
+  { id: 'timetabler_only', name: 'Timetabler Access Only', price: 500, unit: 'school', period: 'term', featureSummary: 'Timetable generation only', includesSms: false },
+  { id: 'generator_only', name: 'Generator Access Only', price: 500, unit: 'school', period: 'term', featureSummary: 'Exam Generator, Scheme of Work, Notes and Lesson Plan', includesSms: false },
+];
+
 export interface TrialData {
   trialStartDate: string;
   trialEndDate: string;

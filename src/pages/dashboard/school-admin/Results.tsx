@@ -436,6 +436,28 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         return { name: sub, mean, grade, vals };
       }).sort((a, b) => b.mean - a.mean);
 
+      const orderedTerms = [...terms].sort((a, b) => Number(a.academic_year) - Number(b.academic_year) || Number(a.term_number || 0) - Number(b.term_number || 0));
+      const currentTermIndex = orderedTerms.findIndex((term) => term.id === selectedTerm);
+      const previousTerm = currentTermIndex > 0 ? orderedTerms[currentTermIndex - 1] : null;
+      let previousSubjectStats = new Map<string, number>();
+      if (previousTerm) {
+        const { data: previousResults } = await supabaseUntyped
+          .from('results')
+          .select('subject_id, marks, out_of, percentage, subjects(name)')
+          .eq('class_id', scope === 'class_teacher' ? scopedClassId : selectedClass)
+          .eq('term_id', previousTerm.id);
+        const previousBySubject = new Map<string, number[]>();
+        (previousResults || []).forEach((result: any) => {
+          const subjectName = result.subjects?.name;
+          if (!subjectName) return;
+          const percentage = Number(result.percentage ?? (Number(result.out_of) > 0 ? Number(result.marks || 0) / Number(result.out_of) * 100 : 0));
+          const values = previousBySubject.get(subjectName) || [];
+          values.push(percentage);
+          previousBySubject.set(subjectName, values);
+        });
+        previousSubjectStats = new Map(Array.from(previousBySubject.entries()).map(([name, values]) => [name, values.reduce((sum, value) => sum + value, 0) / values.length]));
+      }
+
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const displaySchoolName = schoolInfo.name || schoolName || 'School';
 
@@ -546,8 +568,32 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       {
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
         doc.setTextColor(26, 35, 126); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(10);
+        doc.text(displaySchoolName, 105, 8, { align: 'center' }); doc.setFontSize(14);
         doc.text(assessmentLabel ? `LEARNING AREA PERFORMANCE ANALYSIS — ${assessmentLabel}` : 'LEARNING AREA PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
+
+        const chartTop = 27;
+        const chartRowHeight = 7;
+        const chartLabelWidth = 30;
+        const chartWidth = 52;
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
+        doc.text(previousTerm ? 'CURRENT VS PREVIOUS ASSESSMENT' : 'LEARNING AREA PERFORMANCE', 14, chartTop);
+        doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
+        doc.text(`Current: ${assessmentLabel || termObj?.name || 'Selected assessment'}`, 14, chartTop + 6);
+        if (previousTerm) doc.text(`Previous: ${previousTerm.name} ${previousTerm.academic_year || ''}`, 112, chartTop + 6);
+        subjectStats.forEach((subject, index) => {
+          const y = chartTop + 12 + index * chartRowHeight;
+          const previous = previousSubjectStats.get(subject.name) ?? 0;
+          const label = subject.name.length > 20 ? `${subject.name.slice(0, 19)}…` : subject.name;
+          doc.setFontSize(10); doc.setTextColor(0, 0, 0); doc.text(label, 14, y + 3);
+          doc.setFillColor(225, 230, 240); doc.rect(14 + chartLabelWidth, y, chartWidth, 3, 'F');
+          doc.setFillColor(37, 99, 235); doc.rect(14 + chartLabelWidth, y, chartWidth * Math.min(100, subject.mean) / 100, 3, 'F');
+          if (previousTerm) {
+            doc.setFillColor(225, 230, 240); doc.rect(112 + chartLabelWidth, y, chartWidth, 3, 'F');
+            doc.setFillColor(106, 27, 154); doc.rect(112 + chartLabelWidth, y, chartWidth * Math.min(100, previous) / 100, 3, 'F');
+          }
+          doc.setFontSize(9); doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 14 + chartLabelWidth + chartWidth + 2, y + 3);
+          if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(`${previous.toFixed(1)}%`, 112 + chartLabelWidth + chartWidth + 2, y + 3); }
+        });
 
         const subRows = subjectStats.map((s, i) => {
           const gr = s.grade.subLevel;
@@ -560,15 +606,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           return [String(i + 1), displayName, `${s.mean.toFixed(1)}%`, gr, status];
         });
 
-        autoTable(doc, { startY: 26, head: [['Rank', 'Learning Area', 'Average', 'Grade', 'Status']], body: subRows, styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 9, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] } });
-        doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+        autoTable(doc, { startY: Math.min(150, chartTop + 20 + subjectStats.length * chartRowHeight), head: [['Rank', 'Learning Area', 'Average', 'Grade', 'Status']], body: subRows, styles: { fontSize: 14, cellPadding: 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: 14, fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] } });
+        doc.setFontSize(14); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
       // ── PAGE 3: LEARNER RESULTS TABLE ───────────────────────────────────────
-      // This is the wide, column-heavy page. Keep the surrounding report pages
-      // portrait, but give the results table a full A4 landscape canvas.
-      doc.addPage('a4', 'landscape');
+      // Keep every page of the Class Summary Results PDF in portrait orientation.
+      doc.addPage('a4', 'portrait');
       {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
