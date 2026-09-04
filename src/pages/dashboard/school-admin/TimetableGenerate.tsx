@@ -870,11 +870,18 @@ export default function TimetableGenerate() {
                   : priorityBand === 'afternoon'
                     ? prioritySlots.afternoon
                     : lessonSlots;
-            // Mathematics and English are hard subject anchors regardless of
-            // whether the administrator chose Automatic or No fixed priority.
+            // Mathematics and English PREFER their anchor lesson (Maths L1,
+            // English L2) but may also use the other slot in the same priority
+            // window when the anchor is occupied by another stream taught by the
+            // same teacher. This keeps the subject inside its correct band instead
+            // of silently dropping it whenever one teacher serves several parallel
+            // classes (e.g. Grade 7/8/9 all needing English at L2).
             const defaultAnchor = getDefaultPriorityLesson(subjectName);
             const preferredLessonSlots = defaultAnchor
-              ? preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) === defaultAnchor)
+              ? [
+                  ...preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) === defaultAnchor),
+                  ...preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) !== defaultAnchor),
+                ]
               : preferredBandSlots;
             const hasExplicitPriority = priorityBand !== 'none';
             // An explicit band with zero slots is a real configuration
@@ -1064,6 +1071,22 @@ export default function TimetableGenerate() {
                 (rotation + 2) % 5,
                 true,
               );
+            }
+            if (scheduled < lessonsToSchedule) {
+              // Over-capacity spill (approved behaviour). When a shared teacher
+              // physically cannot fit every lesson inside the subject's priority
+              // window (e.g. English 5 lessons/week x 3 streams but only two
+              // early-morning teacher slots per day), place the remaining lessons
+              // in the next available free periods instead of leaving the class
+              // blank. Every spilled lesson is surfaced as a generation note so
+              // administrators can rebalance staff for the next term.
+              const beforeSpill = scheduled;
+              schedulePass(lessonSlots, true, (rotation + 4) % 5, true);
+              if (scheduled > beforeSpill) {
+                generationNotes.push(
+                  `${cls.name || 'Class'} — ${String(assignment.subjects?.name || 'Learning area')} (${priorityBandLabel(priorityBand)}): ${scheduled - beforeSpill} lesson(s) placed outside the preferred ${priorityBandLabel(priorityBand)} window to fill available periods`,
+                );
+              }
             }
             if (scheduled < lessonsToSchedule) {
               const teacher = assignment.teachers;
