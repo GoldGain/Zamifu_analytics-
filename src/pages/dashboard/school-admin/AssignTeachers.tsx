@@ -17,6 +17,39 @@ const normalizePriorityBand = (value: unknown, isPriority = false): PriorityBand
   return 'auto';
 };
 
+// Subject-default priority mapping (mirrors timetable-generator getDefaultPriorityBand).
+const subjectDefaultBand = (name: string): PriorityBand => {
+  const n = (name || '').toLowerCase();
+  if (/mathemat/.test(n) || /\benglish\b/.test(n)) return 'early_morning';
+  if (/integrated\s*science|\bscience\b/.test(n)) return 'mid_morning';
+  if (/agricultur|pre[\s-]*technical/.test(n)) return 'mid_morning';
+  if (/kiswahili|\blanguages?\b|french|german|arabic/.test(n)) return 'late_morning';
+  if (/social\s*stud|religious|\bcre\b|christian|islamic|creative\s*arts?/.test(n)) return 'afternoon';
+  return 'none';
+};
+
+type LevelGroup = 'pre-primary' | 'lower-primary' | 'upper-primary' | 'combined-primary' | 'junior' | 'senior' | 'form-3-4';
+const resolveLevelGroup = (grade: number | null | undefined): LevelGroup | null => {
+  const g = Number(grade);
+  if (Number.isNaN(g)) return null;
+  if (g <= 0) return 'pre-primary';
+  if (g <= 3) return 'lower-primary';
+  if (g <= 6) return 'upper-primary';
+  if (g <= 9) return 'junior';
+  return 'senior';
+};
+const LEVEL_AFTER_LUNCH_DEFAULTS: Record<LevelGroup, number> = {
+  'pre-primary': 0,
+  'lower-primary': 0,
+  'upper-primary': 1,
+  'combined-primary': 1,
+  junior: 2,
+  senior: 3,
+  'form-3-4': 3,
+};
+// Lessons 1-2, 3-4 and 5-6 always exist (fixed morning structure).
+const FIXED_BAND_LESSONS = 2;
+
 interface TeacherAssignment {
   id: string;
   teacher_id: string;
@@ -81,6 +114,7 @@ export default function AssignTeachers() {
   const [editingDoubleLessonId, setEditingDoubleLessonId] = useState<string | null>(null);
   const [editingDoubleDays, setEditingDoubleDays] = useState<string[]>([...ALL_DAYS]);
   const [savingDoubleLesson, setSavingDoubleLesson] = useState(false);
+  const [levelConfigs, setLevelConfigs] = useState<Record<string, { after_lunch_lessons?: number; lessons_per_day?: number }>>({});
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -115,6 +149,16 @@ export default function AssignTeachers() {
         .order('name');
       if (se) throw se;
       setSubjects(subjectsData || []);
+
+      const { data: levelConfigsData, error: lcErr } = await (supabase as any)
+        .from('timetable_level_configs')
+        .select('level_group, lessons_per_day, after_lunch_lessons')
+        .eq('school_id', user?.schoolId);
+      if (!lcErr && levelConfigsData) {
+        const lcMap: Record<string, { after_lunch_lessons?: number; lessons_per_day?: number }> = {};
+        (levelConfigsData as any[]).forEach((lc: any) => { lcMap[lc.level_group] = lc; });
+        setLevelConfigs(lcMap);
+      }
 
       await fetchAssignments();
     } catch (err) {
@@ -162,6 +206,70 @@ export default function AssignTeachers() {
     setAssignments(mapped.sort((a, b) => a.teacher_number - b.teacher_number));
   };
 
+  // Feasibility guard: a shared teacher can only be in one class per period, so a
+  // teacher's weekly lessons inside a priority window cannot exceed that window's
+  // total teaching slots. This blocks impossible assignments at entry time instead
+  // of letting them fail silently when the timetable is generated.
+  const gradeByClassId = (classId: string): number | null => {
+    const cls = classes.find((c) => c.id === classId);
+    return cls ? Number(cls.level) : null;
+  };
+
+  const effectiveBand = (assignment: { priority_band: PriorityBand; subject_name: string }): PriorityBand | null => {
+    if (assignment.priority_band === 'none') return null;
+    if (assignment.priority_band === 'auto') {
+      const resolved = subjectDefaultBand(assignment.subject_name);
+      return resolved === 'none' ? null : resolved;
+    }
+    return assignment.priority_band;
+  };
+
+  const bandSlotCount = (band: PriorityBand, grade: number | null | undefined): number => {
+    if (band === 'early_morning' || band === 'mid_morning' || band === 'late_morning') {
+      return FIXED_BAND_LESSONS;
+    }
+    if (band === 'afternoon') {
+      const grp = resolveLevelGroup(grade);
+      const total = grp && typeof levelConfigs[grp]?.after_lunch_lessons === 'number'
+        ? levelConfigs[grp].after_lunch_lessons as number
+        : (grp ? LEVEL_AFTER_LUNCH_DEFAULTS[grp] : 2);
+      return Math.max(0, total);
+    }
+    return 0;
+  };
+
+  const computeConflicts = (
+    candidateAssignments: Array<{
+      id?: string;
+      teacher_id: string;
+      teacher_name: string;
+      class_id: string;
+      subject_name: string;
+      priority_band: PriorityBand;
+      lessons_per_week: number;
+    }>,
+  ): Array<{ teacherName: string; band: PriorityBand; levelGroup: string; demand: number; capacity: number }> => {
+    const byKey = new Map<string, { teacherName: string; band: PriorityBand; levelGroup: string; demand: number; capacity: number }>();
+    for (const a of candidateAssignments) {
+      const band = effectiveBand(a);
+      if (!band) continue;
+      const grade = gradeByClassId(a.class_id);
+      const grp = resolveLevelGroup(grade);
+      if (!grp) continue;
+      const capacity = bandSlotCount(band, grade) * ALL_DAYS.length;
+      const key = `${a.teacher_id}|${grp}|${band}`;
+      const existing = byKey.get(key);
+      if (existing) {
+        existing.demand += Math.max(0, Number(a.lessons_per_week) || 0);
+      } else {
+        byKey.set(key, { teacherName: a.teacher_name, band, levelGroup: grp, demand: Math.max(0, Number(a.lessons_per_week) || 0), capacity });
+      }
+    }
+    return Array.from(byKey.values())
+      .filter((e) => e.demand > e.capacity)
+      .sort((a, b) => (b.demand - b.capacity) - (a.demand - a.capacity));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.teacher_id || !formData.class_id || !formData.subject_id) {
@@ -170,6 +278,34 @@ export default function AssignTeachers() {
     }
     if (formData.is_double_lesson && formData.double_lesson_days.length === 0) {
       setError('Select at least one weekday for the double lesson.');
+      return;
+    }
+    const teacher = teachers.find((t) => t.id === formData.teacher_id);
+    const subject = subjects.find((sub) => sub.id === formData.subject_id);
+    const pending = {
+      teacher_id: formData.teacher_id,
+      teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : 'This teacher',
+      class_id: formData.class_id,
+      subject_name: subject?.name || 'this learning area',
+      priority_band: formData.priority_band,
+      lessons_per_week: Math.max(0, Number(formData.lessons_per_week) || 0),
+    };
+    const existingOthers = assignments
+      .filter((a) => !(a.teacher_id === formData.teacher_id && a.class_id === formData.class_id && a.subject_id === formData.subject_id))
+      .map((a) => ({
+        teacher_id: a.teacher_id,
+        teacher_name: a.teacher_name,
+        class_id: a.class_id,
+        subject_name: a.subject_name,
+        priority_band: a.priority_band,
+        lessons_per_week: a.lessons_per_week,
+      }));
+    const saveConflicts = computeConflicts([...existingOthers, pending]);
+    if (saveConflicts.length > 0) {
+      const c = saveConflicts[0];
+      setError(
+        `Cannot save: ${c.teacherName} would have ${c.demand} lessons/week in the ${c.band.replace(/_/g, ' ')} window, but only ${c.capacity} teaching slots exist across the ${c.levelGroup.replace(/-/g, ' ')} classes. Reduce the weekly lessons or assign a different teacher.`,
+      );
       return;
     }
     try {
@@ -208,6 +344,17 @@ export default function AssignTeachers() {
   };
 
   const handlePriorityChange = async (assignment: TeacherAssignment, priorityBand: PriorityBand) => {
+    const priorityCandidate = assignments.map((a) =>
+      a.id === assignment.id ? { ...a, priority_band: priorityBand } : a,
+    );
+    const priorityConflicts = computeConflicts(priorityCandidate);
+    if (priorityConflicts.length > 0) {
+      const c = priorityConflicts[0];
+      setError(
+        `Cannot set priority: ${c.teacherName} would have ${c.demand} lessons/week in the ${c.band.replace(/_/g, ' ')} window, but only ${c.capacity} teaching slots exist across the ${c.levelGroup.replace(/-/g, ' ')} classes. Use a different window or assign a different teacher.`,
+      );
+      return;
+    }
     try {
       const { error } = await supabase
         .from('teacher_subject_assignments')
@@ -362,6 +509,8 @@ export default function AssignTeachers() {
     );
   }
 
+  const currentConflicts = computeConflicts(assignments);
+
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
@@ -382,6 +531,21 @@ export default function AssignTeachers() {
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl flex gap-2">
           <CheckCircle className="text-green-600 flex-shrink-0" size={18} />
           <p className="text-green-700 text-sm">{success}</p>
+        </div>
+      )}
+
+      {currentConflicts.length > 0 && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-xl">
+          <p className="text-amber-800 text-sm font-bold mb-1 flex items-center gap-2">
+            <AlertCircle size={16} /> Impossible assignment{currentConflicts.length > 1 ? 's' : ''} detected
+          </p>
+          <ul className="text-amber-700 text-xs list-disc pl-5 space-y-1">
+            {currentConflicts.map((c, i) => (
+              <li key={i}>
+                {c.teacherName} - {c.band.replace(/_/g, ' ')} window needs {c.demand} lessons/week but only {c.capacity} teaching slots exist. Reduce lessons or use a different teacher.
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
