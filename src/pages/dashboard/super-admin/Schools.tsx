@@ -42,7 +42,7 @@ export default function SuperAdminSchools() {
         .from('schools')
         .insert([{
           name: formData.name.trim(),
-          code: formData.code.trim().toUpperCase(),
+          code: (formData.name.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10) || 'SCHOOL') + '-' + Math.floor(1000 + Math.random() * 9000),
           email: formData.email.trim().toLowerCase() || null,
           phone: formData.phone.trim() || null,
           county: formData.county.trim() || null,
@@ -68,7 +68,7 @@ export default function SuperAdminSchools() {
         last_name: formData.admin_last_name,
         role: 'school_admin',
         school_id: school.id,
-        metadata: { school_name: formData.name.trim(), school_code: formData.code.trim().toUpperCase() },
+        metadata: { school_name: formData.name.trim() },
       });
 
       toast.success(`School "${formData.name}" and admin account created!`);
@@ -110,7 +110,6 @@ export default function SuperAdminSchools() {
           <form onSubmit={handleAdd} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input placeholder="School Name *" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm" required />
-              <input placeholder="School Code *" value={formData.code} onChange={e => setFormData({...formData, code: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm" required />
               <input placeholder="Email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm" type="email" />
               <input placeholder="Phone" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm" />
               <input placeholder="County" value={formData.county} onChange={e => setFormData({...formData, county: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm" />
