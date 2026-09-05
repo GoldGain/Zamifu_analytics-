@@ -290,24 +290,6 @@ export default function AssignTeachers() {
       priority_band: formData.priority_band,
       lessons_per_week: Math.max(0, Number(formData.lessons_per_week) || 0),
     };
-    const existingOthers = assignments
-      .filter((a) => !(a.teacher_id === formData.teacher_id && a.class_id === formData.class_id && a.subject_id === formData.subject_id))
-      .map((a) => ({
-        teacher_id: a.teacher_id,
-        teacher_name: a.teacher_name,
-        class_id: a.class_id,
-        subject_name: a.subject_name,
-        priority_band: a.priority_band,
-        lessons_per_week: a.lessons_per_week,
-      }));
-    const saveConflicts = computeConflicts([...existingOthers, pending]);
-    if (saveConflicts.length > 0) {
-      const c = saveConflicts[0];
-      setError(
-        `Cannot save: ${c.teacherName} would have ${c.demand} lessons/week in the ${c.band.replace(/_/g, ' ')} window, but only ${c.capacity} teaching slots exist across the ${c.levelGroup.replace(/-/g, ' ')} classes. Reduce the weekly lessons or assign a different teacher.`,
-      );
-      return;
-    }
     try {
       setSaving(true);
       setError(null);
@@ -344,17 +326,6 @@ export default function AssignTeachers() {
   };
 
   const handlePriorityChange = async (assignment: TeacherAssignment, priorityBand: PriorityBand) => {
-    const priorityCandidate = assignments.map((a) =>
-      a.id === assignment.id ? { ...a, priority_band: priorityBand } : a,
-    );
-    const priorityConflicts = computeConflicts(priorityCandidate);
-    if (priorityConflicts.length > 0) {
-      const c = priorityConflicts[0];
-      setError(
-        `Cannot set priority: ${c.teacherName} would have ${c.demand} lessons/week in the ${c.band.replace(/_/g, ' ')} window, but only ${c.capacity} teaching slots exist across the ${c.levelGroup.replace(/-/g, ' ')} classes. Use a different window or assign a different teacher.`,
-      );
-      return;
-    }
     try {
       const { error } = await supabase
         .from('teacher_subject_assignments')
@@ -509,8 +480,6 @@ export default function AssignTeachers() {
     );
   }
 
-  const currentConflicts = computeConflicts(assignments);
-
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-6">
@@ -531,21 +500,6 @@ export default function AssignTeachers() {
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl flex gap-2">
           <CheckCircle className="text-green-600 flex-shrink-0" size={18} />
           <p className="text-green-700 text-sm">{success}</p>
-        </div>
-      )}
-
-      {currentConflicts.length > 0 && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-xl">
-          <p className="text-amber-800 text-sm font-bold mb-1 flex items-center gap-2">
-            <AlertCircle size={16} /> Impossible assignment{currentConflicts.length > 1 ? 's' : ''} detected
-          </p>
-          <ul className="text-amber-700 text-xs list-disc pl-5 space-y-1">
-            {currentConflicts.map((c, i) => (
-              <li key={i}>
-                {c.teacherName} - {c.band.replace(/_/g, ' ')} window needs {c.demand} lessons/week but only {c.capacity} teaching slots exist. Reduce lessons or use a different teacher.
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
