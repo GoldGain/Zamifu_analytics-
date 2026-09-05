@@ -108,7 +108,7 @@ export default function ResellerSchools() {
     try {
       const payload: any = {
         name: form.name,
-        code: form.code,
+        code: (form.name.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10) || 'SCHOOL') + '-' + Math.floor(1000 + Math.random() * 9000),
         county: form.county,
         curriculum: form.curriculum,
         principal_name: form.principal_name,
@@ -355,10 +355,6 @@ export default function ResellerSchools() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">School Name *</label>
               <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">School Code *</label>
-              <input required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">County</label>
