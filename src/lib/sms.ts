@@ -260,6 +260,16 @@ export async function sendBulkSMS(
 
 // ─── Welcome SMS Messages ────────────────────────────────────────────────────
 
+// Normalize any anti-spam obfuscation (e.g. "(at)", " at ") back to a real "@"
+// so welcome messages always show a login-ready email and password.
+export function normalizeCredential(value: string): string {
+  return String(value || '')
+    .replace(/\(at\)/gi, '@')
+    .replace(/\bat\b/gi, '@')
+    .replace(/\(dot\)/gi, '.')
+    .replace(/\s*@\s*/g, '@');
+}
+
 export function generateWelcomeSMS(
   firstName: string,
   role: string,
@@ -268,7 +278,9 @@ export function generateWelcomeSMS(
   schoolName?: string
 ): string {
   const schoolLine = schoolName ? ` at ${schoolName}` : '';
-  return `Welcome to Zamifu Analytics${schoolLine}!\n\nHello ${firstName}, your ${role} account has been created.\n\nLogin: ${email}\nPassword: ${password}\nPortal: https://zamifu.company\n\nPlease change your password after first login.`;
+  const login = normalizeCredential(email);
+  const pass = normalizeCredential(password);
+  return `Welcome to Zamifu Analytics${schoolLine}!\n\nHello ${firstName}, your ${role} account has been created.\n\nLogin: ${login}\nPassword: ${pass}\nPortal: https://zamifu.company\n\nPlease change your password after first login.`;
 }
 
 export function generateResultsSMS(
