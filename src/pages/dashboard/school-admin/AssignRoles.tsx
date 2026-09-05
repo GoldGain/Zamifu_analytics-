@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserCheck, Users, GraduationCap, Loader2, CheckCircle, AlertCircle, Save } from 'lucide-react';
+import { UserCheck, Users, GraduationCap, Loader2, CheckCircle, AlertCircle, Save, ShieldCheck, Plus, Trash2 } from 'lucide-react';
+import { createScopedUser } from '@/lib/supabase/createUser';
+import { deleteScopedUser } from '@/lib/supabase/accountActions';
 import { toast } from 'sonner';
 
 interface Teacher {
@@ -37,6 +39,9 @@ export default function AssignRoles() {
   const [selectedDoS, setSelectedDoS] = useState('');
   const [dosSet, setDosSet] = useState<Set<string>>(new Set());
   const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string>>({});
+  const [admins, setAdmins] = useState<any[]>([]);
+  const [adminForm, setAdminForm] = useState({ first_name: '', last_name: '', email: '' });
+  const [savingAdmin, setSavingAdmin] = useState(false);
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -68,6 +73,13 @@ export default function AssignRoles() {
       const teacherList: Teacher[] = teachersData || [];
       setTeachers(teacherList);
       setDosSet(new Set((teacherList as any[]).filter((t) => t.is_dean_of_studies).map((t) => String(t.id))));
+      const { data: adminsData } = await (supabase as any)
+        .from('profiles')
+        .select('id, first_name, last_name, email')
+        .eq('school_id', user?.schoolId)
+        .eq('role', 'school_admin')
+        .order('first_name');
+      setAdmins(adminsData || []);
 
       // Build teacher lookup maps:
       // - by teachers.id (for the dropdown value)
@@ -112,6 +124,43 @@ export default function AssignRoles() {
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminForm.email || !adminForm.first_name || !adminForm.last_name) {
+      toast.error('Name and email are required');
+      return;
+    }
+    setSavingAdmin(true);
+    try {
+      await createScopedUser({
+        email: adminForm.email.trim().toLowerCase(),
+        password: 'SchoolAdmin@2025',
+        first_name: adminForm.first_name.trim(),
+        last_name: adminForm.last_name.trim(),
+        role: 'school_admin',
+        school_id: user?.schoolId,
+      });
+      toast.success(`School administrator added: ${adminForm.email}`);
+      setAdminForm({ first_name: '', last_name: '', email: '' });
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add school administrator');
+    } finally {
+      setSavingAdmin(false);
+    }
+  };
+
+  const handleDeleteAdmin = async (id: string, email: string) => {
+    if (!confirm(`Remove school administrator ${email}?`)) return;
+    try {
+      await deleteScopedUser(id);
+      toast.success('School administrator removed');
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to remove school administrator');
     }
   };
 
@@ -347,6 +396,72 @@ export default function AssignRoles() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* School Administrators Section */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+            <ShieldCheck className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">School Administrators</h2>
+            <p className="text-sm text-gray-500">Add multiple school administrators for this school.</p>
+          </div>
+        </div>
+
+        {admins.length > 0 && (
+          <div className="mb-4 divide-y divide-gray-100 rounded-xl border border-gray-100">
+            {admins.map((a) => (
+              <div key={a.id} className="flex items-center justify-between p-3">
+                <div className="text-sm">
+                  <span className="font-medium text-gray-900">{a.first_name} {a.last_name}</span>
+                  <span className="text-xs text-gray-500 ml-2">{a.email}</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteAdmin(a.id, a.email)}
+                  className="text-red-500 hover:text-red-700 p-1.5 rounded-lg transition-colors"
+                  title="Remove administrator"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleAddAdmin} className="grid gap-3 sm:grid-cols-3">
+          <input
+            placeholder="First name *"
+            value={adminForm.first_name}
+            onChange={(e) => setAdminForm({ ...adminForm, first_name: e.target.value })}
+            className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+          <input
+            placeholder="Last name *"
+            value={adminForm.last_name}
+            onChange={(e) => setAdminForm({ ...adminForm, last_name: e.target.value })}
+            className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+          <input
+            placeholder="Email *"
+            type="email"
+            value={adminForm.email}
+            onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+            className="px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+          <button
+            type="submit"
+            disabled={savingAdmin}
+            className="sm:col-span-3 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+          >
+            {savingAdmin ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Add School Administrator
+          </button>
+        </form>
       </div>
     </div>
   );
