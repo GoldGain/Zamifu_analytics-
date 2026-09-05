@@ -156,7 +156,7 @@ export default function AssignRoles() {
   const handleDeleteAdmin = async (id: string, email: string) => {
     if (!confirm(`Remove school administrator ${email}?`)) return;
     try {
-      await deleteScopedUser(id);
+      await deleteScopedUser({ target_user_id: id, target_type: 'school_admin' });
       toast.success('School administrator removed');
       fetchData();
     } catch (err: any) {
