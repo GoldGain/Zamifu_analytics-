@@ -74,7 +74,7 @@ export default function DeanOfStudiesDashboard() {
       // Find the school where this teacher is dean_of_studies
       const { data: teacherData } = await (supabase as any)
         .from('teachers')
-        .select('id, school_id')
+        .select('id, school_id, is_dean_of_studies')
         .eq('profile_id', user?.id)
         .maybeSingle();
 
@@ -86,8 +86,9 @@ export default function DeanOfStudiesDashboard() {
           .eq('id', teacherData.school_id)
           .maybeSingle();
 
-        // Allow if they are the DoS OR if they have a teacher record for this school
-        if (schoolData?.dean_of_studies_id === teacherData.id || teacherData.id) {
+        // Allow if flagged as a Dean of Studies (supports multiple DoS) OR if the
+        // legacy single dean_of_studies_id points at this teacher.
+        if (teacherData?.is_dean_of_studies || schoolData?.dean_of_studies_id === teacherData?.id) {
           setSchoolId(teacherData.school_id);
           fetchData(teacherData.school_id);
         } else {
