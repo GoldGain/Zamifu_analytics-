@@ -15,7 +15,7 @@ const LEGACY_IDENTIFIER_HEADER = 'admission_no_assessment_no';
 
 const TEMPLATE_HEADERS = [
   ADMISSION_HEADER, ASSESSMENT_HEADER, 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
-  'gender', 'date_of_birth', 'birth_cert_number', 'nationality', 'county', 'sub_county',
+  'gender', 'date_of_birth', 'nationality', 'county', 'sub_county',
   'boarding_status', 'disability_status', 'curriculum', 'parent_name', 'parent_phone', 'parent_email',
 ];
 
@@ -180,7 +180,6 @@ export default function BulkStudentImport() {
             student_email: email,
             gender,
             date_of_birth: row.date_of_birth || null,
-            birth_cert_number: row.birth_cert_number || null,
             nationality: row.nationality || 'Kenyan',
             curriculum,
             county: row.county || null,
