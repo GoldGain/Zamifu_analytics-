@@ -10,6 +10,7 @@ interface Teacher {
   first_name: string;
   last_name: string;
   employee_number: string;
+  is_dean_of_studies?: boolean;
 }
 
 interface ClassInfo {
@@ -34,6 +35,7 @@ export default function AssignRoles() {
   const [savingClass, setSavingClass] = useState<string | null>(null);
   const [savingDoS, setSavingDoS] = useState(false);
   const [selectedDoS, setSelectedDoS] = useState('');
+  const [dosSet, setDosSet] = useState<Set<string>>(new Set());
   const [classTeacherMap, setClassTeacherMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -46,7 +48,7 @@ export default function AssignRoles() {
       const [{ data: teachersData }, { data: classesData }, { data: schoolData }] = await Promise.all([
         (supabase as any)
           .from('teachers')
-          .select('id, profile_id, first_name, last_name, employee_number')
+          .select('id, profile_id, first_name, last_name, employee_number, is_dean_of_studies')
           .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('first_name'),
@@ -65,6 +67,7 @@ export default function AssignRoles() {
 
       const teacherList: Teacher[] = teachersData || [];
       setTeachers(teacherList);
+      setDosSet(new Set((teacherList as any[]).filter((t) => t.is_dean_of_studies).map((t) => String(t.id))));
 
       // Build teacher lookup maps:
       // - by teachers.id (for the dropdown value)
@@ -168,12 +171,26 @@ export default function AssignRoles() {
   const handleAssignDoS = async () => {
     setSavingDoS(true);
     try {
-      const { error } = await (supabase as any)
+      const dosIds = Array.from(dosSet).filter((id) => teachers.some((t) => t.id === id));
+      // Clear the flag on all teachers first, then set it for the selected set.
+      await (supabase as any)
+        .from('teachers')
+        .update({ is_dean_of_studies: false })
+        .eq('school_id', user?.schoolId);
+      if (dosIds.length > 0) {
+        await (supabase as any)
+          .from('teachers')
+          .update({ is_dean_of_studies: true })
+          .in('id', dosIds);
+      }
+      // Keep the legacy single column pointing at the first selected DoS for
+      // backward compatibility with any code still reading schools.dean_of_studies_id.
+      const firstProfile = teachers.find((t) => t.id === dosIds[0])?.profile_id || null;
+      await (supabase as any)
         .from('schools')
-        .update({ dean_of_studies_id: selectedDoS || null })
+        .update({ dean_of_studies_id: firstProfile })
         .eq('id', user?.schoolId);
-      if (error) throw error;
-      toast.success(`Dean of Studies ${selectedDoS ? 'assigned' : 'removed'} successfully`);
+      toast.success(`Dean(s) of Studies saved (${dosIds.length} assigned)`);
       fetchData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to assign Dean of Studies');
@@ -211,7 +228,7 @@ export default function AssignRoles() {
           </div>
           <div>
             <h2 className="text-lg font-bold text-gray-900">Dean of Studies (DoS)</h2>
-            <p className="text-sm text-gray-500">The DoS can view all classes, monitor marks, and create assessments</p>
+            <p className="text-sm text-gray-500">Select one or more teachers. Each Dean of Studies can view all classes, monitor marks, and create assessments.</p>
           </div>
         </div>
 
@@ -224,27 +241,40 @@ export default function AssignRoles() {
           </div>
         )}
 
-        <div className="flex gap-3">
-          <select
-            value={selectedDoS}
-            onChange={(e) => setSelectedDoS(e.target.value)}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
-            <option value="">-- No Dean of Studies --</option>
-            {teachers.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.first_name} {t.last_name}
-                {t.employee_number ? ` (${t.employee_number})` : ''}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-2">
+          {teachers.length === 0 ? (
+            <p className="text-sm text-gray-500">No teachers found. Add teachers first.</p>
+          ) : (
+            teachers.map((t) => {
+              const checked = dosSet.has(String(t.id));
+              return (
+                <label key={t.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 cursor-pointer hover:bg-purple-50/40 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      setDosSet((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(String(t.id))) next.delete(String(t.id));
+                        else next.add(String(t.id));
+                        return next;
+                      });
+                    }}
+                    className="w-4 h-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm font-medium text-gray-800">{t.first_name} {t.last_name}</span>
+                  {t.employee_number && <span className="text-xs text-gray-400">({t.employee_number})</span>}
+                </label>
+              );
+            })
+          )}
           <button
             onClick={handleAssignDoS}
             disabled={savingDoS}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
           >
             {savingDoS ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save
+            Save Deans of Studies
           </button>
         </div>
       </div>
