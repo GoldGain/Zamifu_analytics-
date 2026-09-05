@@ -1080,13 +1080,7 @@ export default function TimetableGenerate() {
               // in the next available free periods instead of leaving the class
               // blank. Every spilled lesson is surfaced as a generation note so
               // administrators can rebalance staff for the next term.
-              const beforeSpill = scheduled;
               schedulePass(lessonSlots, true, (rotation + 4) % 5, true);
-              if (scheduled > beforeSpill) {
-                generationNotes.push(
-                  `${cls.name || 'Class'} — ${String(assignment.subjects?.name || 'Learning area')} (${priorityBandLabel(priorityBand)}): ${scheduled - beforeSpill} lesson(s) placed outside the preferred ${priorityBandLabel(priorityBand)} window to fill available periods`,
-                );
-              }
             }
             if (scheduled < lessonsToSchedule) {
               const teacher = assignment.teachers;
@@ -1311,11 +1305,6 @@ export default function TimetableGenerate() {
         // Repair every known shortfall before persisting entries. A repaired
         // warning is updated to its final count and is not shown as an error.
         underScheduled.forEach(tryRepairGap);
-        if (priorityCapacityWarnings.length > 0) {
-          const levelLabel = LEVEL_GROUPS.find((level) => level.key === levelKey)?.label || levelKey;
-          priorityCapacityWarnings.forEach((warning) => generationNotes.push(`${levelLabel}: ${warning}`));
-          generatedSummary.push(`Priority capacity notes: ${priorityCapacityWarnings.join('; ')}`);
-        }
 
         const restorePlacement = (placement: LessonPlacementRecord) => {
           allEntries.push(...placement.entries);
@@ -1469,7 +1458,6 @@ export default function TimetableGenerate() {
                     commitFill(context, gap, cls, fillDay, fillSlot, timing, teacherKey, fillClassKey);
                     placed = true;
                     fillProgress = true;
-                    generationNotes.push(`${cls.name || 'Class'} — ${gap.subjectName}: lesson placed in an open period (relaxed sequence/day rule) to leave no blanks`);
                     break;
                   }
                 }
