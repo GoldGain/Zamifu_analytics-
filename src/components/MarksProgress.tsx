@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
 import { supabase } from '@/lib/supabase/client';
 import { CheckCircle, XCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -25,6 +26,7 @@ export function MarksProgress({ classId, className, termId, schoolId, compact = 
   const [totalStudents, setTotalStudents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(!compact);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (classId && termId && schoolId) fetchProgress();
@@ -165,7 +167,14 @@ export function MarksProgress({ classId, className, termId, schoolId, compact = 
           {subjects.map((s) => (
             <div
               key={s.subject_id}
+              role="button"
+              tabIndex={0}
+              onClick={() => { if (s.percentage < 100) navigate('/teacher/results/upload'); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && s.percentage < 100) navigate('/teacher/results/upload'); }}
+              title={s.percentage < 100 ? `Add missing marks for ${s.subject_name}` : 'Complete'}
               className={`flex items-center gap-3 p-3 rounded-xl border ${
+                s.percentage < 100 ? 'cursor-pointer hover:shadow-sm hover:border-red-300' : ''
+              } ${
                 s.percentage === 100
                   ? 'bg-green-50 border-green-200'
                   : s.percentage > 0
@@ -180,7 +189,7 @@ export function MarksProgress({ classId, className, termId, schoolId, compact = 
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-900 truncate">{s.subject_name}</span>
+                  <span className="text-sm font-medium text-gray-900 truncate">{s.subject_name}</span>{s.percentage < 100 && <span className="ml-1 text-[11px] font-semibold text-red-500">&rarr; Add marks</span>}
                   <span className={`text-xs font-bold ml-2 ${
                     s.percentage === 100 ? 'text-green-700' : s.percentage > 0 ? 'text-yellow-700' : 'text-red-600'
                   }`}>
