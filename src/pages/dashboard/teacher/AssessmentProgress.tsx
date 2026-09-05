@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, BookOpen, CheckCircle, AlertCircle, BarChart3 } from 'lucide-react';
+import { Loader2, BookOpen, CheckCircle, AlertCircle, BarChart3, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { deleteResults } from '@/lib/resultActions';
 
 interface ProgressData {
   assessmentId: string;
@@ -28,6 +29,8 @@ export default function AssessmentProgress() {
   const [progress, setProgress] = useState<ProgressData[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
+  const [currentTeacherId, setCurrentTeacherId] = useState('');
+  const [currentSchoolId, setCurrentSchoolId] = useState('');
 
   useEffect(() => {
     if (user?.id) fetchProgress();
@@ -48,6 +51,7 @@ export default function AssessmentProgress() {
         setLoading(false);
         return;
       }
+      setCurrentTeacherId(teacherId);
 
       // Issue 9: Resolve school_id from teacher record as fallback when user.schoolId is null
       const resolvedSchoolId = user?.schoolId || teacherData?.school_id;
@@ -55,6 +59,7 @@ export default function AssessmentProgress() {
         setLoading(false);
         return;
       }
+      setCurrentSchoolId(resolvedSchoolId);
 
       // Get teacher's class-subject assignments
       const { data: assignments } = await supabaseUntyped
@@ -147,6 +152,16 @@ export default function AssessmentProgress() {
       toast.error('Failed to load progress: ' + err.message);
     }
     setLoading(false);
+  };
+
+  const handleDeleteClassResults = async (p: ProgressData) => {
+    if (!currentTeacherId || !currentSchoolId) return;
+    if (!confirm(`Delete your results for ${p.assessmentName} (${p.className}, ${p.termName})? This cannot be undone.`)) return;
+    try {
+      const deleted = await deleteResults({ schoolId: currentSchoolId, classId: p.classId, examId: p.assessmentId, teacherId: currentTeacherId });
+      toast.success(`Deleted ${deleted} result(s)`);
+      fetchProgress();
+    } catch (err: any) { toast.error('Failed to delete results: ' + err.message); }
   };
 
   return (
@@ -247,6 +262,12 @@ export default function AssessmentProgress() {
               {expandedAssessment === `${p.assessmentId}-${p.classId}` && (
                 <div className="px-5 pb-4 border-t border-gray-100 pt-3">
                   <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Learning Area Progress</p>
+                  <button
+                    onClick={() => handleDeleteClassResults(p)}
+                    className="mb-3 flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete My Results
+                  </button>
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                     {p.subjectProgress.map((sp) => (
                       <div

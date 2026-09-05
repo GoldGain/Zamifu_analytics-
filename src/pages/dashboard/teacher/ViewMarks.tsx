@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, Loader2, Pencil, Save, X, Eye, BookOpen, Filter, Send, Users, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Search, Loader2, Pencil, Save, X, Eye, BookOpen, Filter, Send, Users, ChevronDown, ChevronUp, CheckCircle, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 
 interface MarkEntry {
   id: string;
@@ -61,6 +62,9 @@ export default function ViewMarks() {
   const [exams, setExams] = useState<any[]>([]);
   const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
   const [classRoster, setClassRoster] = useState<Record<string, any[]>>({});
+  const [terms, setTerms] = useState<any[]>([]);
+  const [filterTerm, setFilterTerm] = useState('');
+  const [addingMarks, setAddingMarks] = useState<AddMarksTarget | null>(null);
 
   useEffect(() => {
     fetchMarks();
@@ -78,6 +82,15 @@ export default function ViewMarks() {
       setExams(data || []);
     } catch (err) {
       console.warn('Could not load exams', err);
+    }
+    try {
+      const { data: termsData } = await supabaseUntyped.from('terms').select('id, name, academic_year, is_current').eq('school_id', user?.schoolId).order('academic_year', { ascending: false });
+      setTerms(termsData || []);
+      const current = (termsData || []).find((t: any) => t.is_current);
+      if (current) setFilterTerm(current.id);
+      else if ((termsData || []).length > 0) setFilterTerm((termsData as any[])[0].id);
+    } catch (err) {
+      console.warn('Could not load terms', err);
     }
   };
 
@@ -241,6 +254,31 @@ export default function ViewMarks() {
     setEditOutOf(String(mark.out_of));
   };
 
+  const handleDeleteMark = async (markId: string) => {
+    if (!confirm('Delete this mark? This cannot be undone.')) return;
+    try {
+      const { error } = await supabaseUntyped.from('results').delete().eq('id', markId);
+      if (error) throw error;
+      toast.success('Mark deleted');
+      fetchMarks();
+    } catch (err: any) { toast.error('Failed to delete mark: ' + err.message); }
+  };
+
+  const openAddMarks = (missing: MissingStudent, group: GroupedMarks, subject: GroupedMarks['subjects'][number]) => {
+    if (!filterTerm) { toast.error('Select a term to add marks'); return; }
+    setAddingMarks({
+      schoolId: user?.schoolId || '',
+      classId: group.classId,
+      subjectId: subject.subjectId,
+      subjectName: subject.subjectName,
+      termId: filterTerm,
+      examId: filterExam || null,
+      studentId: missing.student_id,
+      studentName: missing.name,
+      admissionNumber: missing.admission_number,
+    });
+  };
+
   // Filter marks
   const filteredMarks = marks.filter((m) => {
     const studentName = `${m.students?.first_name || ''} ${m.students?.last_name || ''}`.toLowerCase();
@@ -254,6 +292,9 @@ export default function ViewMarks() {
     const matchesExam = filterExam ? m.exam_id === filterExam : true;
     return matchesSearch && matchesClass && matchesSubject && matchesStatus && matchesExam;
   });
+
+  // Scope missing-learner detection to the selected term (if any)
+  const marksForTerm = filterTerm ? marks.filter((m) => m.term_id === filterTerm) : marks;
 
   // Group marks by class and subject
   const groupedMarks: GroupedMarks[] = [];
@@ -295,7 +336,7 @@ export default function ViewMarks() {
   classMap.forEach((classData, classId) => {
     const roster = classRoster[classId] || [];
     const enteredBySubject = new Map<string, Set<string>>();
-    marks.forEach((m) => {
+    marksForTerm.forEach((m) => {
       if (m.class_id !== classId || !m.student_id) return;
       if (!enteredBySubject.has(m.subject_id)) enteredBySubject.set(m.subject_id, new Set());
       enteredBySubject.get(m.subject_id)!.add(String(m.student_id));
@@ -399,6 +440,18 @@ export default function ViewMarks() {
           <option value="draft">Draft</option>
           <option value="submitted">Submitted</option>
         </select>
+        {terms.length > 0 && (
+          <select
+            value={filterTerm}
+            onChange={(e) => setFilterTerm(e.target.value)}
+            className="px-4 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+          >
+            <option value="">All Terms</option>
+            {terms.map((t: any) => (
+              <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>
+            ))}
+          </select>
+        )}
         {exams.length > 0 && (
           <select
             value={filterExam}
@@ -588,6 +641,12 @@ export default function ViewMarks() {
                                               >
                                                 <Pencil className="w-3 h-3" /> Edit
                                               </button>
+                                              <button
+                                                onClick={() => handleDeleteMark(m.id)}
+                                                className="flex items-center gap-1 text-xs px-2 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                                              >
+                                                <Trash2 className="w-3 h-3" /> Delete
+                                              </button>
                                             </>
                                           )}
                                         </div>
@@ -606,7 +665,14 @@ export default function ViewMarks() {
                                       <td className="px-3 py-2">
                                         <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">Missing</span>
                                       </td>
-                                      <td className="px-3 py-2 text-[11px] text-gray-400">Add in results entry</td>
+                                      <td className="px-3 py-2">
+                                        <button
+                                          onClick={() => openAddMarks(missing, group, subject)}
+                                          className="flex items-center gap-1 text-xs px-2 py-1 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"
+                                        >
+                                          <Plus className="w-3 h-3" /> Add Marks
+                                        </button>
+                                      </td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -622,6 +688,9 @@ export default function ViewMarks() {
             );
           })}
         </div>
+      )}
+      {addingMarks && (
+        <AddMarksModal target={addingMarks} onClose={() => setAddingMarks(null)} onSaved={() => fetchMarks()} />
       )}
     </div>
   );

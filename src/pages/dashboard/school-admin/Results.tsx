@@ -6,6 +6,7 @@ import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
+import { deleteResults } from '@/lib/resultActions';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
@@ -118,6 +119,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const [deletingResult, setDeletingResult] = useState<any | null>(null);
   const [deletingResultLoading, setDeletingResultLoading] = useState(false);
+  const [deletingClassResults, setDeletingClassResults] = useState(false);
   const [schoolName, setSchoolName] = useState('School');
   const [bestPerSubjectList, setBestPerSubjectList] = useState<BestInSubject[]>([]);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({ name: '' });
@@ -379,6 +381,23 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     } finally {
       setDeletingResultLoading(false);
     }
+  };
+
+  const handleDeleteClassResults = async () => {
+    const effectiveClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
+    if (!effectiveClassId || !selectedTerm) { toast.error('Select a class and term first'); return; }
+    const className = classes.find((c: any) => c.id === effectiveClassId)?.name || 'this class';
+    const termName = terms.find((t: any) => t.id === selectedTerm)?.name || '';
+    const examName = exams.find((e: any) => e.id === selectedExam)?.name || '';
+    const label = [className, termName, examName].filter(Boolean).join(', ');
+    if (!confirm(`Delete ALL results for ${label}? This cannot be undone.`)) return;
+    setDeletingClassResults(true);
+    try {
+      const deleted = await deleteResults({ schoolId: user?.schoolId || '', classId: effectiveClassId, termId: selectedTerm, examId: selectedExam || undefined });
+      toast.success(`Deleted ${deleted} result(s)`);
+      fetchAll();
+    } catch (err: any) { toast.error('Failed to delete results: ' + err.message); }
+    finally { setDeletingClassResults(false); }
   };
 
   const fetchClassResults = async () => {
@@ -1148,6 +1167,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               {publishing ? 'Publishing...' : 'Publish & Notify'}
             </button>
           )}
+          <button onClick={handleDeleteClassResults} disabled={deletingClassResults || !selectedClass || !selectedTerm}
+            className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-red-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors shadow-sm">
+            {deletingClassResults ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            {deletingClassResults ? 'Deleting...' : 'Delete All Results'}
+          </button>
         </div>
       </div>
 

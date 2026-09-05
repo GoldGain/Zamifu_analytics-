@@ -88,6 +88,7 @@ export default function Assessments() {
   const [form, setForm] = useState(defaultForm);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingResultsId, setDeletingResultsId] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.schoolId) {
@@ -258,6 +259,21 @@ export default function Assessments() {
     }
   };
 
+  const handleDeleteResults = async (exam: Exam) => {
+    if (!confirm(`Delete ALL results for "${exam.name}"? This removes every learner's marks for this assessment and cannot be undone.`)) return;
+    setDeletingResultsId(exam.id);
+    try {
+      const { count, error: countError } = await (supabase as any).from('results').select('id', { count: 'exact', head: true }).eq('school_id', user?.schoolId).eq('exam_id', exam.id);
+      if (countError) throw countError;
+      if ((count || 0) === 0) { toast.info('No results exist for this assessment.'); setDeletingResultsId(null); return; }
+      const { error } = await (supabase as any).from('results').delete().eq('school_id', user?.schoolId).eq('exam_id', exam.id);
+      if (error) throw error;
+      toast.success(`Deleted ${count} result(s) for "${exam.name}"`);
+      fetchData();
+    } catch (err: any) { toast.error(err.message || 'Failed to delete results'); }
+    finally { setDeletingResultsId(null); }
+  };
+
   const toggleActive = async (exam: Exam) => {
     try {
       const { error } = await (supabase as any)
@@ -401,6 +417,14 @@ export default function Assessments() {
                   ) : (
                     <Trash2 className="w-4 h-4" />
                   )}
+                </button>
+                <button
+                  onClick={() => handleDeleteResults(exam)}
+                  disabled={deletingResultsId === exam.id}
+                  title="Delete all results for this assessment"
+                  className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  {deletingResultsId === exam.id ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete Results'}
                 </button>
               </div>
             </div>
