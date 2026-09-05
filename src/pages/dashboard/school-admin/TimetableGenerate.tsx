@@ -607,7 +607,7 @@ export default function TimetableGenerate() {
           early_morning: 1,
           mid_morning: 3,
           late_morning: 5,
-          afternoon: 7,
+          afternoon: 5,
         };
         const priorityBandSpillCeiling: Record<string, number> = {
           early_morning: 6,
