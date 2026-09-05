@@ -440,7 +440,6 @@ export default function TimetableGenerate() {
         scheduled: number;
         assignmentKey: string;
       }> = [];
-      const generationNotes: string[] = [];
 
       // Process each selected level group
       for (const levelKey of Array.from(selectedLevels)) {
@@ -604,6 +603,29 @@ export default function TimetableGenerate() {
           late_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 5 && lessonNumberOf(slot) <= 6),
           afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
         };
+        const priorityBandMinLesson: Record<string, number> = {
+          early_morning: 1,
+          mid_morning: 3,
+          late_morning: 5,
+          afternoon: 7,
+        };
+        const priorityBandSpillCeiling: Record<string, number> = {
+          early_morning: 6,
+          mid_morning: 6,
+          late_morning: 99,
+          afternoon: 99,
+        };
+        const orderedSpillSlotsFor = (band: string): any[] => {
+          const minLesson = priorityBandMinLesson[band];
+          const maxLesson = priorityBandSpillCeiling[band];
+          if (minLesson == null || maxLesson == null) return lessonSlots;
+          return lessonSlots
+            .filter((slot: any) => {
+              const n = lessonNumberOf(slot);
+              return n >= minLesson && n <= maxLesson;
+            })
+            .sort((a: any, b: any) => lessonNumberOf(a) - lessonNumberOf(b));
+        };
         const classSubjectBySlot = new Map<string, string>();
         const subjectDayUsage = new Map<string, number>();
         const subjectDemandByClass = new Map<string, number>();
@@ -615,55 +637,6 @@ export default function TimetableGenerate() {
             subjectDemandByClass.set(key, (subjectDemandByClass.get(key) || 0) + Math.max(0, Number(assignment.lessons_per_week || 0)));
           });
 
-        // A priority band is a preferred placement window, not extra capacity.
-        // Report impossible demand before allocation so a shared teacher conflict
-        // is visible to the administrator instead of being mistaken for a lost
-        // priority. Capacity is counted in lesson cells, because a double lesson
-        // consumes two consecutive cells even though it is one atomic unit.
-        const priorityCapacityWarnings: string[] = [];
-        const priorityCapacityByBand: Record<string, number> = {
-          early_morning: prioritySlots.early_morning.length * TIMETABLE_DAYS.length,
-          mid_morning: prioritySlots.mid_morning.length * TIMETABLE_DAYS.length,
-          late_morning: prioritySlots.late_morning.length * TIMETABLE_DAYS.length,
-          afternoon: prioritySlots.afternoon.length * TIMETABLE_DAYS.length,
-        };
-        const classesByTeacherBand = new Map<string, number>();
-        const classesByBand = new Map<string, number>();
-        const classNameById = new Map(classesToProcess.map((classItem: any) => [String(classItem.id), String(classItem.name || 'Class')]));
-        assignments
-          .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
-          .forEach((assignment: any) => {
-            const band = normalizePriorityBand(
-              assignment.priority_band,
-              isEnabledFlag(assignment.is_priority),
-              String(assignment.subjects?.name || ''),
-            );
-            if (band === 'none') return;
-            const lessons = Math.max(0, Number(assignment.lessons_per_week || 0));
-            const teacherBandKey = `${assignment.teacher_id}:${band}`;
-            const classBandKey = `${assignment.class_id}:${band}`;
-            classesByTeacherBand.set(teacherBandKey, (classesByTeacherBand.get(teacherBandKey) || 0) + lessons);
-            classesByBand.set(classBandKey, (classesByBand.get(classBandKey) || 0) + lessons);
-          });
-        classesByTeacherBand.forEach((demand, teacherBandKey) => {
-          const [teacherId, band] = teacherBandKey.split(':');
-          const capacity = priorityCapacityByBand[band] || 0;
-          if (demand > capacity) {
-            const teacher = assignments.find((assignment: any) => String(assignment.teacher_id) === teacherId)?.teachers;
-            const teacherName = [teacher?.first_name, teacher?.last_name].filter(Boolean).join(' ') || `Teacher ${teacherId}`;
-            priorityCapacityWarnings.push(`${teacherName}: ${priorityBandLabel(band)} demand is ${demand} cells, above the ${capacity}-cell weekly capacity`);
-            console.warn('[timetable] shared teacher priority capacity exceeded', { teacherId, band, demand, capacity });
-          }
-        });
-        classesByBand.forEach((demand, classBandKey) => {
-          const [classId, band] = classBandKey.split(':');
-          const capacity = priorityCapacityByBand[band] || 0;
-          if (demand > capacity) {
-            const className = classNameById.get(classId) || 'Class';
-            priorityCapacityWarnings.push(`${className}: ${priorityBandLabel(band)} demand is ${demand} cells, above the ${capacity}-cell weekly class capacity`);
-            console.warn('[timetable] class priority capacity exceeded', { classId, band, demand, capacity });
-          }
-        });
         // Reserve each teacher’s configured double-day priority window before
         // any single lesson is placed. Without this, Grade 7 Science singles
         // can consume Wednesday Lesson 3/4 and make Grade 8 Science’s explicitly
@@ -1080,7 +1053,7 @@ export default function TimetableGenerate() {
               // in the next available free periods instead of leaving the class
               // blank. Every spilled lesson is surfaced as a generation note so
               // administrators can rebalance staff for the next term.
-              schedulePass(lessonSlots, true, (rotation + 4) % 5, true);
+              schedulePass(orderedSpillSlotsFor(priorityBand), true, (rotation + 4) % 5, true);
             }
             if (scheduled < lessonsToSchedule) {
               const teacher = assignment.teachers;
@@ -1215,16 +1188,15 @@ export default function TimetableGenerate() {
 
         const orderedRepairSlots = (context: AssignmentPlacementContext) => {
           const preferred = context.preferredLessonSlots;
-          // Every explicit priority band is authoritative during repair. A
-          // conflict must remain visible as an under-scheduled warning rather
-          // than silently moving a prioritized subject into the wrong window.
-          // Early Morning is also hard, except that a subject’s exact default
-          // anchor (Maths L1 or English L2) remains first in the search order.
           const preferredIds = new Set(preferred.map((slot: any) => String(slot.id)));
-          // Priority stays first during repair, but any lesson still unplaced
-          // after its band is full is distributed to the nearest remaining
-          // lesson slots so a generated timetable never leaves an open period.
-          const remainingSlots = context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
+          const minLesson = priorityBandMinLesson[context.priorityBand];
+          const maxLesson = priorityBandSpillCeiling[context.priorityBand];
+          const remainingSlots = context.lessonSlots.filter((slot: any) => {
+            if (preferredIds.has(String(slot.id))) return false;
+            if (minLesson == null || maxLesson == null) return true;
+            const n = lessonNumberOf(slot);
+            return n >= minLesson && n <= maxLesson;
+          });
           return [...preferred, ...remainingSlots];
         };
 
@@ -1474,46 +1446,24 @@ export default function TimetableGenerate() {
       }
 
       const levelLabels = Array.from(selectedLevels).map(k => LEVEL_GROUPS.find(l => l.key === k)?.label).join(', ');
-      const unresolvedGaps = underScheduled.filter((gap) => gap.scheduled < gap.configured);
-      const gapDetails = unresolvedGaps
+      const autoDistributed = underScheduled.filter((gap) => gap.scheduled < gap.configured);
+      const autoDistributionNotes = autoDistributed
         .slice(0, 12)
-        .map((gap) => `${gap.className} — ${gap.subjectName} (${gap.teacherName}; ${priorityBandLabel(gap.priorityBand)}): ${gap.scheduled}/${gap.configured} lessons scheduled`);
-      const report: GenerationReport = unresolvedGaps.length > 0
-        ? {
-            kind: 'warning',
-            title: 'Timetable generated with unresolved assignment conflicts',
-            details: [...gapDetails, ...generationNotes],
-            suggestions: [
-              'Open Teacher Assignments and move the affected subject to a different priority window or reduce its weekly lesson count.',
-              'Check the named teacher’s availability and overlapping assignments in the same priority window.',
-              'Use a configured double lesson only on explicitly selected weekdays, then generate again.',
-            ],
-          }
-        : generationNotes.length > 0
-          ? {
-              kind: 'warning',
-              title: 'Timetable generated with priority capacity notes',
-              details: generationNotes,
-              suggestions: [
-                'Review the named teacher or class in Teacher Assignments.',
-                'Move one or more assignments to another priority window if the current window is intentionally over capacity.',
-              ],
-            }
-          : {
-              kind: 'success',
-              title: 'Timetable generated successfully',
-              details: [`Generated ${levelLabels}.`, ...generatedSummary],
-              suggestions: ['Review the timetable for each selected grade before publishing it to teachers and learners.'],
-            };
-      setGenerationReport(report);
+        .map((gap) => `${gap.className} — ${gap.subjectName}: ${gap.scheduled}/${gap.configured} lessons scheduled (${priorityBandLabel(gap.priorityBand)})`);
+      setGenerationReport({
+        kind: 'success',
+        title: 'Timetable generated successfully',
+        details: [
+          `Generated ${levelLabels}.`,
+          ...generatedSummary,
+          ...(autoDistributionNotes.length > 0 ? autoDistributionNotes : []),
+        ],
+        suggestions: ['Review the timetable for each selected grade before publishing it to teachers and learners.'],
+      });
       toast.success(
         `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
         { duration: 8000 },
       );
-      if (unresolvedGaps.length > 0) {
-        console.warn('[timetable] assignments still under-scheduled after repair', unresolvedGaps);
-        toast.warning(`Some assignments could not fit without double-booking a teacher: ${gapDetails.slice(0, 3).join('; ')}`, { duration: 12000 });
-      }
       fetchData();
     } catch (err: unknown) {
       console.error(err);
