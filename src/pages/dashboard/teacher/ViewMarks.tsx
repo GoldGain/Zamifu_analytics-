@@ -25,6 +25,12 @@ interface MarkEntry {
   terms: { name: string; academic_year: string } | null;
 }
 
+interface MissingStudent {
+  student_id: string;
+  name: string;
+  admission_number: string;
+}
+
 interface GroupedMarks {
   className: string;
   classId: string;
@@ -32,6 +38,7 @@ interface GroupedMarks {
     subjectName: string;
     subjectId: string;
     marks: MarkEntry[];
+    missing: MissingStudent[];
   }[];
 }
 
@@ -52,6 +59,8 @@ export default function ViewMarks() {
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
   const [filterExam, setFilterExam] = useState<string>('');
   const [exams, setExams] = useState<any[]>([]);
+  const [teacherAssignments, setTeacherAssignments] = useState<any[]>([]);
+  const [classRoster, setClassRoster] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     fetchMarks();
@@ -114,6 +123,32 @@ export default function ViewMarks() {
       }));
       
       setMarks(loadedMarks);
+
+      // Load the teacher's class/subject assignments so subjects with no marks
+      // still render, and load the full class roster so unmarked learners show
+      // a "Missing" status instead of being omitted entirely.
+      const { data: assignmentsData } = await supabaseUntyped
+        .from('teacher_subject_assignments')
+        .select('class_id, subject_id, subjects(name), classes(name)')
+        .eq('teacher_id', teacherId)
+        .eq('is_active', true);
+      setTeacherAssignments(assignmentsData || []);
+
+      const classIds = Array.from(new Set((assignmentsData || []).map((a: any) => a.class_id).filter(Boolean)));
+      if (classIds.length > 0) {
+        const { data: studentsData } = await supabaseUntyped
+          .from('students')
+          .select('id, class_id, first_name, last_name, admission_number')
+          .in('class_id', classIds)
+          .eq('is_active', true)
+          .order('admission_number');
+        const roster: Record<string, any[]> = {};
+        (studentsData || []).forEach((stu: any) => {
+          if (!roster[stu.class_id]) roster[stu.class_id] = [];
+          roster[stu.class_id].push(stu);
+        });
+        setClassRoster(roster);
+      }
     } catch (err: any) {
       toast.error('Failed to load marks: ' + err.message);
     }
@@ -222,36 +257,66 @@ export default function ViewMarks() {
 
   // Group marks by class and subject
   const groupedMarks: GroupedMarks[] = [];
-  const classMap = new Map<string, { className: string; subjects: Map<string, { subjectName: string; marks: MarkEntry[] }> }>();
+  const classMap = new Map<string, { className: string; subjects: Map<string, { subjectName: string; marks: MarkEntry[]; missing: MissingStudent[] }> }>();
   
-  filteredMarks.forEach(m => {
-    const classId = m.class_id;
-    const subjectId = m.subject_id;
-    
-    if (!classMap.has(classId)) {
-      classMap.set(classId, {
-        className: m.classes?.name || 'Unknown Class',
-        subjects: new Map(),
-      });
+  // Seed groups from the teacher's assignments so subjects with zero marks
+  // still appear, then attach entered marks and compute missing learners.
+  const seeds: Array<{ class_id: string; subject_id: string; className: string; subjectName: string }> =
+    teacherAssignments.length > 0
+      ? teacherAssignments.map((a: any) => ({
+          class_id: a.class_id,
+          subject_id: a.subject_id,
+          className: a.classes?.name || 'Unknown Class',
+          subjectName: a.subjects?.name || 'Unknown Subject',
+        }))
+      : marks.map((m) => ({
+          class_id: m.class_id,
+          subject_id: m.subject_id,
+          className: m.classes?.name || 'Unknown Class',
+          subjectName: m.subjects?.name || 'Unknown Subject',
+        }));
+
+  seeds.forEach((seed) => {
+    if (!classMap.has(seed.class_id)) {
+      classMap.set(seed.class_id, { className: seed.className, subjects: new Map() });
     }
-    
-    const classData = classMap.get(classId)!;
-    if (!classData.subjects.has(subjectId)) {
-      classData.subjects.set(subjectId, {
-        subjectName: m.subjects?.name || 'Unknown Subject',
-        marks: [],
-      });
+    const classData = classMap.get(seed.class_id)!;
+    if (!classData.subjects.has(seed.subject_id)) {
+      classData.subjects.set(seed.subject_id, { subjectName: seed.subjectName, marks: [], missing: [] });
     }
-    
-    classData.subjects.get(subjectId)!.marks.push(m);
   });
 
-  classMap.forEach((value, classId) => {
-    const subjects: GroupedMarks['subjects'] = [];
-    value.subjects.forEach((subVal, subId) => {
-      subjects.push({ subjectName: subVal.subjectName, subjectId: subId, marks: subVal.marks });
+  filteredMarks.forEach((m) => {
+    const classData = classMap.get(m.class_id);
+    const subject = classData?.subjects.get(m.subject_id);
+    if (subject) subject.marks.push(m);
+  });
+
+  classMap.forEach((classData, classId) => {
+    const roster = classRoster[classId] || [];
+    const enteredBySubject = new Map<string, Set<string>>();
+    marks.forEach((m) => {
+      if (m.class_id !== classId || !m.student_id) return;
+      if (!enteredBySubject.has(m.subject_id)) enteredBySubject.set(m.subject_id, new Set());
+      enteredBySubject.get(m.subject_id)!.add(String(m.student_id));
     });
-    groupedMarks.push({ className: value.className, classId, subjects });
+
+    classData.subjects.forEach((subject, subjectId) => {
+      const entered = enteredBySubject.get(subjectId) || new Set<string>();
+      subject.missing = roster
+        .filter((stu) => !entered.has(String(stu.id)))
+        .map((stu) => ({
+          student_id: stu.id,
+          name: `${stu.first_name || ''} ${stu.last_name || ''}`.trim() || 'Unknown',
+          admission_number: stu.admission_number || '-',
+        }));
+    });
+
+    const subjects: GroupedMarks['subjects'] = [];
+    classData.subjects.forEach((subVal, subId) => {
+      subjects.push({ subjectName: subVal.subjectName, subjectId: subId, marks: subVal.marks, missing: subVal.missing });
+    });
+    groupedMarks.push({ className: classData.className, classId, subjects });
   });
 
   // Get unique classes and subjects for filters
@@ -410,6 +475,9 @@ export default function ViewMarks() {
                               <BookOpen className="w-4 h-4 text-blue-500" />
                               <span className="font-medium text-sm text-gray-900">{subject.subjectName}</span>
                               <span className="text-xs text-gray-400">({subject.marks.length} entries)</span>
+                              {subject.missing.length > 0 && (
+                                <span className="text-xs font-semibold text-red-500">· {subject.missing.length} missing</span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               {subjectDrafts.length > 0 && (
@@ -524,6 +592,21 @@ export default function ViewMarks() {
                                           )}
                                         </div>
                                       </td>
+                                    </tr>
+                                  ))}
+                                  {subject.missing.map((missing) => (
+                                    <tr key={`missing-${missing.student_id}`} className="border-b bg-red-50/40">
+                                      <td className="px-3 py-2 font-medium text-gray-700">{missing.name}</td>
+                                      <td className="px-3 py-2 text-gray-500 text-xs">{missing.admission_number}</td>
+                                      <td className="px-3 py-2">
+                                        <span className="text-xs font-semibold text-red-500">Not entered</span>
+                                      </td>
+                                      <td className="px-3 py-2">-</td>
+                                      <td className="px-3 py-2">-</td>
+                                      <td className="px-3 py-2">
+                                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">Missing</span>
+                                      </td>
+                                      <td className="px-3 py-2 text-[11px] text-gray-400">Add in results entry</td>
                                     </tr>
                                   ))}
                                 </tbody>
