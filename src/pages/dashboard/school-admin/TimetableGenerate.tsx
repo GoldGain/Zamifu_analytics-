@@ -1226,11 +1226,12 @@ export default function TimetableGenerate() {
           // than silently moving a prioritized subject into the wrong window.
           // Early Morning is also hard, except that a subject’s exact default
           // anchor (Maths L1 or English L2) remains first in the search order.
-          if (context.priorityBand !== 'none' || getDefaultPriorityLesson(context.subjectName) !== null) return preferred;
-          // For assignments without a priority band, preferredLessonSlots is
-          // already the complete lesson-slot list, so all lesson slots remain
-          // eligible during repair.
-          return context.lessonSlots;
+          const preferredIds = new Set(preferred.map((slot: any) => String(slot.id)));
+          // Priority stays first during repair, but any lesson still unplaced
+          // after its band is full is distributed to the nearest remaining
+          // lesson slots so a generated timetable never leaves an open period.
+          const remainingSlots = context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
+          return [...preferred, ...remainingSlots];
         };
 
         const tryRepairGap = (gap: typeof underScheduled[number]) => {
@@ -1378,9 +1379,104 @@ export default function TimetableGenerate() {
 
         assignmentContexts.forEach(normalizeNonDoubleDayDistribution);
 
-        // Unassigned lesson slots intentionally remain blank. Do not insert
-        // synthetic REVISION or SELF-STUDY activities: the viewer can then
-        // distinguish a genuinely configured activity from an open period.
+        const commitFill = (
+          context: AssignmentPlacementContext,
+          gap: typeof underScheduled[number],
+          cls: any,
+          fillDay: number,
+          fillSlot: any,
+          timing: { start_time: string; end_time: string },
+          teacherKey: string,
+          fillClassKey: string,
+        ) => {
+          allEntries.push({
+            school_id: schoolId,
+            day_of_week: fillDay,
+            time_slot_id: fillSlot.id,
+            class_id: cls.id,
+            level_group: levelKey,
+            effective_start_time: timing.start_time,
+            effective_end_time: timing.end_time,
+            subject_id: context.assignment.subject_id,
+            teacher_id: context.assignment.teacher_id,
+            entry_type: 'lesson',
+          });
+          teacherBusy.add(teacherKey);
+          classBusy.add(fillClassKey);
+          classSubjectBySlot.set(fillClassKey, context.subjectName);
+          const subjectDayKey = `${cls.id}-${fillDay}-${context.assignment.subject_id}`;
+          subjectDayUsage.set(subjectDayKey, (subjectDayUsage.get(subjectDayKey) || 0) + 1);
+          const currentDayUsage = context.dayUsage.get(fillDay) || 0;
+          context.dayUsage.set(fillDay, currentDayUsage + 1);
+          gap.scheduled += 1;
+        };
+
+        // GUARANTEED-FILL PASS — a generated timetable must never contain a
+        // blank lesson slot. Priority bands were honoured during the main
+        // pass, so anything still open here is unavoidable overflow: place the
+        // remaining under-scheduled lessons as singles into their class's free
+        // cells. A non-adjacent, once-per-day placement is tried first; only
+        // when none exists do the math/science adjacency and once-per-day
+        // rules relax, so completion is always achieved.
+        let fillProgress = true;
+        while (fillProgress) {
+          fillProgress = false;
+          for (const cls of classesToProcess) {
+            const classGaps = underScheduled.filter((gap) =>
+              gap.assignmentKey.startsWith(`${levelKey}:${cls.id}:`) && gap.scheduled < gap.configured,
+            );
+            if (classGaps.length === 0) continue;
+            for (let fillDay = 1; fillDay <= TIMETABLE_DAYS.length; fillDay++) {
+              const fillDayName = TIMETABLE_DAYS[fillDay - 1];
+              for (const fillSlot of lessonSlots) {
+                const fillClassKey = `${cls.id}-${fillDay}-${fillSlot.id}`;
+                if (classBusy.has(fillClassKey)) continue;
+                let placed = false;
+                // Phase A: strict (non-adjacent + once-per-day) placement.
+                for (const gap of classGaps) {
+                  const context = assignmentContexts.get(gap.assignmentKey);
+                  if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
+                  const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
+                  if (teacherBusy.has(teacherKey)) continue;
+                  const previousSlot = context.lessonSlots
+                    .filter((slot: any) => slot.slot_order < fillSlot.slot_order)
+                    .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
+                  const earlier = previousSlot ? classSubjectBySlot.get(`${cls.id}-${fillDay}-${previousSlot.id}`) : undefined;
+                  const nextSlot = context.lessonSlots
+                    .filter((slot: any) => slot.slot_order > fillSlot.slot_order)
+                    .sort((a: any, b: any) => a.slot_order - b.slot_order)[0];
+                  const later = nextSlot ? classSubjectBySlot.get(`${cls.id}-${fillDay}-${nextSlot.id}`) : undefined;
+                  if (violatesMathScienceSequence(context.subjectName, earlier) || violatesMathScienceSequence(context.subjectName, later)) continue;
+                  const { blockingActivities, times } = context.getDaySlotTiming(fillDay, context.cls);
+                  const timing = times.get(String(fillSlot.label)) || { start_time: fillSlot.start_time, end_time: fillSlot.end_time };
+                  if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) continue;
+                  commitFill(context, gap, cls, fillDay, fillSlot, timing, teacherKey, fillClassKey);
+                  placed = true;
+                  fillProgress = true;
+                  break;
+                }
+                // Phase B: relax adjacency + once-per-day as a last resort.
+                if (!placed) {
+                  for (const gap of classGaps) {
+                    const context = assignmentContexts.get(gap.assignmentKey);
+                    if (!context || !context.availableDays.includes(fillDayName)) continue;
+                    const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
+                    if (teacherBusy.has(teacherKey)) continue;
+                    const { blockingActivities, times } = context.getDaySlotTiming(fillDay, context.cls);
+                    const timing = times.get(String(fillSlot.label)) || { start_time: fillSlot.start_time, end_time: fillSlot.end_time };
+                    if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) continue;
+                    commitFill(context, gap, cls, fillDay, fillSlot, timing, teacherKey, fillClassKey);
+                    placed = true;
+                    fillProgress = true;
+                    generationNotes.push(`${cls.name || 'Class'} — ${gap.subjectName}: lesson placed in an open period (relaxed sequence/day rule) to leave no blanks`);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
       }
 
       // Bulk insert all entries
