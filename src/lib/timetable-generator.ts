@@ -149,7 +149,7 @@ export function classifySubject(subjectName: string | null | undefined): Subject
   const n = String(subjectName || '').trim().toLowerCase();
   if (/mathemat/.test(n)) return 'math';
   if (/\benglish\b|english\s*language/.test(n)) return 'english';
-  if (/integrated\s*science|\bscience\b|environment|chemistry|physics|biology/.test(n)) return 'science';
+  if (/integrated\s*science|\bscience\b|environment/.test(n)) return 'science';
   if (/pre[\s-]*technical|pre[\s-]*tech/.test(n)) return 'pretech';
   if (/kiswahili/.test(n)) return 'kiswahili';
   if (/religious|\bcre\b|\bire\b|\bhre\b|islamic|christian|hindu|muslim/.test(n)) return 'religious';
