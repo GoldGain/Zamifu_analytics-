@@ -159,9 +159,10 @@ export function classifySubject(subjectName: string | null | undefined): Subject
 /**
  * FINAL STRICT placement gate — level-independent.
  *   - mathematics / english        : Lessons 1-2 only (never afternoon/evening).
- *   - integrated science / pre-tech: Lessons 3-5 (3-4 core; 5 when a double is set).
+ *   - integrated science / pre-tech: Lesson 3 onwards (core L3-4, but may spill to
+ *                                      L5+ / afternoon when the teacher's window is full).
  *   - kiswahili                    : Lessons 5-7 only (never beyond Lesson 7).
- *   - every other subject          : never Lessons 1-2 (the Math/English window).
+ *   - every other subject          : never Lessons 1-4 (the Math/English + Science/Pre-Tech windows).
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
@@ -169,7 +170,7 @@ export function strictSubjectAllowsLesson(
 ): boolean {
   const fam = classifySubject(subjectName);
   if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
-  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
+  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3;
   if (fam === 'kiswahili') return lessonNumber >= 5 && lessonNumber <= 7;
   // "other" subjects may not occupy L1-2 (Math/English) or L3-4 (Science/Pre-Tech).
   return lessonNumber >= 5;
