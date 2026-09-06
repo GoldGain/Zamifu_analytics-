@@ -449,21 +449,22 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         try {
           const { data: allResults } = await supabaseUntyped
             .from('results')
-            .select('id, student_id, marks, out_of')
+            .select('id, student_id, marks, out_of, cbc_points')
             .eq('class_id', selectedClass)
             .eq('term_id', selectedTerm);
           if (allResults && allResults.length > 0) {
             const requiredAreas = getRequiredLearningAreas(currentClassData) || 0;
-            const studentTotals: Record<string, { totalPct: number; count: number }> = {};
+            const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
             allResults.forEach((r: any) => {
               const pct = r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0;
-              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, count: 0 };
+              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, totalPoints: 0, count: 0 };
               studentTotals[r.student_id].totalPct += pct;
+              studentTotals[r.student_id].totalPoints += Number(r.cbc_points) || 0;
               studentTotals[r.student_id].count += 1;
             });
             const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ student_id: sid, avg: requiredAreas > 0 ? v.totalPct / requiredAreas : v.totalPct / v.count }))
-              .sort((a, b) => b.avg - a.avg);
+              .map(([sid, v]) => ({ student_id: sid, avg: requiredAreas > 0 ? v.totalPct / requiredAreas : v.totalPct / v.count, totalPoints: v.totalPoints, totalPct: v.totalPct }))
+              .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct));
             for (let i = 0; i < ranked.length; i++) {
               await supabaseUntyped
                 .from('results')
