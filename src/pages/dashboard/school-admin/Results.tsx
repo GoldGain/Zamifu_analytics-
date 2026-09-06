@@ -10,7 +10,7 @@ import { deleteResults } from '@/lib/resultActions';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
-import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade } from '@/lib/grading';
+import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import type { SchoolLevelBand, SubjectResult } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
@@ -434,7 +434,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const gr = calculateCompetencyGrade(pct, band);
       studentMap[sid].totalPoints += (gr.points || 0);
     });
-    return Object.values(studentMap).map((s: any) => ({ ...s, avgPct: s.count > 0 ? s.totalPct / s.count : 0, gender: s.gender || s.student?.gender || null })).sort((a, b) => b.avgPct - a.avgPct).map((s, i) => ({ ...s, position: i + 1 }));
+    const requiredAreas = getRequiredLearningAreas(classObj);
+    return Object.values(studentMap).map((s: any) => ({ ...s, avgPct: requiredAreas ? s.totalPct / requiredAreas : (s.count > 0 ? s.totalPct / s.count : 0), gender: s.gender || s.student?.gender || null })).sort((a, b) => b.avgPct - a.avgPct).map((s, i) => ({ ...s, position: i + 1 }));
   };
 
   const resolveAssessmentLabel = (raw: any[]) => {
