@@ -135,6 +135,46 @@ export function getLessonCountForLevel(level: string, override?: number | null):
 
 export type TimetablePriorityBand = 'auto' | 'none' | 'early_morning' | 'mid_morning' | 'late_morning' | 'afternoon';
 
+export type SubjectFamily =
+  | 'math'
+  | 'english'
+  | 'science'
+  | 'pretech'
+  | 'kiswahili'
+  | 'religious'
+  | 'other';
+
+/** Classify a learning area by its timetable family (case-insensitive). */
+export function classifySubject(subjectName: string | null | undefined): SubjectFamily {
+  const n = String(subjectName || '').trim().toLowerCase();
+  if (/mathemat/.test(n)) return 'math';
+  if (/\benglish\b|english\s*language/.test(n)) return 'english';
+  if (/integrated\s*science|\bscience\b|environment|chemistry|physics|biology/.test(n)) return 'science';
+  if (/pre[\s-]*technical|pre[\s-]*tech/.test(n)) return 'pretech';
+  if (/kiswahili/.test(n)) return 'kiswahili';
+  if (/religious|\bcre\b|\bire\b|\bhre\b|islamic|christian|hindu|muslim/.test(n)) return 'religious';
+  return 'other';
+}
+
+/**
+ * FINAL STRICT placement gate — level-independent.
+ *   - mathematics / english        : Lessons 1-2 only (never afternoon/evening).
+ *   - integrated science / pre-tech: Lessons 3-5 (3-4 core; 5 when a double is set).
+ *   - kiswahili                    : Lessons 5-7 only (never beyond Lesson 7).
+ *   - every other subject          : never Lessons 1-2 (the Math/English window).
+ */
+export function strictSubjectAllowsLesson(
+  subjectName: string | null | undefined,
+  lessonNumber: number,
+): boolean {
+  const fam = classifySubject(subjectName);
+  if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
+  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
+  if (fam === 'kiswahili') return lessonNumber >= 5 && lessonNumber <= 7;
+  return lessonNumber >= 3;
+}
+
+
 /** Return true when two adjacent lesson subjects violate the Math/Science rule. */
 export function violatesMathScienceSequence(
   currentSubject: string | null | undefined,
