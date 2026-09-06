@@ -643,29 +643,33 @@ export default function TimetableGenerate() {
           if (name.includes('health')) return 'afternoon';
           return 'none';
         };
+        // Spill order: preferred band first, then EVERY remaining lesson slot.
+        // The band is a soft preference, never a wall \u2014 a class can never be
+        // left with a blank because a subject's own window was full.
         const orderedSpillSlotsFor = (band: string): any[] => {
           const minLesson = priorityBandMinLesson[band];
           const maxLesson = priorityBandSpillCeiling[band];
-          if (minLesson == null || maxLesson == null) return lessonSlots;
-          return lessonSlots
-            .filter((slot: any) => {
-              const n = lessonNumberOf(slot);
-              return n >= minLesson && n <= maxLesson;
-            })
+          const preferred = (minLesson != null && maxLesson != null)
+            ? lessonSlots.filter((slot: any) => {
+                const n = lessonNumberOf(slot);
+                return n >= minLesson && n <= maxLesson;
+              })
+            : [];
+          const preferredIds = new Set(preferred.map((slot: any) => String(slot.id)));
+          const remainder = lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
+          const combined = [...preferred, ...remainder];
+          return combined
+            .filter((slot: any) => band !== 'late_morning' || lessonNumberOf(slot) <= 7)
             .sort((a: any, b: any) => lessonNumberOf(a) - lessonNumberOf(b));
         };
 
-        // A subject may only occupy a lesson slot inside its priority band's
-        // spill window. Early Morning (L1-2) can spill forward into L3-6 but
-        // never into the afternoon (L7+); Mid Morning (L3-4) can spill into
-        // L5-6 but never L1-2 and never the afternoon. The backfill passes use
-        // this guard so they can never undo a correct priority placement.
+        // During backfill every free slot is eligible so the timetable is always
+        // complete. The only named cross-band cap is Kiswahili never beyond
+        // Lesson 7 (Junior). Mathematics/Science adjacency and once-per-day are
+        // enforced separately by the placement guards.
         const bandAllowsSlot = (band: string, slot: any): boolean => {
-          const minLesson = priorityBandMinLesson[band];
-          const maxLesson = priorityBandSpillCeiling[band];
-          if (minLesson == null || maxLesson == null) return true;
-          const n = lessonNumberOf(slot);
-          return n >= minLesson && n <= maxLesson;
+          if (band === 'late_morning' && lessonNumberOf(slot) > 7) return false;
+          return true;
         };
         const classSubjectBySlot = new Map<string, string>();
         const subjectDayUsage = new Map<string, number>();
@@ -1222,15 +1226,12 @@ export default function TimetableGenerate() {
         const orderedRepairSlots = (context: AssignmentPlacementContext) => {
           const preferred = context.preferredLessonSlots;
           const preferredIds = new Set(preferred.map((slot: any) => String(slot.id)));
-          const minLesson = priorityBandMinLesson[context.priorityBand];
-          const maxLesson = priorityBandSpillCeiling[context.priorityBand];
-          const remainingSlots = context.lessonSlots.filter((slot: any) => {
-            if (preferredIds.has(String(slot.id))) return false;
-            if (minLesson == null || maxLesson == null) return true;
-            const n = lessonNumberOf(slot);
-            return n >= minLesson && n <= maxLesson;
-          });
-          return [...preferred, ...remainingSlots];
+          const remainingSlots = context.lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
+          const combined = [...preferred, ...remainingSlots];
+          if (context.priorityBand === 'late_morning') {
+            return combined.filter((slot: any) => lessonNumberOf(slot) <= 7);
+          }
+          return combined;
         };
 
         const tryRepairGap = (gap: typeof underScheduled[number]) => {
