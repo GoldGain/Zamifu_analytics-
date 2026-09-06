@@ -171,7 +171,8 @@ export function strictSubjectAllowsLesson(
   if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
   if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
   if (fam === 'kiswahili') return lessonNumber >= 5 && lessonNumber <= 7;
-  return lessonNumber >= 3;
+  // "other" subjects may not occupy L1-2 (Math/English) or L3-4 (Science/Pre-Tech).
+  return lessonNumber >= 5;
 }
 
 
