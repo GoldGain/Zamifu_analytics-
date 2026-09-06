@@ -435,7 +435,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       studentMap[sid].totalPoints += (gr.points || 0);
     });
     const requiredAreas = getRequiredLearningAreas(classObj);
-    return Object.values(studentMap).map((s: any) => ({ ...s, avgPct: requiredAreas ? s.totalPct / requiredAreas : (s.count > 0 ? s.totalPct / s.count : 0), gender: s.gender || s.student?.gender || null })).sort((a, b) => b.avgPct - a.avgPct).map((s, i) => ({ ...s, position: i + 1 }));
+    return Object.values(studentMap).map((s: any) => ({ ...s, avgPct: requiredAreas ? s.totalPct / requiredAreas : (s.count > 0 ? s.totalPct / s.count : 0), gender: s.gender || s.student?.gender || null })).sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct)).map((s, i) => ({ ...s, position: i + 1 }));
   };
 
   const resolveAssessmentLabel = (raw: any[]) => {
