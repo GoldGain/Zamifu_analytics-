@@ -302,8 +302,6 @@ export default function AssignTeachers() {
           class_id: formData.class_id,
           subject_id: formData.subject_id,
           lessons_per_week: formData.lessons_per_week,
-          priority_band: formData.priority_band,
-          is_priority: formData.priority_band !== 'none' && formData.priority_band !== 'auto',
           is_double_lesson: formData.is_double_lesson,
           double_lesson_days: formData.is_double_lesson ? formData.double_lesson_days : [],
           available_days: formData.available_days,
@@ -489,6 +487,45 @@ export default function AssignTeachers() {
         </p>
       </div>
 
+      <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-5 text-sm">
+        <h2 className="font-black text-gray-900 text-base mb-2">Timetable Assignment Guide</h2>
+        <ol className="list-decimal list-inside space-y-1 text-gray-700">
+          <li><strong>Step 1 - Set the number of lessons:</strong> enter how many lessons per week for each learning area (example: Mathematics 5, English 5, Science 4).</li>
+          <li><strong>Step 2 - Set double lessons (optional):</strong> choose the weekday; the two periods are placed consecutively inside the subject default window.</li>
+          <li><strong>Step 3 - Set activities (optional):</strong> add clubs, sports, and library slots in Timetable Setup.</li>
+          <li><strong>Step 4 - Generate:</strong> open Timetable then Generate and click Generate Timetable.</li>
+          <li><strong>Step 5 - Review:</strong> check the timetable, then edit and regenerate if needed.</li>
+        </ol>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-lg bg-white border border-blue-100 p-3">
+            <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Junior (Grade 7-9)</p>
+            <ul className="text-[11px] text-gray-600 mt-1 space-y-0.5">
+              <li>Lessons 1-2: Mathematics / English</li>
+              <li>Lessons 3-5: Integrated Science, Pre-Technical</li>
+              <li>Lessons 6-8: Kiswahili, Social Studies, RE, Agriculture, Creative Arts</li>
+              <li>Kiswahili never beyond Lesson 7</li>
+            </ul>
+          </div>
+          <div className="rounded-lg bg-white border border-blue-100 p-3">
+            <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Primary (Grade 1-6)</p>
+            <ul className="text-[11px] text-gray-600 mt-1 space-y-0.5">
+              <li>Lessons 1-2: Mathematics / English</li>
+              <li>Lessons 3-4: Science, Kiswahili</li>
+              <li>Lessons 5-6: Social Studies, RE, Creative Arts, Agriculture</li>
+            </ul>
+          </div>
+          <div className="rounded-lg bg-white border border-blue-100 p-3">
+            <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Senior (Grade 10-12)</p>
+            <ul className="text-[11px] text-gray-600 mt-1 space-y-0.5">
+              <li>Lessons 1-2: Mathematics / English</li>
+              <li>Lessons 3-4: Core subjects</li>
+              <li>Lesson 5 onwards: Pathway subjects</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+
       {error && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex gap-2">
           <AlertCircle className="text-red-600 flex-shrink-0" size={18} />
@@ -576,22 +613,7 @@ export default function AssignTeachers() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Timetable Priority Band</label>
-                <select
-                  value={formData.priority_band}
-                  onChange={(e) => setFormData({ ...formData, priority_band: e.target.value as typeof formData.priority_band })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="auto">Automatic subject default</option>
-                  <option value="none">No fixed priority</option>
-                  <option value="early_morning">Early Morning Priority (Lessons 1–2)</option>
-                  <option value="mid_morning">Mid Morning Priority (Lessons 3–4)</option>
-                  <option value="late_morning">Late Morning Priority (Lessons 5–6)</option>
-                  <option value="afternoon">Afternoon Priority (Lesson 7+)</option>
-                </select>
-                <p className="text-[11px] text-gray-500 mt-1">Automatic defaults place Mathematics in Lesson 1, English in Lesson 2, Integrated Science, Agriculture, and Pre-Technical Studies in Lessons 3–4, languages such as Kiswahili in Lessons 5–6, and humanities or Creative Arts in Lesson 7 or later. You can change any assignment or choose No fixed priority.</p>
-              </div>
+              
 
               <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-3 text-sm text-purple-900">
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -715,7 +737,7 @@ export default function AssignTeachers() {
                     <th className="px-4 py-3 text-left text-xs font-black text-gray-600 uppercase">Class</th>
                     <th className="px-4 py-3 text-left text-xs font-black text-gray-600 uppercase">Learning Area</th>
                     <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Lessons</th>
-                    <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Priority</th>
+                    
                     <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Lesson Format</th>
                     <th className="px-4 py-3 text-left text-xs font-black text-gray-600 uppercase">Available Days</th>
                     <th className="px-4 py-3 text-center text-xs font-black text-gray-600 uppercase">Del</th>
@@ -724,7 +746,7 @@ export default function AssignTeachers() {
                 <tbody>
                   {assignments.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-10 text-center text-gray-400 text-sm">
+                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400 text-sm">
                         No assignments yet. Add one using the form.
                       </td>
                     </tr>
@@ -741,21 +763,7 @@ export default function AssignTeachers() {
                           <td className="px-4 py-3 text-gray-700">{a.class_name}</td>
                           <td className="px-4 py-3 text-gray-700">{a.subject_name}</td>
                           <td className="px-4 py-3 text-center text-gray-700">{a.lessons_per_week}</td>
-                          <td className="px-4 py-3 text-center">
-                            <select
-                              value={a.priority_band}
-                              onChange={(e) => handlePriorityChange(a, e.target.value as PriorityBand)}
-                              className="max-w-[170px] rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700"
-                              aria-label={`Priority for ${a.subject_name} in ${a.class_name}`}
-                            >
-                              <option value="auto">Automatic subject default</option>
-                              <option value="none">No fixed priority</option>
-                              <option value="early_morning">Early Morning · L1–2</option>
-                              <option value="mid_morning">Mid Morning · L3–4</option>
-                              <option value="late_morning">Late Morning · L5–6</option>
-                              <option value="afternoon">Afternoon · L7+</option>
-                            </select>
-                          </td>
+                          
                           <td className="px-4 py-3 text-center align-top">
                             {editingDoubleLessonId === a.id ? (
                               <div className="min-w-[180px] space-y-2 text-left">
