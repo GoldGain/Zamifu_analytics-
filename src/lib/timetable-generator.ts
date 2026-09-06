@@ -158,11 +158,16 @@ export function classifySubject(subjectName: string | null | undefined): Subject
 
 /**
  * FINAL STRICT placement gate — level-independent.
- *   - mathematics / english        : Lessons 1-2 only (never afternoon/evening).
- *   - integrated science / pre-tech: Lesson 3 onwards (core L3-4, but may spill to
- *                                      L5+ / afternoon when the teacher's window is full).
- *   - kiswahili                    : Lessons 5-7 only (never beyond Lesson 7).
- *   - every other subject          : never Lessons 1-4 (the Math/English + Science/Pre-Tech windows).
+ *
+ * Only two windows are HARD (they always have capacity):
+ *   - mathematics / english : Lessons 1-2 only.
+ *   - kiswahili             : Lessons 5-7 only (never beyond Lesson 7).
+ *
+ * Integrated Science, Pre-Tech and every other learning area may occupy any
+ * lesson from 3 onwards. Subject-specific core windows (Science/Pre-Tech L3-4,
+ * others L5+) are expressed as priorities during the scheduling pass, not as
+ * hard walls here. This guarantees the timetable can always be completed with
+ * NO blank spaces (Rule 7) even when a teacher's evening is over-subscribed.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
@@ -172,8 +177,9 @@ export function strictSubjectAllowsLesson(
   if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
   if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3;
   if (fam === 'kiswahili') return lessonNumber >= 5 && lessonNumber <= 7;
-  // "other" subjects may not occupy L1-2 (Math/English) or L3-4 (Science/Pre-Tech).
-  return lessonNumber >= 5;
+  // Science, Pre-Tech and every other learning area may fill any lesson
+  // from 3 onwards so a timetable can always be completed with no blanks.
+  return lessonNumber >= 3;
 }
 
 
