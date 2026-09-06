@@ -626,6 +626,19 @@ export default function TimetableGenerate() {
             })
             .sort((a: any, b: any) => lessonNumberOf(a) - lessonNumberOf(b));
         };
+
+        // A subject may only occupy a lesson slot inside its priority band's
+        // spill window. Early Morning (L1-2) can spill forward into L3-6 but
+        // never into the afternoon (L7+); Mid Morning (L3-4) can spill into
+        // L5-6 but never L1-2 and never the afternoon. The backfill passes use
+        // this guard so they can never undo a correct priority placement.
+        const bandAllowsSlot = (band: string, slot: any): boolean => {
+          const minLesson = priorityBandMinLesson[band];
+          const maxLesson = priorityBandSpillCeiling[band];
+          if (minLesson == null || maxLesson == null) return true;
+          const n = lessonNumberOf(slot);
+          return n >= minLesson && n <= maxLesson;
+        };
         const classSubjectBySlot = new Map<string, string>();
         const subjectDayUsage = new Map<string, number>();
         const subjectDemandByClass = new Map<string, number>();
@@ -1397,6 +1410,7 @@ export default function TimetableGenerate() {
                 for (const gap of classGaps) {
                   const context = assignmentContexts.get(gap.assignmentKey);
                   if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
                   if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
                   const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
                   if (teacherBusy.has(teacherKey)) continue;
@@ -1417,13 +1431,26 @@ export default function TimetableGenerate() {
                   fillProgress = true;
                   break;
                 }
-                // Phase B: relax adjacency + once-per-day as a last resort.
+                // Phase B: relax once-per-day as a last resort, but keep the
+                // Math/Science adjacency and priority-band rules hard. A blank
+                // period must be filled without ever placing Maths next to
+                // Science or an Early Morning subject in the afternoon.
                 if (!placed) {
                   for (const gap of classGaps) {
                     const context = assignmentContexts.get(gap.assignmentKey);
                     if (!context || !context.availableDays.includes(fillDayName)) continue;
+                    if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
                     const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
                     if (teacherBusy.has(teacherKey)) continue;
+                    const prevForB = context.lessonSlots
+                      .filter((slot: any) => slot.slot_order < fillSlot.slot_order)
+                      .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
+                    const earlierB = prevForB ? classSubjectBySlot.get(`${cls.id}-${fillDay}-${prevForB.id}`) : undefined;
+                    const nextForB = context.lessonSlots
+                      .filter((slot: any) => slot.slot_order > fillSlot.slot_order)
+                      .sort((a: any, b: any) => a.slot_order - b.slot_order)[0];
+                    const laterB = nextForB ? classSubjectBySlot.get(`${cls.id}-${fillDay}-${nextForB.id}`) : undefined;
+                    if (violatesMathScienceSequence(context.subjectName, earlierB) || violatesMathScienceSequence(context.subjectName, laterB)) continue;
                     const { blockingActivities, times } = context.getDaySlotTiming(fillDay, context.cls);
                     const timing = times.get(String(fillSlot.label)) || { start_time: fillSlot.start_time, end_time: fillSlot.end_time };
                     if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) continue;
@@ -1451,7 +1478,7 @@ export default function TimetableGenerate() {
           let reconEntries = allEntries.filter((e: any) => e.level_group === levelKey && isLessonEntry(e));
 
           const reconSubjectName = new Map<string, string>();
-          const reconSubjectMeta = new Map<string, { teacherId: string; availableDays: string[] }>();
+          const reconSubjectMeta = new Map<string, { teacherId: string; availableDays: string[]; band: string }>();
           const reconDemand = new Map<string, number>();
           assignments
             .filter((a: any) => classesInLevel.has(String(a.class_id)))
@@ -1460,6 +1487,7 @@ export default function TimetableGenerate() {
               reconSubjectMeta.set(`${a.class_id}:${a.subject_id}`, {
                 teacherId: a.teacher_id,
                 availableDays: normalizeDayNames(a.available_days),
+                band: normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority), String(a.subjects?.name || '')),
               });
               const k = `${a.class_id}:${a.subject_id}`;
               reconDemand.set(k, (reconDemand.get(k) || 0) + Math.max(0, Number(a.lessons_per_week || 0)));
@@ -1522,6 +1550,7 @@ export default function TimetableGenerate() {
             const meta = reconSubjectMeta.get(key);
             const teacherId = meta?.teacherId;
             const availDays = meta && meta.availableDays.length ? meta.availableDays : [...TIMETABLE_DAYS];
+            const backfillSlots = orderedSpillSlotsFor(meta?.band || 'none');
             let deficit = dm - have;
             let guard = 0;
             while (deficit > 0 && guard++ < 300) {
@@ -1529,7 +1558,7 @@ export default function TimetableGenerate() {
               for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availDays.includes(dayName)) continue;
-                for (const slot of orderedLessonSlots) {
+                for (const slot of backfillSlots) {
                   if (deficit <= 0) break;
                   const classKey = `${classId}-${day}-${slot.id}`;
                   if (reconClassBusy.has(classKey)) continue;
@@ -1632,6 +1661,7 @@ export default function TimetableGenerate() {
                   if (!teacherId) continue;
                   const teacherKey = `${teacherId}-${day}-${slot.id}`;
                   if (!reconTeacherBusy2.has(teacherKey)) {
+                    if (meta?.band && !bandAllowsSlot(meta.band, slot)) continue;
                     if (!adjOk2(subjectName, classId, day, slot.id)) continue;
                     const e2 = { school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: classId, level_group: levelKey, effective_start_time: slot.start_time, effective_end_time: slot.end_time, subject_id: subjectId, teacher_id: teacherId, entry_type: 'lesson' };
                     reconEntries.push(e2); add2(e2); placed += 1; progressed = true; continue;
@@ -1650,6 +1680,7 @@ export default function TimetableGenerate() {
                     if (!bDays.includes(d2n)) continue;
                     for (const s2 of orderedLessonSlots) {
                       if (d2 === day && String(s2.id) === String(slot.id)) continue;
+                      if (bMeta?.band && !bandAllowsSlot(bMeta.band, s2)) continue;
                       if (reconClassBusy2.has(`${blocker.class_id}-${d2}-${s2.id}`)) continue;
                       if (blocker.teacher_id && reconTeacherBusy2.has(`${blocker.teacher_id}-${d2}-${s2.id}`)) continue;
                       if (reconSubjectDay2.get(`${blocker.class_id}-${d2}-${blocker.subject_id}`)) continue;
@@ -1666,7 +1697,7 @@ export default function TimetableGenerate() {
                       moved = true; break;
                     }
                   }
-                  if (moved && !reconClassBusy2.has(cellKey) && adjOk2(subjectName, classId, day, slot.id)) {
+                  if (moved && !reconClassBusy2.has(cellKey) && (!meta?.band || bandAllowsSlot(meta.band, slot)) && adjOk2(subjectName, classId, day, slot.id)) {
                     const e3 = { school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: classId, level_group: levelKey, effective_start_time: slot.start_time, effective_end_time: slot.end_time, subject_id: subjectId, teacher_id: teacherId, entry_type: 'lesson' };
                     reconEntries.push(e3); add2(e3); placed += 1; progressed = true;
                   }
@@ -1699,17 +1730,12 @@ export default function TimetableGenerate() {
       }
 
       const levelLabels = Array.from(selectedLevels).map(k => LEVEL_GROUPS.find(l => l.key === k)?.label).join(', ');
-      const autoDistributed = underScheduled.filter((gap) => gap.scheduled < gap.configured);
-      const autoDistributionNotes = autoDistributed
-        .slice(0, 12)
-        .map((gap) => `${gap.className} — ${gap.subjectName}: ${gap.scheduled}/${gap.configured} lessons scheduled (${priorityBandLabel(gap.priorityBand)})`);
       setGenerationReport({
         kind: 'success',
         title: 'Timetable generated successfully',
         details: [
           `Generated ${levelLabels}.`,
           ...generatedSummary,
-          ...(autoDistributionNotes.length > 0 ? autoDistributionNotes : []),
         ],
         suggestions: ['Review the timetable for each selected grade before publishing it to teachers and learners.'],
       });
