@@ -333,3 +333,32 @@ export function generateSubjectSpecificComment(
 
   return comment;
 }
+
+// ── Required Learning Areas (fixed ranking denominator) ────────────────────
+// Ranking must divide a learner's total score by the FIXED number of learning
+// areas required for their level — NOT by how many subjects they happen to
+// have marks in. This stops learners with only a couple of uploaded subjects
+// from ranking #1 on an inflated mean.
+export function getRequiredLearningAreas(classData?: {
+  curriculum?: Curriculum | string | null;
+  grade_level?: number | string | null;
+  level?: number | string | null;
+  name?: string | null;
+}): number | null {
+  const rawLevel = classData?.grade_level ?? classData?.level;
+  const grade = typeof rawLevel === 'number'
+    ? rawLevel
+    : parseInt(String(rawLevel ?? '').replace(/[^0-9-]/g, ''), 10);
+
+  if (Number.isFinite(grade)) {
+    if (grade >= 10 && grade <= 12) return 7; // Senior School
+    if (grade >= 7 && grade <= 9) return 9;   // Junior School
+    if (grade >= 4 && grade <= 6) return 7;   // Upper Primary
+    if (grade >= 1 && grade <= 3) return 5;   // Lower Primary
+  }
+
+  const name = String(classData?.name || '').toLowerCase();
+  if (/senior|grade\s*1[012]/.test(name)) return 7;
+  if (/junior|jss|grade\s*[789]/.test(name)) return 9;
+  return null; // playgroup / PP / unknown: keep old divide-by-count behaviour
+}
