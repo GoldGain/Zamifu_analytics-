@@ -595,25 +595,53 @@ export default function TimetableGenerate() {
           const parsed = Number(String(slot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
           return Number.isFinite(parsed) ? parsed : lessonSlots.indexOf(slot) + 1;
         };
+        const isJuniorLevel = levelKey === 'junior';
+        const isPrimaryLevel = ['pre-primary', 'lower-primary', 'upper-primary', 'combined-primary'].includes(levelKey);
+        // Default lesson placement windows derived from subject name + level only.
+        // No stored priority is read anywhere in the generator.
         const prioritySlots = {
-          // Correct four-priority contract: Early Morning L1–2, Mid Morning
-          // L3–4, Late Morning L5–6, and Afternoon L7+.
           early_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 2),
-          mid_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 3 && lessonNumberOf(slot) <= 4),
-          late_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 5 && lessonNumberOf(slot) <= 6),
-          afternoon: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 7),
+          mid_morning: lessonSlots.filter((slot: any) => {
+            const n = lessonNumberOf(slot);
+            return isJuniorLevel ? (n >= 3 && n <= 5) : (n >= 3 && n <= 4);
+          }),
+          late_morning: lessonSlots.filter((slot: any) => {
+            const n = lessonNumberOf(slot);
+            return isJuniorLevel ? (n >= 5 && n <= 7) : (n >= 5 && n <= 6);
+          }),
+          afternoon: lessonSlots.filter((slot: any) => {
+            const n = lessonNumberOf(slot);
+            if (isJuniorLevel) return n >= 6 && n <= 8;
+            if (isPrimaryLevel) return n >= 5 && n <= 7;
+            return n >= 5;
+          }),
         };
         const priorityBandMinLesson: Record<string, number> = {
           early_morning: 1,
           mid_morning: 3,
           late_morning: 5,
-          afternoon: 5,
+          afternoon: isJuniorLevel ? 6 : 5,
         };
         const priorityBandSpillCeiling: Record<string, number> = {
           early_morning: 6,
           mid_morning: 6,
-          late_morning: 99,
-          afternoon: 99,
+          late_morning: isJuniorLevel ? 7 : 6,
+          afternoon: isJuniorLevel ? 8 : (isPrimaryLevel ? 7 : 9),
+        };
+        const defaultBandFor = (subject: string | null | undefined): string => {
+          const name = String(subject || '').trim().toLowerCase();
+          if (name.includes('mathemat')) return 'early_morning';
+          if (name.includes('english')) return 'early_morning';
+          if (name.includes('kiswahili')) return isPrimaryLevel ? 'mid_morning' : 'late_morning';
+          if (name.includes('agricultur')) return 'afternoon';
+          if (name.includes('pre-tech') || name.includes('pretechnical') || name.includes('pre technical')) return 'mid_morning';
+          if (name.includes('science') || name.includes('environment') || name.includes('chem') || name.includes('physic') || name.includes('biolog')) return 'mid_morning';
+          if (name.includes('religious') || name.includes('cre') || name.includes('christian') || name.includes('islamic')) return 'afternoon';
+          if (name.includes('creative')) return 'afternoon';
+          if (name.includes('social')) return 'afternoon';
+          if (name.includes('business')) return 'afternoon';
+          if (name.includes('health')) return 'afternoon';
+          return 'none';
         };
         const orderedSpillSlotsFor = (band: string): any[] => {
           const minLesson = priorityBandMinLesson[band];
@@ -658,11 +686,7 @@ export default function TimetableGenerate() {
         const teacherDoubleReservedSlotKeys = new Set<string>();
         assignments.forEach((assignment: any) => {
           if (!classesInLevel.has(String(assignment.class_id)) || !isEnabledFlag(assignment.is_double_lesson)) return;
-          const assignmentBand = normalizePriorityBand(
-            assignment.priority_band,
-            isEnabledFlag(assignment.is_priority),
-            String(assignment.subjects?.name || ''),
-          );
+          const assignmentBand = defaultBandFor(String(assignment.subjects?.name || ''));
           const assignmentPreferredSlots = assignmentBand === 'early_morning'
             ? prioritySlots.early_morning
             : assignmentBand === 'mid_morning'
@@ -806,8 +830,8 @@ export default function TimetableGenerate() {
             .sort((a, b) => {
               const aName = String(a.subjects?.name || '').toLowerCase();
               const bName = String(b.subjects?.name || '').toLowerCase();
-              const aBand = normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority), aName);
-              const bBand = normalizePriorityBand(b.priority_band, isEnabledFlag(b.is_priority), bName);
+              const aBand = defaultBandFor(aName);
+              const bBand = defaultBandFor(bName);
               const bandOrder: Record<string, number> = { early_morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
               const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
               const aSciencePriority = Boolean(aBand === 'mid_morning' && /integrated\s*science/.test(aName));
@@ -842,11 +866,7 @@ export default function TimetableGenerate() {
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
-            const priorityBand = normalizePriorityBand(
-              assignment.priority_band,
-              isEnabledFlag(assignment.is_priority),
-              subjectName,
-            );
+            const priorityBand = defaultBandFor(subjectName);
             const preferredBandSlots = priorityBand === 'early_morning'
               ? prioritySlots.early_morning
               : priorityBand === 'mid_morning'
@@ -1487,7 +1507,7 @@ export default function TimetableGenerate() {
               reconSubjectMeta.set(`${a.class_id}:${a.subject_id}`, {
                 teacherId: a.teacher_id,
                 availableDays: normalizeDayNames(a.available_days),
-                band: normalizePriorityBand(a.priority_band, isEnabledFlag(a.is_priority), String(a.subjects?.name || '')),
+                band: defaultBandFor(String(a.subjects?.name || '')),
               });
               const k = `${a.class_id}:${a.subject_id}`;
               reconDemand.set(k, (reconDemand.get(k) || 0) + Math.max(0, Number(a.lessons_per_week || 0)));
