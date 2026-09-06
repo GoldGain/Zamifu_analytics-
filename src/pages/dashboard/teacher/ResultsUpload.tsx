@@ -8,12 +8,13 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Upload, Download, FileText, Loader2, CheckCircle, AlertCircle, ClipboardEdit, BookOpen, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateResultGrades, gradeDisplayLabel, getSchoolLevelBand, is844Curriculum, calculate844Grade } from '@/lib/grading';
+import { calculateResultGrades, gradeDisplayLabel, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import {
   fetchTeacherAssignments,
   verifyTeacherSubjectAssignment,
   type TeacherAssignment,
 } from '@/lib/teacher-restrictions';
+import { resolveVisibleLearners } from '@/lib/optional-subjects';
 
 interface ProcessedRow {
   student_id: string;
@@ -140,21 +141,40 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       return;
     }
     const fetchStudents = async () => {
-      const { data } = await supabaseUntyped
-        .from('students')
-        .select('id, first_name, last_name, admission_number')
-        .eq('class_id', selectedClass)
-        .eq('is_active', true);
-      
+      let studs: any[] = [];
+      // Optional-subject visibility: a teacher sees only their selected/registered
+      // learners; admins/deans and un-configured subjects keep the full roster.
+      if (!isDoS && selectedSubject) {
+        try {
+          const res = await resolveVisibleLearners({
+            schoolId: user?.schoolId ?? '',
+            classId: selectedClass,
+            subjectId: selectedSubject,
+            teacherId: teacherIdentity?.teacherId || null,
+          });
+          studs = res.visible;
+        } catch {
+          studs = [];
+        }
+      }
+      if (studs.length === 0) {
+        const { data } = await supabaseUntyped
+          .from('students')
+          .select('id, first_name, last_name, admission_number')
+          .eq('class_id', selectedClass)
+          .eq('is_active', true);
+        studs = data || [];
+      }
+
       // Issue: Natural sort for admission numbers (e.g., 2 before 10)
-      const studs = (data || []).sort((a, b) => {
+      const ordered = studs.sort((a, b) => {
         const aNum = a.admission_number || '';
         const bNum = b.admission_number || '';
         return aNum.localeCompare(bNum, undefined, { numeric: true, sensitivity: 'base' });
       });
 
-      setStudents(studs);
-      setManualRows(studs.map((s: any) => ({
+      setStudents(ordered);
+      setManualRows(ordered.map((s: any) => ({
         student_id: s.id,
         name: `${s.first_name} ${s.last_name}`,
         admission_number: s.admission_number,
@@ -171,7 +191,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       );
       return stillValid ? prev : '';
     });
-  }, [selectedClass, teacherAssignments, isDoS]);
+  }, [selectedClass, selectedSubject, teacherAssignments, teacherIdentity, isDoS]);
 
   const currentClassData = classes.find((c: any) => c.id === selectedClass);
   const currentBand = getSchoolLevelBand(currentClassData);
@@ -433,6 +453,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
             .eq('class_id', selectedClass)
             .eq('term_id', selectedTerm);
           if (allResults && allResults.length > 0) {
+            const requiredAreas = getRequiredLearningAreas(currentClassData) || 0;
             const studentTotals: Record<string, { totalPct: number; count: number }> = {};
             allResults.forEach((r: any) => {
               const pct = r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0;
@@ -441,7 +462,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               studentTotals[r.student_id].count += 1;
             });
             const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ student_id: sid, avg: v.totalPct / v.count }))
+              .map(([sid, v]) => ({ student_id: sid, avg: requiredAreas > 0 ? v.totalPct / requiredAreas : v.totalPct / v.count }))
               .sort((a, b) => b.avg - a.avg);
             for (let i = 0; i < ranked.length; i++) {
               await supabaseUntyped
