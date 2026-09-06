@@ -1676,6 +1676,75 @@ export default function TimetableGenerate() {
             }
           }
 
+          // 4) RELAXED LAST-RESORT FILL — the two overloaded bands (Mid Morning
+          //    and Afternoon) carry 9 lessons more than their 30 school-wide
+          //    slots, while Late Morning has 18 empty slots. Neutral free cells
+          //    remain empty because those subjects already appeared once that
+          //    day. As an absolute last resort (and only once no distinct-day
+          //    cell exists), allow a subject to appear a SECOND time on a day
+          //    so the timetable is complete. Every hard rule still holds:
+          //    teacher single-occupancy, class single-cell, missing-subject-per-
+          //    day limit, Math/Science adjacency, and double pairing.
+          {
+            const demandHave = new Map<string, number>();
+            reconEntries.forEach((e: any) => {
+              const k = `${e.class_id}:${e.subject_id}`;
+              demandHave.set(k, (demandHave.get(k) || 0) + 1);
+            });
+            const cellOcc = new Set<string>();
+            const teacherOcc = new Set<string>();
+            const perDay = new Map<string, number>();
+            const cellSubj = new Map<string, string>();
+            reconEntries.forEach((e: any) => {
+              cellOcc.add(`${e.class_id}-${e.day_of_week}-${e.time_slot_id}`);
+              if (e.teacher_id) teacherOcc.add(`${e.teacher_id}-${e.day_of_week}-${e.time_slot_id}`);
+              const pk = `${e.class_id}-${e.day_of_week}-${e.subject_id}`;
+              perDay.set(pk, (perDay.get(pk) || 0) + 1);
+              cellSubj.set(`${e.class_id}-${e.day_of_week}-${e.time_slot_id}`, reconSubjectName.get(String(e.subject_id)) || '');
+            });
+            const MAX_PER_DAY = 2;
+            for (const [key, dm] of reconDemand.entries()) {
+              let have = demandHave.get(key) || 0;
+              if (have >= dm) continue;
+              const [classId, subjectId] = key.split(':');
+              const subjectName = reconSubjectName.get(subjectId) || '';
+              const meta = reconSubjectMeta.get(key);
+              const teacherId = meta?.teacherId;
+              const availDays = meta && meta.availableDays.length ? meta.availableDays : [...TIMETABLE_DAYS];
+              let placed = 0;
+              let guard = 0;
+              while (have < dm && guard++ < 240) {
+                let progressed = false;
+                for (let day = 1; day <= TIMETABLE_DAYS.length && have < dm; day++) {
+                  const dayName = TIMETABLE_DAYS[day - 1];
+                  if (!availDays.includes(dayName)) continue;
+                  for (const slot of orderedLessonSlots) {
+                    if (have >= dm) break;
+                    const cellKey = `${classId}-${day}-${slot.id}`;
+                    if (cellOcc.has(cellKey)) continue;
+                    if (teacherId && teacherOcc.has(`${teacherId}-${day}-${slot.id}`)) continue;
+                    if ((perDay.get(`${classId}-${day}-${subjectId}`) || 0) >= MAX_PER_DAY) continue;
+                    const idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(slot.id));
+                    const prevSlot = idx > 0 ? orderedLessonSlots[idx - 1] : null;
+                    const nextSlot = idx >= 0 && idx < orderedLessonSlots.length - 1 ? orderedLessonSlots[idx + 1] : null;
+                    const prevSubj = prevSlot ? cellSubj.get(`${classId}-${day}-${prevSlot.id}`) : undefined;
+                    const nextSubj = nextSlot ? cellSubj.get(`${classId}-${day}-${nextSlot.id}`) : undefined;
+                    if (violatesMathScienceSequence(subjectName, prevSubj) || violatesMathScienceSequence(subjectName, nextSubj)) continue;
+                    const e4 = { school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: classId, level_group: levelKey, effective_start_time: slot.start_time, effective_end_time: slot.end_time, subject_id: subjectId, teacher_id: teacherId, entry_type: 'lesson' };
+                    reconEntries.push(e4);
+                    cellOcc.add(cellKey);
+                    if (teacherId) teacherOcc.add(`${teacherId}-${day}-${slot.id}`);
+                    perDay.set(`${classId}-${day}-${subjectId}`, (perDay.get(`${classId}-${day}-${subjectId}`) || 0) + 1);
+                    cellSubj.set(cellKey, subjectName);
+                    have += 1;
+                    progressed = true;
+                  }
+                }
+                if (!progressed) break;
+              }
+            }
+          }
+
           // Defensive: collapse any duplicate (class, day, slot) lesson cells
           // so the bulk insert can never hit a unique-constraint conflict.
           {
