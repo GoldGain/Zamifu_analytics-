@@ -51,6 +51,8 @@ import DoSResults from '@/pages/dashboard/dean-of-studies/Results';
 import ClassTeacherResults from '@/pages/dashboard/class-teacher/Results';
 import SchoolAdminAnnouncements from '@/pages/dashboard/school-admin/Announcements';
 import SchoolAdminSubjects from '@/pages/dashboard/school-admin/Subjects';
+import SchoolAdminSubjectGroups from '@/pages/dashboard/school-admin/SubjectGroups';
+import LearnerOptionalSubjects from '@/pages/dashboard/school-admin/LearnerOptionalSubjects';
 import SchoolAdminBranding from '@/pages/dashboard/school-admin/Branding';
 import SchoolAdminTimetableSetup from '@/pages/dashboard/school-admin/TimetableSetup';
 import SchoolAdminTimetableGenerate from '@/pages/dashboard/school-admin/TimetableGenerate';
@@ -74,6 +76,7 @@ import TeacherAnalytics from '@/pages/dashboard/teacher/Analytics';
 import TeacherStudents from '@/pages/dashboard/teacher/Students';
 import TeacherLessonPlan from '@/pages/dashboard/teacher/LessonPlan';
 import TeacherMySubjects from '@/pages/dashboard/teacher/MySubjects';
+import TeacherSelectMyLearners from '@/pages/dashboard/teacher/SelectMyLearners';
 import TeacherExamTimetable from '@/pages/dashboard/teacher/ExamTimetable';
 import TeacherViewMarks from '@/pages/dashboard/teacher/ViewMarks';
 import TeacherAssessmentProgress from '@/pages/dashboard/teacher/AssessmentProgress';
@@ -225,6 +228,8 @@ function AppRoutes() {
       <Route path="/school-admin/combine-exams" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><CombineExams /></ProtectedRoute>} />
       <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAnnouncements /></ProtectedRoute>} />
       <Route path="/school-admin/subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjects /></ProtectedRoute>} />
+      <Route path="/school-admin/subject-groups" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjectGroups /></ProtectedRoute>} />
+      <Route path="/school-admin/optional-subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><LearnerOptionalSubjects /></ProtectedRoute>} />
       <Route path="/school-admin/branding" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBranding /></ProtectedRoute>} />
 	      <Route path="/school-admin/attendance" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAttendance /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/setup" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTimetableSetup /></ProtectedRoute>} />
@@ -259,6 +264,7 @@ function AppRoutes() {
       <Route path="/teacher/students" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherStudents /></ProtectedRoute>} />
       <Route path="/teacher/lesson-plan" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherLessonPlan /></ProtectedRoute>} />
       <Route path="/teacher/my-subjects" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMySubjects /></ProtectedRoute>} />
+      <Route path="/teacher/select-learners" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherSelectMyLearners /></ProtectedRoute>} />
       <Route path="/teacher/timetable" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherTimetable /></ProtectedRoute>} />
       <Route path="/teacher/exam-timetable" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherExamTimetable /></ProtectedRoute>} />
       <Route path="/teacher/change-password" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherChangePassword /></ProtectedRoute>} />
