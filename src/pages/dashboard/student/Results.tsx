@@ -76,21 +76,22 @@ export default function StudentResults() {
         } else if (student.class_id) {
           const { data: classResults } = await supabaseUntyped
             .from('results')
-            .select('student_id, marks, out_of')
+            .select('student_id, marks, out_of, cbc_points')
             .eq('class_id', student.class_id)
             .eq('term_id', selectedTerm);
           if (classResults && classResults.length > 0) {
-            const studentTotals: Record<string, { totalPct: number; count: number }> = {};
+            const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
             (classResults as any[]).forEach((r: any) => {
               const pct = r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0;
-              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, count: 0 };
+              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, totalPoints: 0, count: 0 };
               studentTotals[r.student_id].totalPct += pct;
+              studentTotals[r.student_id].totalPoints += Number(r.cbc_points) || 0;
               studentTotals[r.student_id].count += 1;
             });
             const req = getRequiredLearningAreas(student.classes || student) || 0;
             const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ studentId: sid, avg: req > 0 ? v.totalPct / req : v.totalPct / v.count }))
-              .sort((a, b) => b.avg - a.avg);
+              .map(([sid, v]) => ({ studentId: sid, avg: req > 0 ? v.totalPct / req : v.totalPct / v.count, totalPoints: v.totalPoints, totalPct: v.totalPct }))
+              .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct));
             const position = ranked.findIndex(r => r.studentId === student.id) + 1;
             setClassPosition(position || null);
           }
