@@ -17,7 +17,7 @@ import {
   resolveActivityLessonSlot,
   timeIntervalsOverlap,
 } from '@/lib/timetable-activity';
-import { getSubjectCode } from '@/lib/timetable-subject-code';
+import { getReligiousCode, getSubjectCode } from '@/lib/timetable-subject-code';
 import { buildWeeklyLessonSummary, type TimetableSummaryRequirement } from '@/lib/timetable-summary';
 
 interface SchoolClass {
@@ -803,6 +803,21 @@ export default function TimetableView() {
     return entriesByOrder.get(`${day}-${classId}-${slot.slot_order}`) || [];
   };
 
+  // Map class_id -> set of religious subject codes (CRE / IRE / HRE) the class
+  // actually teaches. Used to render the combined "CRE/IRE" label when a class
+  // teaches more than one religious option.
+  const religiousCodesByClass = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    entries.forEach((entry) => {
+      const rel = getReligiousCode(entry.subject_name || '', entry.subject_code || '');
+      if (!rel) return;
+      let set = m.get(entry.class_id);
+      if (!set) { set = new Set<string>(); m.set(entry.class_id, set); }
+      set.add(rel);
+    });
+    return m;
+  }, [entries]);
+
   const getCellDisplay = (entriesForCell: TimetableEntry[]): string => {
     if (!entriesForCell || entriesForCell.length === 0) return '';
     const parts: string[] = [];
@@ -818,10 +833,16 @@ export default function TimetableView() {
         return;
       }
       if (!entry.subject_name && !entry.subject_code) return;
-      const code = getSubjectCode(entry.subject_name || '', entry.subject_code || '');
       const teacherNum = entry.teacher_number ? String(entry.teacher_number) : '';
+      const rel = getReligiousCode(entry.subject_name || '', entry.subject_code || '');
+      const classReligions = rel ? religiousCodesByClass.get(entry.class_id) : undefined;
+      // Rule 4: a class taking multiple religious options (CRE + IRE/HRE) shows
+      // the combined label ("CRE/IRE"). One option shows that subject alone.
+      const label = rel && classReligions && classReligions.size > 1
+        ? [...classReligions].sort().join('/')
+        : getSubjectCode(entry.subject_name || '', entry.subject_code || '');
       // Double lessons remain two consecutive timetable cells; no extra symbol is needed.
-      parts.push(`${code}${teacherNum}`);
+      parts.push(`${label}${teacherNum}`);
     });
     return parts.join(' ') || '';
   };
