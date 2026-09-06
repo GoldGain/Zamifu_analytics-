@@ -6,7 +6,7 @@ import {
   Search, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Download, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
+import { calculateCompetencyGrade, getSchoolLevelBand, getRequiredLearningAreas } from '@/lib/grading';
 import { MarksProgress } from '@/components/MarksProgress';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 
@@ -168,7 +168,9 @@ export default function ClassTeacherDashboard() {
       const perf: StudentPerformance[] = students.map((student) => {
         const sResults = resultsMap[student.id] || {};
         const pcts = Object.values(sResults).map((r: any) => r.pct).filter((p) => p != null && p > 0);
-        const avgPct = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
+        const req = getRequiredLearningAreas(assignedClass || {}) || 0;
+        const denom = req > 0 ? req : pcts.length;
+        const avgPct = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / denom) : null;
         
         const marks = Object.values(sResults).map((r: any) => r.marks).filter((m) => m != null);
         const outOfs = Object.values(sResults).map((r: any) => r.out_of).filter((o) => o != null);
