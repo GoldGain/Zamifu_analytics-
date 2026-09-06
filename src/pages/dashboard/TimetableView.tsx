@@ -865,7 +865,7 @@ export default function TimetableView() {
             filename,
             image: { type: 'jpeg', quality: 0.98 },
             pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: classId ? 1200 : 1600 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: Math.max(element.scrollWidth, element.offsetWidth || 0), width: Math.max(element.scrollWidth, element.offsetWidth || 0), height: Math.max(element.scrollHeight, element.offsetHeight || 0) },
             jsPDF: { unit: 'in', format: classId ? 'a4' : 'a3', orientation: 'landscape', compress: true },
           })
           .from(element)
@@ -1725,7 +1725,7 @@ export default function TimetableView() {
       </div>
 
       {/* Hidden per-class timetables for PDF generation */}
-      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '1200px' }}>
+      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: 'max-content', minWidth: '100%' }}>
         {classes.map(cls => (
           <div key={cls.id} id={`timetable-class-${cls.id}`} style={{ marginBottom: '40px' }}>
             {renderTimetableTable([cls], `timetable-class-inner-${cls.id}`)}
