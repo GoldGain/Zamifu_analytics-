@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { canUseAssignmentDay, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, violatesMathScienceSequence } from '@/lib/timetable-generator';
+import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -636,7 +636,7 @@ export default function TimetableGenerate() {
           if (name.includes('agricultur')) return 'afternoon';
           if (name.includes('pre-tech') || name.includes('pretechnical') || name.includes('pre technical')) return 'mid_morning';
           if (name.includes('science') || name.includes('environment') || name.includes('chem') || name.includes('physic') || name.includes('biolog')) return 'mid_morning';
-          if (name.includes('religious') || name.includes('cre') || name.includes('christian') || name.includes('islamic')) return 'afternoon';
+          if (name.includes('religious') || classifySubject(name) === 'religious') return 'afternoon';
           if (name.includes('creative')) return 'afternoon';
           if (name.includes('social')) return 'afternoon';
           if (name.includes('business')) return 'afternoon';
@@ -953,6 +953,13 @@ export default function TimetableGenerate() {
                 || violatesMathScienceSequence(subjectName, later)
               ) return 0;
 
+              // FINAL STRICT placement windows (L1-2 Math/English, L3-5
+              // Science/Pre-Tech, Kiswahili L5-7). Every slot of a unit must
+              // honour its subject family, otherwise the unit is rejected.
+              if (
+                !unitSlots.every((slot: any) => strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot)))
+              ) return 0;
+
               unitSlots.forEach((slot: any, index: number) => {
                 const timing = timings[index];
                 allEntries.push({
@@ -1180,6 +1187,7 @@ export default function TimetableGenerate() {
             violatesMathScienceSequence(context.subjectName, earlier)
             || violatesMathScienceSequence(context.subjectName, later)
           ) return false;
+          if (!unitSlots.every((slot: any) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot)))) return false;
           return true;
         };
 
@@ -1432,6 +1440,7 @@ export default function TimetableGenerate() {
                   const context = assignmentContexts.get(gap.assignmentKey);
                   if (!context || !context.availableDays.includes(fillDayName)) continue;
                   if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
+                  if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
                   if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
                   const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
                   if (teacherBusy.has(teacherKey)) continue;
