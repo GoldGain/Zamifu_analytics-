@@ -1488,143 +1488,95 @@ export default function TimetableGenerate() {
             reconEntries = reconEntries.filter((e: any) => !idsToDrop.has(e));
           }
 
-          // 2) Backfill under-scheduled subjects into freed / blank cells,
-          //    using a bounded cascade-swap: if a free cell is blocked only by
-          //    this subject's teacher (teaching another class there), try to
-          //    relocate that blocking lesson first, then fill the cell.
+          // 2) Backfill under-scheduled subjects into freed / blank cells.
           const reconCellSubject = new Map<string, string>();
           const reconClassBusy = new Set<string>();
           const reconTeacherBusy = new Set<string>();
           const reconSubjectDay = new Map<string, number>();
           const slotById = new Map<string, any>(lessonSlots.map((s: any) => [String(s.id), s]));
+          for (const e of reconEntries) {
+            const slot = slotById.get(String(e.time_slot_id));
+            if (!slot) continue;
+            const day = e.day_of_week;
+            const classKey = `${e.class_id}-${day}-${slot.id}`;
+            reconClassBusy.add(classKey);
+            if (e.teacher_id) reconTeacherBusy.add(`${e.teacher_id}-${day}-${slot.id}`);
+            reconCellSubject.set(classKey, reconSubjectName.get(String(e.subject_id)) || '');
+            const sdk = `${e.class_id}-${day}-${e.subject_id}`;
+            reconSubjectDay.set(sdk, (reconSubjectDay.get(sdk) || 0) + 1);
+          }
+
+          const reconHave = new Map<string, number>();
+          reconEntries.forEach((e: any) => {
+            const k = `${e.class_id}:${e.subject_id}`;
+            reconHave.set(k, (reconHave.get(k) || 0) + 1);
+          });
+
           const orderedLessonSlots = lessonSlots.slice().sort((a: any, b: any) => (a.slot_order || 0) - (b.slot_order || 0));
 
-          const rebukeEntry = (e: any) => {
-            const slot = slotById.get(String(e.time_slot_id));
-            if (slot) {
-              reconClassBusy.add(`${e.class_id}-${e.day_of_week}-${slot.id}`);
-              if (e.teacher_id) reconTeacherBusy.add(`${e.teacher_id}-${e.day_of_week}-${slot.id}`);
-              reconCellSubject.set(`${e.class_id}-${e.day_of_week}-${slot.id}`, reconSubjectName.get(String(e.subject_id)) || '');
-              const sdk = `${e.class_id}-${e.day_of_week}-${e.subject_id}`;
-              reconSubjectDay.set(sdk, (reconSubjectDay.get(sdk) || 0) + 1);
-            }
-          };
-          const unbookEntry = (e: any) => {
-            const slot = slotById.get(String(e.time_slot_id));
-            if (slot) {
-              reconClassBusy.delete(`${e.class_id}-${e.day_of_week}-${slot.id}`);
-              if (e.teacher_id) reconTeacherBusy.delete(`${e.teacher_id}-${e.day_of_week}-${slot.id}`);
-              const sdk = `${e.class_id}-${e.day_of_week}-${e.subject_id}`;
-              const n = (reconSubjectDay.get(sdk) || 0) - 1;
-              if (n > 0) reconSubjectDay.set(sdk, n); else reconSubjectDay.delete(sdk);
-            }
-          };
-          reconEntries.forEach(rebukeEntry);
-
-          const reconHave = () => {
-            const m = new Map<string, number>();
-            reconEntries.forEach((e: any) => {
-              const k = `${e.class_id}:${e.subject_id}`;
-              m.set(k, (m.get(k) || 0) + 1);
-            });
-            return m;
-          };
-
-          const reconCanPlace = (classId: string, subjectId: string, subjectName: string, day: number, slot: any, teacherId?: string) => {
-            if (reconClassBusy.has(`${classId}-${day}-${slot.id}`)) return false;
-            if (teacherId && reconTeacherBusy.has(`${teacherId}-${day}-${slot.id}`)) return false;
-            if (reconSubjectDay.get(`${classId}-${day}-${subjectId}`)) return false;
-            const idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(slot.id));
-            const prevSlot = idx > 0 ? orderedLessonSlots[idx - 1] : null;
-            const nextSlot = idx >= 0 && idx < orderedLessonSlots.length - 1 ? orderedLessonSlots[idx + 1] : null;
-            const prevSubj = prevSlot ? reconCellSubject.get(`${classId}-${day}-${prevSlot.id}`) : undefined;
-            const nextSubj = nextSlot ? reconCellSubject.get(`${classId}-${day}-${nextSlot.id}`) : undefined;
-            if (violatesMathScienceSequence(subjectName, prevSubj) || violatesMathScienceSequence(subjectName, nextSubj)) return false;
-            return true;
-          };
-
-          const reconPlace = (classId: string, subjectId: string, subjectName: string, teacherId: string | undefined, day: number, slot: any) => {
-            reconEntries.push({
-              school_id: schoolId,
-              day_of_week: day,
-              time_slot_id: slot.id,
-              class_id: classId,
-              level_group: levelKey,
-              effective_start_time: slot.start_time,
-              effective_end_time: slot.end_time,
-              subject_id: subjectId,
-              teacher_id: teacherId,
-              entry_type: 'lesson',
-            });
-            const slotRef = slotById.get(String(slot.id));
-            if (slotRef) {
-              reconClassBusy.add(`${classId}-${day}-${slot.id}`);
-              if (teacherId) reconTeacherBusy.add(`${teacherId}-${day}-${slot.id}`);
-              reconCellSubject.set(`${classId}-${day}-${slot.id}`, subjectName);
-              const sdk = `${classId}-${day}-${subjectId}`;
-              reconSubjectDay.set(sdk, (reconSubjectDay.get(sdk) || 0) + 1);
-            }
-          };
-
           for (const [key, dm] of reconDemand.entries()) {
+            const have = reconHave.get(key) || 0;
+            if (have >= dm) continue;
             const [classId, subjectId] = key.split(':');
             const subjectName = reconSubjectName.get(subjectId) || '';
             const meta = reconSubjectMeta.get(key);
             const teacherId = meta?.teacherId;
             const availDays = meta && meta.availableDays.length ? meta.availableDays : [...TIMETABLE_DAYS];
-            let deficit = dm - (reconHave().get(key) || 0);
+            let deficit = dm - have;
             let guard = 0;
-            while (deficit > 0 && guard++ < 800) {
-              let placed = false;
-              for (let day = 1; day <= TIMETABLE_DAYS.length && deficit > 0; day++) {
+            while (deficit > 0 && guard++ < 300) {
+              let placedNow = false;
+              for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availDays.includes(dayName)) continue;
                 for (const slot of orderedLessonSlots) {
                   if (deficit <= 0) break;
-                  if (reconCanPlace(classId, subjectId, subjectName, day, slot, teacherId)) {
-                    reconPlace(classId, subjectId, subjectName, teacherId, day, slot);
-                    deficit -= 1; placed = true; continue;
-                  }
-                  const classFree = !reconClassBusy.has(`${classId}-${day}-${slot.id}`);
-                  if (!classFree || !teacherId) continue;
-                  if (!reconTeacherBusy.has(`${teacherId}-${day}-${slot.id}`)) continue;
-                  const blockerIdx = reconEntries.findIndex((e: any) =>
-                    e.teacher_id === teacherId && e.day_of_week === day && String(e.time_slot_id) === String(slot.id));
-                  if (blockerIdx < 0) continue;
-                  const blocker = reconEntries[blockerIdx];
-                  const blockerKey = `${blocker.class_id}:${blocker.subject_id}`;
-                  const blockerMeta = reconSubjectMeta.get(blockerKey);
-                  const blockerName = reconSubjectName.get(String(blocker.subject_id)) || '';
-                  const blockerAvail = blockerMeta && blockerMeta.availableDays.length ? blockerMeta.availableDays : [...TIMETABLE_DAYS];
-                  let relocated = false;
-                  for (let d2 = 1; d2 <= TIMETABLE_DAYS.length && !relocated; d2++) {
-                    const d2name = TIMETABLE_DAYS[d2 - 1];
-                    if (!blockerAvail.includes(d2name)) continue;
-                    for (const s2 of orderedLessonSlots) {
-                      if (d2 === day && String(s2.id) === String(slot.id)) continue;
-                      if (reconCanPlace(blocker.class_id, blocker.subject_id, blockerName, d2, s2, blocker.teacher_id)) {
-                        unbookEntry(blocker);
-                        blocker.day_of_week = d2;
-                        blocker.time_slot_id = s2.id;
-                        blocker.effective_start_time = s2.start_time;
-                        blocker.effective_end_time = s2.end_time;
-                        rebukeEntry(blocker);
-                        relocated = true;
-                        break;
-                      }
-                    }
-                  }
-                  if (relocated && reconCanPlace(classId, subjectId, subjectName, day, slot, teacherId)) {
-                    reconPlace(classId, subjectId, subjectName, teacherId, day, slot);
-                    deficit -= 1; placed = true;
-                  }
+                  const classKey = `${classId}-${day}-${slot.id}`;
+                  if (reconClassBusy.has(classKey)) continue;
+                  if (teacherId && reconTeacherBusy.has(`${teacherId}-${day}-${slot.id}`)) continue;
+                  if (reconSubjectDay.get(`${classId}-${day}-${subjectId}`)) continue;
+                  const idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(slot.id));
+                  const prevSlot = idx > 0 ? orderedLessonSlots[idx - 1] : null;
+                  const nextSlot = idx >= 0 && idx < orderedLessonSlots.length - 1 ? orderedLessonSlots[idx + 1] : null;
+                  const prevSubj = prevSlot ? reconCellSubject.get(`${classId}-${day}-${prevSlot.id}`) : undefined;
+                  const nextSubj = nextSlot ? reconCellSubject.get(`${classId}-${day}-${nextSlot.id}`) : undefined;
+                  if (violatesMathScienceSequence(subjectName, prevSubj) || violatesMathScienceSequence(subjectName, nextSubj)) continue;
+                  reconEntries.push({
+                    school_id: schoolId,
+                    day_of_week: day,
+                    time_slot_id: slot.id,
+                    class_id: classId,
+                    level_group: levelKey,
+                    effective_start_time: slot.start_time,
+                    effective_end_time: slot.end_time,
+                    subject_id: subjectId,
+                    teacher_id: teacherId,
+                    entry_type: 'lesson',
+                  });
+                  reconClassBusy.add(classKey);
+                  if (teacherId) reconTeacherBusy.add(`${teacherId}-${day}-${slot.id}`);
+                  reconCellSubject.set(classKey, subjectName);
+                  reconSubjectDay.set(`${classId}-${day}-${subjectId}`, (reconSubjectDay.get(`${classId}-${day}-${subjectId}`) || 0) + 1);
+                  deficit -= 1;
+                  placedNow = true;
                 }
               }
-              if (!placed) break;
+              if (!placedNow) break;
             }
           }
 
-
+          // Defensive: collapse any duplicate (class, day, slot) lesson cells
+          // so the bulk insert can never hit a unique-constraint conflict.
+          {
+            const seenCells = new Set<string>();
+            reconEntries = reconEntries.filter((e: any) => {
+              const k = `${e.class_id}-${e.day_of_week}-${e.time_slot_id}`;
+              if (seenCells.has(k)) return false;
+              seenCells.add(k);
+              return true;
+            });
+          }
+          allEntries.splice(0, allEntries.length, ...otherEntries, ...reconEntries);
         }
 
       }
