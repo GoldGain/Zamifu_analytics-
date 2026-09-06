@@ -14,6 +14,12 @@ export const SUBJECT_CODE_MAP: Record<string, string> = {
   'creative arts': 'CAS',
   'creative arts and sports': 'CAS',
   'creative and sports': 'CAS',
+  ire: 'IRE',
+  'islamic religious education': 'IRE',
+  'islamic education': 'IRE',
+  hre: 'HRE',
+  'hindu religious education': 'HRE',
+  'hindu education': 'HRE',
   agriculture: 'AGN',
   'agriculture and nutrition': 'AGN',
   'pre-technical': 'PRET',
@@ -55,6 +61,8 @@ export const getSubjectCode = (name: string, code: string): string => {
     if (cleanCode.startsWith('PRE') || cleanCode.startsWith('PTS')) return 'PRET';
     if (cleanCode.startsWith('CAS') || cleanCode === 'CA') return 'CAS';
     if (cleanCode.startsWith('CRE') || cleanCode.startsWith('CHR')) return 'CRE';
+    if (cleanCode.startsWith('IRE') || cleanCode === 'ISL') return 'IRE';
+    if (cleanCode.startsWith('HRE') || cleanCode === 'HIN') return 'HRE';
     return cleanCode.replace(/\d+/g, '').substring(0, 5) || cleanCode.substring(0, 5);
   }
 
