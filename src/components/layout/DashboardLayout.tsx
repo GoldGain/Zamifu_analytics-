@@ -45,6 +45,7 @@ import {
   Shield,
   WalletCards,
   Trash2,
+  Layers,
 } from 'lucide-react';
 
 interface NavItem {
