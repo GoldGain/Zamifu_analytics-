@@ -70,3 +70,10 @@ export const getSubjectCode = (name: string, code: string): string => {
 };
 
 export const normalizeSubjectNameForTest = normalizeSubjectName;
+
+/** Religious-subject code (CRE / IRE / HRE), else null. */
+export const getReligiousCode = (name: string, code: string): string | null => {
+  const c = getSubjectCode(name, code);
+  return c === 'CRE' || c === 'IRE' || c === 'HRE' ? c : null;
+};
+
