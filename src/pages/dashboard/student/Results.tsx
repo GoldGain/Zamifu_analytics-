@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
+import { getRequiredLearningAreas } from '@/lib/grading';
 import { Award, Download, Filter, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export default function StudentResults() {
@@ -65,7 +66,8 @@ export default function StudentResults() {
 
       if (currentResults.length > 0) {
         const totalPct = currentResults.reduce((s: number, r: any) => s + (r.percentage || r.marks || 0), 0);
-        const avg = totalPct / currentResults.length;
+        const req = getRequiredLearningAreas(student.classes || student) || currentResults.length;
+        const avg = totalPct / req;
         setCurrentAvg(avg);
 
         const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position;
@@ -85,8 +87,9 @@ export default function StudentResults() {
               studentTotals[r.student_id].totalPct += pct;
               studentTotals[r.student_id].count += 1;
             });
+            const req = getRequiredLearningAreas(student.classes || student) || 0;
             const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ studentId: sid, avg: v.totalPct / v.count }))
+              .map(([sid, v]) => ({ studentId: sid, avg: req > 0 ? v.totalPct / req : v.totalPct / v.count }))
               .sort((a, b) => b.avg - a.avg);
             const position = ranked.findIndex(r => r.studentId === student.id) + 1;
             setClassPosition(position || null);
