@@ -1753,9 +1753,28 @@ export default function TimetableGenerate() {
 
       }
 
-      // Bulk insert all entries
+      // Bulk insert all entries. Final safety net: collapse duplicate
+      // (class, day, slot) cells before inserting, preferring a real lesson
+      // over a break/lunch/activity marker, so an in-lesson activity that
+      // shares a slot with a placement can never violate the unique
+      // constraint (school_id, day_of_week, time_slot_id, class_id).
       if (allEntries.length > 0) {
-        const { error: insertError } = await supabase.from('timetable_entries').insert(allEntries);
+        const uniqueEntries = new Map<string, any>();
+        const entryRank = (e: any) =>
+          e.entry_type === 'lesson' || e.entry_type === 'lesson_double' ? 2 : 1;
+        for (const entry of allEntries) {
+          const key = `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`;
+          const existing = uniqueEntries.get(key);
+          if (!existing || entryRank(entry) > entryRank(existing)) {
+            uniqueEntries.set(key, entry);
+          }
+        }
+        const dedupedEntries = Array.from(uniqueEntries.values());
+        const dropped = allEntries.length - dedupedEntries.length;
+        if (dropped > 0) {
+          console.warn(`[timetable] collapsed ${dropped} duplicate lesson-cell entries before insert`);
+        }
+        const { error: insertError } = await supabase.from('timetable_entries').insert(dedupedEntries);
         if (insertError) throw insertError;
       }
 
@@ -1776,7 +1795,17 @@ export default function TimetableGenerate() {
       fetchData();
     } catch (err: unknown) {
       console.error(err);
-      const message = err instanceof Error ? err.message : 'Generation failed for an unknown reason.';
+      let message = 'Generation failed for an unknown reason.';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (err && typeof err === 'object') {
+        const pgErr = err as any;
+        if (typeof pgErr.message === 'string' && pgErr.message) {
+          message = pgErr.message;
+          if (pgErr.code) message += ` (${pgErr.code})`;
+          if (pgErr.details) message += ` — ${pgErr.details}`;
+        }
+      }
       const suggestions = /setup|configuration|missing timetable times/i.test(message)
         ? ['Open Timetable Setup, complete the start, break, and lunch times for the selected level, save, and generate again.']
         : /classes|assignments|teacher/i.test(message)
