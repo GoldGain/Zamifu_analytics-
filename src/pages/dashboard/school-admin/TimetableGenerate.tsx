@@ -1082,7 +1082,12 @@ export default function TimetableGenerate() {
                   // period is occupied, place one valid lesson instead.
                   const preferredUnitSize: 1 | 2 = onConfiguredDoubleDay && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
                   let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
-                  if (placed === 0 && preferredUnitSize === 2) {
+                  // Never downgrade a configured double-day to a single while
+                  // the assignment still has two lessons available. Doing so
+                  // used to consume the cell needed by a later configured
+                  // double-day, silently dropping one or more requested pairs.
+                  // A single is allowed only for the final odd lesson.
+                  if (placed === 0 && preferredUnitSize === 1 && onConfiguredDoubleDay) {
                     placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, 1);
                   }
                   if (placed > 0) {
