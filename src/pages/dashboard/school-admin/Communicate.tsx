@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Send, Loader2, MessageSquare, Users, UserCheck, Bell, CheckCircle, Search, CheckSquare, Square, UserRound } from 'lucide-react';
+import { Send, Loader2, Users, UserCheck, Bell, CheckCircle, Search, CheckSquare, Square, UserRound, WalletCards, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { sendBulkSMS } from '@/lib/sms';
 
@@ -33,16 +34,18 @@ export default function Communicate() {
   const [includeStudentName, setIncludeStudentName] = useState(true);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [smsBalance, setSmsBalance] = useState<number | null>(null);
 
   useEffect(() => { fetchData(); }, [user?.schoolId]);
 
   const fetchData = async () => {
     const schoolId = user?.schoolId;
     if (!schoolId) return;
-    const [{ data: classRows }, { data: teacherRows }, { data: studentRows }] = await Promise.all([
+    const [{ data: classRows }, { data: teacherRows }, { data: studentRows }, { data: wallet }] = await Promise.all([
       supabaseUntyped.from('classes').select('id, name').eq('school_id', schoolId).eq('is_active', true).order('name'),
       supabaseUntyped.from('teachers').select('id, first_name, last_name, phone').eq('school_id', schoolId).eq('is_active', true).order('first_name'),
       supabaseUntyped.from('students').select('id, first_name, last_name, class_id, parent_name, parent_phone, parent2_name, parent2_phone, classes(name)').eq('school_id', schoolId).eq('is_active', true).order('admission_number'),
+      supabaseUntyped.from('school_sms_wallets').select('sms_balance').eq('school_id', schoolId).maybeSingle(),
     ]);
     const classMap = new Map((classRows || []).map((item: SchoolClass) => [item.id, item.name]));
     const rows: StudentParentRow[] = [];
@@ -66,6 +69,7 @@ export default function Communicate() {
     setClasses(classRows || []);
     setTeachers(teacherRows || []);
     setParentRows(rows);
+    setSmsBalance(Number(wallet?.sms_balance || 0));
   };
 
   const visibleParents = useMemo(() => parentRows
@@ -128,12 +132,20 @@ export default function Communicate() {
     if (recipients.length === 0) { toast.error('Select at least one recipient with a valid phone number'); return; }
     setSending(true);
     let successCount = 0;
+    let firstError = '';
     for (const recipient of recipients) {
       const result = await sendBulkSMS([recipient.phone], `${recipient.prefix || ''}${message}`, undefined, user?.schoolId || undefined);
       if (result.success) successCount += 1;
+      else if (!firstError) firstError = result.data?.[0]?.error || result.error || 'SMS delivery failed';
     }
     setSending(false);
-    toast.success(`SMS sent to ${successCount} of ${recipients.length} selected recipient(s)`);
+    if (successCount === 0) {
+      toast.error(`No SMS was sent. ${firstError}`);
+    } else if (successCount < recipients.length) {
+      toast.warning(`SMS sent to ${successCount} of ${recipients.length}. ${firstError ? `First failure: ${firstError}` : ''}`);
+    } else {
+      toast.success(`SMS sent to all ${successCount} selected recipient(s)`);
+    }
     if (successCount > 0) setMessage('');
   };
 
@@ -141,6 +153,11 @@ export default function Communicate() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div><h1 className="text-2xl font-bold text-[#111111]">Communicate</h1><p className="text-sm text-[#666666]">Select one, many, or all teachers and parents before sending an SMS.</p></div>
+
+      {smsBalance !== null && <div className={`rounded-2xl border p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${smsBalance > 0 ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+        <div className="flex items-start gap-3"><WalletCards className={`w-5 h-5 mt-0.5 ${smsBalance > 0 ? 'text-emerald-600' : 'text-amber-600'}`} /><div><p className="font-semibold text-sm text-gray-800">Olympus SMS balance: {smsBalance.toLocaleString()} credit{smsBalance === 1 ? '' : 's'}</p><p className="text-xs text-gray-600">Each SMS segment uses one credit. Messages cannot be sent when the wallet is empty.</p></div></div>
+        {smsBalance === 0 && <Link to="/school-admin/sms-wallet" className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"><AlertTriangle className="w-4 h-4" /> Buy SMS credits</Link>}
+      </div>}
 
       <div className="bg-white rounded-2xl p-6 border border-gray-100">
         <p className="text-sm font-semibold text-gray-700 mb-3">Send to</p>
