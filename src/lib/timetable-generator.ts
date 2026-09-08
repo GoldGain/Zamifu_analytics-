@@ -10,10 +10,10 @@
  * |------------------|-------|-------------|
  * | Pre-Primary      | 6     | 0           |
  * | Lower Primary    | 6     | 0           |
- * | Upper Primary    | 7     | 1           |
+ * | Primary 1-6      | 6     | 0           |
  * | Junior School    | 8     | 2           |
- * | Senior School    | 9     | 3           |
- * | 8-4-4            | 9     | 3           |
+ * | Senior 10-12     | 7     | 1           |
+ * | 8-4-4            | 7     | 1           |
  */
 
 export interface TimetableSlot {
@@ -48,23 +48,23 @@ export interface LevelLessonConfig {
 }
 
 /** Built-in defaults — used only when DB does not supply counts.
- * Senior (Grade 10-12): 9 lessons/day, 3 after lunch.
- * Form 3 & 4 (8-4-4): 9 lessons/day, 3 after lunch.
+ * Senior (Grade 10-12): 7 lessons/day, 1 after lunch.
+ * Form 3 & 4 (8-4-4): 7 lessons/day, 1 after lunch.
  */
 export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
   'pre-primary': { totalLessons: 6, afterLunch: 0 },
   'lower-primary': { totalLessons: 6, afterLunch: 0 },
-  'upper-primary': { totalLessons: 7, afterLunch: 1 },
-  'combined-primary': { totalLessons: 7, afterLunch: 1 },
+  'upper-primary': { totalLessons: 6, afterLunch: 0 },
+  'combined-primary': { totalLessons: 6, afterLunch: 0 },
   junior: { totalLessons: 8, afterLunch: 2 },
-  senior: { totalLessons: 9, afterLunch: 3 },
-  'form-3-4': { totalLessons: 9, afterLunch: 3 },
+  senior: { totalLessons: 7, afterLunch: 1 },
+  'form-3-4': { totalLessons: 7, afterLunch: 1 },
   // legacy aliases
   lower_primary: { totalLessons: 6, afterLunch: 0 },
   upper_primary: { totalLessons: 7, afterLunch: 1 },
   junior_school: { totalLessons: 8, afterLunch: 2 },
-  senior_school: { totalLessons: 9, afterLunch: 3 },
-  '8-4-4': { totalLessons: 9, afterLunch: 3 },
+  senior_school: { totalLessons: 7, afterLunch: 1 },
+  '8-4-4': { totalLessons: 7, afterLunch: 1 },
 };
 
 /** @deprecated prefer LEVEL_CONFIG */
@@ -156,6 +156,12 @@ export function classifySubject(subjectName: string | null | undefined): Subject
   return 'other';
 }
 
+/** Names that are not learning areas and must never be generated as lessons. */
+export function isFillerSubject(subjectName: string | null | undefined): boolean {
+  const n = String(subjectName || '').trim().toLowerCase();
+  return /reading\s*(?:and|&)\s*research|\bstudy\b|\brevision\b|\bproject\s*work\b|\bguided\s*study\b|\bindependent\s*study\b|\breflection\s*&?\s*review\b|\blibrary\s*\/\s*study/i.test(n);
+}
+
 /**
  * FINAL STRICT placement gate — level-independent.
  *
@@ -164,10 +170,8 @@ export function classifySubject(subjectName: string | null | undefined): Subject
  *   - science / pre-technical : Lessons 3-5 only.
  *   - kiswahili               : Lessons 1-7 only (never beyond Lesson 7).
  *
- * Unassigned cells are filled by the generator with non-teacher study blocks;
- * they must never be used to spill a named learning area outside its hard
- * window. This keeps the strict subject rules true while still producing a
- * complete, usable grid.
+ * Unassigned cells are rejected by the generator. It never invents a filler
+ * learning area to hide missing teacher assignments.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
@@ -308,34 +312,15 @@ export function hasLessonsAfterLunch(level: string): boolean {
 }
 
 /**
- * Resolve target lesson totals from config + level key.
- * Prefers DB overrides on the config object.
+ * Resolve canonical target lesson totals from the level key. Saved setup
+ * controls clock times, but cannot silently change the required level rules.
  */
 export function resolveLessonTargets(
   levelKey: string,
   config?: Partial<TimetableConfig> | null
 ): { totalLessons: number; afterLunch: number } {
-  const afterFromConfig =
-    typeof config?.after_lunch_lessons === 'number' ? config.after_lunch_lessons : null;
-  const totalFromConfig =
-    typeof config?.lessons_per_day === 'number' ? config.lessons_per_day : null;
-
-  let afterLunch = getAfterLunchCount(levelKey, afterFromConfig);
-  let totalLessons = getLessonCountForLevel(levelKey, totalFromConfig);
-
-  // Keep invariants: 6 before lunch + afterLunch = total
-  if (afterFromConfig != null && totalFromConfig == null) {
-    totalLessons = 6 + afterLunch;
-  } else if (totalFromConfig != null && afterFromConfig == null) {
-    afterLunch = Math.max(0, Math.min(3, totalLessons - 6));
-  } else {
-    // Prefer after_lunch as source of truth when both present but inconsistent
-    totalLessons = 6 + afterLunch;
-  }
-
-  totalLessons = Math.max(6, Math.min(9, totalLessons));
-  afterLunch = Math.max(0, Math.min(3, afterLunch));
-  return { totalLessons, afterLunch };
+  const canonical = getLevelConfig(levelKey) || { totalLessons: 8, afterLunch: 2 };
+  return { totalLessons: canonical.totalLessons, afterLunch: canonical.afterLunch };
 }
 
 /**

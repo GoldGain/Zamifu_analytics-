@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
+import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, isFillerSubject, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -184,11 +184,11 @@ type GenerationReport = {
 const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; note: string }> = {
   'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
   'lower-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
-  'upper-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
-  'combined-primary': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'upper-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
+  'combined-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { lessons: 9, afterLunch: 3, note: '3 lessons after lunch' },
-  'form-3-4': { lessons: 9, afterLunch: 3, note: '3 lessons after lunch' },
+  'senior': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'form-3-4': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
 };
 
 export default function TimetableGenerate() {
@@ -321,13 +321,22 @@ export default function TimetableGenerate() {
 
       // Fetch all active classes
       const { data: allClasses } = await supabase.from('classes').select('id, name, level, grade_level, stream, school_id, is_active').eq('school_id', schoolId).eq('is_active', true);
-      const { data: assignments } = await supabase
+      const { data: rawAssignments } = await supabase
         .from('teacher_subject_assignments')
         .select('*, subjects(name, code), teachers(first_name, last_name, teacher_number)')
         .eq('school_id', schoolId)
         .eq('is_active', true);
 
-      if (!allClasses?.length || !assignments?.length) {
+      const invalidAssignments = (rawAssignments || []).filter((assignment: any) =>
+        !assignment.subject_id || !String(assignment.subjects?.name || '').trim() || isFillerSubject(assignment.subjects?.name),
+      );
+      if (invalidAssignments.length > 0) {
+        const invalidNames = [...new Set(invalidAssignments.map((assignment: any) => String(assignment.subjects?.name || 'Unnamed learning area')))].join(', ');
+        throw new Error(`Remove invalid or filler learning areas from Teacher Assignments before generating: ${invalidNames}. Timetables only use real subjects assigned by teachers.`);
+      }
+      const assignments = (rawAssignments || []).filter((assignment: any) => assignment.subject_id && String(assignment.subjects?.name || '').trim());
+
+      if (!allClasses?.length || !assignments.length) {
         throw new Error('Classes or assignments missing. Please set up classes and teacher assignments first.');
       }
 
@@ -1794,47 +1803,27 @@ export default function TimetableGenerate() {
           allEntries.splice(0, allEntries.length, ...otherEntries, ...reconEntries);
         }
 
-        // A timetable grid is a complete school-day plan, not a sparse list of
-        // teacher assignments. Any cell that is still open after reconciliation
-        // receives a clearly labelled, non-teacher study block. These blocks are
-        // intentionally distinct by lesson number, so the no-duplicate-lessons
-        // rule remains true without inventing a subject or a teacher conflict.
-        const studyLabelsByLesson: Record<number, string> = {
-          1: 'Guided Study',
-          2: 'Reading & Research',
-          3: 'Revision & Practice',
-          4: 'Project Work',
-          5: 'Creative Practice',
-          6: 'Class Guidance',
-          7: 'Independent Study',
-          8: 'Library / Study Skills',
-          9: 'Reflection & Review',
-        };
-        const occupiedLessonCells = new Set(
-          allEntries
-            .filter((entry: any) => entry.level_group === levelKey)
-            .map((entry: any) => `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`),
-        );
+        // Every lesson cell must be occupied by a real teacher-assigned subject
+        // or by an explicitly configured activity. Never invent Study,
+        // Revision, Reading & Research, or any other filler entry.
+        const lessonCellEntries = new Map<string, any[]>();
+        allEntries
+          .filter((entry: any) => entry.level_group === levelKey && lessonSlots.some((slot: any) => String(slot.id) === String(entry.time_slot_id)))
+          .forEach((entry: any) => {
+            const cellKey = `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`;
+            lessonCellEntries.set(cellKey, [...(lessonCellEntries.get(cellKey) || []), entry]);
+          });
+        const missingCells: string[] = [];
         for (const cls of classesToProcess) {
           for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
             for (const slot of lessonSlots) {
               const cellKey = `${cls.id}-${day}-${slot.id}`;
-              if (occupiedLessonCells.has(cellKey)) continue;
-              const lessonNumber = lessonNumberOf(slot);
-              allEntries.push({
-                school_id: schoolId,
-                day_of_week: day,
-                time_slot_id: slot.id,
-                class_id: cls.id,
-                level_group: levelKey,
-                effective_start_time: slot.start_time,
-                effective_end_time: slot.end_time,
-                entry_type: 'study',
-                activity_name: studyLabelsByLesson[lessonNumber] || `Study Block ${lessonNumber}`,
-              });
-              occupiedLessonCells.add(cellKey);
+              if (!lessonCellEntries.has(cellKey)) missingCells.push(`${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
             }
           }
+        }
+        if (missingCells.length > 0) {
+          throw new Error(`Cannot generate a complete timetable without filler subjects. Missing real teacher assignments for ${missingCells.slice(0, 8).join('; ')}${missingCells.length > 8 ? ` and ${missingCells.length - 8} more cell(s)` : ''}. Assign enough real learning areas with weekly lessons, then generate again.`);
         }
 
       }
@@ -1916,7 +1905,7 @@ export default function TimetableGenerate() {
         <Clock className="w-5 h-5 flex-shrink-0 mt-0.5 text-blue-600" />
         <div className="w-full">
           <p className="font-bold mb-1">School Day Structure:</p>
-          <p>Lesson 1 & 2 → <strong>FIRST BREAK</strong> → Lesson 3 & 4 → <strong>SECOND BREAK</strong> → Lesson 5 & 6 → <strong>LUNCH</strong> → [Lesson 7] [+ Lesson 8 for Junior/8-4-4] [+ Lesson 9 for Senior] → <strong>ACTIVITIES</strong></p>
+          <p>Lesson 1 & 2 → <strong>FIRST BREAK</strong> → Lesson 3 & 4 → <strong>SECOND BREAK</strong> → Lesson 5 & 6 → <strong>LUNCH</strong> → [Lessons 7–8 for Junior] → <strong>ACTIVITIES</strong></p>
           <p className="mt-1 text-xs text-blue-700">
             Lesson structure and all times are loaded from <strong>Timetable Setup</strong> (database). Configured levels use saved Activities Start/End, Break, and Lunch times.
           </p>
@@ -1966,12 +1955,8 @@ export default function TimetableGenerate() {
             const isSelected = selectedLevels.has(key);
             const defaults = LEVEL_LESSON_INFO[key];
             const dbCfg = levelConfigs[key];
-            const afterLunch = typeof dbCfg?.after_lunch_lessons === 'number'
-              ? dbCfg.after_lunch_lessons
-              : (defaults?.afterLunch ?? 1);
-            const totalLessons = typeof dbCfg?.lessons_per_day === 'number'
-              ? dbCfg.lessons_per_day
-              : (defaults?.lessons ?? (6 + afterLunch));
+            const afterLunch = defaults?.afterLunch ?? 1;
+            const totalLessons = defaults?.lessons ?? (6 + afterLunch);
             const lessonInfo = { lessons: totalLessons, afterLunch, note: defaults?.note || '' };
             const isPrePrimary = afterLunch === 0;
             return (

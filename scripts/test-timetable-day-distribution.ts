@@ -73,13 +73,13 @@ assert.equal(
   'assignments above five weekly lessons may reuse weekdays when required',
 );
 
-assert.equal(getDefaultPriorityBand('Mathematics'), 'morning');
+assert.equal(getDefaultPriorityBand('Mathematics'), 'early_morning');
 assert.equal(getDefaultPriorityLesson('Mathematics'), 1);
-assert.equal(getDefaultPriorityBand('English Language'), 'morning');
+assert.equal(getDefaultPriorityBand('English Language'), 'early_morning');
 assert.equal(getDefaultPriorityLesson('English Language'), 2);
 assert.equal(getDefaultPriorityBand('Integrated Science'), 'mid_morning');
 assert.equal(getDefaultPriorityBand('Social Studies'), 'afternoon');
-assert.equal(getDefaultPriorityBand('Kiswahili'), 'none');
+assert.equal(getDefaultPriorityBand('Kiswahili'), 'late_morning');
 
 assert.equal(violatesMathScienceSequence('Mathematics', 'Integrated Science'), true);
 assert.equal(violatesMathScienceSequence('Integrated Science', 'Mathematics'), true);

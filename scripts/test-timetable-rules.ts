@@ -1,4 +1,4 @@
-import { generateSlots, resolveLessonTargets, summarizeSlots } from '../src/lib/timetable-generator.ts';
+import { generateSlots, isFillerSubject, resolveLessonTargets, summarizeSlots } from '../src/lib/timetable-generator.ts';
 
 const lowerConfig = {
   lesson_duration: 40,
@@ -27,4 +27,7 @@ if (!summary.lunchEnd) throw new Error('Expected a visible lunch slot');
 const lastLesson = slots.filter(s => s.slot_type === 'lesson').at(-1);
 const lunchSlot = slots.find(s => s.slot_type === 'lunch');
 if (!lunchSlot || lastLesson?.end_time !== lunchSlot.start_time) throw new Error(`Expected Lesson 6 to end at lunch start, got lesson=${lastLesson?.end_time}, lunch=${lunchSlot?.start_time}`);
+if (!isFillerSubject('Reading and Research') || !isFillerSubject('Study') || !isFillerSubject('Revision')) throw new Error('Filler-subject guard did not reject all prohibited names');
+const seniorTargets = resolveLessonTargets('senior', { lessons_per_day: 9, after_lunch_lessons: 3 });
+if (seniorTargets.totalLessons !== 7 || seniorTargets.afterLunch !== 1) throw new Error(`Senior canonical targets were overridden: ${JSON.stringify(seniorTargets)}`);
 console.log('Timetable rule test passed:', JSON.stringify({ targets, summary, lastLesson }));
