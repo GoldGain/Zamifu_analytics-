@@ -1852,6 +1852,7 @@ export default function TimetableGenerate() {
           for (const missing of missingCells) {
             let candidates = [...assignmentContexts.values()]
               .filter((context) => String(context.cls.id) === String(missing.cls.id))
+              .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
               .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
               .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
               .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
@@ -1864,6 +1865,7 @@ export default function TimetableGenerate() {
             if (candidates.length === 0) {
               candidates = [...assignmentContexts.values()]
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
+                .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
                 .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
