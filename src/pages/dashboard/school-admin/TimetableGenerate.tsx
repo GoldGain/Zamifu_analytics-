@@ -171,6 +171,19 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
   'form-3-4': [11, 12], // Form 3=11, Form 4=12 in 8-4-4
 };
 
+const classMatchesLevel = (cls: any, levelKey: string): boolean => {
+  const gradeLevel = Number(cls.grade_level ?? cls.level);
+  if ((LEVEL_GROUP_GRADE_RANGES[levelKey] || []).includes(gradeLevel)) return true;
+  const name = String(cls.name || '').toLowerCase();
+  if (levelKey === 'pre-primary' && /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return true;
+  if (levelKey === 'lower-primary' && /grade\s*[123]\b/.test(name)) return true;
+  if (levelKey === 'upper-primary' && /grade\s*[456]\b/.test(name)) return true;
+  if (levelKey === 'combined-primary' && /grade\s*[1-6]\b/.test(name)) return true;
+  if (levelKey === 'junior' && /grade\s*[789]\b/.test(name)) return true;
+  if (levelKey === 'senior' && /grade\s*(10|11|12)\b/.test(name)) return true;
+  return levelKey === 'form-3-4' && /form\s*[34]\b/.test(name);
+};
+
 // Display info for each level's lesson structure
 // Senior (Grade 10-12): 9 lessons/day, 3 after lunch
 // Form 3 & 4 (8-4-4): 9 lessons/day, 3 after lunch
@@ -201,7 +214,7 @@ export default function TimetableGenerate() {
   const [teacherCount, setTeacherCount] = useState(0);
   const [classCount, setClassCount] = useState(0);
   const [lastGenerated, setLastGenerated] = useState<string | null>(null);
-  const [selectedLevels, setSelectedLevels] = useState<Set<string>>(new Set(['lower-primary']));
+  const [selectedLevels, setSelectedLevels] = useState<Set<string>>(new Set());
   const [scheduledActivities, setScheduledActivities] = useState<ScheduledActivity[]>([]);
   const [generationReport, setGenerationReport] = useState<GenerationReport | null>(null);
 
@@ -266,6 +279,19 @@ export default function TimetableGenerate() {
       const { count: cc } = await supabase
         .from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true);
       setClassCount(cc || 0);
+
+      // Start on levels that actually have both classes and teacher assignments.
+      // This prevents a new school from defaulting to Lower Primary when its
+      // configured classes are, for example, Grade 7–9 Junior School.
+      const { data: readinessClasses } = await supabase
+        .from('classes').select('id, name, level, grade_level').eq('school_id', schoolId).eq('is_active', true);
+      const { data: readinessAssignments } = await supabase
+        .from('teacher_subject_assignments').select('class_id').eq('school_id', schoolId).eq('is_active', true);
+      const assignedClassIds = new Set((readinessAssignments || []).map((row: any) => String(row.class_id)));
+      const readyLevels = LEVEL_GROUPS
+        .map((group) => group.key)
+        .filter((key) => (readinessClasses || []).some((cls: any) => classMatchesLevel(cls, key) && assignedClassIds.has(String(cls.id))));
+      if (readyLevels.length > 0) setSelectedLevels(new Set(readyLevels));
 
       const { data: ttData } = await supabase
         .from('timetable_entries').select('created_at').eq('school_id', schoolId).limit(1).order('created_at', { ascending: false });
@@ -475,6 +501,11 @@ export default function TimetableGenerate() {
           }
         }
 
+        const classesToProcess = (allClasses || []).filter((cls: any) => classMatchesLevel(cls, levelKey));
+        if (classesToProcess.length === 0) {
+          throw new Error(`No active classes match ${LEVEL_GROUPS.find(l => l.key === levelKey)?.label || levelKey}. Select a level that has classes and teacher assignments, or update the class grade level first.`);
+        }
+
         // Generate the normal level-specific clock once. Explicit activities do
         // not shift this clock and do not add lesson columns. A blocking activity
         // that overlaps a lesson owns that existing lesson slot; only a genuine
@@ -557,37 +588,13 @@ export default function TimetableGenerate() {
           `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${lessonN} lessons (${afterN} after lunch), start ${config.school_start}`
         );
 
-        // Filter classes for this level group
-        const gradeRange = LEVEL_GROUP_GRADE_RANGES[levelKey] || [];
-        const levelClasses = allClasses.filter((cls: any) => {
-          const gradeLevel = Number(cls.grade_level ?? cls.level);
-          if (gradeRange.includes(gradeLevel)) return true;
-          // Name-based fallback (e.g. "Grade 7 East", "PP1", "Form 4")
-          const name = String(cls.name || '').toLowerCase();
-          if (levelKey === 'pre-primary' && /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return true;
-          if (levelKey === 'lower-primary' && /grade\s*[123]\b/.test(name)) return true;
-          if (levelKey === 'upper-primary' && /grade\s*[456]\b/.test(name)) return true;
-          if (levelKey === 'combined-primary' && /grade\s*[1-6]\b/.test(name)) return true;
-          if (levelKey === 'junior' && /grade\s*[789]\b/.test(name)) return true;
-          if (levelKey === 'senior' && /grade\s*(10|11|12)\b/.test(name)) return true;
-          if (levelKey === 'form-3-4' && /form\s*[34]\b/.test(name)) return true;
-          return false;
-        });
-
-        // NEVER fall back to all classes — that assigns wrong lesson counts to every grade.
-        const classesToProcess = levelClasses;
-        if (classesToProcess.length === 0) {
-          console.warn(`[timetable] No classes matched grade range for ${levelKey}; slots created but no class entries.`);
-          toast.message(`No classes found for ${LEVEL_GROUPS.find(l => l.key === levelKey)?.label || levelKey}. Slots saved; assign grade levels to classes.`);
-        } else {
-          // Remove any leftover entries for these classes under other level_groups
-          const classIds = classesToProcess.map((c: any) => c.id);
-          await (supabase as any)
-            .from('timetable_entries')
-            .delete()
-            .eq('school_id', schoolId)
-            .in('class_id', classIds);
-        }
+        // Remove any leftover entries for these classes under other level_groups.
+        const classIds = classesToProcess.map((c: any) => c.id);
+        await (supabase as any)
+          .from('timetable_entries')
+          .delete()
+          .eq('school_id', schoolId)
+          .in('class_id', classIds);
 
         const orderedSlots = (createdSlots || []).slice().sort((a: any, b: any) => a.slot_order - b.slot_order);
         const fixedSlots = orderedSlots.filter((s: any) => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type));
