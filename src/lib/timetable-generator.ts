@@ -161,13 +161,13 @@ export function classifySubject(subjectName: string | null | undefined): Subject
  *
  * Only two windows are HARD (they always have capacity):
  *   - mathematics / english : Lessons 1-2 only.
- *   - kiswahili             : Lessons 5-7 only (never beyond Lesson 7).
+ *   - science / pre-technical : Lessons 3-5 only.
+ *   - kiswahili               : Lessons 1-7 only (never beyond Lesson 7).
  *
- * Integrated Science, Pre-Tech and every other learning area may occupy any
- * lesson from 3 onwards. Subject-specific core windows (Science/Pre-Tech L3-4,
- * others L5+) are expressed as priorities during the scheduling pass, not as
- * hard walls here. This guarantees the timetable can always be completed with
- * NO blank spaces (Rule 7) even when a teacher's evening is over-subscribed.
+ * Unassigned cells are filled by the generator with non-teacher study blocks;
+ * they must never be used to spill a named learning area outside its hard
+ * window. This keeps the strict subject rules true while still producing a
+ * complete, usable grid.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
@@ -175,10 +175,8 @@ export function strictSubjectAllowsLesson(
 ): boolean {
   const fam = classifySubject(subjectName);
   if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
-  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3;
-  if (fam === 'kiswahili') return lessonNumber >= 5 && lessonNumber <= 7;
-  // Science, Pre-Tech and every other learning area may fill any lesson
-  // from 3 onwards so a timetable can always be completed with no blanks.
+  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
+  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
   return lessonNumber >= 3;
 }
 

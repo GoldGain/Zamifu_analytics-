@@ -919,11 +919,9 @@ export default function TimetableGenerate() {
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const subjectDayKey = `${cls.id}-${day}-${assignment.subject_id}`;
               const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
-              const subjectWeeklyDemand = subjectDemandByClass.get(`${cls.id}:${assignment.subject_id}`) || lessonsToSchedule;
-              // A subject may appear once per day by default. A configured
-              // double is the only normal two-cell exception; high-frequency
-              // subjects (>5 lessons/week) may reuse a weekday when necessary.
-              if (subjectAlreadyUsedToday && (unitSize === 2 || subjectWeeklyDemand <= 5)) return 0;
+              // A subject may appear only once per day. A configured double is
+              // still one lesson occurrence occupying two consecutive cells.
+              if (subjectAlreadyUsedToday) return 0;
               const timings = unitSlots.map((slot: any) =>
                 daySlotTimes.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
               );
@@ -1151,8 +1149,9 @@ export default function TimetableGenerate() {
           if (!unitSlots) return false;
           const subjectDayKey = `${context.cls.id}-${day}-${context.assignment.subject_id}`;
           const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
-          const subjectWeeklyDemand = subjectDemandByClass.get(`${context.cls.id}:${context.assignment.subject_id}`) || context.lessonsPerWeek;
-          if (subjectAlreadyUsedToday && (unitSize === 2 || subjectWeeklyDemand <= 5)) return false;
+          // A subject may appear only once per day. A configured double is
+          // still one lesson occurrence occupying two consecutive cells.
+          if (subjectAlreadyUsedToday) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
@@ -1466,11 +1465,13 @@ export default function TimetableGenerate() {
                 // period must be filled without ever placing Maths next to
                 // Science or an Early Morning subject in the afternoon.
                 if (!placed) {
-                  for (const gap of classGaps) {
-                    const context = assignmentContexts.get(gap.assignmentKey);
-                    if (!context || !context.availableDays.includes(fillDayName)) continue;
-                    if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
-                    const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
+                for (const gap of classGaps) {
+                  const context = assignmentContexts.get(gap.assignmentKey);
+                  if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
+                  if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
+                  if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
+                  const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
                     if (teacherBusy.has(teacherKey)) continue;
                     const prevForB = context.lessonSlots
                       .filter((slot: any) => slot.slot_order < fillSlot.slot_order)
@@ -1749,6 +1750,49 @@ export default function TimetableGenerate() {
             });
           }
           allEntries.splice(0, allEntries.length, ...otherEntries, ...reconEntries);
+        }
+
+        // A timetable grid is a complete school-day plan, not a sparse list of
+        // teacher assignments. Any cell that is still open after reconciliation
+        // receives a clearly labelled, non-teacher study block. These blocks are
+        // intentionally distinct by lesson number, so the no-duplicate-lessons
+        // rule remains true without inventing a subject or a teacher conflict.
+        const studyLabelsByLesson: Record<number, string> = {
+          1: 'Guided Study',
+          2: 'Reading & Research',
+          3: 'Revision & Practice',
+          4: 'Project Work',
+          5: 'Creative Practice',
+          6: 'Class Guidance',
+          7: 'Independent Study',
+          8: 'Library / Study Skills',
+          9: 'Reflection & Review',
+        };
+        const occupiedLessonCells = new Set(
+          allEntries
+            .filter((entry: any) => entry.level_group === levelKey)
+            .map((entry: any) => `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`),
+        );
+        for (const cls of classesToProcess) {
+          for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
+            for (const slot of lessonSlots) {
+              const cellKey = `${cls.id}-${day}-${slot.id}`;
+              if (occupiedLessonCells.has(cellKey)) continue;
+              const lessonNumber = lessonNumberOf(slot);
+              allEntries.push({
+                school_id: schoolId,
+                day_of_week: day,
+                time_slot_id: slot.id,
+                class_id: cls.id,
+                level_group: levelKey,
+                effective_start_time: slot.start_time,
+                effective_end_time: slot.end_time,
+                entry_type: 'study',
+                activity_name: studyLabelsByLesson[lessonNumber] || `Study Block ${lessonNumber}`,
+              });
+              occupiedLessonCells.add(cellKey);
+            }
+          }
         }
 
       }

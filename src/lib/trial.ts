@@ -23,8 +23,8 @@ export interface SubscriptionPlanOption {
 }
 
 export const SUBSCRIPTION_PLANS: SubscriptionPlanOption[] = [
-  { id: 'full_access_20', name: 'Full Access (Per Learner)', price: 20, unit: 'learner', period: 'term', featureSummary: 'Full access to all features', includesSms: true },
-  { id: 'full_access_50', name: 'Full Access (Per Learner)', price: 50, unit: 'learner', period: 'annual', featureSummary: 'Full access to all features', includesSms: true },
+  { id: 'full_access_20', name: 'Full Access (Per Learner)', price: 10, unit: 'learner', period: 'term', featureSummary: 'Full access to all features', includesSms: true },
+  { id: 'full_access_50', name: 'Full Access (Per Learner)', price: 20, unit: 'learner', period: 'annual', featureSummary: 'Full access to all features', includesSms: true },
   { id: 'results_only', name: 'Results Access Only', price: 1000, unit: 'school', period: 'term', featureSummary: 'Results access only; SMS at KES 1 each', includesSms: false },
   { id: 'timetabler_only', name: 'Timetabler Access Only', price: 500, unit: 'school', period: 'term', featureSummary: 'Timetable generation only', includesSms: false },
   { id: 'generator_only', name: 'Generator Access Only', price: 500, unit: 'school', period: 'term', featureSummary: 'Exam Generator, Scheme of Work, Notes and Lesson Plan', includesSms: false },

@@ -21,7 +21,6 @@ interface DirectorySchool {
   id: string;
   name: string;
   code?: string;
-  knec_centre_code?: string;
   county?: string;
   sub_county?: string;
   school_level?: string;
@@ -34,7 +33,6 @@ interface FormState {
   sub_county: string;
   email: string;
   phone: string;
-  knec_centre_code: string;
   admin_first_name: string;
   admin_last_name: string;
   password: string;
@@ -49,7 +47,6 @@ const initial: FormState = {
   sub_county: '',
   email: '',
   phone: '',
-  knec_centre_code: '',
   admin_first_name: '',
   admin_last_name: '',
   password: '',
@@ -143,7 +140,6 @@ export default function SchoolRegister() {
         name: form.school_name,
         email: form.email,
         phone: form.phone,
-        knec_centre_code: form.knec_centre_code,
       });
       if (!data.available) {
         setConflicts(data.conflicts || ['Details already in use']);
@@ -232,7 +228,6 @@ export default function SchoolRegister() {
         sub_county: form.sub_county,
         email: form.email.trim().toLowerCase(),
         phone: form.phone.trim(),
-        knec_centre_code: form.knec_centre_code.trim(),
         admin_first_name: form.admin_first_name.trim(),
         admin_last_name: form.admin_last_name.trim(),
         password: form.password,
@@ -254,7 +249,6 @@ export default function SchoolRegister() {
     setForm((f) => ({
       ...f,
       school_name: s.name || f.school_name,
-      knec_centre_code: s.knec_centre_code || s.code || f.knec_centre_code,
       county: s.county || f.county,
       sub_county: s.sub_county || f.sub_county,
       school_level: (s.school_level as SchoolLevel) || f.school_level,
@@ -328,7 +322,7 @@ export default function SchoolRegister() {
                   <input
                     value={searchQ}
                     onChange={(e) => setSearchQ(e.target.value)}
-                    placeholder="Search by school name or KNEC / centre code"
+                    placeholder="Search by school name or school code"
                     className="input"
                   />
                   {searching && <p className="text-xs text-slate-500 mt-2">Searching directory…</p>}
@@ -338,14 +332,14 @@ export default function SchoolRegister() {
                         <button key={s.id} type="button" onClick={() => pickSchool(s)} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm">
                           <div className="font-medium text-slate-800">{s.name}</div>
                           <div className="text-xs text-slate-500">
-                            {[s.code || s.knec_centre_code, s.county, s.sub_county].filter(Boolean).join(' · ')}
+                            {[s.code, s.county, s.sub_county].filter(Boolean).join(' · ')}
                           </div>
                         </button>
                       ))}
                     </div>
                   )}
                   <p className="text-[11px] text-slate-500 mt-2">
-                    Pick a known school to auto-fill, or enter details manually. School name, contacts and centre code must be unique.
+                    Pick a known school to auto-fill, or enter details manually. School name and contacts must be unique.
                   </p>
                 </div>
 
@@ -396,16 +390,6 @@ export default function SchoolRegister() {
                     <input value={form.phone} onChange={(e) => set('phone', e.target.value)} className="input" placeholder="07XXXXXXXX" />
                   </Field>
                 </div>
-
-                <Field label="KNEC centre code (recommended)">
-                  <input
-                    value={form.knec_centre_code}
-                    onChange={(e) => set('knec_centre_code', e.target.value.toUpperCase())}
-                    className="input"
-                    placeholder="e.g. 27503001"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1">Used as unique school identity when provided.</p>
-                </Field>
 
                 {conflicts.length > 0 && (
                   <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 space-y-1">
@@ -516,7 +500,6 @@ export default function SchoolRegister() {
                     ['Location', `${form.sub_county}, ${form.county}`],
                     ['Email', form.email],
                     ['Phone', form.phone],
-                    ['KNEC / centre code', form.knec_centre_code || 'Auto-generated'],
                     ['Administrator', `${form.admin_first_name} ${form.admin_last_name}`],
                   ].map(([k, v]) => (
                     <div key={k as string} className="flex justify-between gap-4 px-4 py-3">

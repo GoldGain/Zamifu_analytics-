@@ -5,14 +5,17 @@ import { Send, Loader2, MessageSquare, Users, UserCheck, Bell, CheckCircle } fro
 import { toast } from 'sonner';
 import { sendBulkSMS, generateAnnouncementSMS } from '@/lib/sms';
 
-type RecipientType = 'class' | 'teachers' | 'all_parents';
+type RecipientType = 'class' | 'teacher' | 'teachers' | 'parent' | 'all_parents';
 
 export default function Communicate() {
   const { user } = useAuth();
   const [recipientType, setRecipientType] = useState<RecipientType>('class');
   const [classes, setClasses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
+  const [parents, setParents] = useState<any[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
+  const [selectedTeacher, setSelectedTeacher] = useState('');
+  const [selectedParent, setSelectedParent] = useState('');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [recipientCount, setRecipientCount] = useState(0);
@@ -23,16 +26,25 @@ export default function Communicate() {
 
   useEffect(() => {
     updateRecipientCount();
-  }, [recipientType, selectedClass, classes, teachers]);
+  }, [recipientType, selectedClass, selectedTeacher, selectedParent, classes, teachers, parents]);
 
   const fetchData = async () => {
     const schoolId = user?.schoolId;
-    const [{ data: c }, { data: t }] = await Promise.all([
+    const [{ data: c }, { data: t }, { data: studentRows }] = await Promise.all([
       supabaseUntyped.from('classes').select('id, name').eq('school_id', schoolId).eq('is_active', true).order('name'),
       supabaseUntyped.from('teachers').select('id, first_name, last_name, phone').eq('school_id', schoolId).eq('is_active', true),
+      supabaseUntyped.from('students').select('parent_name, parent_phone, parent2_name, parent2_phone').eq('school_id', schoolId).eq('is_active', true),
     ]);
     setClasses(c || []);
     setTeachers(t || []);
+    const parentMap = new Map<string, any>();
+    (studentRows || []).forEach((student: any) => {
+      [[student.parent_phone, student.parent_name], [student.parent2_phone, student.parent2_name]].forEach(([phone, name]) => {
+        const normalizedPhone = String(phone || '').trim();
+        if (normalizedPhone.length >= 9 && !parentMap.has(normalizedPhone)) parentMap.set(normalizedPhone, { phone: normalizedPhone, name: name || 'Parent' });
+      });
+    });
+    setParents([...parentMap.values()].sort((a, b) => a.name.localeCompare(b.name)));
   };
 
   const updateRecipientCount = () => {
@@ -42,8 +54,12 @@ export default function Communicate() {
       count = 0; // Placeholder - actual count from parent phones
     } else if (recipientType === 'teachers') {
       count = teachers.filter(t => t.phone).length;
+    } else if (recipientType === 'teacher') {
+      count = selectedTeacher ? 1 : 0;
+    } else if (recipientType === 'parent') {
+      count = selectedParent ? 1 : 0;
     } else if (recipientType === 'all_parents') {
-      count = 0; // Will be calculated
+      count = parents.length;
     }
     setRecipientCount(count);
   };
@@ -55,15 +71,15 @@ export default function Communicate() {
     if (recipientType === 'class' && selectedClass) {
       const { data } = await supabaseUntyped
         .from('students')
-        .select('parent_phone')
+        .select('parent_phone, parent2_phone')
         .eq('school_id', schoolId)
         .eq('class_id', selectedClass)
         .eq('is_active', true);
       
       (data || []).forEach((s: any) => {
-        if (s.parent_phone && s.parent_phone.length >= 9) {
-          phones.push(s.parent_phone);
-        }
+        [s.parent_phone, s.parent2_phone].forEach((phone: string | null) => {
+          if (phone && phone.length >= 9) phones.push(phone);
+        });
       });
     } else if (recipientType === 'teachers') {
       teachers.forEach((t: any) => {
@@ -71,17 +87,23 @@ export default function Communicate() {
           phones.push(t.phone);
         }
       });
+    } else if (recipientType === 'teacher' && selectedTeacher) {
+      const teacher = teachers.find((item: any) => item.id === selectedTeacher);
+      if (teacher?.phone && teacher.phone.length >= 9) phones.push(teacher.phone);
+    } else if (recipientType === 'parent' && selectedParent) {
+      const parent = parents.find((item: any) => item.phone === selectedParent);
+      if (parent?.phone && parent.phone.length >= 9) phones.push(parent.phone);
     } else if (recipientType === 'all_parents') {
       const { data } = await supabaseUntyped
         .from('students')
-        .select('parent_phone')
+        .select('parent_phone, parent2_phone')
         .eq('school_id', schoolId)
         .eq('is_active', true);
       
       (data || []).forEach((s: any) => {
-        if (s.parent_phone && s.parent_phone.length >= 9) {
-          phones.push(s.parent_phone);
-        }
+        [s.parent_phone, s.parent2_phone].forEach((phone: string | null) => {
+          if (phone && phone.length >= 9) phones.push(phone);
+        });
       });
     }
 
@@ -130,8 +152,12 @@ export default function Communicate() {
     switch (recipientType) {
       case 'class':
         return 'Write a message to all parents in the selected class...';
+      case 'teacher':
+        return 'Write a message to the selected teacher...';
       case 'teachers':
         return 'Write a message to all teachers...';
+      case 'parent':
+        return 'Write a message to the selected parent...';
       case 'all_parents':
         return 'Write a message to all parents in the school...';
     }
@@ -177,6 +203,18 @@ export default function Communicate() {
             </div>
           </button>
           <button
+            onClick={() => setRecipientType('teacher')}
+            className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+              recipientType === 'teacher' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <UserCheck className="w-5 h-5" />
+            <div className="text-left">
+              <p className="text-sm font-medium">A Teacher</p>
+              <p className="text-xs text-gray-500">Choose one teacher</p>
+            </div>
+          </button>
+          <button
             onClick={() => setRecipientType('all_parents')}
             className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
               recipientType === 'all_parents'
@@ -188,6 +226,18 @@ export default function Communicate() {
             <div className="text-left">
               <p className="text-sm font-medium">All Parents</p>
               <p className="text-xs text-gray-500">Send to all parents</p>
+            </div>
+          </button>
+          <button
+            onClick={() => setRecipientType('parent')}
+            className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+              recipientType === 'parent' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <Bell className="w-5 h-5" />
+            <div className="text-left">
+              <p className="text-sm font-medium">A Parent</p>
+              <p className="text-xs text-gray-500">Choose one parent</p>
             </div>
           </button>
         </div>
@@ -210,6 +260,26 @@ export default function Communicate() {
         </div>
       )}
 
+      {recipientType === 'teacher' && (
+        <div className="bg-white rounded-2xl p-6 border border-gray-100">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Teacher</label>
+          <select value={selectedTeacher} onChange={e => setSelectedTeacher(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white">
+            <option value="">-- Select a teacher --</option>
+            {teachers.map(t => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}{t.phone ? '' : ' (no phone)'}</option>)}
+          </select>
+        </div>
+      )}
+
+      {recipientType === 'parent' && (
+        <div className="bg-white rounded-2xl p-6 border border-gray-100">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Parent</label>
+          <select value={selectedParent} onChange={e => setSelectedParent(e.target.value)} className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-white">
+            <option value="">-- Select a parent --</option>
+            {parents.map(parent => <option key={parent.phone} value={parent.phone}>{parent.name} ({parent.phone})</option>)}
+          </select>
+        </div>
+      )}
+
       {/* Recipient Info */}
       <div className="bg-white rounded-2xl p-6 border border-gray-100">
         <div className="flex items-center gap-2 mb-4">
@@ -217,8 +287,12 @@ export default function Communicate() {
           <span className="text-sm text-gray-600">
             {recipientType === 'class' && selectedClass
               ? `Sending to parents of: ${classes.find(c => c.id === selectedClass)?.name || 'selected class'}`
+              : recipientType === 'teacher'
+              ? `Sending to ${teachers.find(t => t.id === selectedTeacher)?.first_name || 'selected teacher'}`
               : recipientType === 'teachers'
               ? `Sending to ${teachers.filter(t => t.phone).length} teacher(s)`
+              : recipientType === 'parent'
+              ? `Sending to ${parents.find(parent => parent.phone === selectedParent)?.name || 'selected parent'}`
               : 'Sending to all parents in school'}
           </span>
         </div>

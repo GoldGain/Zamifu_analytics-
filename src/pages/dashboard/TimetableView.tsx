@@ -35,7 +35,7 @@ interface TimetableEntry {
   time_slot_id: string;
   teacher_id: string | null;
   subject_id: string | null;
-  entry_type: 'lesson' | 'lesson_double' | 'break' | 'lunch' | 'activities' | 'activity';
+  entry_type: 'lesson' | 'lesson_double' | 'study' | 'break' | 'lunch' | 'activities' | 'activity';
   activity_name: string | null;
   effective_start_time?: string | null;
   effective_end_time?: string | null;
@@ -824,6 +824,14 @@ export default function TimetableView() {
     const seenActivityLabels = new Set<string>();
     entriesForCell.forEach((entry) => {
       if (isPlaceholderActivity(entry)) return;
+      if (entry.entry_type === 'study') {
+        const label = String(entry.activity_name || 'Study').trim().toUpperCase();
+        if (label && !seenActivityLabels.has(label)) {
+          seenActivityLabels.add(label);
+          parts.push(label);
+        }
+        return;
+      }
       if (entry.entry_type === 'activity' || entry.entry_type === 'activities') {
         const label = String(entry.activity_name || '').trim().toUpperCase();
         if (label && !seenActivityLabels.has(label)) {

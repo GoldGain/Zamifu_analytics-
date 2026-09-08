@@ -23,8 +23,10 @@ export default function SchoolAdminFees() {
   const [recording, setRecording] = useState(false);
   const [activeTab, setActiveTab] = useState<'invoices' | 'payments' | 'structures' | 'class-balances'>('invoices');
   const [selectedFeeClass, setSelectedFeeClass] = useState('');
+  const [selectedFeeBalanceStudents, setSelectedFeeBalanceStudents] = useState<string[]>([]);
   const [feeSearch, setFeeSearch] = useState('');
   const [selectedInvoiceClass, setSelectedInvoiceClass] = useState('');
+  const [invoiceClassFilter, setInvoiceClassFilter] = useState('');
   const [editingPayment, setEditingPayment] = useState<any | null>(null);
   const [editPaymentData, setEditPaymentData] = useState({ amount: '', payment_method: 'cash' as 'cash' | 'mpesa' | 'bank' | 'cheque' | 'other', mpesa_reference: '', notes: '' });
   const [savingPayment, setSavingPayment] = useState(false);
@@ -135,6 +137,10 @@ export default function SchoolAdminFees() {
     .filter((payment: any) => matchesFeeSearch(payment.student))
     .sort((a: any, b: any) => compareLearners(a.student, b.student) || String(b.payment_date || '').localeCompare(String(a.payment_date || '')));
 
+  const invoiceStudents = students
+    .filter((student: any) => !invoiceClassFilter || student.class_id === invoiceClassFilter)
+    .sort(compareLearners);
+
   const openEditPayment = (payment: any) => {
     setEditingPayment(payment);
     setEditPaymentData({
@@ -225,11 +231,13 @@ export default function SchoolAdminFees() {
   const sendClassFeeBalances = async () => {
     if (!selectedFeeClass || !user?.schoolId) { toast.error('Select a class first.'); return; }
     const className = classes.find((item: any) => item.id === selectedFeeClass)?.name || 'your child’s class';
-    const recipients = classBalanceRows(selectedFeeClass).flatMap((row: any) => {
+    const recipients = classBalanceRows(selectedFeeClass)
+      .filter((row: any) => selectedFeeBalanceStudents.length === 0 || selectedFeeBalanceStudents.includes(row.student.id))
+      .flatMap((row: any) => {
       const message = `Dear ${row.student.parent_name || 'Parent'}, ${row.student.first_name} ${row.student.last_name}'s outstanding fee balance at ${schoolData?.name || 'school'} is Ksh ${row.balance.toLocaleString()} (${className}). Please contact the school office for assistance.`;
       return [row.student.parent_phone, row.student.parent2_phone].filter(Boolean).map((phone) => ({ phone, message }));
     });
-    if (recipients.length === 0) { toast.info('No parent phone numbers found for this class.'); return; }
+    if (recipients.length === 0) { toast.info(selectedFeeBalanceStudents.length ? 'No parent phone numbers found for the selected learners.' : 'No parent phone numbers found for this class.'); return; }
     setBulkSending(true);
     let sent = 0;
     try {
@@ -636,9 +644,13 @@ export default function SchoolAdminFees() {
         <div className="bg-white rounded-2xl p-6 shadow-sm border">
           <h3 className="text-lg font-semibold mb-4">Generate Invoice for Student</h3>
           <form onSubmit={handleGenerateInvoice} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <select value={invoiceClassFilter} onChange={e => { setInvoiceClassFilter(e.target.value); setInvoiceData({ ...invoiceData, student_id: '' }); }} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white">
+              <option value="">All classes</option>
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+            </select>
             <select value={invoiceData.student_id} onChange={e => setInvoiceData({...invoiceData, student_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Student *</option>
-              {students.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} ({s.admission_number})</option>)}
+              {invoiceStudents.map(s => <option key={s.id} value={s.id}>{s.admission_number || 'No admission no.'} — {s.first_name} {s.last_name}</option>)}
             </select>
             <select value={invoiceData.term_id} onChange={e => setInvoiceData({...invoiceData, term_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Term *</option>
@@ -831,7 +843,7 @@ export default function SchoolAdminFees() {
       {activeTab === 'class-balances' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-5 shadow-sm border flex flex-col md:flex-row md:items-center gap-3">
-            <select value={selectedFeeClass} onChange={e => setSelectedFeeClass(e.target.value)} className="flex-1 px-4 py-2.5 border rounded-xl text-sm bg-white">
+            <select value={selectedFeeClass} onChange={e => { setSelectedFeeClass(e.target.value); setSelectedFeeBalanceStudents([]); }} className="flex-1 px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">Select a class</option>
               {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
             </select>
@@ -842,10 +854,10 @@ export default function SchoolAdminFees() {
               {bulkSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />} Send Balance Messages
             </button>
           </div>
-          {selectedFeeClass ? (
+              {selectedFeeClass ? (
             <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
-              <div className="p-5 border-b"><h3 className="font-semibold">{classes.find((item: any) => item.id === selectedFeeClass)?.name} Fee Balances</h3><p className="text-xs text-gray-500 mt-1">Learners are grouped by class. Messages include parent name, learner name, class, and outstanding balance.</p></div>
-              <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b bg-gray-50"><th className="px-5 py-3 text-xs uppercase text-gray-500">Learner</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Parent</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Total</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Paid</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Outstanding</th></tr></thead><tbody>{classBalanceRows(selectedFeeClass).map((row: any) => <tr key={row.student.id} className="border-b"><td className="px-5 py-3 text-sm">{row.student.first_name} {row.student.last_name}<div className="text-xs text-gray-500">{row.student.admission_number || '-'}</div></td><td className="px-5 py-3 text-sm">{row.student.parent_name || '-'}<div className="text-xs text-gray-500">{row.student.parent_phone || '-'}</div></td><td className="px-5 py-3 text-sm">Ksh {row.total.toLocaleString()}</td><td className="px-5 py-3 text-sm text-green-600">Ksh {row.paid.toLocaleString()}</td><td className="px-5 py-3 text-sm font-semibold text-red-600">Ksh {row.balance.toLocaleString()}</td></tr>)}</tbody></table></div>
+              <div className="p-5 border-b"><h3 className="font-semibold">{classes.find((item: any) => item.id === selectedFeeClass)?.name} Fee Balances</h3><p className="text-xs text-gray-500 mt-1">Select specific learners for SMS, or leave all unchecked to message every parent in this class. Learners are sorted by admission number.</p></div>
+              <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b bg-gray-50"><th className="px-5 py-3 text-xs uppercase text-gray-500">SMS</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Learner</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Parent</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Total</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Paid</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Outstanding</th></tr></thead><tbody>{classBalanceRows(selectedFeeClass).map((row: any) => <tr key={row.student.id} className="border-b"><td className="px-5 py-3"><input type="checkbox" aria-label={`Select ${row.student.first_name} ${row.student.last_name} for fee SMS`} checked={selectedFeeBalanceStudents.length === 0 || selectedFeeBalanceStudents.includes(row.student.id)} onChange={() => { const ids = classBalanceRows(selectedFeeClass).map((item: any) => item.student.id); setSelectedFeeBalanceStudents((current) => current.length === 0 ? ids.filter((id: string) => id !== row.student.id) : current.includes(row.student.id) ? current.filter((id) => id !== row.student.id) : [...current, row.student.id]); }} className="h-4 w-4 accent-blue-600" /></td><td className="px-5 py-3 text-sm">{row.student.first_name} {row.student.last_name}<div className="text-xs text-gray-500">{row.student.admission_number || '-'}</div></td><td className="px-5 py-3 text-sm">{row.student.parent_name || '-'}<div className="text-xs text-gray-500">{row.student.parent_phone || '-'}</div></td><td className="px-5 py-3 text-sm">Ksh {row.total.toLocaleString()}</td><td className="px-5 py-3 text-sm text-green-600">Ksh {row.paid.toLocaleString()}</td><td className="px-5 py-3 text-sm font-semibold text-red-600">Ksh {row.balance.toLocaleString()}</td></tr>)}</tbody></table></div>
             </div>
           ) : <div className="bg-white rounded-2xl p-8 text-center text-sm text-gray-500 border">Select a class to view and communicate fee balances.</div>}
         </div>

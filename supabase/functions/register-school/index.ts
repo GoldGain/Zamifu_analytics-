@@ -28,8 +28,7 @@ function normPhone(s: unknown) {
 function contactKey(email: string, phone: string) {
   return `${normEmail(email)}|${normPhone(phone)}`;
 }
-function makeCode(name: string, knec: string) {
-  if (knec) return knec.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+function makeCode(name: string) {
   const base = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || "SCHOOL";
   const suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `${base}${suffix}`.slice(0, 16);
@@ -54,8 +53,8 @@ Deno.serve(async (req) => {
       if (q.length < 2) return json(200, { schools: [] });
       const fb = await admin
         .from("schools")
-        .select("id, name, code, knec_centre_code, county, sub_county, school_level, status")
-        .or(`name.ilike.%${q}%,code.ilike.%${q}%,knec_centre_code.ilike.%${q}%`)
+        .select("id, name, code, county, sub_county, school_level, status")
+        .or(`name.ilike.%${q}%,code.ilike.%${q}%`)
         .limit(25);
       if (fb.error) return json(400, { error: fb.error.message });
       return json(200, { schools: fb.data || [] });
@@ -65,7 +64,6 @@ Deno.serve(async (req) => {
       const name = norm(body.name);
       const email = normEmail(body.email);
       const phone = normPhone(body.phone);
-      const knec = norm(body.knec_centre_code).toUpperCase();
       const conflicts: string[] = [];
 
       if (name) {
@@ -83,12 +81,6 @@ Deno.serve(async (req) => {
         if ((data || []).some((r: any) => normPhone(r.phone) === phone)) {
           conflicts.push("Phone number is already used by another school");
         }
-      }
-      if (knec) {
-        const { data } = await admin.from("schools").select("id").ilike("knec_centre_code", knec).limit(1);
-        if (data?.length) conflicts.push("KNEC centre code is already registered");
-        const { data: c } = await admin.from("schools").select("id").ilike("code", knec).limit(1);
-        if (c?.length) conflicts.push("School/centre code is already registered");
       }
       return json(200, { available: conflicts.length === 0, conflicts });
     }
@@ -124,7 +116,6 @@ Deno.serve(async (req) => {
     const sub_county = norm(body.sub_county);
     const email = normEmail(body.email);
     const phone = normPhone(body.phone || body.admin_phone);
-    const knec_centre_code = norm(body.knec_centre_code).toUpperCase();
     const admin_first_name = norm(body.admin_first_name) || "School";
     const admin_last_name = norm(body.admin_last_name) || "Admin";
     const otp_verified = Boolean(body.otp_verified);
@@ -163,10 +154,6 @@ Deno.serve(async (req) => {
       const { data } = await admin.from("profiles").select("id").ilike("email", email).limit(1);
       if (data?.length) conflicts.push("Email already has a Zamifu user account");
     }
-    if (knec_centre_code) {
-      const { data } = await admin.from("schools").select("id").ilike("knec_centre_code", knec_centre_code).limit(1);
-      if (data?.length && data[0].id !== selected_existing_id) conflicts.push("KNEC centre code is already registered");
-    }
     {
       const { data } = await admin.from("schools").select("id, phone").not("phone", "is", null).limit(8000);
       if ((data || []).some((r: any) => normPhone(r.phone) === phone && r.id !== selected_existing_id)) {
@@ -190,14 +177,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const code = makeCode(school_name, knec_centre_code);
+    const code = makeCode(school_name);
     const trialStarted = new Date();
     const trialExpires = new Date(trialStarted.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
     const schoolPayload: Record<string, unknown> = {
       name: school_name,
       code,
-      knec_centre_code: knec_centre_code || null,
       school_level,
       county,
       sub_county: sub_county || null,
@@ -219,8 +205,8 @@ Deno.serve(async (req) => {
       onboarding_completed: false,
       admin_portal_locked: false,
       dos_portal_locked: false,
-      fee_per_learner_per_term: 20,
-      fee_per_learner_per_year: 50,
+      fee_per_learner_per_term: 10,
+      fee_per_learner_per_year: 20,
     };
 
     let schoolId = selected_existing_id || null;
