@@ -916,6 +916,7 @@ export default function TimetableGenerate() {
               ? (preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots)
               : [];
             let scheduled = 0;
+            const placedConfiguredDoubleDays = new Set<string>();
 
             // A double lesson is an atomic unit. We validate the whole pair before
             // mutating either busy set or adding either entry, so a conflict can
@@ -1004,6 +1005,9 @@ export default function TimetableGenerate() {
               });
               subjectDayUsage.set(subjectDayKey, (subjectDayUsage.get(subjectDayKey) || 0) + unitSize);
               placementContext.dayUsage.set(day, (placementContext.dayUsage.get(day) || 0) + 1);
+              if (unitSize === 2 && configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1])) {
+                placedConfiguredDoubleDays.add(TIMETABLE_DAYS[day - 1]);
+              }
               return unitSize;
             };
 
@@ -1072,24 +1076,20 @@ export default function TimetableGenerate() {
                 const rotatedSlots = rotateList(slotsToTry, rotationOffset + day + teacherSubjectSlotOffset);
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
+                const pendingConfiguredDouble = configuredDoubleDays.some((doubleDay) => !placedConfiguredDoubleDays.has(doubleDay));
+                const onConfiguredDoubleDay = isDoubleLesson && configuredDoubleDays.includes(dayName);
+                // Reserve the weekly capacity needed by configured double days.
+                // A single lesson on another day must never consume one of the
+                // two weekly lesson units required for a pending double.
+                if (isDoubleLesson && pendingConfiguredDouble && !onConfiguredDoubleDay) continue;
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of rotatedSlots) {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
-                  const onConfiguredDoubleDay = isDoubleLesson && configuredDoubleDays.includes(dayName);
-                  // A double day is a preference for two adjacent periods, not
-                  // permission to make the whole assignment unschedulable. For
-                  // odd weekly totals (for example 5 lessons), or when the next
-                  // period is occupied, place one valid lesson instead.
+                  // A configured double day is an atomic pair. It may not be
+                  // downgraded to one lesson when the pair is still required.
                   const preferredUnitSize: 1 | 2 = onConfiguredDoubleDay && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
                   let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
-                  // Never downgrade a configured double-day to a single while
-                  // the assignment still has two lessons available. Doing so
-                  // used to consume the cell needed by a later configured
-                  // double-day, silently dropping one or more requested pairs.
-                  // A single is allowed only for the final odd lesson.
-                  if (placed === 0 && preferredUnitSize === 1 && onConfiguredDoubleDay) {
-                    placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, 1);
-                  }
+                  if (placed === 0 && onConfiguredDoubleDay && scheduled + 2 <= lessonsToSchedule) continue;
                   if (placed > 0) {
                     scheduled += placed;
                     break;
