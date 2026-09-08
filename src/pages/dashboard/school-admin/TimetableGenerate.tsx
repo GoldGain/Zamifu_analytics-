@@ -1876,6 +1876,16 @@ export default function TimetableGenerate() {
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
+            if (candidates.length === 0) {
+              // A configured double day can consume the preferred window. Use
+              // the least-scheduled real assignment as the final repair rather
+              // than failing the whole timetable or inventing filler content.
+              candidates = [...assignmentContexts.values()]
+                .filter((context) => String(context.cls.id) === String(missing.cls.id))
+                .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
+                .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+            }
             const context = candidates[0];
             if (!context) continue;
             const { times } = context.getDaySlotTiming(missing.day, context.cls);
