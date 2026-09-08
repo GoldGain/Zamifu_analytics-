@@ -109,7 +109,17 @@ export default function Communicate() {
 
   const fetchRecipients = (): SmsRecipient[] => {
     if (recipientType === 'teachers') return selectedTeachers.filter((teacher) => teacher.phone && teacher.phone.length >= 9).map((teacher) => ({ phone: teacher.phone as string, label: `${teacher.first_name} ${teacher.last_name}` }));
-    return selectedParentRows.map((row) => ({ phone: row.phone, label: `${row.parentName} (${row.studentName})`, prefix: includeStudentName ? `Dear ${row.parentName}, ${row.studentName}'s message: ` : '' }));
+    const byPhone = new Map<string, { parentName: string; studentNames: string[] }>();
+    selectedParentRows.forEach((row) => {
+      const existing = byPhone.get(row.phone) || { parentName: row.parentName, studentNames: [] };
+      if (!existing.studentNames.includes(row.studentName)) existing.studentNames.push(row.studentName);
+      byPhone.set(row.phone, existing);
+    });
+    return [...byPhone.entries()].map(([phone, value]) => ({
+      phone,
+      label: `${value.parentName} (${value.studentNames.join(', ')})`,
+      prefix: includeStudentName ? `Dear ${value.parentName}, regarding ${value.studentNames.join(' and ')}: ` : '',
+    }));
   };
 
   const handleSend = async () => {
