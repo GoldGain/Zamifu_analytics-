@@ -435,10 +435,21 @@ export default function AssignTeachers() {
       const { error } = await (supabase as any)
         .from('teacher_subject_assignments')
         .update({ is_double_lesson: true, double_lesson_days: editingDoubleDays })
-        .eq('id', assignment.id);
+        .eq('id', assignment.id)
+        .eq('school_id', user?.schoolId);
       if (error) throw error;
+      const { data: savedAssignment, error: verifyError } = await (supabase as any)
+        .from('teacher_subject_assignments')
+        .select('is_double_lesson, double_lesson_days')
+        .eq('id', assignment.id)
+        .eq('school_id', user?.schoolId)
+        .maybeSingle();
+      if (verifyError) throw verifyError;
+      if (!savedAssignment?.is_double_lesson || !Array.isArray(savedAssignment.double_lesson_days) || savedAssignment.double_lesson_days.length === 0) {
+        throw new Error('The double lesson was not saved. Please try again.');
+      }
       setAssignments(prev => prev.map(a => a.id === assignment.id
-        ? { ...a, is_double_lesson: true, double_lesson_days: [...editingDoubleDays] }
+        ? { ...a, is_double_lesson: true, double_lesson_days: [...savedAssignment.double_lesson_days] }
         : a));
       setEditingDoubleLessonId(null);
       setSuccess('Double-lesson weekdays updated. Generate the timetable again to apply them.');
