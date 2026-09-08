@@ -1738,16 +1738,58 @@ export default function TimetableGenerate() {
             }
           }
 
-          // Defensive: collapse any duplicate (class, day, slot) lesson cells
-          // so the bulk insert can never hit a unique-constraint conflict.
+          // Defensive: collapse only exact subject/teacher duplicates. The live
+          // schema permits multiple learning areas in one class cell so CRE/IRE
+          // (or other parallel options) can genuinely share the same period.
           {
             const seenCells = new Set<string>();
             reconEntries = reconEntries.filter((e: any) => {
-              const k = `${e.class_id}-${e.day_of_week}-${e.time_slot_id}`;
+              const k = `${e.class_id}-${e.day_of_week}-${e.time_slot_id}-${e.subject_id || e.entry_type}-${e.teacher_id || ''}`;
               if (seenCells.has(k)) return false;
               seenCells.add(k);
               return true;
             });
+          }
+
+          // Align religious options by occurrence where teacher availability
+          // permits it. A class taking CRE and IRE should see those options in
+          // the same lesson cell, not as unrelated periods on different days.
+          const religiousName = (name: string) => /religious|\bcre\b|\bire\b|\bhre\b|islamic|christian|hindu|muslim/i.test(name);
+          const byClass = new Map<string, Map<string, any[]>>();
+          reconEntries.forEach((entry: any) => {
+            const subjectNameForEntry = reconSubjectName.get(String(entry.subject_id)) || '';
+            if (!entry.subject_id || !religiousName(subjectNameForEntry)) return;
+            const classSubjects = byClass.get(String(entry.class_id)) || new Map<string, any[]>();
+            const subjectEntries = classSubjects.get(String(entry.subject_id)) || [];
+            subjectEntries.push(entry);
+            classSubjects.set(String(entry.subject_id), subjectEntries);
+            byClass.set(String(entry.class_id), classSubjects);
+          });
+          for (const [classId, classSubjects] of byClass) {
+            const subjectGroups = [...classSubjects.values()].filter((group) => group.length > 0);
+            if (subjectGroups.length < 2) continue;
+            const anchor = subjectGroups[0].slice().sort((a, b) => Number(a.day_of_week) - Number(b.day_of_week) || String(a.time_slot_id).localeCompare(String(b.time_slot_id)));
+            for (const group of subjectGroups.slice(1)) {
+              const orderedGroup = group.slice().sort((a, b) => Number(a.day_of_week) - Number(b.day_of_week) || String(a.time_slot_id).localeCompare(String(b.time_slot_id)));
+              for (let index = 0; index < Math.min(anchor.length, orderedGroup.length); index++) {
+                const source = orderedGroup[index];
+                const target = anchor[index];
+                if (source.day_of_week === target.day_of_week && String(source.time_slot_id) === String(target.time_slot_id)) continue;
+                const teacherClashes = reconEntries.some((entry: any) =>
+                  entry !== source && entry.teacher_id && entry.teacher_id === source.teacher_id
+                  && entry.day_of_week === target.day_of_week && String(entry.time_slot_id) === String(target.time_slot_id),
+                );
+                const sameSubjectDay = reconEntries.some((entry: any) =>
+                  entry !== source && entry.subject_id === source.subject_id && entry.class_id === classId
+                  && entry.day_of_week === target.day_of_week,
+                );
+                if (teacherClashes || sameSubjectDay) continue;
+                source.day_of_week = target.day_of_week;
+                source.time_slot_id = target.time_slot_id;
+                source.effective_start_time = target.effective_start_time;
+                source.effective_end_time = target.effective_end_time;
+              }
+            }
           }
           allEntries.splice(0, allEntries.length, ...otherEntries, ...reconEntries);
         }
@@ -1797,21 +1839,13 @@ export default function TimetableGenerate() {
 
       }
 
-      // Bulk insert all entries. Final safety net: collapse duplicate
-      // (class, day, slot) cells before inserting, preferring a real lesson
-      // over a break/lunch/activity marker, so an in-lesson activity that
-      // shares a slot with a placement can never violate the unique
-      // constraint (school_id, day_of_week, time_slot_id, class_id).
+      // Bulk insert all entries. Final safety net: collapse exact duplicates
+      // while preserving parallel subject rows in a shared class cell.
       if (allEntries.length > 0) {
         const uniqueEntries = new Map<string, any>();
-        const entryRank = (e: any) =>
-          e.entry_type === 'lesson' || e.entry_type === 'lesson_double' ? 2 : 1;
         for (const entry of allEntries) {
-          const key = `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`;
-          const existing = uniqueEntries.get(key);
-          if (!existing || entryRank(entry) > entryRank(existing)) {
-            uniqueEntries.set(key, entry);
-          }
+          const key = `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}-${entry.subject_id || entry.entry_type}-${entry.teacher_id || ''}`;
+          uniqueEntries.set(key, entry);
         }
         const dedupedEntries = Array.from(uniqueEntries.values());
         const dropped = allEntries.length - dedupedEntries.length;
