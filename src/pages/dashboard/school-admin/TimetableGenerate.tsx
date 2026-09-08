@@ -1820,17 +1820,71 @@ export default function TimetableGenerate() {
             const cellKey = `${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`;
             lessonCellEntries.set(cellKey, [...(lessonCellEntries.get(cellKey) || []), entry]);
           });
-        const missingCells: string[] = [];
+        const missingCells: Array<{ cls: any; day: number; slot: any }> = [];
         for (const cls of classesToProcess) {
           for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
             for (const slot of lessonSlots) {
               const cellKey = `${cls.id}-${day}-${slot.id}`;
-              if (!lessonCellEntries.has(cellKey)) missingCells.push(`${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
+              if (!lessonCellEntries.has(cellKey)) missingCells.push({ cls, day, slot });
             }
           }
         }
+        // A final real-subject repair handles otherwise feasible schedules
+        // where the greedy/reconciliation passes leave one or two cells open.
+        // It still respects subject windows, teacher availability, teacher
+        // clashes, and the once-per-day subject rule; it never creates a fake
+        // study/revision entry.
         if (missingCells.length > 0) {
-          throw new Error(`Cannot generate a complete timetable without filler subjects. Missing real teacher assignments for ${missingCells.slice(0, 8).join('; ')}${missingCells.length > 8 ? ` and ${missingCells.length - 8} more cell(s)` : ''}. Assign enough real learning areas with weekly lessons, then generate again.`);
+          const currentSubjectDay = new Set<string>();
+          const currentTeacherSlot = new Set<string>();
+          allEntries.forEach((entry: any) => {
+            if (entry.level_group !== levelKey || !entry.subject_id) return;
+            currentSubjectDay.add(`${entry.class_id}-${entry.day_of_week}-${entry.subject_id}`);
+            if (entry.teacher_id) currentTeacherSlot.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+          });
+          const subjectCounts = new Map<string, number>();
+          allEntries.forEach((entry: any) => {
+            if (entry.level_group === levelKey && entry.subject_id) {
+              const key = `${entry.class_id}:${entry.subject_id}`;
+              subjectCounts.set(key, (subjectCounts.get(key) || 0) + 1);
+            }
+          });
+          for (const missing of missingCells) {
+            const candidates = [...assignmentContexts.values()]
+              .filter((context) => String(context.cls.id) === String(missing.cls.id))
+              .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+              .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+              .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
+              .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
+              .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+            const context = candidates[0];
+            if (!context) continue;
+            const { times } = context.getDaySlotTiming(missing.day, context.cls);
+            const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
+            const repairedEntry = {
+              school_id: schoolId,
+              day_of_week: missing.day,
+              time_slot_id: missing.slot.id,
+              class_id: missing.cls.id,
+              level_group: levelKey,
+              effective_start_time: timing.start_time,
+              effective_end_time: timing.end_time,
+              subject_id: context.assignment.subject_id,
+              teacher_id: context.assignment.teacher_id,
+              entry_type: 'lesson',
+            };
+            allEntries.push(repairedEntry);
+            lessonCellEntries.set(`${missing.cls.id}-${missing.day}-${missing.slot.id}`, [repairedEntry]);
+            currentSubjectDay.add(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`);
+            currentTeacherSlot.add(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`);
+            const countKey = `${missing.cls.id}:${context.assignment.subject_id}`;
+            subjectCounts.set(countKey, (subjectCounts.get(countKey) || 0) + 1);
+          }
+        }
+        const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
+        if (stillMissing.length > 0) {
+          const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
+          throw new Error(`Cannot generate a complete timetable using the assigned subjects and teacher availability. Missing cells: ${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}.`);
         }
 
       }
