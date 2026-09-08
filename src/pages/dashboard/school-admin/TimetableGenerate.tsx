@@ -1076,9 +1076,15 @@ export default function TimetableGenerate() {
                 for (const slot of rotatedSlots) {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
                   const onConfiguredDoubleDay = isDoubleLesson && configuredDoubleDays.includes(dayName);
-                  if (onConfiguredDoubleDay && scheduled + 2 > lessonsToSchedule) continue;
-                  const unitSize: 1 | 2 = onConfiguredDoubleDay ? 2 : 1;
-                  const placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, unitSize);
+                  // A double day is a preference for two adjacent periods, not
+                  // permission to make the whole assignment unschedulable. For
+                  // odd weekly totals (for example 5 lessons), or when the next
+                  // period is occupied, place one valid lesson instead.
+                  const preferredUnitSize: 1 | 2 = onConfiguredDoubleDay && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
+                  let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
+                  if (placed === 0 && preferredUnitSize === 2) {
+                    placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, 1);
+                  }
                   if (placed > 0) {
                     scheduled += placed;
                     break;
