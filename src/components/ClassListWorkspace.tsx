@@ -291,7 +291,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     setDownloading(true);
     try {
       const className = classes.find((c) => c.id === selectedClass)?.name || 'Class';
-      const logo = await loadLogoAsset(schoolData?.logo_url);
+      const logo = await loadLogoAsset(schoolData?.logo_url || user?.avatarUrl);
       const doc = new jsPDF({ orientation: columns.length > 0 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
       let titleX = 14;
       if (logo) {
@@ -349,7 +349,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     try {
       const ExcelJS = await import('exceljs');
       const className = classes.find((c) => c.id === selectedClass)?.name || 'Class';
-      const logo = await loadLogoAsset(schoolData?.logo_url);
+      const logo = await loadLogoAsset(schoolData?.logo_url || user?.avatarUrl);
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Class List');
       const totalColumns = 3 + columns.length;
@@ -405,6 +405,10 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
           <p className="text-sm text-gray-500 mt-1">
             {isAdmin ? 'Review every class, add custom columns, and download branded class lists.' : 'View learners, add custom columns, record values, and download branded class lists.'}
           </p>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-3 py-2 shadow-sm">
+          {schoolData?.logo_url || user?.avatarUrl ? <img src={schoolData?.logo_url || user?.avatarUrl || ''} alt="School logo" className="h-10 w-10 rounded-lg object-contain" /> : <div className="h-10 w-10 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg">{(schoolData?.name || 'S')[0]}</div>}
+          <div><p className="text-xs font-semibold text-gray-800">{schoolData?.name || 'School'}</p><p className="text-[11px] text-gray-500">Logo on PDF &amp; Excel</p></div>
         </div>
         <div className="flex flex-wrap gap-2">
           {selectedClass && (

@@ -215,8 +215,9 @@ function AppRoutes() {
       <Route path="/super-admin/settings" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminSettings /></ProtectedRoute>} />
 
       {/* School Admin routes */}
-      <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
+      <Route path="/school-admin" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminDashboard /></ProtectedRoute>} />
       <Route path="/school-admin/dashboard" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminDashboard /></ProtectedRoute>} />
+      <Route path="/school-admin/promote-next-term" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
       <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><StreamDashboard /></ProtectedRoute>} />
       <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminStudents /></ProtectedRoute>} />
       <Route path="/school-admin/recycle-bin" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminRecycleBin /></ProtectedRoute>} />

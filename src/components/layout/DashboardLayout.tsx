@@ -81,8 +81,8 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Settings', icon: <Settings className="w-5 h-5" />, path: '/super-admin/settings' },
   ],
   'school-admin': [
-    { label: 'Promote Next Term', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin' },
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/school-admin/dashboard' },
+    { label: 'Promote Next Term', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/promote-next-term' },
     { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/school-admin/students' },
     { label: 'Recycle Bin', icon: <Trash2 className="w-5 h-5" />, path: '/school-admin/recycle-bin' },
     { label: 'Bulk Student Upload', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/school-admin/students/bulk-import' },
