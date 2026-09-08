@@ -27,6 +27,7 @@ export default function SchoolAdminFees() {
   const [feeSearch, setFeeSearch] = useState('');
   const [selectedInvoiceClass, setSelectedInvoiceClass] = useState('');
   const [invoiceClassFilter, setInvoiceClassFilter] = useState('');
+  const [invoiceStudentSearch, setInvoiceStudentSearch] = useState('');
   const [editingPayment, setEditingPayment] = useState<any | null>(null);
   const [editPaymentData, setEditPaymentData] = useState({ amount: '', payment_method: 'cash' as 'cash' | 'mpesa' | 'bank' | 'cheque' | 'other', mpesa_reference: '', notes: '' });
   const [savingPayment, setSavingPayment] = useState(false);
@@ -139,6 +140,12 @@ export default function SchoolAdminFees() {
 
   const invoiceStudents = students
     .filter((student: any) => !invoiceClassFilter || student.class_id === invoiceClassFilter)
+    .filter((student: any) => {
+      const query = invoiceStudentSearch.trim().toLowerCase();
+      if (!query) return true;
+      return [student.admission_number, student.assessment_number, student.first_name, student.last_name]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+    })
     .sort(compareLearners);
 
   const openEditPayment = (payment: any) => {
@@ -648,7 +655,15 @@ export default function SchoolAdminFees() {
               <option value="">All classes</option>
               {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
             </select>
-            <select value={invoiceData.student_id} onChange={e => setInvoiceData({...invoiceData, student_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+              <input value={invoiceStudentSearch} onChange={e => { setInvoiceStudentSearch(e.target.value); setInvoiceData({ ...invoiceData, student_id: '' }); }} placeholder="Search by admission no. or student name" className="w-full pl-9 pr-3 py-2.5 border rounded-xl text-sm" />
+            </div>
+            <div className="md:col-span-2 flex items-center justify-between text-xs text-gray-500 -mt-2">
+              <span>{invoiceStudents.length} student(s) shown{invoiceClassFilter ? ` in ${classes.find((item: any) => item.id === invoiceClassFilter)?.name || 'selected class'}` : ''}</span>
+              <span>Sorted by admission number ascending</span>
+            </div>
+            <select value={invoiceData.student_id} onChange={e => setInvoiceData({...invoiceData, student_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white md:col-span-2" required>
               <option value="">Select Student *</option>
               {invoiceStudents.map(s => <option key={s.id} value={s.id}>{s.admission_number || 'No admission no.'} — {s.first_name} {s.last_name}</option>)}
             </select>
@@ -660,7 +675,7 @@ export default function SchoolAdminFees() {
             <input type="date" placeholder="Due Date" value={invoiceData.due_date} onChange={e => setInvoiceData({...invoiceData, due_date: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
             <div className="flex gap-3 md:col-span-2">
               <button type="submit" className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700">Generate Invoice</button>
-              <button type="button" onClick={() => setShowInvoice(false)} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+              <button type="button" onClick={() => { setShowInvoice(false); setInvoiceClassFilter(''); setInvoiceStudentSearch(''); setInvoiceData({ ...invoiceData, student_id: '' }); }} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
             </div>
           </form>
         </div>
