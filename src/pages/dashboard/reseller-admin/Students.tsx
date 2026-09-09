@@ -17,21 +17,22 @@ export default function ResellerStudents() {
     setLoading(true);
     const reseller = await getResellerForUser(user.id);
     if (reseller) {
-      const { data: schoolRows } = await supabase
-        .from('schools')
-        .select('id, name')
-        .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
-        .order('name');
+        const { data: schoolRows } = await supabase
+          .from('schools')
+          .select('id, name')
+          .eq('reseller_id', reseller.id)
+          .order('name');
       const list = schoolRows || [];
       setSchools(list);
       const ids = list.map((s: any) => s.id);
       if (ids.length) {
         const { data: st } = await (supabase as any)
           .from('students')
-          .select('id, first_name, last_name, admission_number, school_id, status, class_id, classes(name)')
+          .select('id, first_name, last_name, admission_number, school_id, status, is_active, class_id, classes(name)')
           .in('school_id', ids)
+          .eq('is_active', true)
           .order('created_at', { ascending: false })
-          .limit(500);
+          .limit(5000);
         setStudents(st || []);
       } else {
         setStudents([]);

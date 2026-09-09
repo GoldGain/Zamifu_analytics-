@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { sortByAdmissionNumber } from '@/lib/student-order';
 
 interface Student {
   id: string;
@@ -280,12 +281,16 @@ export default function Marklist() {
     setDownloading(true);
 
     try {
-      const doc = new jsPDF({ orientation: 'landscape' });
-      const className = classes.find(c => c.id === selectedClass)?.name || 'Unknown Class';
+      const selectedClassData = classes.find(c => c.id === selectedClass);
+      const classLabel = selectedClassData?.stream?.trim()
+        ? `${selectedClassData.name} (${selectedClassData.stream.trim()})`
+        : selectedClassData?.name || 'Unknown Class';
+      const fileLabel = classLabel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
       // Title
       doc.setFontSize(16);
-      doc.text(`Marklist - ${className}`, 14, 20);
+      doc.text(`Marklist - ${classLabel}`, 14, 20);
       doc.setFontSize(10);
       doc.text(`Generated on ${new Date().toLocaleDateString('en-KE')}`, 14, 28);
       doc.text(`Teacher: ${user?.firstName} ${user?.lastName}`, 14, 34);
@@ -294,7 +299,7 @@ export default function Marklist() {
       const headers = ['#', 'Student Name', 'Admission No.', ...columns.map(c => c.column_name)];
 
       // Table rows
-      const body = students.map((student, index) => [
+      const body = sortByAdmissionNumber(students).map((student, index) => [
         String(index + 1),
         `${student.first_name} ${student.last_name}`,
         student.admission_number || '-',
@@ -310,7 +315,7 @@ export default function Marklist() {
         alternateRowStyles: { fillColor: [245, 243, 239] },
       });
 
-      doc.save(`marklist-${className.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`);
+      doc.save(`marklist-${fileLabel}-${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success('PDF downloaded');
     } catch (err: any) {
       toast.error('Failed to generate PDF: ' + err.message);
@@ -325,8 +330,12 @@ export default function Marklist() {
     }
     setDownloading(true);
     try {
-      const className = classes.find(c => c.id === selectedClass)?.name || 'Unknown Class';
-      const rows = students.map((student, index) => {
+      const selectedClassData = classes.find(c => c.id === selectedClass);
+      const classLabel = selectedClassData?.stream?.trim()
+        ? `${selectedClassData.name} (${selectedClassData.stream.trim()})`
+        : selectedClassData?.name || 'Unknown Class';
+      const fileLabel = classLabel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+      const rows = sortByAdmissionNumber(students).map((student, index) => {
         const row: Record<string, string | number> = {
           '#': index + 1,
           'Student Name': `${student.first_name} ${student.last_name}`,
@@ -337,10 +346,15 @@ export default function Marklist() {
         });
         return row;
       });
-      const ws = XLSX.utils.json_to_sheet(rows);
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Class', classLabel],
+        ['Generated', new Date().toLocaleDateString('en-KE')],
+        [],
+      ]);
+      XLSX.utils.sheet_add_json(ws, rows, { origin: 'A4' });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Marklist');
-      XLSX.writeFile(wb, `marklist-${className.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(wb, `marklist-${fileLabel}-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.success('Excel downloaded');
     } catch (err: any) {
       toast.error('Failed to generate Excel: ' + err.message);

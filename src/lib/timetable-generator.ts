@@ -89,14 +89,6 @@ const minutesToTime = (minutes: number): string => {
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 };
 
-const safeString = (value: string | null | undefined, fallback: string): string => {
-  if (!value || typeof value !== 'string' || !value.trim()) return fallback;
-  // Normalize to HH:MM
-  const m = value.trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return fallback;
-  return `${m[1].padStart(2, '0')}:${m[2]}`;
-};
-
 /**
  * Normalize any time-like input to Postgres-friendly HH:MM:SS.
  * Returns null for empty/invalid values.
@@ -182,6 +174,35 @@ export function strictSubjectAllowsLesson(
   if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
   if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
   return lessonNumber >= 3;
+}
+
+export interface LessonUnitSlot {
+  slot_order: number;
+  slot_type?: string;
+  label?: string;
+}
+
+/**
+ * A double lesson may only occupy two lesson slots that are adjacent in the
+ * ordered timetable. The subject window is checked for both cells so a repair
+ * pass cannot silently move half of a configured pair into another band.
+ */
+export function isValidDoubleLessonPair(
+  subjectName: string | null | undefined,
+  firstSlot: LessonUnitSlot | null | undefined,
+  secondSlot: LessonUnitSlot | null | undefined,
+): boolean {
+  if (!firstSlot || !secondSlot) return false;
+  if (firstSlot.slot_type && firstSlot.slot_type !== 'lesson') return false;
+  if (secondSlot.slot_type && secondSlot.slot_type !== 'lesson') return false;
+  if (secondSlot.slot_order !== firstSlot.slot_order + 1) return false;
+  const firstLesson = Number(String(firstSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
+  const secondLesson = Number(String(secondSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
+  if (!Number.isFinite(firstLesson) || !Number.isFinite(secondLesson)) return false;
+  const family = classifySubject(subjectName);
+  if ((family === 'science' || family === 'pretech') && (firstLesson !== 3 || secondLesson !== 4)) return false;
+  return strictSubjectAllowsLesson(subjectName, firstLesson)
+    && strictSubjectAllowsLesson(subjectName, secondLesson);
 }
 
 
@@ -319,6 +340,7 @@ export function resolveLessonTargets(
   levelKey: string,
   config?: Partial<TimetableConfig> | null
 ): { totalLessons: number; afterLunch: number } {
+  void config;
   const canonical = getLevelConfig(levelKey) || { totalLessons: 8, afterLunch: 2 };
   return { totalLessons: canonical.totalLessons, afterLunch: canonical.afterLunch };
 }

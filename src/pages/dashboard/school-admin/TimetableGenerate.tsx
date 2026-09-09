@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, isFillerSubject, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
+import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, isFillerSubject, isValidDoubleLessonPair, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -443,6 +443,8 @@ export default function TimetableGenerate() {
         lessonsPerWeek: number;
         isDoubleLesson: boolean;
         configuredDoubleDays: string[];
+        requiredDoubleDays: string[];
+        placedDoubleDays: Set<string>;
         dayUsage: Map<number, number>;
         lessonSlots: any[];
         nextLessonById: Map<string, any>;
@@ -619,7 +621,7 @@ export default function TimetableGenerate() {
           early_morning: lessonSlots.filter((slot: any) => lessonNumberOf(slot) >= 1 && lessonNumberOf(slot) <= 2),
           mid_morning: lessonSlots.filter((slot: any) => {
             const n = lessonNumberOf(slot);
-            return isJuniorLevel ? (n >= 3 && n <= 5) : (n >= 3 && n <= 4);
+            return n >= 3 && n <= 4;
           }),
           late_morning: lessonSlots.filter((slot: any) => {
             const n = lessonNumberOf(slot);
@@ -883,6 +885,7 @@ export default function TimetableGenerate() {
             const configuredDoubleDays = rawDoubleDays.length > 0
               ? rawDoubleDays.filter((day) => availableDays.includes(day))
               : [];
+            const requiredDoubleDays = configuredDoubleDays.slice(0, Math.floor(lessonsToSchedule / 2));
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
@@ -916,8 +919,6 @@ export default function TimetableGenerate() {
               ? (preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots)
               : [];
             let scheduled = 0;
-            const placedConfiguredDoubleDays = new Set<string>();
-
             // A double lesson is an atomic unit. We validate the whole pair before
             // mutating either busy set or adding either entry, so a conflict can
             // never leave a half-scheduled practical block behind.
@@ -930,7 +931,8 @@ export default function TimetableGenerate() {
             ): number => {
               const secondSlot = unitSize === 2 ? nextLessonById.get(String(startSlot.id)) : null;
               if (unitSize === 2 && !secondSlot) return 0;
-              if (unitSize === 2 && (!isDoubleLesson || !configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
+              if (unitSize === 2 && (!isDoubleLesson || !requiredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
+              if (unitSize === 2 && !isValidDoubleLessonPair(subjectName, startSlot, secondSlot)) return 0;
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
               if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${assignment.teacher_id}-${day}-${startSlot.id}`)) return 0;
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
@@ -1005,8 +1007,8 @@ export default function TimetableGenerate() {
               });
               subjectDayUsage.set(subjectDayKey, (subjectDayUsage.get(subjectDayKey) || 0) + unitSize);
               placementContext.dayUsage.set(day, (placementContext.dayUsage.get(day) || 0) + 1);
-              if (unitSize === 2 && configuredDoubleDays.includes(TIMETABLE_DAYS[day - 1])) {
-                placedConfiguredDoubleDays.add(TIMETABLE_DAYS[day - 1]);
+              if (unitSize === 2 && requiredDoubleDays.includes(TIMETABLE_DAYS[day - 1])) {
+                placementContext.placedDoubleDays.add(TIMETABLE_DAYS[day - 1]);
               }
               return unitSize;
             };
@@ -1027,6 +1029,8 @@ export default function TimetableGenerate() {
               lessonsPerWeek: lessonsToSchedule,
               isDoubleLesson,
               configuredDoubleDays,
+              requiredDoubleDays,
+              placedDoubleDays: new Set<string>(),
               dayUsage: new Map<number, number>(),
               lessonSlots,
               nextLessonById,
@@ -1076,8 +1080,8 @@ export default function TimetableGenerate() {
                 const rotatedSlots = rotateList(slotsToTry, rotationOffset + day + teacherSubjectSlotOffset);
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
-                const pendingConfiguredDouble = configuredDoubleDays.some((doubleDay) => !placedConfiguredDoubleDays.has(doubleDay));
-                const onConfiguredDoubleDay = isDoubleLesson && configuredDoubleDays.includes(dayName);
+                const pendingConfiguredDouble = requiredDoubleDays.some((doubleDay) => !placementContext.placedDoubleDays.has(doubleDay));
+                const onConfiguredDoubleDay = isDoubleLesson && requiredDoubleDays.includes(dayName);
                 // Reserve the weekly capacity needed by configured double days.
                 // A single lesson on another day must never consume one of the
                 // two weekly lesson units required for a pending double.
@@ -1166,22 +1170,23 @@ export default function TimetableGenerate() {
           return secondSlot ? [startSlot, secondSlot] : [startSlot];
         };
 
-        const canPlaceContextAt = (
-          context: AssignmentPlacementContext,
-          startSlot: any,
-          day: number,
-          unitSize: 1 | 2,
-        ) => {
-          const unitSlots = getUnitSlots(context, startSlot, unitSize);
-          if (!unitSlots) return false;
-          const subjectDayKey = `${context.cls.id}-${day}-${context.assignment.subject_id}`;
+          const canPlaceContextAt = (
+            context: AssignmentPlacementContext,
+            startSlot: any,
+            day: number,
+            unitSize: 1 | 2,
+          ) => {
+            const unitSlots = getUnitSlots(context, startSlot, unitSize);
+            if (!unitSlots) return false;
+            if (unitSize === 2 && !isValidDoubleLessonPair(context.subjectName, unitSlots[0], unitSlots[1])) return false;
+            const subjectDayKey = `${context.cls.id}-${day}-${context.assignment.subject_id}`;
           const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
           // A subject may appear only once per day. A configured double is
           // still one lesson occurrence occupying two consecutive cells.
           if (subjectAlreadyUsedToday) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
-          if (unitSize === 2 && (!context.isDoubleLesson || !context.configuredDoubleDays.includes(dayName))) return false;
+            if (unitSize === 2 && (!context.isDoubleLesson || !context.requiredDoubleDays.includes(dayName))) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${startSlot.id}`)) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
@@ -1286,7 +1291,9 @@ export default function TimetableGenerate() {
               if (repaired) break;
               const dayName = TIMETABLE_DAYS[day - 1];
               if (!context.availableDays.includes(dayName)) continue;
-              const onConfiguredDoubleDay = context.isDoubleLesson && context.configuredDoubleDays.includes(dayName);
+              const pendingRequiredDouble = context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay));
+              const onConfiguredDoubleDay = context.isDoubleLesson && context.requiredDoubleDays.includes(dayName);
+              if (pendingRequiredDouble && !onConfiguredDoubleDay) continue;
               if (onConfiguredDoubleDay && remaining < 2) continue;
               const desiredUnit: 1 | 2 = onConfiguredDoubleDay ? 2 : 1;
               for (const slot of repairSlots) {
@@ -1465,6 +1472,7 @@ export default function TimetableGenerate() {
                 for (const gap of classGaps) {
                   const context = assignmentContexts.get(gap.assignmentKey);
                   if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay))) continue;
                   if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
                   if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
                   if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
@@ -1495,6 +1503,7 @@ export default function TimetableGenerate() {
                 for (const gap of classGaps) {
                   const context = assignmentContexts.get(gap.assignmentKey);
                   if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay))) continue;
                   if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
                   if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
                   if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
@@ -1567,10 +1576,33 @@ export default function TimetableGenerate() {
             const dm = reconDemand.get(key) || 0;
             if (recs.length <= dm) continue;
             recs.sort((a: any, b: any) => (reconSlotOrder.get(String(b.time_slot_id)) || 0) - (reconSlotOrder.get(String(a.time_slot_id)) || 0));
-            const drop = new Set<number>(recs.slice(0, recs.length - dm).map((r: any) => reconEntries.indexOf(r)));
-            reconEntries = reconEntries.filter((_, i) => !drop.has(i));
-            // guard: if indexOf failed (dup refs), recompute by identity
-            const idsToDrop = new Set<any>(recs.slice(0, recs.length - dm));
+            const excess = recs.length - dm;
+            const dropEntries: any[] = [];
+            const assignmentContext = [...assignmentContexts.values()].find((candidate) =>
+              String(candidate.cls.id) === String(recs[0]?.class_id)
+              && String(candidate.assignment.subject_id) === String(recs[0]?.subject_id),
+            );
+            // Trim normal single lessons first. A lesson_double row is never
+            // eligible for independent removal.
+            dropEntries.push(...recs.filter((entry: any) => entry.entry_type !== 'lesson_double').slice(0, excess));
+            let remainingToDrop = excess - dropEntries.length;
+            if (remainingToDrop > 0) {
+              const doubleGroups = new Map<string, any[]>();
+              recs.filter((entry: any) => entry.entry_type === 'lesson_double').forEach((entry: any) => {
+                const unitKey = `${entry.day_of_week}:${entry.teacher_id || ''}`;
+                const group = doubleGroups.get(unitKey) || [];
+                group.push(entry);
+                doubleGroups.set(unitKey, group);
+              });
+              for (const group of doubleGroups.values()) {
+                if (remainingToDrop <= 0) break;
+                dropEntries.push(...group);
+                const removedDay = TIMETABLE_DAYS[Number(group[0]?.day_of_week) - 1];
+                if (removedDay) assignmentContext?.placedDoubleDays.delete(removedDay);
+                remainingToDrop -= group.length;
+              }
+            }
+            const idsToDrop = new Set<any>(dropEntries);
             reconEntries = reconEntries.filter((e: any) => !idsToDrop.has(e));
           }
 
@@ -1607,6 +1639,11 @@ export default function TimetableGenerate() {
             const subjectName = reconSubjectName.get(subjectId) || '';
             const meta = reconSubjectMeta.get(key);
             const teacherId = meta?.teacherId;
+            const assignmentContext = [...assignmentContexts.values()].find((candidate) =>
+              String(candidate.cls.id) === classId && String(candidate.assignment.subject_id) === subjectId,
+            );
+            const pendingRequiredDouble = (assignmentContext?.requiredDoubleDays || [])
+              .some((doubleDay) => !assignmentContext?.placedDoubleDays.has(doubleDay));
             const availDays = meta && meta.availableDays.length ? meta.availableDays : [...TIMETABLE_DAYS];
             const backfillSlots = orderedSpillSlotsFor(meta?.band || 'none');
             let deficit = dm - have;
@@ -1616,6 +1653,7 @@ export default function TimetableGenerate() {
               for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availDays.includes(dayName)) continue;
+                if (pendingRequiredDouble) continue;
                 for (const slot of backfillSlots) {
                   if (deficit <= 0) break;
                   const classKey = `${classId}-${day}-${slot.id}`;
@@ -1703,6 +1741,11 @@ export default function TimetableGenerate() {
             const subjectName = reconSubjectName.get(subjectId) || '';
             const meta = reconSubjectMeta.get(key);
             const teacherId = meta?.teacherId;
+            const assignmentContext = [...assignmentContexts.values()].find((candidate) =>
+              String(candidate.cls.id) === classId && String(candidate.assignment.subject_id) === subjectId,
+            );
+            const pendingRequiredDouble = (assignmentContext?.requiredDoubleDays || [])
+              .some((doubleDay) => !assignmentContext?.placedDoubleDays.has(doubleDay));
             const availDays = meta && meta.availableDays.length ? meta.availableDays : [...TIMETABLE_DAYS];
             let placed = 0;
             let guard = 0;
@@ -1711,6 +1754,7 @@ export default function TimetableGenerate() {
               for (let day = 1; day <= TIMETABLE_DAYS.length && placed < need; day++) {
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availDays.includes(dayName)) continue;
+                if (pendingRequiredDouble) continue;
                 for (const slot of orderedLessonSlots) {
                   if (placed >= need) break;
                   const cellKey = `${classId}-${day}-${slot.id}`;
@@ -1802,6 +1846,7 @@ export default function TimetableGenerate() {
                 const source = orderedGroup[index];
                 const target = anchor[index];
                 if (source.day_of_week === target.day_of_week && String(source.time_slot_id) === String(target.time_slot_id)) continue;
+                if (source.entry_type === 'lesson_double' || target.entry_type === 'lesson_double') continue;
                 const teacherClashes = reconEntries.some((entry: any) =>
                   entry !== source && entry.teacher_id && entry.teacher_id === source.teacher_id
                   && entry.day_of_week === target.day_of_week && String(entry.time_slot_id) === String(target.time_slot_id),
@@ -1865,6 +1910,7 @@ export default function TimetableGenerate() {
               .filter((context) => String(context.cls.id) === String(missing.cls.id))
               .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
               .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+              .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
               .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
               .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
               .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
@@ -1878,6 +1924,7 @@ export default function TimetableGenerate() {
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
                 .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
                 .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+                .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
@@ -1889,6 +1936,7 @@ export default function TimetableGenerate() {
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
                 .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
                 .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+                .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             const context = candidates[0];
@@ -1919,6 +1967,29 @@ export default function TimetableGenerate() {
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
           throw new Error(`Cannot generate a complete timetable using the assigned subjects and teacher availability. Missing cells: ${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}.`);
+        }
+
+        const doubleGroups = new Map<string, any[]>();
+        allEntries
+          .filter((entry: any) => entry.level_group === levelKey && entry.entry_type === 'lesson_double')
+          .forEach((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}:${entry.teacher_id || ''}:${entry.day_of_week}`;
+            const group = doubleGroups.get(key) || [];
+            group.push(entry);
+            doubleGroups.set(key, group);
+          });
+        for (const group of doubleGroups.values()) {
+          const first = group[0];
+          const second = group[1];
+          const context = [...assignmentContexts.values()].find((candidate) =>
+            String(candidate.cls.id) === String(first?.class_id)
+            && String(candidate.assignment.subject_id) === String(first?.subject_id),
+          );
+          const firstSlot = lessonSlots.find((slot: any) => String(slot.id) === String(first?.time_slot_id));
+          const secondSlot = lessonSlots.find((slot: any) => String(slot.id) === String(second?.time_slot_id));
+          if (group.length !== 2 || !isValidDoubleLessonPair(context?.subjectName || '', firstSlot, secondSlot)) {
+            throw new Error(`A configured double lesson for ${context?.cls?.name || 'a class'} could not be kept as two consecutive lesson periods. Review the double-day and teacher availability settings, then generate again.`);
+          }
         }
 
       }

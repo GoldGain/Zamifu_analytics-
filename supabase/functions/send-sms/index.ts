@@ -331,12 +331,33 @@ Deno.serve(async (req) => {
     const { data: { user: callerUser } } = await callerClient.auth.getUser();
     if (!callerUser) return json({ error: "Your session has expired. Please sign in again." }, 401);
     const { data: callerProfile } = await callerClient.from("profiles").select("role, school_id").eq("id", callerUser.id).single();
-    if (!callerProfile?.school_id) return json({ error: "Your account profile could not be found." }, 403);
 
     const { phone, message, school_id } = body;
     if (!phone || !message) return json({ error: "Enter a phone number and message." }, 400);
-    const resolvedSchoolId = String(school_id || callerProfile.school_id).trim();
-    if (resolvedSchoolId !== String(callerProfile.school_id)) return json({ error: "You can only send SMS for your own school." }, 403);
+    const callerRole = String(callerProfile?.role || "");
+    let resolvedSchoolId = "";
+    if (callerRole === "reseller_super_admin") {
+      const requestedSchoolId = String(school_id || "").trim();
+      if (!requestedSchoolId) return json({ error: "Select a school before sending SMS." }, 400);
+      const { data: reseller } = await adminClient
+        .from("resellers")
+        .select("id")
+        .eq("user_id", callerUser.id)
+        .maybeSingle();
+      if (!reseller?.id) return json({ error: "Your reseller account could not be found." }, 403);
+      const { data: ownedSchool } = await adminClient
+        .from("schools")
+        .select("id")
+        .eq("id", requestedSchoolId)
+        .eq("reseller_id", reseller.id)
+        .maybeSingle();
+      if (!ownedSchool?.id) return json({ error: "You can only send SMS to an explicitly assigned school." }, 403);
+      resolvedSchoolId = String(ownedSchool.id);
+    } else {
+      if (!callerProfile?.school_id) return json({ error: "Your account profile could not be found." }, 403);
+      resolvedSchoolId = String(school_id || callerProfile.school_id).trim();
+      if (resolvedSchoolId !== String(callerProfile.school_id)) return json({ error: "You can only send SMS for your own school." }, 403);
+    }
 
     const cleanMessage = cleanSmsMessage(message);
     const smsSegments = countSmsSegments(cleanMessage);

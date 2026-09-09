@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { sortByAdmissionNumber } from '@/lib/student-order';
+import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
+import { configurePdfFontSize, DEFAULT_PDF_FONT_SIZE, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -91,6 +93,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
   const [editingCell, setEditingCell] = useState<{ studentId: string; columnId: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [showPdfFontDialog, setShowPdfFontDialog] = useState(false);
 
   useEffect(() => {
     fetchClasses();
@@ -283,7 +286,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     ...columns.map((column) => cellData[student.id]?.[column.id] || ''),
   ]);
 
-  const downloadPdf = async () => {
+  const downloadPdf = async (requestedFontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
     if (!students.length) {
       toast.error('No students to export');
       return;
@@ -292,17 +295,18 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     try {
       const className = classes.find((c) => c.id === selectedClass)?.name || 'Class';
       const logo = await loadLogoAsset(schoolData?.logo_url || user?.avatarUrl);
-      const doc = new jsPDF({ orientation: columns.length > 0 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      configurePdfFontSize(doc, requestedFontSize);
       let titleX = 14;
       if (logo) {
         doc.addImage(logo.dataUrl, logo.format, 14, 8, 24, 20);
         titleX = 42;
       }
-      doc.setFontSize(14);
+      doc.setFontSize(pdfFontSize(doc, 14));
       doc.text(schoolData?.name || 'School', titleX, 14);
-      doc.setFontSize(12);
+      doc.setFontSize(pdfFontSize(doc, 12));
       doc.text(`Class List — ${className}`, titleX, 21);
-      doc.setFontSize(9);
+      doc.setFontSize(pdfFontSize(doc, 9));
       doc.text(`Generated ${new Date().toLocaleString()}`, titleX, 27);
 
       autoTable(doc, {
@@ -314,7 +318,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
         tableWidth: 'auto',
         showHead: 'everyPage',
         styles: {
-          fontSize: columns.length > 6 ? 5.5 : columns.length > 3 ? 6.5 : 8,
+          fontSize: pdfFontSize(doc, columns.length > 6 ? 5.5 : columns.length > 3 ? 6.5 : 8),
           cellPadding: columns.length > 6 ? 1 : 1.5,
           overflow: 'linebreak',
           lineColor: [210, 214, 220],
@@ -416,7 +420,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
               <button type="button" onClick={() => setShowAddColumn(true)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                 <Plus className="w-4 h-4" /> Add Column
               </button>
-              <button type="button" onClick={downloadPdf} disabled={downloading} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              <button type="button" onClick={() => setShowPdfFontDialog(true)} disabled={downloading} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                 {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PDF
               </button>
               <button type="button" onClick={downloadExcel} disabled={downloading} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50">
@@ -444,6 +448,17 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
           </div>
         </div>
       )}
+
+      <PdfFontSizeDialog
+        open={showPdfFontDialog}
+        title="Download Class List"
+        description="Choose the font size for the portrait PDF class list."
+        onCancel={() => setShowPdfFontDialog(false)}
+        onConfirm={async (fontSize) => {
+          await downloadPdf(fontSize);
+          setShowPdfFontDialog(false);
+        }}
+      />
 
       {selectedClass && (
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

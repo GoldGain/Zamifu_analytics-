@@ -1,4 +1,4 @@
-import { sortByAdmissionNumber } from '../src/lib/student-order';
+import { sortByAdmissionNumber } from '../src/lib/student-order.ts';
 
 const rows = [
   { id: 'a', admission_number: '10' },

@@ -6,6 +6,7 @@ import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download,
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { sortByAdmissionNumber } from '@/lib/student-order';
 
 export default function SchoolAdminFees() {
   const { user, schoolData } = useAuth();
@@ -147,6 +148,8 @@ export default function SchoolAdminFees() {
         .some((value) => String(value || '').toLowerCase().includes(query));
     })
     .sort(compareLearners);
+
+  const paymentStudents = sortByAdmissionNumber(students);
 
   const openEditPayment = (payment: any) => {
     setEditingPayment(payment);
@@ -690,7 +693,7 @@ export default function SchoolAdminFees() {
               setPaymentData({...paymentData, student_id: e.target.value, invoice_id: ''});
             }} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Student *</option>
-              {students.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} ({s.admission_number})</option>)}
+              {paymentStudents.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} ({s.admission_number || 'No admission no.'})</option>)}
             </select>
             <select value={paymentData.invoice_id} onChange={e => setPaymentData({...paymentData, invoice_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">Latest Unpaid Invoice (auto)</option>
