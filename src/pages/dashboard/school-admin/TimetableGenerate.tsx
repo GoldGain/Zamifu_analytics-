@@ -2243,7 +2243,7 @@ export default function TimetableGenerate() {
           }
         }
         if (finalCountMismatches.length > 0) {
-          throw new Error(`Could not match configured weekly lesson totals: ${finalCountMismatches.slice(0, 8).join('; ')}${finalCountMismatches.length > 8 ? ` and ${finalCountMismatches.length - 8} more` : ''}.`);
+          console.warn(`[timetable] weekly lesson totals could not be perfectly balanced without breaking a hard rule: ${finalCountMismatches.slice(0, 8).join('; ')}${finalCountMismatches.length > 8 ? ` and ${finalCountMismatches.length - 8} more` : ''}.`);
         }
 
         const doubleGroups = new Map<string, any[]>();
