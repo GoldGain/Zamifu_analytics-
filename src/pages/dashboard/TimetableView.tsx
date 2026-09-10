@@ -894,7 +894,7 @@ export default function TimetableView() {
             margin: [0.05, 0.05, 0.05, 0.05],
             filename,
             image: { type: 'jpeg', quality: 0.98 },
-            pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr'] },
+            pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr', '.tt-summary-panel'] },
             html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: Math.max(element.scrollWidth, element.offsetWidth || 0), width: Math.max(element.scrollWidth, element.offsetWidth || 0), height: Math.max(element.scrollHeight, element.offsetHeight || 0) },
             jsPDF: { unit: 'in', format: classId ? 'a4' : 'a3', orientation: 'landscape', compress: true },
           })
@@ -1325,6 +1325,22 @@ export default function TimetableView() {
     }
     .pdf-class-export .tt-subtime {
       font-size: 0.37rem !important;
+    }
+    .pdf-class-export .tt-summary-panel,
+    .pdf-full-export .tt-summary-panel {
+      display: none !important;
+    }
+    .pdf-class-export .tt-table th,
+    .pdf-class-export .tt-table td,
+    .pdf-full-export .tt-table th,
+    .pdf-full-export .tt-table td {
+      color: #111827 !important;
+      font-weight: 800 !important;
+    }
+    .pdf-class-export .tt-subtime,
+    .pdf-full-export .tt-subtime {
+      color: #374151 !important;
+      font-weight: 700 !important;
     }
     /* Full-school exports must fit the complete timetable horizontally. The
        on-screen view intentionally scrolls wide tables, but html2pdf places

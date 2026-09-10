@@ -720,8 +720,7 @@ export default function TimetableGenerate() {
                   : lessonSlots;
           const reservationSlots = assignmentPreferredSlots.length > 0 ? assignmentPreferredSlots : lessonSlots;
           const assignmentAvailableDays = normalizeDayNames(assignment.available_days);
-          const assignmentDoubleDays = normalizeDayNames(assignment.double_lesson_days)
-            .filter((dayName) => assignmentAvailableDays.length === 0 || assignmentAvailableDays.includes(dayName));
+          const assignmentDoubleDays: string[] = [];
           // A double flag without selected weekdays means “double days not yet
           // configured”, not “reserve every day”. Do not block ordinary lessons
           // for this teacher until the administrator explicitly chooses days.
@@ -877,7 +876,7 @@ export default function TimetableGenerate() {
             const isDoubleLesson = isEnabledFlag(assignment.is_double_lesson);
             const rawAvailableDays = normalizeDayNames(assignment.available_days);
             const availableDays = rawAvailableDays.length > 0 ? rawAvailableDays : [...TIMETABLE_DAYS];
-            const rawDoubleDays = normalizeDayNames(assignment.double_lesson_days);
+            const rawDoubleDays: string[] = [];
             // Only explicitly selected weekdays are double days. The Teacher
             // Assignments screen displays “Set double days” when the double flag
             // is on but no weekdays have been chosen; those lessons must remain
@@ -1087,7 +1086,7 @@ export default function TimetableGenerate() {
                 const rotatedSlots = rotateList(slotsToTry, rotationOffset + day + teacherSubjectSlotOffset);
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
-                const pendingConfiguredDouble = requiredDoubleDays.some((doubleDay) => !placementContext.placedDoubleDays.has(doubleDay));
+                const pendingConfiguredDouble = false;
                 // Try configured double days first. If a configured day is
                 // unavailable because of a teacher/class conflict, the atomic
                 // pair is allowed to move to another available weekday.
@@ -1096,9 +1095,9 @@ export default function TimetableGenerate() {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
                   // A configured double day is an atomic pair. It may not be
                   // downgraded to one lesson when the pair is still required.
-                  const preferredUnitSize: 1 | 2 = isDoubleLesson && pendingConfiguredDouble && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
+                  const preferredUnitSize: 1 | 2 = isDoubleLesson && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
                   let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
-                  if (placed === 0 && isDoubleLesson && pendingConfiguredDouble && scheduled + 2 <= lessonsToSchedule) continue;
+                  if (placed === 0 && isDoubleLesson && scheduled + 2 <= lessonsToSchedule) continue;
                   if (placed > 0) {
                     scheduled += placed;
                     break;
@@ -1191,7 +1190,7 @@ export default function TimetableGenerate() {
           if (subjectAlreadyUsedToday) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
-            if (unitSize === 2 && (!context.isDoubleLesson || !context.requiredDoubleDays.includes(dayName))) return false;
+            if (unitSize === 2 && !context.isDoubleLesson) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${startSlot.id}`)) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);

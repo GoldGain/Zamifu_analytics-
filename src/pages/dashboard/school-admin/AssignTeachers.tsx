@@ -276,10 +276,6 @@ export default function AssignTeachers() {
       setError('Please fill in all required fields.');
       return;
     }
-    if (formData.is_double_lesson && formData.double_lesson_days.length === 0) {
-      setError('Select at least one weekday for the double lesson.');
-      return;
-    }
     const teacher = teachers.find((t) => t.id === formData.teacher_id);
     const subject = subjects.find((sub) => sub.id === formData.subject_id);
     const pending = {
@@ -303,7 +299,7 @@ export default function AssignTeachers() {
           subject_id: formData.subject_id,
           lessons_per_week: formData.lessons_per_week,
           is_double_lesson: formData.is_double_lesson,
-          double_lesson_days: formData.is_double_lesson ? formData.double_lesson_days : [],
+          double_lesson_days: [],
           available_days: formData.available_days,
           assigned_by_admin: true,
           is_active: true,
@@ -401,22 +397,9 @@ export default function AssignTeachers() {
     });
   };
 
-  const toggleFormDoubleDay = (day: string) => {
-    setFormData(prev => ({
-      ...prev,
-      double_lesson_days: prev.double_lesson_days.includes(day)
-        ? prev.double_lesson_days.filter(d => d !== day)
-        : [...prev.double_lesson_days, day],
-    }));
-  };
-
   const handleEditDoubleLesson = (assignment: TeacherAssignment) => {
+    void assignment;
     setEditingDoubleLessonId(assignment.id);
-    setEditingDoubleDays(
-      assignment.double_lesson_days.length > 0
-        ? [...assignment.double_lesson_days]
-        : [...(assignment.available_days.length > 0 ? assignment.available_days : ALL_DAYS)],
-    );
   };
 
   const toggleEditingDoubleDay = (day: string) => {
@@ -426,15 +409,11 @@ export default function AssignTeachers() {
   };
 
   const handleSaveDoubleLesson = async (assignment: TeacherAssignment) => {
-    if (editingDoubleDays.length === 0) {
-      setError('Select at least one weekday for the double lesson.');
-      return;
-    }
     setSavingDoubleLesson(true);
     try {
       const { error } = await (supabase as any)
         .from('teacher_subject_assignments')
-        .update({ is_double_lesson: true, double_lesson_days: editingDoubleDays })
+        .update({ is_double_lesson: true, double_lesson_days: [] })
         .eq('id', assignment.id)
         .eq('school_id', user?.schoolId);
       if (error) throw error;
@@ -445,14 +424,14 @@ export default function AssignTeachers() {
         .eq('school_id', user?.schoolId)
         .maybeSingle();
       if (verifyError) throw verifyError;
-      if (!savedAssignment?.is_double_lesson || !Array.isArray(savedAssignment.double_lesson_days) || savedAssignment.double_lesson_days.length === 0) {
+      if (!savedAssignment?.is_double_lesson) {
         throw new Error('The double lesson was not saved. Please try again.');
       }
       setAssignments(prev => prev.map(a => a.id === assignment.id
-        ? { ...a, is_double_lesson: true, double_lesson_days: [...savedAssignment.double_lesson_days] }
+        ? { ...a, is_double_lesson: true, double_lesson_days: [] }
         : a));
       setEditingDoubleLessonId(null);
-      setSuccess('Double-lesson weekdays updated. Generate the timetable again to apply them.');
+      setSuccess('Double lesson enabled. The generator will choose the best available day automatically.');
       setTimeout(() => setSuccess(null), 3500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save double-lesson weekdays');
@@ -641,36 +620,13 @@ export default function AssignTeachers() {
                     className="mt-0.5 h-4 w-4 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
                   />
                   <span>
-                    <span className="font-semibold">Use double lesson on selected days</span><span className="mt-1 block text-xs text-gray-500">Each selected day receives two consecutive lessons without a break or activity between them. Remaining weekly lessons stay single.</span>
+                    <span className="font-semibold">Use double lesson</span><span className="mt-1 block text-xs text-gray-500">The generator automatically selects the best available day and places the two periods consecutively. Remaining weekly lessons stay single.</span>
                     <span className="block text-xs text-purple-700">
-                      The two periods stay consecutive and cannot cross a break, lunch, or activity. Choose the exact weekdays below.
+                      The two periods stay consecutive and cannot cross a break, lunch, or activity.
                     </span>
                   </span>
                 </label>
-                {formData.is_double_lesson && (
-                  <div className="mt-3 border-t border-purple-200 pt-3">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-purple-800 mb-2">Double-lesson days</p>
-                    <div className="flex flex-wrap gap-2">
-                      {ALL_DAYS.map(day => {
-                        const available = formData.available_days.includes(day);
-                        const selected = formData.double_lesson_days.includes(day);
-                        return (
-                          <label key={day} className={`flex items-center gap-1.5 ${available ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              disabled={!available}
-                              onChange={() => toggleFormDoubleDay(day)}
-                              className="h-3.5 w-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                            />
-                            <span className="text-xs font-semibold">{day.substring(0, 3)}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[11px] text-purple-700 mt-2">Selected: {formData.double_lesson_days.length ? formData.double_lesson_days.join(', ') : 'none'}</p>
-                  </div>
-                )}
+                {formData.is_double_lesson && <p className="mt-3 border-t border-purple-200 pt-3 text-[11px] text-purple-700">Automatic day selection is enabled.</p>}
               </div>
 
               {/* Available Days */}
@@ -778,24 +734,8 @@ export default function AssignTeachers() {
                           <td className="px-4 py-3 text-center align-top">
                             {editingDoubleLessonId === a.id ? (
                               <div className="min-w-[180px] space-y-2 text-left">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-purple-800">Double on:</p>
-                                <div className="flex flex-wrap gap-1.5">
-                                  {ALL_DAYS.map(day => {
-                                    const available = a.available_days.includes(day);
-                                    return (
-                                      <label key={day} className={`flex items-center gap-1 ${available ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
-                                        <input
-                                          type="checkbox"
-                                          checked={editingDoubleDays.includes(day)}
-                                          disabled={!available}
-                                          onChange={() => toggleEditingDoubleDay(day)}
-                                          className="h-3.5 w-3.5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                                        />
-                                        <span className="text-[11px] font-semibold">{day.substring(0, 3)}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-purple-800">Automatic day selection</p>
+                                <p className="text-[11px] text-purple-700">The generator will choose the best available weekday and consecutive periods.</p>
                                 <div className="flex flex-wrap gap-1.5">
                                   <button
                                     onClick={() => handleSaveDoubleLesson(a)}
@@ -816,14 +756,14 @@ export default function AssignTeachers() {
                               <div className="min-w-[130px]">
                                 <span className="inline-block bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-xs font-bold">Double</span>
                                 <p className="text-[11px] text-purple-700 mt-1 leading-tight">
-                                  {(a.double_lesson_days.length > 0 ? a.double_lesson_days : ALL_DAYS).map(day => day.substring(0, 3)).join(' · ')}
+                                  Automatic day
                                 </p>
                                 <div className="flex justify-center gap-2 mt-1">
                                   <button
                                     onClick={() => handleEditDoubleLesson(a)}
                                     className="text-purple-600 hover:text-purple-800 text-[11px] font-semibold underline"
                                   >
-                                    Edit days
+                                    Edit format
                                   </button>
                                   <button
                                     onClick={() => handleMakeSingleLesson(a)}
@@ -839,7 +779,7 @@ export default function AssignTeachers() {
                                 onClick={() => handleEditDoubleLesson(a)}
                                 className="text-purple-600 hover:text-purple-800 text-xs font-semibold underline"
                               >
-                                Set double days
+                                Set double lesson
                               </button>
                             )}
                           </td>
