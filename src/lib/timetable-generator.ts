@@ -155,25 +155,18 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 }
 
 /**
- * FINAL STRICT placement gate — level-independent.
+ * Placement ceiling used by the generator.
  *
- * Only two windows are HARD (they always have capacity):
- *   - mathematics / english : Lessons 1-2 only.
- *   - science / pre-technical : Lessons 3-5 only.
- *   - kiswahili               : Lessons 1-7 only (never beyond Lesson 7).
- *
- * Unassigned cells are rejected by the generator. It never invents a filler
- * learning area to hide missing teacher assignments.
+ * Subject-specific windows are preferences, not fatal constraints. The only
+ * hard limit is the school-admin requirement that learning areas must not be
+ * placed beyond Lesson 5.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
   lessonNumber: number,
 ): boolean {
-  const fam = classifySubject(subjectName);
-  if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
-  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
-  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
-  return lessonNumber >= 3;
+  void subjectName;
+  return lessonNumber >= 1 && lessonNumber <= 5;
 }
 
 export interface LessonUnitSlot {

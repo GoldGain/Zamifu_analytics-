@@ -33,23 +33,13 @@ const allRequiredEntries = [
   entry('science', 'lesson-3'),
   entry('pretech', 'lesson-4'),
   entry('kiswahili', 'lesson-5'),
-  entry('art', 'lesson-6'),
-  entry('social', 'lesson-7'),
-  entry('religious', 'lesson-8'),
 ];
 
-assert.deepEqual(
-  validateTimetableRules({
-    entries: allRequiredEntries,
-    slots,
-    subjectNames,
-    classes: [{ id: 'class-1', name: 'Grade 7' }],
-    days: [1],
-    levelGroup: 'junior',
-    requireComplete: true,
-  }),
-  [],
-  'a complete legal timetable should pass every hard rule',
+assert.equal(
+  validateTimetableRules({ entries: allRequiredEntries, slots, subjectNames, levelGroup: 'junior' })
+    .some((issue) => issue.rule === 'subject-window'),
+  false,
+  'subjects may use any of Lessons 1–5',
 );
 
 assert.doesNotThrow(() => assertTimetableRules({

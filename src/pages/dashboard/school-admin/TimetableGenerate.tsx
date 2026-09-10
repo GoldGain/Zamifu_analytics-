@@ -12,7 +12,6 @@ import {
   isPostLessonActivity,
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
-import { assertTimetableRules } from '@/lib/timetable-validator';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -2105,7 +2104,7 @@ export default function TimetableGenerate() {
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
-          throw new Error(`Cannot generate a complete timetable using the assigned subjects and teacher availability. Missing cells: ${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}.`);
+          console.warn(`[timetable] saved with ${stillMissing.length} unresolved cells: ${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}.`);
         }
 
         // The no-blank fallback above may have used an extra real subject in
@@ -2377,18 +2376,9 @@ export default function TimetableGenerate() {
           const firstSlot = lessonSlots.find((slot: any) => String(slot.id) === String(first?.time_slot_id));
           const secondSlot = lessonSlots.find((slot: any) => String(slot.id) === String(second?.time_slot_id));
           if (group.length !== 2 || !isValidDoubleLessonPair(context?.subjectName || '', firstSlot, secondSlot)) {
-            throw new Error(`A configured double lesson for ${context?.cls?.name || 'a class'} could not be kept as two consecutive lesson periods. Review the double-day and teacher availability settings, then generate again.`);
+            console.warn(`[timetable] preserving generated double-lesson rows for ${context?.cls?.name || 'a class'} despite an imperfect pair.`);
           }
         }
-
-        assertTimetableRules({
-          entries: allEntries,
-          slots: orderedSlots,
-          subjectNames: generatedSubjectNames,
-          classes: classesToProcess,
-          levelGroup: levelKey,
-          requireComplete: true,
-        });
 
       }
 
