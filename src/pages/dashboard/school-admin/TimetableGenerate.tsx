@@ -2029,8 +2029,8 @@ export default function TimetableGenerate() {
             return (balancedCounts.get(key) || 0) - amount >= target;
           });
         };
-        const replaceBalancedCells = (sources: any[], targetContext: AssignmentPlacementContext, unitSize: 1 | 2) => {
-          if (!canRemoveSourceCells(sources)) return false;
+        const replaceBalancedCells = (sources: any[], targetContext: AssignmentPlacementContext, unitSize: 1 | 2, forceSurplusSingle = false) => {
+          if (!forceSurplusSingle && !canRemoveSourceCells(sources)) return false;
           sources.forEach((source) => {
             const sourceKey = `${source.class_id}:${source.subject_id}`;
             const targetKey = `${source.class_id}:${targetContext.assignment.subject_id}`;
@@ -2082,7 +2082,7 @@ export default function TimetableGenerate() {
                   && !usedBalanceCells.has(cell)
                   && (balancedCounts.get(`${entry.class_id}:${entry.subject_id}`) || 0) > (targetBySubject.get(`${entry.class_id}:${entry.subject_id}`)?.target ?? 0);
               });
-              if (!source || (context.isDoubleLesson && !hasExistingDoublePair) || !replaceBalancedCells([source], context, 1)) break;
+              if (!source || (context.isDoubleLesson && !hasExistingDoublePair) || !replaceBalancedCells([source], context, 1, true)) break;
             }
             deficit = target - (balancedCounts.get(subjectKey) || 0);
           }
