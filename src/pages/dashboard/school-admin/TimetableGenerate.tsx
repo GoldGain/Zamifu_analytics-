@@ -2031,14 +2031,6 @@ export default function TimetableGenerate() {
               && String(entry.subject_id) === String(context.assignment.subject_id),
             );
             if (sameDaySubject) return false;
-            const sameTeacherSlot = allEntries.some((entry: any) =>
-              !ignoredEntries.has(entry)
-              && entry.level_group === levelKey
-              && String(entry.teacher_id || '') === String(context.assignment.teacher_id || '')
-              && Number(entry.day_of_week) === day
-              && String(entry.time_slot_id) === String(slot.id),
-            );
-            if (sameTeacherSlot) return false;
             const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
             const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
             if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) return false;
