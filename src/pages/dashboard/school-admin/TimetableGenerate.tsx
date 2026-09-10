@@ -1996,6 +1996,121 @@ export default function TimetableGenerate() {
             subjectCounts.set(countKey, (subjectCounts.get(countKey) || 0) + 1);
           }
         }
+        // If strict candidate filtering leaves a blank, try a two-cell exchange:
+        // move a real subject into the blank and move the blank's assignment into
+        // the source cell. This preserves completeness without relaxing any hard
+        // placement, duplicate, teacher, or Math/Science adjacency rule.
+        const remainingMissingCells = missingCells.filter(({ cls, day, slot }) =>
+          !allEntries.some((entry: any) =>
+            entry.level_group === levelKey
+            && String(entry.class_id) === String(cls.id)
+            && Number(entry.day_of_week) === day
+            && String(entry.time_slot_id) === String(slot.id),
+          ),
+        );
+        if (remainingMissingCells.length > 0) {
+          const repairSubjectContexts = new Map<string, AssignmentPlacementContext>();
+          assignmentContexts.forEach((context) => {
+            repairSubjectContexts.set(`${context.cls.id}:${context.assignment.subject_id}`, context);
+          });
+          const repairSourcesUsed = new Set<string>();
+          const canUseRepairPlacement = (
+            context: AssignmentPlacementContext,
+            day: number,
+            slot: any,
+            ignoredEntries: Set<any>,
+          ) => {
+            const classId = String(context.cls.id);
+            if (!context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
+            if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
+            const sameDaySubject = allEntries.some((entry: any) =>
+              !ignoredEntries.has(entry)
+              && entry.level_group === levelKey
+              && String(entry.class_id) === classId
+              && Number(entry.day_of_week) === day
+              && String(entry.subject_id) === String(context.assignment.subject_id),
+            );
+            if (sameDaySubject) return false;
+            const sameTeacherSlot = allEntries.some((entry: any) =>
+              !ignoredEntries.has(entry)
+              && entry.level_group === levelKey
+              && String(entry.teacher_id || '') === String(context.assignment.teacher_id || '')
+              && Number(entry.day_of_week) === day
+              && String(entry.time_slot_id) === String(slot.id),
+            );
+            if (sameTeacherSlot) return false;
+            const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
+            const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
+            if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) return false;
+            const slotIndex = lessonSlots.findIndex((candidate: any) => String(candidate.id) === String(slot.id));
+            for (const adjacentSlot of [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean)) {
+              const adjacentEntries = allEntries.filter((entry: any) =>
+                !ignoredEntries.has(entry)
+                && entry.level_group === levelKey
+                && String(entry.class_id) === classId
+                && Number(entry.day_of_week) === day
+                && String(entry.time_slot_id) === String(adjacentSlot.id),
+              );
+              if (adjacentEntries.some((entry: any) => violatesMathScienceSequence(
+                context.subjectName,
+                generatedSubjectNames.get(String(entry.subject_id)) || '',
+              ))) return false;
+            }
+            return true;
+          };
+          for (const missing of remainingMissingCells) {
+            let repaired = false;
+            const sourceEntries = allEntries.filter((entry: any) =>
+              entry.level_group === levelKey
+              && String(entry.class_id) === String(missing.cls.id)
+              && entry.entry_type === 'lesson'
+              && !repairSourcesUsed.has(`${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`),
+            );
+            for (const source of sourceEntries) {
+              if (repaired) break;
+              const sourceCell = `${source.class_id}:${source.day_of_week}:${source.time_slot_id}`;
+              const sourceSlot = lessonSlots.find((slot: any) => String(slot.id) === String(source.time_slot_id));
+              const sourceContext = repairSubjectContexts.get(`${source.class_id}:${source.subject_id}`);
+              if (!sourceSlot || !sourceContext || sourceContext.isDoubleLesson) continue;
+              const sourceSubjectContext = sourceContext;
+              const targetContexts = [...assignmentContexts.values()].filter((context) =>
+                String(context.cls.id) === String(missing.cls.id)
+                && !context.isDoubleLesson
+                && String(context.assignment.subject_id) !== String(source.subject_id),
+              );
+              for (const targetContext of targetContexts) {
+                const ignored = new Set<any>([source]);
+                if (!canUseRepairPlacement(sourceSubjectContext, missing.day, missing.slot, ignored)) continue;
+                if (!canUseRepairPlacement(targetContext, Number(source.day_of_week), sourceSlot, ignored)) continue;
+                const missingTiming = sourceSubjectContext.getDaySlotTiming(missing.day, missing.cls).times.get(String(missing.slot.label))
+                  || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
+                const sourceTiming = targetContext.getDaySlotTiming(Number(source.day_of_week), missing.cls).times.get(String(sourceSlot.label))
+                  || { start_time: sourceSlot.start_time, end_time: sourceSlot.end_time };
+                const repairedEntry = {
+                  school_id: schoolId,
+                  day_of_week: missing.day,
+                  time_slot_id: missing.slot.id,
+                  class_id: missing.cls.id,
+                  level_group: levelKey,
+                  effective_start_time: missingTiming.start_time,
+                  effective_end_time: missingTiming.end_time,
+                  subject_id: source.subject_id,
+                  teacher_id: sourceSubjectContext.assignment.teacher_id,
+                  entry_type: 'lesson',
+                };
+                source.subject_id = targetContext.assignment.subject_id;
+                source.teacher_id = targetContext.assignment.teacher_id;
+                source.effective_start_time = sourceTiming.start_time;
+                source.effective_end_time = sourceTiming.end_time;
+                allEntries.push(repairedEntry);
+                lessonCellEntries.set(`${missing.cls.id}-${missing.day}-${missing.slot.id}`, [repairedEntry]);
+                repairSourcesUsed.add(sourceCell);
+                repaired = true;
+                break;
+              }
+            }
+          }
+        }
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
