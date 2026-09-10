@@ -12,6 +12,7 @@ import {
   isPostLessonActivity,
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
+import { assertTimetableRules } from '@/lib/timetable-validator';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -1664,6 +1665,7 @@ export default function TimetableGenerate() {
                   if (reconClassBusy.has(classKey)) continue;
                   if (teacherId && reconTeacherBusy.has(`${teacherId}-${day}-${slot.id}`)) continue;
                   if (reconSubjectDay.get(`${classId}-${day}-${subjectId}`)) continue;
+                  if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
                   const idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(slot.id));
                   const prevSlot = idx > 0 ? orderedLessonSlots[idx - 1] : null;
                   const nextSlot = idx >= 0 && idx < orderedLessonSlots.length - 1 ? orderedLessonSlots[idx + 1] : null;
@@ -1768,6 +1770,7 @@ export default function TimetableGenerate() {
                   const teacherKey = `${teacherId}-${day}-${slot.id}`;
                   if (!reconTeacherBusy2.has(teacherKey)) {
                     if (meta?.band && !bandAllowsSlot(meta.band, slot)) continue;
+                    if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
                     if (!adjOk2(subjectName, classId, day, slot.id)) continue;
                     const e2 = { school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: classId, level_group: levelKey, effective_start_time: slot.start_time, effective_end_time: slot.end_time, subject_id: subjectId, teacher_id: teacherId, entry_type: 'lesson' };
                     reconEntries.push(e2); add2(e2); placed += 1; progressed = true; continue;
@@ -1787,6 +1790,7 @@ export default function TimetableGenerate() {
                     for (const s2 of orderedLessonSlots) {
                       if (d2 === day && String(s2.id) === String(slot.id)) continue;
                       if (bMeta?.band && !bandAllowsSlot(bMeta.band, s2)) continue;
+                      if (!strictSubjectAllowsLesson(bName, lessonNumberOf(s2))) continue;
                       if (reconClassBusy2.has(`${blocker.class_id}-${d2}-${s2.id}`)) continue;
                       if (blocker.teacher_id && reconTeacherBusy2.has(`${blocker.teacher_id}-${d2}-${s2.id}`)) continue;
                       if (reconSubjectDay2.get(`${blocker.class_id}-${d2}-${blocker.subject_id}`)) continue;
@@ -1803,7 +1807,7 @@ export default function TimetableGenerate() {
                       moved = true; break;
                     }
                   }
-                  if (moved && !reconClassBusy2.has(cellKey) && (!meta?.band || bandAllowsSlot(meta.band, slot)) && adjOk2(subjectName, classId, day, slot.id)) {
+                  if (moved && !reconClassBusy2.has(cellKey) && (!meta?.band || bandAllowsSlot(meta.band, slot)) && strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot)) && adjOk2(subjectName, classId, day, slot.id)) {
                     const e3 = { school_id: schoolId, day_of_week: day, time_slot_id: slot.id, class_id: classId, level_group: levelKey, effective_start_time: slot.start_time, effective_end_time: slot.end_time, subject_id: subjectId, teacher_id: teacherId, entry_type: 'lesson' };
                     reconEntries.push(e3); add2(e3); placed += 1; progressed = true;
                   }
@@ -2017,6 +2021,63 @@ export default function TimetableGenerate() {
         levelEntries.forEach((entry: any) => {
           entryAt.set(`${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`, entry);
         });
+        const entriesAtCell = (classId: string, day: number, slotId: string) => levelEntries.filter((entry: any) =>
+          String(entry.class_id) === classId
+          && Number(entry.day_of_week) === day
+          && String(entry.time_slot_id) === slotId,
+        );
+        const canBalanceIntoCells = (
+          sources: any[],
+          targetContext: AssignmentPlacementContext,
+          unitSize: 1 | 2,
+        ) => {
+          const targetName = targetContext.subjectName;
+          const targetClassId = String(targetContext.cls.id);
+          const sourceSet = new Set(sources);
+          const firstSlot = sources[0] ? lessonSlots.find((slot: any) => String(slot.id) === String(sources[0].time_slot_id)) : null;
+          if (!firstSlot || String(sources[0].class_id) !== targetClassId) return false;
+          const targetDay = Number(sources[0].day_of_week);
+          if (!targetContext.availableDays.includes(TIMETABLE_DAYS[targetDay - 1])) return false;
+          const targetSlots = unitSize === 2
+            ? [firstSlot, nextLessonById.get(String(firstSlot.id))].filter(Boolean)
+            : [firstSlot];
+          if (targetSlots.length !== unitSize) return false;
+          if (unitSize === 2 && !targetContext.isDoubleLesson) return false;
+          if (unitSize === 2 && !isValidDoubleLessonPair(targetName, targetSlots[0], targetSlots[1])) return false;
+          if (targetSlots.some((slot: any) => !strictSubjectAllowsLesson(targetName, lessonNumberOf(slot)))) return false;
+          if (targetSlots.some((slot: any) => teacherDoubleReservedSlotKeys.has(`${targetContext.assignment.teacher_id}-${targetDay}-${slot.id}`))) return false;
+
+          const targetSubjectEntries = levelEntries.filter((entry: any) =>
+            String(entry.class_id) === targetClassId
+            && Number(entry.day_of_week) === targetDay
+            && String(entry.subject_id) === String(targetContext.assignment.subject_id)
+            && !sourceSet.has(entry),
+          );
+          if (targetSubjectEntries.length > 0) return false;
+
+          for (const slot of targetSlots) {
+            const existing = entriesAtCell(targetClassId, targetDay, String(slot.id));
+            if (existing.some((entry) => !sourceSet.has(entry))) return false;
+            const teacherConflict = levelEntries.some((entry: any) =>
+              !sourceSet.has(entry)
+              && String(entry.teacher_id || '') === String(targetContext.assignment.teacher_id || '')
+              && Number(entry.day_of_week) === targetDay
+              && String(entry.time_slot_id) === String(slot.id),
+            );
+            if (teacherConflict) return false;
+            const { blockingActivities, times } = targetContext.getDaySlotTiming(targetDay, targetContext.cls);
+            const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
+            if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) return false;
+
+            const slotIndex = lessonSlots.findIndex((candidate: any) => String(candidate.id) === String(slot.id));
+            const adjacentSlots = [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean);
+            for (const adjacentSlot of adjacentSlots) {
+              const adjacentEntries = entriesAtCell(targetClassId, targetDay, String(adjacentSlot.id)).filter((entry) => !sourceSet.has(entry));
+              if (adjacentEntries.some((entry) => violatesMathScienceSequence(targetName, reconSubjectName.get(String(entry.subject_id)) || ''))) return false;
+            }
+          }
+          return true;
+        };
         const canRemoveSourceCells = (sources: any[]) => {
           const removals = new Map<string, number>();
           sources.forEach((source) => {
@@ -2030,6 +2091,7 @@ export default function TimetableGenerate() {
         };
         const replaceBalancedCells = (sources: any[], targetContext: AssignmentPlacementContext, unitSize: 1 | 2, forceSurplusSingle = false) => {
           if (!forceSurplusSingle && !canRemoveSourceCells(sources)) return false;
+          if (!canBalanceIntoCells(sources, targetContext, unitSize)) return false;
           sources.forEach((source) => {
             const sourceKey = `${source.class_id}:${source.subject_id}`;
             const targetKey = `${source.class_id}:${targetContext.assignment.subject_id}`;
@@ -2115,6 +2177,15 @@ export default function TimetableGenerate() {
             throw new Error(`A configured double lesson for ${context?.cls?.name || 'a class'} could not be kept as two consecutive lesson periods. Review the double-day and teacher availability settings, then generate again.`);
           }
         }
+
+        assertTimetableRules({
+          entries: allEntries,
+          slots: orderedSlots,
+          subjectNames: reconSubjectName,
+          classes: classesToProcess,
+          levelGroup: levelKey,
+          requireComplete: true,
+        });
 
       }
 

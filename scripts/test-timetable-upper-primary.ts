@@ -17,27 +17,24 @@ const config = {
 };
 
 const targets = resolveLessonTargets('upper-primary', config);
-const slots = generateSlots(config, 7, 'upper-primary');
+const slots = generateSlots(config, 6, 'upper-primary');
 const lessons = slots.filter((slot) => slot.slot_type === 'lesson');
 const lunchIndex = slots.findIndex((slot) => slot.slot_type === 'lunch');
 const lunch = slots[lunchIndex];
 const postLunchLessons = slots.slice(lunchIndex + 1).filter((slot) => slot.slot_type === 'lesson');
 const activities = slots.filter((slot) => slot.slot_type === 'activities');
 
-if (targets.totalLessons !== 7 || targets.afterLunch !== 1) {
+if (targets.totalLessons !== 6 || targets.afterLunch !== 0) {
   throw new Error(`Upper Primary target mismatch: ${JSON.stringify(targets)}`);
 }
-if (lessons.length !== 7 || postLunchLessons.length !== 1) {
+if (lessons.length !== 6 || postLunchLessons.length !== 0) {
   throw new Error(`Upper Primary lesson count mismatch: total=${lessons.length}, postLunch=${postLunchLessons.length}`);
 }
-if (!lunch || postLunchLessons[0]?.start_time !== lunch.end_time) {
-  throw new Error(`Upper Primary Lesson 7 must begin at lunch end: lunch=${lunch?.end_time}, lesson7=${postLunchLessons[0]?.start_time}`);
+if (!lunch || lessons.at(-1)?.end_time !== lunch.start_time) {
+  throw new Error(`Upper Primary Lesson 6 must end at lunch start: lunch=${lunch?.start_time}, lesson6=${lessons.at(-1)?.end_time}`);
 }
-if (postLunchLessons[0]?.label !== 'Lesson 7') {
-  throw new Error(`Expected the post-lunch lesson to be Lesson 7, got ${postLunchLessons[0]?.label}`);
-}
-if (activities.length !== 1 || activities[0]?.start_time !== '15:30' || activities[0]?.end_time !== '16:10') {
-  throw new Error(`Upper Primary activity window was not preserved: ${JSON.stringify(activities)}`);
+if (activities.length !== 0) {
+  throw new Error(`Upper Primary must not add a post-lunch activity column: ${JSON.stringify(activities)}`);
 }
 
-console.log('Upper Primary slot invariants passed: 7 lessons, 1 after lunch, Lesson 7 starts at lunch end, activities preserved.');
+console.log('Upper Primary slot invariants passed: 6 lessons ending at lunch, no post-lunch activity column.');
