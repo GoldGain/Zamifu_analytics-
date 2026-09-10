@@ -1944,6 +1944,19 @@ export default function TimetableGenerate() {
                 .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
+            if (candidates.length === 0) {
+              // Last resort for schools with heavily shared teachers: keep the
+              // grid complete with a real assigned non-double subject. Never
+              // place a configured double subject as a single cell, because
+              // that would create a malformed half-double lesson. Weekly
+              // counts, teacher clashes, and once-per-day repetition are
+              // relaxed only here, after every normal repair has failed.
+              candidates = [...assignmentContexts.values()]
+                .filter((context) => String(context.cls.id) === String(missing.cls.id))
+                .filter((context) => !context.isDoubleLesson)
+                .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+            }
             const context = candidates[0];
             if (!context) continue;
             const { times } = context.getDaySlotTiming(missing.day, context.cls);
