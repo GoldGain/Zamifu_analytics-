@@ -2496,6 +2496,97 @@ export default function TimetableGenerate() {
           }
         }
 
+        // Last-resort legal blank rotation. When the remaining blank is in a
+        // different subject band from the deficit (for example English needs
+        // L1–2 but the blank is L4), rotate single lessons through legal cells
+        // until the blank reaches the deficit subject's legal band. This is a
+        // graph walk over the current class grid; configured doubles are never
+        // used as movable nodes.
+        const slotById = new Map(lessonSlots.map((slot: any) => [String(slot.id), slot]));
+        const cellKey = (classId: string, day: number, slotId: string) => `${classId}:${day}:${slotId}`;
+        for (const cls of classesToProcess) {
+          const classEntries = () => exactCellEntries().filter((entry: any) => String(entry.class_id) === String(cls.id));
+          const occupied = () => new Map(classEntries().map((entry: any) => [cellKey(String(cls.id), Number(entry.day_of_week), String(entry.time_slot_id)), entry]));
+          const blank = lessonSlots.flatMap((slot: any) => TIMETABLE_DAYS.map((_, index) => ({ day: index + 1, slot })))
+            .find(({ day, slot }) => !occupied().has(cellKey(String(cls.id), day, String(slot.id))));
+          if (!blank) continue;
+          const deficits = [...targetBySubject.values()].filter(({ context, target }) =>
+            String(context.cls.id) === String(cls.id)
+            && (balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0) < target,
+          );
+          if (deficits.length === 0) continue;
+          const deficitContext = deficits[0].context;
+          const stateKey = (day: number, slotId: string) => `${day}:${slotId}`;
+          const queue: Array<{ day: number; slot: any }> = [{ day: blank.day, slot: blank.slot }];
+          const seen = new Set<string>([stateKey(blank.day, String(blank.slot.id))]);
+          const previous = new Map<string, { from: { day: number; slot: any }; entry: any }>();
+          let destination: { day: number; slot: any } | null = null;
+          while (queue.length && !destination) {
+            const current = queue.shift()!;
+            if (strictSubjectAllowsLesson(deficitContext.subjectName, lessonNumberOf(current.slot))) {
+              const sameDay = classEntries().some((entry: any) =>
+                Number(entry.day_of_week) === current.day
+                && String(entry.subject_id) === String(deficitContext.assignment.subject_id),
+              );
+              if (!sameDay) destination = current;
+            }
+            if (destination) break;
+            const map = occupied();
+            for (const entry of classEntries()) {
+              if (entry.entry_type !== 'lesson') continue;
+              const sourceSlot = slotById.get(String(entry.time_slot_id));
+              if (!sourceSlot) continue;
+              const source = { day: Number(entry.day_of_week), slot: sourceSlot };
+              if (!strictSubjectAllowsLesson(generatedSubjectNames.get(String(entry.subject_id)) || '', lessonNumberOf(current.slot))) continue;
+              const duplicate = classEntries().some((other: any) =>
+                other !== entry
+                && Number(other.day_of_week) === current.day
+                && String(other.subject_id) === String(entry.subject_id),
+              );
+              if (duplicate) continue;
+              const next = stateKey(source.day, String(source.slot.id));
+              if (seen.has(next)) continue;
+              seen.add(next);
+              previous.set(next, { from: current, entry });
+              queue.push(source);
+            }
+          }
+          if (!destination) continue;
+          const path: Array<{ from: { day: number; slot: any }; entry: any }> = [];
+          let cursor = stateKey(destination.day, String(destination.slot.id));
+          while (previous.has(cursor)) {
+            const step = previous.get(cursor)!;
+            path.unshift(step);
+            cursor = stateKey(step.from.day, String(step.from.slot.id));
+          }
+          for (const step of path) {
+            const entry = step.entry;
+            const targetDay = step.from.day;
+            const targetSlot = step.from.slot;
+            const { times } = deficitContext.getDaySlotTiming(targetDay, cls);
+            const timing = times.get(String(targetSlot.label)) || { start_time: targetSlot.start_time, end_time: targetSlot.end_time };
+            entry.day_of_week = targetDay;
+            entry.time_slot_id = targetSlot.id;
+            entry.effective_start_time = timing.start_time;
+            entry.effective_end_time = timing.end_time;
+          }
+          const finalTiming = deficitContext.getDaySlotTiming(destination.day, cls).times.get(String(destination.slot.label))
+            || { start_time: destination.slot.start_time, end_time: destination.slot.end_time };
+          allEntries.push({
+            school_id: schoolId,
+            day_of_week: destination.day,
+            time_slot_id: destination.slot.id,
+            class_id: cls.id,
+            level_group: levelKey,
+            effective_start_time: finalTiming.start_time,
+            effective_end_time: finalTiming.end_time,
+            subject_id: deficitContext.assignment.subject_id,
+            teacher_id: deficitContext.assignment.teacher_id,
+            entry_type: 'lesson',
+          });
+          refreshBalancedCounts();
+        }
+
         const finalCountMismatches: string[] = [];
         for (const { context, target } of targetBySubject.values()) {
           const actual = balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0;
