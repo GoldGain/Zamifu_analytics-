@@ -204,6 +204,266 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
   'form-3-4': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
 };
 
+/**
+ * Perfect-grid timetable solver.
+ *
+ * Replaces the legacy greedy+repair lesson allocation when a level is fully
+ * schedulable (weekly subject needs exactly fill every lesson cell). It
+ * guarantees:
+ *  - every lesson cell filled (no blank spaces)
+ *  - every subject's weekly lessons match its assignment exactly (no OVER /
+ *    UNDER status)
+ *  - a subject never repeats on the same day
+ *  - Mathematics/English only in Lessons 1-2, Integrated Science / Pre-Technical
+ *    Studies only in Lessons 3-5, Kiswahili up to Lesson 7
+ *  - no Mathematics<->Science adjacency
+ *  - a teacher never appears twice in the same day+lesson across parallel
+ *    classes
+ * Returns timetable_entries rows, or null when the level is not perfectly
+ * solvable (the caller then falls back to the legacy generator).
+ */
+function buildPerfectTimetableEntries(opts: {
+  schoolId: string;
+  levelKey: string;
+  classes: any[];
+  assignments: any[];
+  lessonSlots: any[];
+}): any[] | null {
+  const { schoolId, levelKey, classes, assignments, lessonSlots } = opts;
+  const cids = classes.map((c: any) => String(c.id));
+  const K = lessonSlots.length;
+  if (K < 2 || K > 9) return null;
+  const DAYS = [1, 2, 3, 4, 5];
+
+  const recsByClass: Record<string, any[]> = {};
+  for (const cid of cids) {
+    recsByClass[cid] = assignments
+      .filter((a: any) => String(a.class_id) === cid)
+      .map((a: any) => ({
+        sid: String(a.subject_id),
+        name: String(a.subjects?.name || a.subject_name || ''),
+        teacher: String(a.teacher_id),
+        need: Math.max(0, Number(a.lessons_per_week) || 0),
+      }))
+      .filter((r: any) => r.name && r.need > 0);
+    const total = recsByClass[cid].reduce((s: number, r: any) => s + r.need, 0);
+    if (total !== K * 5) return null;
+    const mathRec = recsByClass[cid].find((r: any) => classifySubject(r.name) === 'math');
+    const engRec = recsByClass[cid].find((r: any) => classifySubject(r.name) === 'english');
+    if (!mathRec || !engRec) return null;
+    // Lesson 1-2 pinning requires daily Math and English.
+    if (mathRec.need !== 5 || engRec.need !== 5) return null;
+  }
+
+  const allowsLesson = (name: string, ln: number): boolean => {
+    const f = classifySubject(name);
+    if (f === 'math' || f === 'english') return ln === 1 || ln === 2;
+    if (f === 'science' || f === 'pretech') return ln >= 3 && ln <= 5;
+    if (f === 'kiswahili') return ln >= 1 && ln <= 7;
+    return ln >= 3;
+  };
+  const adjOk = (a: string, b: string): boolean => {
+    if (!a || !b) return true;
+    return !violatesMathScienceSequence(a, b) && !violatesMathScienceSequence(b, a);
+  };
+
+  // Valid lesson 1-2 patterns: which parallel class has Math@L1 / English@L2.
+  const patterns: string[][] = [];
+  const maxCombo = 1 << cids.length;
+  for (let b = 0; b < maxCombo; b++) {
+    const decs: string[] = [];
+    for (let i = 0; i < cids.length; i++) decs.push((b >> i) & 1 ? 'EM' : 'ME');
+    const st1 = new Set<string>();
+    const st2 = new Set<string>();
+    let ok = true;
+    for (let i = 0; i < cids.length; i++) {
+      const cid = cids[i];
+      const m = recsByClass[cid].find((r: any) => classifySubject(r.name) === 'math');
+      const e = recsByClass[cid].find((r: any) => classifySubject(r.name) === 'english');
+      const l1 = decs[i] === 'ME' ? m : e;
+      const l2 = decs[i] === 'ME' ? e : m;
+      if (st1.has(l1.teacher) || st2.has(l2.teacher)) { ok = false; break; }
+      st1.add(l1.teacher);
+      st2.add(l2.teacher);
+    }
+    if (ok) patterns.push(decs);
+  }
+  if (patterns.length === 0) return null;
+
+  // Deterministic per-day rosters: each class has exactly K subjects a day and
+  // every subject appears on exactly `need` distinct weekdays.
+  function buildDayRosters(seed: number): Record<string, any[]> | null {
+    const rosters: Record<string, any[]> = {};
+    for (const cid of cids) {
+      const recs = recsByClass[cid].slice().sort((a: any, b: any) => b.need - a.need || a.name.localeCompare(b.name));
+      const bags: any[][] = [[], [], [], [], []];
+      let offset = seed;
+      for (const rec of recs) {
+        let placed = 0;
+        for (let i = 0; i < 5 && placed < rec.need; i++) {
+          const d = (offset + i) % 5;
+          if (bags[d].some((r: any) => r.sid === rec.sid)) continue;
+          bags[d].push(rec);
+          placed++;
+        }
+        offset++;
+      }
+      if (bags.some((bag) => bag.length !== K)) return null;
+      rosters[cid] = bags;
+    }
+    return rosters;
+  }
+
+  // Place one day's subjects into lesson slots with strict windows, adjacency
+  // and teacher uniqueness.
+  function solveDay(d: number, pattern: string[], rosters: Record<string, any[]>, maxNodes: number): Map<string, any> | null {
+    const grid = new Map<string, any>();
+    const toPlace: Record<string, any[]> = {};
+    const freeCells: string[] = [];
+    for (const cid of cids) {
+      toPlace[cid] = rosters[cid][d - 1].filter((r: any) => {
+        const f = classifySubject(r.name);
+        return f !== 'math' && f !== 'english';
+      });
+      if (toPlace[cid].length !== K - 2) return null;
+      for (let ln = 3; ln <= K; ln++) freeCells.push(`${cid}:${ln}`);
+    }
+    for (let i = 0; i < cids.length; i++) {
+      const cid = cids[i];
+      const m = recsByClass[cid].find((r: any) => classifySubject(r.name) === 'math');
+      const e = recsByClass[cid].find((r: any) => classifySubject(r.name) === 'english');
+      const l1 = pattern[i] === 'ME' ? m : e;
+      const l2 = pattern[i] === 'ME' ? e : m;
+      grid.set(`${cid}:1`, l1);
+      grid.set(`${cid}:2`, l2);
+    }
+    let nodes = 0;
+    const cands = (cid: string, ln: number): any[] => {
+      const left = grid.get(`${cid}:${ln - 1}`);
+      const right = grid.get(`${cid}:${ln + 1}`);
+      const tset = new Set<string>();
+      for (const cc of cids) {
+        const g = grid.get(`${cc}:${ln}`);
+        if (g) tset.add(g.teacher);
+      }
+      return toPlace[cid].filter((rec: any) => {
+        if (!allowsLesson(rec.name, ln)) return false;
+        if (left && !adjOk(left.name, rec.name)) return false;
+        if (right && !adjOk(rec.name, right.name)) return false;
+        if (tset.has(rec.teacher)) return false;
+        return true;
+      });
+    };
+    const bt = (idx: number): boolean => {
+      nodes++;
+      if (nodes > maxNodes) throw new Error('node-cap');
+      if (idx === freeCells.length) {
+        for (const cid of cids) if (toPlace[cid].length > 0) return false;
+        return true;
+      }
+      let bestKey: string | null = null;
+      let bestC: any[] | null = null;
+      for (let j = idx; j < freeCells.length; j++) {
+        const k2 = freeCells[j];
+        const p = k2.split(':');
+        const c2 = p[0];
+        const l2 = Number(p[1]);
+        const cda = cands(c2, l2);
+        if (cda.length === 0) return false;
+        if (!bestC || cda.length < bestC.length) {
+          bestC = cda;
+          bestKey = k2;
+        }
+      }
+      const bi = freeCells.indexOf(bestKey as string);
+      freeCells[idx] = freeCells[bi];
+      freeCells[bi] = bestKey as string;
+      const parts = (bestKey as string).split(':');
+      const bcid = parts[0];
+      const bln = Number(parts[1]);
+      bestC.sort((a: any, b: any) => {
+        const fa = classifySubject(a.name);
+        const fb = classifySubject(b.name);
+        const pa = (fa === 'science' || fa === 'pretech') && bln >= 3 && bln <= 5 ? 0 : 1;
+        const pb = (fb === 'science' || fb === 'pretech') && bln >= 3 && bln <= 5 ? 0 : 1;
+        return pa - pb;
+      });
+      for (const rec of bestC) {
+        grid.set(bestKey as string, rec);
+        const i = toPlace[bcid].indexOf(rec);
+        toPlace[bcid].splice(i, 1);
+        const ok = bt(idx + 1);
+        if (ok) return true;
+        toPlace[bcid].splice(i, 0, rec);
+        grid.delete(bestKey as string);
+      }
+      return false;
+    };
+    try {
+      return bt(0) ? grid : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Search a bounded number of L1-2 pattern combinations x roster rotations.
+  const patternCombos: string[][][] = [];
+  {
+    const count = Math.min(Math.pow(patterns.length, 5), 256);
+    for (let c = 0; c < count; c++) {
+      const combo: string[][] = [];
+      let x = c;
+      for (let d = 0; d < 5; d++) {
+        combo.push(patterns[x % patterns.length]);
+        x = Math.floor(x / patterns.length);
+      }
+      patternCombos.push(combo);
+    }
+  }
+
+  for (const combo of patternCombos) {
+    for (let seed = 0; seed < 12; seed++) {
+      const rosters = buildDayRosters(seed);
+      if (!rosters) continue;
+      const grids: Map<string, any>[] = [];
+      let failed = false;
+      for (let d = 1; d <= 5; d++) {
+        const g = solveDay(d, combo[d - 1], rosters, 40000);
+        if (!g) {
+          failed = true;
+          break;
+        }
+        grids.push(g);
+      }
+      if (failed) continue;
+      const entries: any[] = [];
+      for (let d = 1; d <= 5; d++) {
+        const grid = grids[d - 1];
+        for (const cid of cids) {
+          for (let ln = 1; ln <= K; ln++) {
+            const rec = grid.get(`${cid}:${ln}`);
+            const slot = lessonSlots[ln - 1];
+            entries.push({
+              school_id: schoolId,
+              class_id: cid,
+              day_of_week: d,
+              time_slot_id: slot.id,
+              subject_id: rec.sid,
+              teacher_id: rec.teacher,
+              entry_type: 'lesson',
+              level_group: levelKey,
+              effective_start_time: slot.start_time,
+              effective_end_time: slot.end_time,
+            });
+          }
+        }
+      }
+      return entries;
+    }
+  }
+  return null;
+}
+
 export default function TimetableGenerate() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -840,6 +1100,27 @@ export default function TimetableGenerate() {
                 activity_name: scheduledAtLesson.map((activity) => activity.activity_name.trim()).join(' / ') || 'Activity',
               });
             }
+          }
+        }
+
+        // === Perfect-grid solver: 120/120 cells, no OVER/UNDER, no duplicate subjects. ===
+        // Runs only when the level is fully schedulable; otherwise the legacy
+        // generator below runs unchanged as a fallback.
+        {
+          const perfectEntries = buildPerfectTimetableEntries({
+            schoolId,
+            levelKey,
+            classes: classesToProcess,
+            assignments,
+            lessonSlots,
+          });
+          if (perfectEntries && perfectEntries.length > 0) {
+            allEntries.push(...perfectEntries);
+            generatedSummary.push(
+              `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (no blanks, exact weekly totals, one subject per day)`
+            );
+            console.info(`[timetable] ${levelKey}: perfect-grid solver placed ${perfectEntries.length} lesson entries`);
+            continue;
           }
         }
 
