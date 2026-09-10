@@ -2088,6 +2088,17 @@ export default function TimetableGenerate() {
           }
         }
 
+        const finalCountMismatches: string[] = [];
+        for (const { context, target } of targetBySubject.values()) {
+          const actual = balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0;
+          if (actual !== target) {
+            finalCountMismatches.push(`${context.cls.name} / ${context.subjectName}: ${actual}/${target}`);
+          }
+        }
+        if (finalCountMismatches.length > 0) {
+          throw new Error(`Could not match configured weekly lesson totals: ${finalCountMismatches.slice(0, 8).join('; ')}${finalCountMismatches.length > 8 ? ` and ${finalCountMismatches.length - 8} more` : ''}.`);
+        }
+
         const doubleGroups = new Map<string, any[]>();
         allEntries
           .filter((entry: any) => entry.level_group === levelKey && entry.entry_type === 'lesson_double')
