@@ -887,6 +887,7 @@ export default function TimetableView() {
         ? `${(schoolName || 'school').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-${(className || classId).replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-timetable.pdf`
         : `${(schoolName || 'school').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-full-timetable.pdf`;
       if (classId) element.classList.add('pdf-class-export');
+      else element.classList.add('pdf-full-export');
       try {
         await html2pdf()
           .set({
@@ -900,7 +901,7 @@ export default function TimetableView() {
           .from(element)
           .save();
       } finally {
-        if (classId) element.classList.remove('pdf-class-export');
+        element.classList.remove(classId ? 'pdf-class-export' : 'pdf-full-export');
       }
     } finally {
       setDownloadingClass(null);
@@ -1324,6 +1325,51 @@ export default function TimetableView() {
     }
     .pdf-class-export .tt-subtime {
       font-size: 0.37rem !important;
+    }
+    /* Full-school exports must fit the complete timetable horizontally. The
+       on-screen view intentionally scrolls wide tables, but html2pdf places
+       that scroll width directly on a fixed A3 page unless we constrain it. */
+    .pdf-full-export {
+      width: 1120px !important;
+      max-width: 1120px !important;
+      min-width: 0 !important;
+      overflow: visible !important;
+      padding: 12px !important;
+    }
+    .pdf-full-export .overflow-x-auto,
+    .pdf-full-export .tt-weekly-board {
+      overflow: visible !important;
+      width: 100% !important;
+    }
+    .pdf-full-export .tt-table,
+    .pdf-full-export .tt-summary-table {
+      width: 100% !important;
+      min-width: 0 !important;
+      table-layout: fixed !important;
+    }
+    .pdf-full-export .tt-table th,
+    .pdf-full-export .tt-table td,
+    .pdf-full-export .tt-summary-table th,
+    .pdf-full-export .tt-summary-table td {
+      padding: 3px 2px !important;
+      font-size: 0.52rem !important;
+      line-height: 1.05 !important;
+      overflow-wrap: anywhere !important;
+    }
+    .pdf-full-export .tt-cell {
+      min-width: 0 !important;
+      height: 32px !important;
+      font-size: 0.52rem !important;
+    }
+    .pdf-full-export .tt-break,
+    .pdf-full-export .tt-lunch,
+    .pdf-full-export .tt-activity {
+      width: auto !important;
+      min-width: 0 !important;
+      font-size: 0.45rem !important;
+    }
+    .pdf-full-export .tt-subtime {
+      font-size: 0.34rem !important;
     }
     @media print {
       .no-print { display: none !important; }
