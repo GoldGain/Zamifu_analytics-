@@ -1987,6 +1987,102 @@ export default function TimetableGenerate() {
           throw new Error(`Cannot generate a complete timetable using the assigned subjects and teacher availability. Missing cells: ${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}.`);
         }
 
+        // The no-blank fallback above may have used an extra real subject in
+        // an unusually constrained school. Rebalance those cells before
+        // saving so the timetable reflects the configured weekly totals,
+        // rather than showing misleading Over/Under counts in the summary.
+        const levelEntries = allEntries.filter((entry: any) =>
+          entry.level_group === levelKey && lessonSlots.some((slot: any) => String(slot.id) === String(entry.time_slot_id)),
+        );
+        const targetBySubject = new Map<string, { context: AssignmentPlacementContext; target: number }>();
+        assignmentContexts.forEach((context) => {
+          if (String(context.levelKey) !== String(levelKey)) return;
+          targetBySubject.set(`${context.cls.id}:${context.assignment.subject_id}`, {
+            context,
+            target: Math.max(0, Number(context.assignment.lessons_per_week || 0)),
+          });
+        });
+        const balancedCounts = new Map<string, number>();
+        levelEntries.forEach((entry: any) => {
+          const key = `${entry.class_id}:${entry.subject_id}`;
+          balancedCounts.set(key, (balancedCounts.get(key) || 0) + 1);
+        });
+        const protectedDoubleCells = new Set<string>();
+        levelEntries.forEach((entry: any) => {
+          if (entry.entry_type === 'lesson_double') {
+            protectedDoubleCells.add(`${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`);
+          }
+        });
+        const usedBalanceCells = new Set<string>();
+        const entryAt = new Map<string, any>();
+        levelEntries.forEach((entry: any) => {
+          entryAt.set(`${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`, entry);
+        });
+        const canRemoveSourceCells = (sources: any[]) => {
+          const removals = new Map<string, number>();
+          sources.forEach((source) => {
+            const key = `${source.class_id}:${source.subject_id}`;
+            removals.set(key, (removals.get(key) || 0) + 1);
+          });
+          return [...removals.entries()].every(([key, amount]) => {
+            const target = targetBySubject.get(key)?.target ?? 0;
+            return (balancedCounts.get(key) || 0) - amount >= target;
+          });
+        };
+        const replaceBalancedCells = (sources: any[], targetContext: AssignmentPlacementContext, unitSize: 1 | 2) => {
+          if (!canRemoveSourceCells(sources)) return false;
+          sources.forEach((source) => {
+            const sourceKey = `${source.class_id}:${source.subject_id}`;
+            const targetKey = `${source.class_id}:${targetContext.assignment.subject_id}`;
+            balancedCounts.set(sourceKey, (balancedCounts.get(sourceKey) || 0) - 1);
+            balancedCounts.set(targetKey, (balancedCounts.get(targetKey) || 0) + 1);
+            source.subject_id = targetContext.assignment.subject_id;
+            source.teacher_id = targetContext.assignment.teacher_id;
+            source.entry_type = unitSize === 2 ? 'lesson_double' : 'lesson';
+            usedBalanceCells.add(`${source.class_id}:${source.day_of_week}:${source.time_slot_id}`);
+          });
+          return true;
+        };
+        const deficitContexts = [...targetBySubject.values()]
+          .filter(({ context, target }) => (balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0) < target)
+          .sort((a, b) => (a.target - (balancedCounts.get(`${a.context.cls.id}:${a.context.assignment.subject_id}`) || 0)) - (b.target - (balancedCounts.get(`${b.context.cls.id}:${b.context.assignment.subject_id}`) || 0)));
+        for (const { context, target } of deficitContexts) {
+          const subjectKey = `${context.cls.id}:${context.assignment.subject_id}`;
+          let deficit = target - (balancedCounts.get(subjectKey) || 0);
+          while (deficit >= (context.isDoubleLesson ? 2 : 1)) {
+            let replaced = false;
+            if (context.isDoubleLesson && deficit >= 2) {
+              for (const firstSlot of lessonSlots) {
+                const secondSlot = nextLessonById.get(String(firstSlot.id));
+                if (!secondSlot) continue;
+                for (let day = 1; day <= TIMETABLE_DAYS.length; day++) {
+                  const first = entryAt.get(`${context.cls.id}:${day}:${firstSlot.id}`);
+                  const second = entryAt.get(`${context.cls.id}:${day}:${secondSlot.id}`);
+                  const firstCell = `${context.cls.id}:${day}:${firstSlot.id}`;
+                  const secondCell = `${context.cls.id}:${day}:${secondSlot.id}`;
+                  if (!first || !second || first.entry_type !== 'lesson' || second.entry_type !== 'lesson') continue;
+                  if (protectedDoubleCells.has(firstCell) || protectedDoubleCells.has(secondCell) || usedBalanceCells.has(firstCell) || usedBalanceCells.has(secondCell)) continue;
+                  if (!canRemoveSourceCells([first, second])) continue;
+                  if (replaceBalancedCells([first, second], context, 2)) { replaced = true; break; }
+                }
+                if (replaced) break;
+              }
+            }
+            if (!replaced) {
+              const source = levelEntries.find((entry: any) => {
+                const cell = `${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`;
+                return entry.class_id === context.cls.id
+                  && entry.entry_type === 'lesson'
+                  && !protectedDoubleCells.has(cell)
+                  && !usedBalanceCells.has(cell)
+                  && (balancedCounts.get(`${entry.class_id}:${entry.subject_id}`) || 0) > (targetBySubject.get(`${entry.class_id}:${entry.subject_id}`)?.target ?? 0);
+              });
+              if (!source || !replaceBalancedCells([source], context, 1)) break;
+            }
+            deficit = target - (balancedCounts.get(subjectKey) || 0);
+          }
+        }
+
         const doubleGroups = new Map<string, any[]>();
         allEntries
           .filter((entry: any) => entry.level_group === levelKey && entry.entry_type === 'lesson_double')
