@@ -2347,6 +2347,101 @@ export default function TimetableGenerate() {
           }
         }
 
+        // Final exact-count normalization. The balancing swaps above preserve
+        // existing cells, but a constrained run can still finish with one
+        // blank plus a surplus/deficit pair. Fill blanks from deficits first,
+        // then convert surplus single cells into remaining deficits. Doubles
+        // are never split or rewritten by this pass.
+        const refreshBalancedCounts = () => {
+          balancedCounts.clear();
+          allEntries
+            .filter((entry: any) => entry.level_group === levelKey && lessonSlots.some((slot: any) => String(slot.id) === String(entry.time_slot_id)))
+            .forEach((entry: any) => {
+              const key = `${entry.class_id}:${entry.subject_id}`;
+              balancedCounts.set(key, (balancedCounts.get(key) || 0) + 1);
+            });
+        };
+        const exactCellEntries = () => allEntries.filter((entry: any) =>
+          entry.level_group === levelKey
+          && lessonSlots.some((slot: any) => String(slot.id) === String(entry.time_slot_id)),
+        );
+        const isLegalNormalizedPlacement = (
+          context: AssignmentPlacementContext,
+          classId: string,
+          day: number,
+          slot: any,
+          ignored: Set<any> = new Set(),
+        ) => {
+          if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
+          if (!context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
+          if (exactCellEntries().some((entry: any) =>
+            !ignored.has(entry)
+            && String(entry.class_id) === classId
+            && Number(entry.day_of_week) === day
+            && String(entry.subject_id) === String(context.assignment.subject_id),
+          )) return false;
+          return true;
+        };
+        const normalizedMissing: Array<{ cls: any; day: number; slot: any }> = [];
+        for (const cls of classesToProcess) {
+          for (let day = 1; day <= TIMETABLE_DAYS.length; day += 1) {
+            for (const slot of lessonSlots) {
+              if (!exactCellEntries().some((entry: any) =>
+                String(entry.class_id) === String(cls.id)
+                && Number(entry.day_of_week) === day
+                && String(entry.time_slot_id) === String(slot.id),
+              )) normalizedMissing.push({ cls, day, slot });
+            }
+          }
+        }
+        for (const missing of normalizedMissing) {
+          refreshBalancedCounts();
+          const candidate = [...targetBySubject.values()]
+            .filter(({ context, target }) => String(context.cls.id) === String(missing.cls.id)
+              && !context.isDoubleLesson
+              && (balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0) < target
+              && isLegalNormalizedPlacement(context, String(missing.cls.id), missing.day, missing.slot))
+            .sort((a, b) => (balancedCounts.get(`${a.context.cls.id}:${a.context.assignment.subject_id}`) || 0) - (balancedCounts.get(`${b.context.cls.id}:${b.context.assignment.subject_id}`) || 0))[0];
+          if (!candidate) continue;
+          const { times } = candidate.context.getDaySlotTiming(missing.day, missing.cls);
+          const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
+          allEntries.push({
+            school_id: schoolId,
+            day_of_week: missing.day,
+            time_slot_id: missing.slot.id,
+            class_id: missing.cls.id,
+            level_group: levelKey,
+            effective_start_time: timing.start_time,
+            effective_end_time: timing.end_time,
+            subject_id: candidate.context.assignment.subject_id,
+            teacher_id: candidate.context.assignment.teacher_id,
+            entry_type: 'lesson',
+          });
+        }
+        refreshBalancedCounts();
+        for (const { context: deficitContext, target } of targetBySubject.values()) {
+          let deficit = target - (balancedCounts.get(`${deficitContext.cls.id}:${deficitContext.assignment.subject_id}`) || 0);
+          while (deficit > 0) {
+            const source = exactCellEntries().find((entry: any) => {
+              if (String(entry.class_id) !== String(deficitContext.cls.id) || entry.entry_type !== 'lesson') return false;
+              const sourceKey = `${entry.class_id}:${entry.subject_id}`;
+              const sourceTarget = targetBySubject.get(sourceKey)?.target ?? 0;
+              if ((balancedCounts.get(sourceKey) || 0) <= sourceTarget) return false;
+              const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
+              return Boolean(slot) && isLegalNormalizedPlacement(deficitContext, String(entry.class_id), Number(entry.day_of_week), slot, new Set([entry]));
+            });
+            if (!source) break;
+            const sourceKey = `${source.class_id}:${source.subject_id}`;
+            source.subject_id = deficitContext.assignment.subject_id;
+            source.teacher_id = deficitContext.assignment.teacher_id;
+            source.entry_type = 'lesson';
+            balancedCounts.set(sourceKey, (balancedCounts.get(sourceKey) || 0) - 1);
+            const targetKey = `${deficitContext.cls.id}:${deficitContext.assignment.subject_id}`;
+            balancedCounts.set(targetKey, (balancedCounts.get(targetKey) || 0) + 1);
+            deficit -= 1;
+          }
+        }
+
         const finalCountMismatches: string[] = [];
         for (const { context, target } of targetBySubject.values()) {
           const actual = balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0;
