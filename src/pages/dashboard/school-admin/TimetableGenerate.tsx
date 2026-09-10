@@ -2110,6 +2110,63 @@ export default function TimetableGenerate() {
           });
           return true;
         };
+        const canMoveSingleToCell = (context: AssignmentPlacementContext, cellEntry: any, movingEntries: any[]) => {
+          const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(cellEntry.time_slot_id));
+          if (!slot || context.isDoubleLesson) return false;
+          const day = Number(cellEntry.day_of_week);
+          const classId = String(context.cls.id);
+          const sourceSet = new Set(movingEntries);
+          if (String(cellEntry.class_id) !== classId || !context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
+          if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
+          if (teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${slot.id}`)) return false;
+          if (entriesAtCell(classId, day, String(slot.id)).some((entry) => !sourceSet.has(entry))) return false;
+          if (levelEntries.some((entry: any) =>
+            !sourceSet.has(entry)
+            && String(entry.teacher_id || '') === String(context.assignment.teacher_id || '')
+            && Number(entry.day_of_week) === day
+            && String(entry.time_slot_id) === String(slot.id),
+          )) return false;
+          if (levelEntries.some((entry: any) =>
+            !sourceSet.has(entry)
+            && String(entry.class_id) === classId
+            && Number(entry.day_of_week) === day
+            && String(entry.subject_id) === String(context.assignment.subject_id),
+          )) return false;
+          const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
+          const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
+          if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) return false;
+          const slotIndex = lessonSlots.findIndex((candidate: any) => String(candidate.id) === String(slot.id));
+          const adjacentSlots = [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean);
+          for (const adjacentSlot of adjacentSlots) {
+            const adjacentEntries = entriesAtCell(classId, day, String(adjacentSlot.id)).filter((entry) => !sourceSet.has(entry));
+            if (adjacentEntries.some((entry) => violatesMathScienceSequence(context.subjectName, generatedSubjectNames.get(String(entry.subject_id)) || ''))) return false;
+          }
+          return true;
+        };
+        const tryBalancedCellSwap = (sourceEntry: any, destinationEntry: any, targetContext: AssignmentPlacementContext) => {
+          if (sourceEntry.entry_type !== 'lesson' || destinationEntry.entry_type !== 'lesson') return false;
+          if (sourceEntry === destinationEntry || String(sourceEntry.class_id) !== String(targetContext.cls.id)) return false;
+          if (String(destinationEntry.subject_id) === String(targetContext.assignment.subject_id)) return false;
+          const sourceContext = targetBySubject.get(`${sourceEntry.class_id}:${destinationEntry.subject_id}`)?.context;
+          if (!sourceContext || sourceContext.isDoubleLesson || String(sourceContext.cls.id) !== String(targetContext.cls.id)) return false;
+          const movingEntries = [sourceEntry, destinationEntry];
+          if (!canMoveSingleToCell(targetContext, destinationEntry, movingEntries)) return false;
+          if (!canMoveSingleToCell(sourceContext, sourceEntry, movingEntries)) return false;
+
+          const sourceKey = `${sourceEntry.class_id}:${sourceEntry.subject_id}`;
+          const targetKey = `${sourceEntry.class_id}:${targetContext.assignment.subject_id}`;
+          balancedCounts.set(sourceKey, (balancedCounts.get(sourceKey) || 0) - 1);
+          balancedCounts.set(targetKey, (balancedCounts.get(targetKey) || 0) + 1);
+          sourceEntry.subject_id = destinationEntry.subject_id;
+          sourceEntry.teacher_id = sourceContext.assignment.teacher_id;
+          destinationEntry.subject_id = targetContext.assignment.subject_id;
+          destinationEntry.teacher_id = targetContext.assignment.teacher_id;
+          sourceEntry.entry_type = 'lesson';
+          destinationEntry.entry_type = 'lesson';
+          usedBalanceCells.add(`${sourceEntry.class_id}:${sourceEntry.day_of_week}:${sourceEntry.time_slot_id}`);
+          usedBalanceCells.add(`${destinationEntry.class_id}:${destinationEntry.day_of_week}:${destinationEntry.time_slot_id}`);
+          return true;
+        };
         const deficitContexts = [...targetBySubject.values()]
           .filter(({ context, target }) => (balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0) < target)
           .sort((a, b) => (a.target - (balancedCounts.get(`${a.context.cls.id}:${a.context.assignment.subject_id}`) || 0)) - (b.target - (balancedCounts.get(`${b.context.cls.id}:${b.context.assignment.subject_id}`) || 0)));
@@ -2133,6 +2190,34 @@ export default function TimetableGenerate() {
                   if (replaceBalancedCells([first, second], context, 2)) { replaced = true; break; }
                 }
                 if (replaced) break;
+              }
+            }
+            if (!replaced) {
+              const surplusEntries = levelEntries.filter((entry: any) => {
+                const cell = `${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`;
+                return String(entry.class_id) === String(context.cls.id)
+                  && entry.entry_type === 'lesson'
+                  && !protectedDoubleCells.has(cell)
+                  && !usedBalanceCells.has(cell)
+                  && (balancedCounts.get(`${entry.class_id}:${entry.subject_id}`) || 0) > (targetBySubject.get(`${entry.class_id}:${entry.subject_id}`)?.target ?? 0);
+              });
+              for (const sourceEntry of surplusEntries) {
+                if (replaced) break;
+                const destinationEntries = levelEntries.filter((entry: any) => {
+                  const cell = `${entry.class_id}:${entry.day_of_week}:${entry.time_slot_id}`;
+                  return String(entry.class_id) === String(context.cls.id)
+                    && entry.entry_type === 'lesson'
+                    && entry !== sourceEntry
+                    && String(entry.subject_id) !== String(context.assignment.subject_id)
+                    && !protectedDoubleCells.has(cell)
+                    && !usedBalanceCells.has(cell);
+                });
+                for (const destinationEntry of destinationEntries) {
+                  if (tryBalancedCellSwap(sourceEntry, destinationEntry, context)) {
+                    replaced = true;
+                    break;
+                  }
+                }
               }
             }
             if (!replaced) {
