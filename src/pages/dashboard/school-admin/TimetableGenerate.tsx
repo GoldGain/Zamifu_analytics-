@@ -2049,11 +2049,6 @@ export default function TimetableGenerate() {
         for (const { context, target } of deficitContexts) {
           const subjectKey = `${context.cls.id}:${context.assignment.subject_id}`;
           let deficit = target - (balancedCounts.get(subjectKey) || 0);
-          const hasExistingDoublePair = levelEntries.some((entry: any) =>
-            entry.class_id === context.cls.id
-            && entry.subject_id === context.assignment.subject_id
-            && entry.entry_type === 'lesson_double',
-          );
           while (deficit >= 1) {
             let replaced = false;
             if (context.isDoubleLesson && deficit >= 2) {
@@ -2082,7 +2077,7 @@ export default function TimetableGenerate() {
                   && !usedBalanceCells.has(cell)
                   && (balancedCounts.get(`${entry.class_id}:${entry.subject_id}`) || 0) > (targetBySubject.get(`${entry.class_id}:${entry.subject_id}`)?.target ?? 0);
               });
-              if (!source || (context.isDoubleLesson && !hasExistingDoublePair) || !replaceBalancedCells([source], context, 1, true)) break;
+              if (!source || !replaceBalancedCells([source], context, 1, true)) break;
             }
             deficit = target - (balancedCounts.get(subjectKey) || 0);
           }
