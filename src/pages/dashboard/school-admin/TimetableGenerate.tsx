@@ -1537,6 +1537,11 @@ export default function TimetableGenerate() {
           }
         }
 
+        const generatedSubjectNames = new Map<string, string>();
+        assignments
+          .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+          .forEach((assignment: any) => generatedSubjectNames.set(String(assignment.subject_id), String(assignment.subjects?.name || '')));
+
         {
           // ================================================================
           // RECONCILIATION PASS — guarantee EXACT lesson counts so a
@@ -2073,7 +2078,7 @@ export default function TimetableGenerate() {
             const adjacentSlots = [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean);
             for (const adjacentSlot of adjacentSlots) {
               const adjacentEntries = entriesAtCell(targetClassId, targetDay, String(adjacentSlot.id)).filter((entry) => !sourceSet.has(entry));
-              if (adjacentEntries.some((entry) => violatesMathScienceSequence(targetName, reconSubjectName.get(String(entry.subject_id)) || ''))) return false;
+              if (adjacentEntries.some((entry) => violatesMathScienceSequence(targetName, generatedSubjectNames.get(String(entry.subject_id)) || ''))) return false;
             }
           }
           return true;
@@ -2181,7 +2186,7 @@ export default function TimetableGenerate() {
         assertTimetableRules({
           entries: allEntries,
           slots: orderedSlots,
-          subjectNames: reconSubjectName,
+          subjectNames: generatedSubjectNames,
           classes: classesToProcess,
           levelGroup: levelKey,
           requireComplete: true,
