@@ -155,18 +155,21 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 }
 
 /**
- * Placement ceiling used by the generator.
+ * Final subject placement gate from the timetable requirements.
  *
- * Subject-specific windows are preferences, not fatal constraints. The only
- * hard limit is the school-admin requirement that learning areas must not be
- * placed beyond Lesson 5.
+ * Mathematics and English use Lessons 1–2, Integrated Science and
+ * Pre-Technical Studies use Lessons 3–5, Kiswahili may use Lessons 1–7, and
+ * other learning areas may use the later lesson periods.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
   lessonNumber: number,
 ): boolean {
-  void subjectName;
-  return lessonNumber >= 1 && lessonNumber <= 5;
+  const fam = classifySubject(subjectName);
+  if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 2;
+  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
+  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
+  return lessonNumber >= 3;
 }
 
 export interface LessonUnitSlot {

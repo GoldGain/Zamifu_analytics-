@@ -1965,6 +1965,7 @@ export default function TimetableGenerate() {
               // relaxed only here, after every normal repair has failed.
               candidates = [...assignmentContexts.values()]
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
+                .filter((context) => !context.isDoubleLesson)
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
                 .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
