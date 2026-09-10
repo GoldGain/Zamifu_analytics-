@@ -931,7 +931,11 @@ export default function TimetableGenerate() {
             ): number => {
               const secondSlot = unitSize === 2 ? nextLessonById.get(String(startSlot.id)) : null;
               if (unitSize === 2 && !secondSlot) return 0;
-              if (unitSize === 2 && (!isDoubleLesson || !requiredDoubleDays.includes(TIMETABLE_DAYS[day - 1]))) return 0;
+              // Configured double days are preferred anchors, not an impossible
+              // hard constraint. If two double assignments share a teacher on
+              // the same configured day, the pair must move as a whole to
+              // another available day rather than leaving the timetable blank.
+              if (unitSize === 2 && !isDoubleLesson) return 0;
               if (unitSize === 2 && !isValidDoubleLessonPair(subjectName, startSlot, secondSlot)) return 0;
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
               if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${assignment.teacher_id}-${day}-${startSlot.id}`)) return 0;
@@ -1007,8 +1011,11 @@ export default function TimetableGenerate() {
               });
               subjectDayUsage.set(subjectDayKey, (subjectDayUsage.get(subjectDayKey) || 0) + unitSize);
               placementContext.dayUsage.set(day, (placementContext.dayUsage.get(day) || 0) + 1);
-              if (unitSize === 2 && requiredDoubleDays.includes(TIMETABLE_DAYS[day - 1])) {
-                placementContext.placedDoubleDays.add(TIMETABLE_DAYS[day - 1]);
+              if (unitSize === 2 && requiredDoubleDays.length > 0) {
+                // A pair placed on a fallback weekday still fulfils the one
+                // configured double unit for this assignment.
+                const requirement = requiredDoubleDays.find((doubleDay) => !placementContext.placedDoubleDays.has(doubleDay));
+                if (requirement) placementContext.placedDoubleDays.add(requirement);
               }
               return unitSize;
             };
@@ -1081,19 +1088,17 @@ export default function TimetableGenerate() {
                 const dayName = TIMETABLE_DAYS[day - 1];
                 if (!availableDays.includes(dayName)) continue;
                 const pendingConfiguredDouble = requiredDoubleDays.some((doubleDay) => !placementContext.placedDoubleDays.has(doubleDay));
-                const onConfiguredDoubleDay = isDoubleLesson && requiredDoubleDays.includes(dayName);
-                // Reserve the weekly capacity needed by configured double days.
-                // A single lesson on another day must never consume one of the
-                // two weekly lesson units required for a pending double.
-                if (isDoubleLesson && pendingConfiguredDouble && !onConfiguredDoubleDay) continue;
+                // Try configured double days first. If a configured day is
+                // unavailable because of a teacher/class conflict, the atomic
+                // pair is allowed to move to another available weekday.
                 const { blockingActivities: dayActivities, times: daySlotTimes } = getDaySlotTiming(day, cls);
                 for (const slot of rotatedSlots) {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
                   // A configured double day is an atomic pair. It may not be
                   // downgraded to one lesson when the pair is still required.
-                  const preferredUnitSize: 1 | 2 = onConfiguredDoubleDay && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
+                  const preferredUnitSize: 1 | 2 = isDoubleLesson && pendingConfiguredDouble && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
                   let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
-                  if (placed === 0 && onConfiguredDoubleDay && scheduled + 2 <= lessonsToSchedule) continue;
+                  if (placed === 0 && isDoubleLesson && pendingConfiguredDouble && scheduled + 2 <= lessonsToSchedule) continue;
                   if (placed > 0) {
                     scheduled += placed;
                     break;
