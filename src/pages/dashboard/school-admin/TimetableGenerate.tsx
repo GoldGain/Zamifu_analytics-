@@ -1939,6 +1939,8 @@ export default function TimetableGenerate() {
                 .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
                 .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+                .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
+                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             if (candidates.length === 0) {
@@ -1951,6 +1953,8 @@ export default function TimetableGenerate() {
                 .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
                 .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+                .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
+                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             if (candidates.length === 0) {
@@ -1964,6 +1968,8 @@ export default function TimetableGenerate() {
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
                 .filter((context) => !context.isDoubleLesson)
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+                .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
+                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             const context = candidates[0];
