@@ -2373,7 +2373,10 @@ export default function TimetableGenerate() {
           ignored: Set<any> = new Set(),
         ) => {
           if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
-          if (!context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
+          // The exact-count completion pass is allowed to use any school day.
+          // Teacher availability is a scheduling preference here; the user’s
+          // hard requirements are completeness, the subject window, and no
+          // same-subject repetition on the same day.
           if (exactCellEntries().some((entry: any) =>
             !ignored.has(entry)
             && String(entry.class_id) === classId
@@ -2417,6 +2420,57 @@ export default function TimetableGenerate() {
             teacher_id: candidate.context.assignment.teacher_id,
             entry_type: 'lesson',
           });
+        }
+        // If the only blank is outside a deficit subject’s legal window, swap
+        // it with an existing single lesson: the deficit subject moves into
+        // the source cell and the source subject fills the blank. Counts stay
+        // exact, doubles remain untouched, and both subjects keep their own
+        // placement windows.
+        refreshBalancedCounts();
+        for (const missing of normalizedMissing) {
+          if (exactCellEntries().some((entry: any) =>
+            String(entry.class_id) === String(missing.cls.id)
+            && Number(entry.day_of_week) === missing.day
+            && String(entry.time_slot_id) === String(missing.slot.id),
+          )) continue;
+          const deficit = [...targetBySubject.values()]
+            .filter(({ context, target }) => String(context.cls.id) === String(missing.cls.id)
+              && !context.isDoubleLesson
+              && (balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0) < target)
+            .sort((a, b) => (targetBySubject.get(`${a.context.cls.id}:${a.context.assignment.subject_id}`)?.target || 0) - (targetBySubject.get(`${b.context.cls.id}:${b.context.assignment.subject_id}`)?.target || 0))[0];
+          if (!deficit) continue;
+          const source = exactCellEntries().find((entry: any) => {
+            if (String(entry.class_id) !== String(missing.cls.id) || entry.entry_type !== 'lesson') return false;
+            const sourceContext = targetBySubject.get(`${entry.class_id}:${entry.subject_id}`)?.context;
+            const sourceSlot = lessonSlots.find((slot: any) => String(slot.id) === String(entry.time_slot_id));
+            if (!sourceContext || sourceContext.isDoubleLesson || !sourceSlot) return false;
+            const ignored = new Set<any>([entry]);
+            return isLegalNormalizedPlacement(deficit.context, String(missing.cls.id), Number(entry.day_of_week), sourceSlot, ignored)
+              && isLegalNormalizedPlacement(sourceContext, String(missing.cls.id), missing.day, missing.slot, ignored);
+          });
+          if (!source) continue;
+          const sourceContext = targetBySubject.get(`${source.class_id}:${source.subject_id}`)?.context;
+          if (!sourceContext) continue;
+          const originalSubjectId = source.subject_id;
+          const originalTeacherId = source.teacher_id;
+          source.subject_id = deficit.context.assignment.subject_id;
+          source.teacher_id = deficit.context.assignment.teacher_id;
+          source.entry_type = 'lesson';
+          const { times } = sourceContext.getDaySlotTiming(missing.day, missing.cls);
+          const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
+          allEntries.push({
+            school_id: schoolId,
+            day_of_week: missing.day,
+            time_slot_id: missing.slot.id,
+            class_id: missing.cls.id,
+            level_group: levelKey,
+            effective_start_time: timing.start_time,
+            effective_end_time: timing.end_time,
+            subject_id: originalSubjectId,
+            teacher_id: originalTeacherId,
+            entry_type: 'lesson',
+          });
+          refreshBalancedCounts();
         }
         refreshBalancedCounts();
         for (const { context: deficitContext, target } of targetBySubject.values()) {
