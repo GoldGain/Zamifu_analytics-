@@ -363,6 +363,10 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       toast.error('Please select class, learning area, and term');
       return;
     }
+    if (!selectedExam) {
+      toast.error('Please select an Assessment Name first. Marks cannot be saved without an assessment.');
+      return;
+    }
     if (selectedExam && !availableExams.some((exam: any) => exam.id === selectedExam)) {
       toast.error('The selected assessment is not available for this class.');
       return;
@@ -697,7 +701,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               disabled={!selectedClass}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white disabled:bg-gray-100"
             >
-              <option value="">{!selectedClass ? 'Select class first' : 'Select Assessment (optional)'}</option>
+              <option value="">{!selectedClass ? 'Select class first' : 'Select Assessment (Required)'}</option>
               {availableExams.map((exam: any) => {
                 const scope = exam.target_type === 'class' ? 'Class' : exam.target_type === 'grade' ? `Grade ${exam.target_grade_level}` : 'Whole School';
                 return <option key={exam.id} value={exam.id}>{exam.name} {exam.type ? `(${exam.type})` : ''} — {scope}</option>;

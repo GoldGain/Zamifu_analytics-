@@ -283,6 +283,7 @@ function AppRoutes() {
       {/* Dean of Studies routes - accessible to teachers who are DoS */}
       <Route path="/dean-of-studies" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><DeanOfStudiesDashboard /></ProtectedRoute>} />
       <Route path="/dean-of-studies/results" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><DoSResults /></ProtectedRoute>} />
+      <Route path="/dean-of-studies/stream-dashboard" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><StreamDashboard /></ProtectedRoute>} />
       <Route path="/dean-of-studies/combine-exams" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><CombineExams /></ProtectedRoute>} />
 
       {/* Student routes */}

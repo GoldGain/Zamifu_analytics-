@@ -120,6 +120,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'DoS Dashboard', icon: <GraduationCap className="w-5 h-5" />, path: '/dean-of-studies' },
     { label: 'DoS Results', icon: <FileText className="w-5 h-5" />, path: '/dean-of-studies/results' },
     { label: 'Combine Exams', icon: <FilePlus2 className="w-5 h-5" />, path: '/dean-of-studies/combine-exams' },
+    { label: 'Stream Dashboard', icon: <BarChart3 className="w-5 h-5" />, path: '/dean-of-studies/stream-dashboard' },
     { label: 'Class Results', icon: <FileText className="w-5 h-5" />, path: '/teacher/results' },
     { label: 'Subject Teacher Workspace', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/subject-dashboard' },
     { label: 'My Learning Areas', icon: <BookOpen className="w-5 h-5" />, path: '/teacher/my-subjects' },
@@ -256,7 +257,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     navItems = navItems.filter(item => {
       if (item.path === '/teacher/class-dashboard' && !isClassTeacher) return false;
       if (item.path === '/teacher/subject-dashboard' && !hasSubjectAssignments) return false;
-      if ((item.path === '/dean-of-studies' || item.path === '/dean-of-studies/results') && !isDoS) return false;
+      if ((item.path === '/dean-of-studies' || item.path === '/dean-of-studies/results' || item.path === '/dean-of-studies/stream-dashboard') && !isDoS) return false;
       if (item.path === '/teacher/results' && !isClassTeacher) return false;
       return true;
     });
