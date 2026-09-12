@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -14,11 +15,14 @@ import {
   Tooltip, ResponsiveContainer, Legend, Cell,
 } from 'recharts';
 import { getSchoolLevelBand, is844Curriculum, calculateCompetencyGrade, calculate844Grade } from '@/lib/grading';
+import { addLogoToPDF } from '@/lib/reportCardPdf';
+import { configurePdfFontSize, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
 
 interface StreamClass {
   id: string;
   name: string;
   stream: string | null;
+  stream_name: string | null;
   label: string;
   curriculum: string | null;
   level: number | null;
@@ -31,6 +35,7 @@ interface StudentRow {
   last_name: string;
   admission_number: string;
   class_id: string;
+  stream_id?: string | null;
 }
 
 interface ResultRow {
@@ -46,12 +51,14 @@ interface ResultRow {
   cbc_grade: string | null;
   grade_844: string | null;
   exam_id: string | null;
-  previous_term_average?: number | null;
+  created_at?: string | null;
 }
 
 interface StudentStats {
   avg: number | null;
   totalPoints: number;
+  totalMarks: number;
+  totalOutOf: number;
   count: number;
 }
 
@@ -84,8 +91,11 @@ interface LearnerRank {
   admission_number: string;
   avg: number | null;
   points: number;
+  totalMarks: number;
+  totalOutOf: number;
   grade: string;
   position: number | null;
+  subjects: Record<string, { marks: number | null; percentage: number; points: number; grade: string }>;
 }
 
 interface ImprovedRow {
@@ -103,6 +113,7 @@ interface ClassPerfRow {
   label: string;
   rows: { subject: string; avgMarks: number | null; outOf: number; grade: string; points: number | null }[];
   totalMarks: number;
+  totalOutOf: number;
   totalPoints: number;
   overallAvg: number | null;
   grade: string;
@@ -110,8 +121,20 @@ interface ClassPerfRow {
 
 type TabKey = 'overview' | 'subjects' | 'rankings' | 'comparison' | 'class' | 'improved';
 
+function deduplicateResults(rows: ResultRow[]): ResultRow[] {
+  const byStudentSubject = new Map<string, ResultRow>();
+  rows.forEach((row) => {
+    const key = `${row.student_id}:${row.subject_id}`;
+    const previous = byStudentSubject.get(key);
+    if (!previous || String(row.created_at || '') >= String(previous.created_at || '')) {
+      byStudentSubject.set(key, row);
+    }
+  });
+  return Array.from(byStudentSubject.values());
+}
+
 export default function StreamDashboard() {
-  const { user } = useAuth();
+  const { user, schoolData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [classes, setClasses] = useState<StreamClass[]>([]);
@@ -127,9 +150,11 @@ export default function StreamDashboard() {
   const [subjectMatrix, setSubjectMatrix] = useState<SubjectMatrixRow[]>([]);
   const [rankings, setRankings] = useState<LearnerRank[]>([]);
   const [improved, setImproved] = useState<ImprovedRow[]>([]);
+  const [dropped, setDropped] = useState<ImprovedRow[]>([]);
+  const [pdfOptionsOpen, setPdfOptionsOpen] = useState(false);
   const [classPerf, setClassPerf] = useState<ClassPerfRow[]>([]);
   const [search, setSearch] = useState('');
-  const [showTop10, setShowTop10] = useState(true);
+  const [showTop10, setShowTop10] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
 
   const classById = new Map(classes.map((c) => [c.id, c]));
@@ -146,7 +171,7 @@ export default function StreamDashboard() {
 
   const streamLabel = (c: any): string => {
     const base = String(c?.name || 'Class').trim();
-    const stream = String(c?.stream || '').trim();
+    const stream = String(c?.stream_name || c?.stream || '').trim();
     return stream ? `${base} ${stream}` : (base || 'Unassigned stream');
   };
 
@@ -156,7 +181,7 @@ export default function StreamDashboard() {
       const [{ data: classesData }, { data: termsData }, { data: examsData }] = await Promise.all([
         supabaseUntyped
           .from('classes')
-          .select('id, name, stream, curriculum, level, grade_level, is_active')
+          .select('id, name, stream, stream_name, curriculum, level, grade_level, is_active')
           .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('level', { ascending: true })
@@ -175,7 +200,7 @@ export default function StreamDashboard() {
           .order('created_at', { ascending: false }),
       ]);
       const streamClasses: StreamClass[] = (classesData || []).map((c: any) => ({
-        id: c.id, name: c.name, stream: c.stream ?? null,
+        id: c.id, name: c.name, stream: c.stream ?? null, stream_name: c.stream_name ?? null,
         label: streamLabel(c), curriculum: c.curriculum ?? null,
         level: c.level ?? null, grade_level: c.grade_level ?? null,
       }));
@@ -210,44 +235,55 @@ export default function StreamDashboard() {
         .sort((a, b) => (a.stream || a.name).localeCompare(b.stream || b.name));
       const classIds = streamClasses.map((c) => c.id);
       if (classIds.length === 0) {
-        setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setClassPerf([]);
+        setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setDropped([]); setClassPerf([]);
         return;
       }
 
       const [{ data: students }, { data: results }, subjectRes] = await Promise.all([
         supabaseUntyped
           .from('students')
-          .select('id, first_name, last_name, admission_number, class_id')
+          .select('id, first_name, last_name, admission_number, class_id, stream_id')
           .in('class_id', classIds)
           .eq('is_active', true)
+          .eq('school_id', user?.schoolId)
           .range(0, 9999),
         (() => {
           let q: any = supabaseUntyped
             .from('results')
-            .select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, previous_term_average')
+            .select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at')
             .in('class_id', classIds)
+            .eq('school_id', user?.schoolId)
             .eq('term_id', selectedTerm);
           if (selectedExam) q = q.eq('exam_id', selectedExam);
           return q.range(0, 9999);
         })(),
-        (async () => {
-          const subjectIds = await (async () => {
-            const r2 = await supabaseUntyped
-              .from('results')
-              .select('subject_id')
-              .in('class_id', classIds)
-              .eq('term_id', selectedTerm);
-            return [...new Set(((selectedExam ? r2.data || [] : r2.data) || []).map((x: any) => x.subject_id).filter(Boolean))];
-          })();
+        (async () => {              const subjectQuery = supabaseUntyped
+                .from('results')
+                .select('subject_id')
+                .in('class_id', classIds)
+                .eq('school_id', user?.schoolId)
+                .eq('term_id', selectedTerm);
+              if (selectedExam) subjectQuery.eq('exam_id', selectedExam);
+              const { data: subjectResultRows } = await subjectQuery;
+              const subjectIds = [...new Set((subjectResultRows || []).map((x: any) => x.subject_id).filter(Boolean))];
           if (subjectIds.length === 0) return { data: [], error: null };
           return supabaseUntyped.from('subjects').select('id, name').in('id', subjectIds);
         })(),
       ]);
 
       const studentList: StudentRow[] = (students || []) as StudentRow[];
-      const resultList: ResultRow[] = (results || []) as ResultRow[];
+      const rawResultList: ResultRow[] = (results || []) as ResultRow[];
+      const resultList: ResultRow[] = deduplicateResults(rawResultList);
       const subjectRows: any[] = (subjectRes?.data || []) as any[];
       const subjectName = new Map(subjectRows.map((s: any) => [s.id, s.name]));
+      const previousTerm = (() => {
+        const ordered = [...terms].sort((a, b) => Number(a.academic_year) - Number(b.academic_year) || Number(a.term_number || 0) - Number(b.term_number || 0));
+        const index = ordered.findIndex((term) => term.id === selectedTerm);
+        return index > 0 ? ordered[index - 1] : null;
+      })();
+      const previousResultList: ResultRow[] = previousTerm
+        ? deduplicateResults(((await supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).range(0, 9999)).data || []) as ResultRow[])
+        : [];
 
       const pctOf = (r: ResultRow): number => {
         if (r.percentage != null) return Math.round(r.percentage);
@@ -262,29 +298,44 @@ export default function StreamDashboard() {
         if (band === 'primary') return 0;
         return r.cbc_points ?? calculateCompetencyGrade(pctOf(r), band).points;
       };
+      const gradeOf = (r: ResultRow, percentage: number): string => {
+        const classInfo = classById.get(r.class_id);
+        if (is844Curriculum(classInfo)) return calculate844Grade(percentage).grade;
+        const band = getSchoolLevelBand(classInfo);
+        const grade = calculateCompetencyGrade(percentage, band);
+        return band === 'primary' ? grade.grade : grade.subLevel;
+      };
 
       const statsByStudent: Record<string, StudentStats> = {};
-      const subjectAgg: Record<string, { name: string; byClass: Record<string, { sum: number; count: number; marksSum: number; marksCount: number }> }> = {};
+      const subjectValuesByStudent: Record<string, Record<string, { marks: number | null; percentage: number; points: number }>> = {};
+      const subjectAgg: Record<string, { name: string; byClass: Record<string, { sum: number; count: number; marksSum: number; marksCount: number; outOfSum: number; outOfCount: number }> }> = {};
       const studentClass: Record<string, string> = {};
 
       resultList.forEach((r) => {
         const sid = r.student_id;
-        if (!statsByStudent[sid]) statsByStudent[sid] = { avg: null, totalPoints: 0, count: 0 };
+        if (!statsByStudent[sid]) statsByStudent[sid] = { avg: null, totalPoints: 0, totalMarks: 0, totalOutOf: 0, count: 0 };
+        if (!subjectValuesByStudent[sid]) subjectValuesByStudent[sid] = {};
         const pct = pctOf(r);
         statsByStudent[sid].count += 1;
-        statsByStudent[sid].totalPoints += pointsOf(r);
+        const rowPoints = pointsOf(r);
+        statsByStudent[sid].totalPoints += rowPoints;
+        statsByStudent[sid].totalMarks += r.marks ?? pct;
+        statsByStudent[sid].totalOutOf += r.out_of ?? 100;
+        subjectValuesByStudent[sid][subjectName.get(r.subject_id) || r.subject_id] = { marks: r.marks, percentage: pct, points: rowPoints, grade: gradeOf(r, pct) };
         studentClass[sid] = r.class_id;
         const sub = r.subject_id;
         if (!subjectAgg[sub]) subjectAgg[sub] = { name: subjectName.get(sub) || sub, byClass: {} };
         const clsId = r.class_id;
-        if (!subjectAgg[sub].byClass[clsId]) subjectAgg[sub].byClass[clsId] = { sum: 0, count: 0, marksSum: 0, marksCount: 0 };
+        if (!subjectAgg[sub].byClass[clsId]) subjectAgg[sub].byClass[clsId] = { sum: 0, count: 0, marksSum: 0, marksCount: 0, outOfSum: 0, outOfCount: 0 };
         subjectAgg[sub].byClass[clsId].sum += pct;
         subjectAgg[sub].byClass[clsId].count += 1;
-        const mVal = r.marks ?? 0;
-        if (mVal > 0) {
+        const mVal = r.marks ?? pct;
+        if (r.marks != null || Number.isFinite(mVal)) {
           subjectAgg[sub].byClass[clsId].marksSum += mVal;
           subjectAgg[sub].byClass[clsId].marksCount += 1;
         }
+        subjectAgg[sub].byClass[clsId].outOfSum += r.out_of ?? 100;
+        subjectAgg[sub].byClass[clsId].outOfCount += 1;
       });
 
       // Recompute averages from percentages (points are tracked separately)
@@ -360,61 +411,58 @@ export default function StreamDashboard() {
       }).sort((a, b) => a.subjectName.localeCompare(b.subjectName));
       setSubjectMatrix(matrix);
 
-      // ---- Student rankings per stream ----
-      const rankRows: LearnerRank[] = [];
-      streamClasses.forEach((c) => {
-        const ids = studentList.filter((s) => s.class_id === c.id);
-        const withResults = ids
-          .map((s) => ({ student: s, stats: statsByStudent[s.id] }))
-          .filter((x) => x.stats && x.stats.avg !== null);
-        withResults.sort((a, b) => (b.stats!.avg ?? -1) - (a.stats!.avg ?? -1));
-        withResults.forEach((x, idx) => {
-          const stats = x.stats!;
-          rankRows.push({
-            classId: c.id,
-            label: c.label,
-            studentId: x.student.id,
-            first_name: x.student.first_name,
-            last_name: x.student.last_name,
-            admission_number: x.student.admission_number,
+      // ---- Global learner rankings across every stream in the selected grade ----
+      const rankRows: LearnerRank[] = studentList
+        .map((student) => ({ student, stats: statsByStudent[student.id] }))
+        .filter((entry) => entry.stats && entry.stats.avg !== null)
+        .sort((a, b) => (
+          (b.stats!.totalMarks - a.stats!.totalMarks)
+          || (b.stats!.totalPoints - a.stats!.totalPoints)
+          || ((b.stats!.avg ?? -1) - (a.stats!.avg ?? -1))
+          || `${a.student.first_name} ${a.student.last_name}`.localeCompare(`${b.student.first_name} ${b.student.last_name}`)
+        ))
+        .map((entry, index) => {
+          const stats = entry.stats!;
+          const classId = entry.student.stream_id || entry.student.class_id;
+          const classInfo = classById.get(classId) || classById.get(entry.student.class_id);
+          return {
+            classId: classInfo?.id || entry.student.class_id,
+            label: classInfo?.label || 'Unassigned stream',
+            studentId: entry.student.id,
+            first_name: entry.student.first_name,
+            last_name: entry.student.last_name,
+            admission_number: entry.student.admission_number,
             avg: stats.avg,
             points: stats.totalPoints,
-            grade: gradeFromAvg(c, stats.avg),
-            position: idx + 1,
-          });
+            totalMarks: Math.round(stats.totalMarks * 10) / 10,
+            totalOutOf: Math.round(stats.totalOutOf * 10) / 10,
+            grade: gradeFromAvg(classInfo, stats.avg),
+            position: index + 1,
+            subjects: subjectValuesByStudent[entry.student.id] || {},
+          };
         });
-      });
       setRankings(rankRows);
 
-      // ---- Previous averages & Most Improved Learners ----
+      // ---- Previous averages and both five-learner movement lists ----
       const prevAvgById: Record<string, number | null> = {};
-      resultList.forEach((r) => {
-        if (prevAvgById[r.student_id] == null && r.previous_term_average != null) {
-          prevAvgById[r.student_id] = Math.round(r.previous_term_average);
-        }
+      const previousPctSums: Record<string, { sum: number; count: number }> = {};
+      previousResultList.forEach((r) => {
+        const pct = pctOf(r);
+        if (!previousPctSums[r.student_id]) previousPctSums[r.student_id] = { sum: 0, count: 0 };
+        previousPctSums[r.student_id].sum += pct;
+        previousPctSums[r.student_id].count += 1;
       });
-      const improvedRows: ImprovedRow[] = [];
+      Object.entries(previousPctSums).forEach(([sid, value]) => { prevAvgById[sid] = value.count ? Math.round(value.sum / value.count) : null; });
+      const movementRows: ImprovedRow[] = [];
       Object.keys(statsByStudent).forEach((sid) => {
         const avg = statsByStudent[sid].avg;
         const prev = prevAvgById[sid] ?? null;
-        if (avg == null || prev == null) return;
-        const diff = Math.round((avg - prev) * 10) / 10;
-        if (diff <= 0) return;
-        const st = studentList.find((s) => s.id === sid);
-        if (!st) return;
-        improvedRows.push({
-          studentId: sid,
-          label: classById.get(st.class_id)?.label || '',
-          first_name: st.first_name,
-          last_name: st.last_name,
-          admission_number: st.admission_number,
-          prevAvg: prev,
-          avg,
-          diff,
-        });
+        const st = studentList.find((student) => student.id === sid);
+        if (avg == null || prev == null || !st) return;
+        movementRows.push({ studentId: sid, label: classById.get(st.stream_id || st.class_id)?.label || classById.get(st.class_id)?.label || '', first_name: st.first_name, last_name: st.last_name, admission_number: st.admission_number, prevAvg: prev, avg, diff: Math.round((avg - prev) * 10) / 10 });
       });
-      improvedRows.sort((a, b) => (b.diff ?? -1) - (a.diff ?? -1));
-      setImproved(improvedRows.slice(0, 5));
+      setImproved(movementRows.filter((row) => (row.diff || 0) > 0).sort((a, b) => (b.diff ?? -1) - (a.diff ?? -1)).slice(0, 5));
+      setDropped(movementRows.filter((row) => (row.diff || 0) < 0).sort((a, b) => (a.diff ?? 1) - (b.diff ?? 1)).slice(0, 5));
 
       // ---- Class performance per stream (all subjects + totals) ----
       const perfRows: ClassPerfRow[] = streamClasses.map((c) => {
@@ -430,7 +478,7 @@ export default function StreamDashboard() {
           subjRows.push({
             subject: agg.name,
             avgMarks: b.marksCount > 0 ? Math.round(b.marksSum / b.marksCount) : null,
-            outOf: 100,
+            outOf: b.outOfCount > 0 ? Math.round(b.outOfSum / b.outOfCount) : 100,
             grade: band === 'primary' ? cg.grade : (is844 ? cg.grade : cg.subLevel),
             points: band === 'primary' ? null : cg.points,
           });
@@ -443,6 +491,7 @@ export default function StreamDashboard() {
           label: c.label,
           rows: subjRows,
           totalMarks: Math.round(subjRows.reduce((s, r2) => s + (r2.avgMarks ?? 0), 0)),
+          totalOutOf: Math.round(subjRows.reduce((s, r2) => s + r2.outOf, 0)),
           totalPoints: band === 'primary' ? 0 : pts.filter((p) => p > 0).reduce((a, b2) => a + b2, 0),
           overallAvg,
           grade: gradeFromAvg(c, overallAvg),
@@ -451,7 +500,7 @@ export default function StreamDashboard() {
       setClassPerf(perfRows);
     } catch (err) {
       console.error(err);
-      setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setClassPerf([]);
+      setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setDropped([]); setClassPerf([]);
     } finally {
       setLoadingData(false);
     }
@@ -517,45 +566,52 @@ export default function StreamDashboard() {
         m.diff ?? '',
       ]),
       [],
-      ['Student Rankings per Stream'],
-      ['Stream', 'Pos', 'Student', 'Adm No', 'Average %', 'Points', 'Grade'],
-      ...rankings.filter((r) => !showTop10 || r.position <= 10).map((r) => [r.label, r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.avg ?? '', r.points, r.grade]),
+      ['Learner Performance — All Streams'],
+      ['POS', 'Student', 'Adm No', 'Stream', ...Array.from(new Set(rankings.flatMap((r) => Object.keys(r.subjects)))).sort().flatMap((subject) => [`${subject} Marks`, `${subject} Points`, `${subject} Grade`]), 'Total Marks', 'Total Out Of', 'Points', 'Average %', 'Grade'],
+      ...rankings.map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.label, ...Array.from(new Set(rankings.flatMap((row) => Object.keys(row.subjects)))).sort().flatMap((subject) => [r.subjects[subject]?.marks ?? '', r.subjects[subject]?.points ?? '', r.subjects[subject]?.grade ?? '']), r.totalMarks, r.totalOutOf, r.points, r.avg ?? '', r.grade]),
     ]), { sheetName: 'Stream Dashboard' });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
       ['Most Improved Learners — ' + (selectedGrade || '')],
       ['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %'],
       ...improved.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff ?? '']),
     ]), 'Most Improved');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Most Dropped Learners — ' + (selectedGrade || '')],
+      ['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %'],
+      ...dropped.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff ?? '']),
+    ]), 'Most Dropped');
     const cpRows: any[] = [['Class Performance — ' + (selectedGrade || '')], []];
     classPerf.forEach((cp) => {
       cpRows.push([cp.label]);
       cpRows.push(['Subject', 'Avg Marks', 'Out Of', 'Grade', 'Points']);
       cp.rows.forEach((r) => cpRows.push([r.subject, r.avgMarks ?? '', r.outOf, r.grade, r.points ?? '']));
-      cpRows.push(['TOTAL', cp.totalMarks || '', cp.rows.length * 100, cp.grade, cp.totalPoints || '']);
+      cpRows.push(['TOTAL', cp.totalMarks || '', cp.totalOutOf, cp.grade, cp.totalPoints || '']);
       cpRows.push([]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cpRows), 'Class Performance');
     XLSX.writeFile(wb, `stream_dashboard_${(selectedGrade || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.xlsx`);
   };
 
-  const downloadPdf = () => {
+  const downloadPdf = async (fontSize: PdfFontSize) => {
     if (overview.length === 0 && rankings.length === 0) return;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    doc.setFontSize(16); doc.text('Stream Dashboard', 14, 14);
-    doc.setFontSize(9); doc.text(`Grade: ${selectedGrade || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 20);
+    configurePdfFontSize(doc, fontSize);
+    await addLogoToPDF(doc, schoolData?.logo_url, 135, 2, 18, 18);
+    doc.setFontSize(pdfFontSize(doc, 16)); doc.text('Stream Dashboard', 14, 14);
+    doc.setFontSize(pdfFontSize(doc, 9)); doc.text(`Grade: ${selectedGrade || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 20);
     const startY = 26;
     if (overview.length) {
-      doc.setFontSize(11); doc.text('Stream Overview', 14, startY + 2);
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text('Stream Overview', 14, startY + 2);
       autoTable(doc, {
         startY: startY + 5,
         head: [['Rank', 'Stream', 'Learners', 'Results In', 'Average %', 'Points', 'Grade']],
         body: overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.average ?? '', r.points ?? '', r.grade]),
-        styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
+        styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
       });
     }
     if (subjectMatrix.length) {
       doc.addPage();
-      doc.setFontSize(11); doc.text('Subject Performance by Stream', 14, 15);
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text('Subject Performance by Stream', 14, 15);
       autoTable(doc, {
         startY: 20,
         head: [['Subject', ...overview.map((r) => r.label), 'Best', 'Diff']],
@@ -565,44 +621,63 @@ export default function StreamDashboard() {
           m.bestClassId ? classById.get(m.bestClassId)?.label || '' : '',
           m.diff != null ? `+${m.diff}%` : '',
         ].map((v) => String(v ?? ''))),
-        styles: { fontSize: 7, cellPadding: 2 }, headStyles: { fillColor: [16, 185, 129] }, theme: 'grid',
+        styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 2 }, headStyles: { fillColor: [16, 185, 129] }, theme: 'grid',
       });
     }
     if (rankings.length) {
+      doc.addPage();
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Learner Performance — ${selectedGrade || 'All Streams'}`, 14, 15);
+      const rankingSubjects = Array.from(new Set(rankings.flatMap((r) => Object.keys(r.subjects)))).sort();
+      autoTable(doc, {
+        startY: 20,
+        head: [['POS', 'Student', 'Adm No', 'Stream', ...rankingSubjects.map((subject) => subject.slice(0, 9)), 'Total Marks', 'Points', 'Grade']],
+        body: rankings.map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.label, ...rankingSubjects.map((subject) => { const value = r.subjects[subject]; return value ? `${value.marks ?? value.percentage} / ${value.points}pt / ${value.grade}` : ''; }), r.totalMarks, r.points, r.grade]),
+        styles: { fontSize: pdfFontSize(doc, 6.5), cellPadding: 1.3 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
+      });
       const labels = [...new Set(rankings.map((r) => r.label))];
       labels.forEach((label) => {
         doc.addPage();
-        doc.setFontSize(11); doc.text(`Student Rankings — ${label}`, 14, 15);
+        doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Student Rankings — ${label}`, 14, 15);
         autoTable(doc, {
           startY: 20,
           head: [['Pos', 'Student', 'Adm No', 'Average %', 'Points', 'Grade']],
           body: rankings.filter((r) => r.label === label && (!showTop10 || r.position <= 10)).map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.avg ?? '', r.points, r.grade]),
-          styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [245, 158, 11] }, theme: 'grid',
+          styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [245, 158, 11] }, theme: 'grid',
         });
       });
     }
     if (improved.length) {
       doc.addPage();
-      doc.setFontSize(11); doc.text('Most Improved Learners', 14, 15);
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text('Most Improved Learners', 14, 15);
       autoTable(doc, {
         startY: 20,
         head: [['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %']],
         body: improved.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff != null ? `+${r.diff}%` : '']),
-        styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [16, 185, 129] }, theme: 'grid',
+        styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [16, 185, 129] }, theme: 'grid',
+      });
+    }
+    if (dropped.length) {
+      doc.addPage();
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text('Most Dropped Learners', 14, 15);
+      autoTable(doc, {
+        startY: 20,
+        head: [['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %']],
+        body: dropped.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff != null ? `${r.diff}%` : '']),
+        styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [220, 38, 38] }, theme: 'grid',
       });
     }
     if (classPerf.length) {
       classPerf.forEach((cp) => {
         doc.addPage();
-        doc.setFontSize(11); doc.text(`Class Performance — ${cp.label}`, 14, 15);
+        doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Class Performance — ${cp.label}`, 14, 15);
         autoTable(doc, {
           startY: 20,
           head: [['Subject', 'Avg Marks', 'Out Of', 'Grade', 'Points']],
           body: [
             ...cp.rows.map((r) => [r.subject, r.avgMarks ?? '', r.outOf, r.grade, r.points ?? '']),
-            ['TOTAL', cp.totalMarks || '', cp.rows.length * 100, cp.grade, cp.totalPoints || ''],
+            ['TOTAL', cp.totalMarks || '', cp.totalOutOf, cp.grade, cp.totalPoints || ''],
           ],
-          styles: { fontSize: 8, cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
+          styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
         });
       });
     }
@@ -617,15 +692,18 @@ export default function StreamDashboard() {
     { key: 'rankings', label: 'Student Rankings', icon: ListOrdered },
     { key: 'comparison', label: 'Stream Comparison', icon: GitCompareArrows },
     { key: 'class', label: 'Class Performance', icon: Layers },
-    { key: 'improved', label: 'Most Improved', icon: Medal },
+    { key: 'improved', label: 'Improved & Dropped', icon: Medal },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#111111]">Stream Dashboard</h1>
-          <p className="text-sm text-[#666666]">Compare streams, subjects and learners across a grade.</p>
+          <div className="flex items-center gap-3">
+            <img src={schoolData?.logo_url || '/logo.png'} alt={schoolData?.name || 'School logo'} className="h-14 w-14 rounded-xl border border-gray-200 bg-white object-contain p-1 shadow-sm" />
+            <div><h1 className="text-2xl font-bold text-[#111111]">Stream Dashboard</h1>
+            <p className="text-sm text-[#666666]">{schoolData?.name || 'School'} · Compare streams, subjects and learners across a grade.</p></div>
+          </div>
         </div>
         <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200">
@@ -647,7 +725,7 @@ export default function StreamDashboard() {
               ))}
             </select>
           )}
-          <button onClick={downloadPdf} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+          <button onClick={() => setPdfOptionsOpen(true)} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
             <Download className="w-4 h-4" /> PDF
           </button>
           <button onClick={downloadExcel} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-40">
@@ -834,53 +912,19 @@ export default function StreamDashboard() {
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input type="text" placeholder="Search students by name or admission number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white rounded-2xl text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <div className="flex items-center justify-end">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                  <input type="checkbox" checked={showTop10} onChange={(e) => setShowTop10(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                  Show top 10 per stream
-                </label>
+              <div className="flex items-center justify-between">
+                <div><h3 className="font-bold text-gray-900">Learner Performance — {selectedGrade} — All Streams</h3><p className="text-xs text-gray-500">Ranked by total marks first, then points. Each subject shows marks and points.</p></div>
+                <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none"><input type="checkbox" checked={showTop10} onChange={(e) => setShowTop10(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /> Show top 10</label>
               </div>
-              {[...new Set(rankings.map((r) => r.label))].map((label) => {
-                const perStream = filteredRankings.filter((r) => r.label === label);
-                const rows = showTop10 ? perStream.slice(0, 10) : perStream;
-                if (rows.length === 0) return null;
-                return (
-                  <div key={label} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-5 border-b border-gray-100 flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-yellow-500" />
-                      <h3 className="font-bold text-gray-900">{label} {showTop10 && <span className="text-xs font-medium text-gray-400">(Top 10)</span>}</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Pos</th>
-                            <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Student</th>
-                            <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Adm No</th>
-                            <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Average</th>
-                            <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Points</th>
-                            <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Grade</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {rows.map((r) => (
-                            <tr key={r.studentId} className="hover:bg-gray-50">
-                              <td className="py-3 px-6">
-                                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ${r.position === 1 ? 'bg-yellow-500' : r.position === 2 ? 'bg-gray-400' : r.position === 3 ? 'bg-amber-600' : 'bg-gray-200 text-gray-600'}`}>{r.position}</span>
-                              </td>
-                              <td className="py-3 px-6 font-medium text-gray-900">{r.first_name} {r.last_name}</td>
-                              <td className="py-3 px-6 text-gray-500">{r.admission_number}</td>
-                              <td className={`py-3 px-6 font-bold ${r.avg !== null ? avgColor(r.avg) : 'text-gray-300'}`}>{r.avg !== null ? `${r.avg}%` : '—'}</td>
-                              <td className="py-3 px-6 text-gray-600">{r.points || '—'}</td>
-                              <td className="py-3 px-6">{r.grade ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(r.grade)}`}>{r.grade}</span> : '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">POS</th><th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Student</th><th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Adm No</th><th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Stream</th>
+                {Array.from(new Set(rankings.flatMap((r) => Object.keys(r.subjects)))).sort().map((subject) => <th key={subject} className="text-center py-3 px-3 text-[10px] font-semibold text-gray-500 uppercase whitespace-nowrap">{subject}<br /><span className="font-normal">Marks · Pts · Grade</span></th>)}
+                <th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Total Marks</th><th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Points</th><th className="text-center py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Grade</th>
+              </tr></thead><tbody className="divide-y divide-gray-50">
+                {(showTop10 ? filteredRankings.slice(0, 10) : filteredRankings).map((r) => <tr key={r.studentId} className="hover:bg-gray-50"><td className="py-3 px-4 font-bold">{r.position}</td><td className="py-3 px-4 font-medium text-gray-900 whitespace-nowrap">{r.first_name} {r.last_name}</td><td className="py-3 px-4 text-gray-500">{r.admission_number}</td><td className="py-3 px-4 text-gray-600 whitespace-nowrap">{r.label}</td>
+                  {Array.from(new Set(rankings.flatMap((row) => Object.keys(row.subjects)))).sort().map((subject) => { const value = r.subjects[subject]; return <td key={subject} className="py-2 px-3 text-center whitespace-nowrap">{value ? <><div className="font-bold text-gray-700">{value.marks ?? value.percentage}</div><div className="text-[10px] text-purple-600">{value.points || '—'} pt · {value.grade}</div></> : <span className="text-gray-300">—</span>}</td>; })}
+                  <td className="py-3 px-4 text-center font-bold text-blue-600">{r.totalMarks}</td><td className="py-3 px-4 text-center font-bold text-purple-600">{r.points || '—'}</td><td className="py-3 px-4 text-center"><span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(r.grade)}`}>{r.grade || '—'}</span></td></tr>)}
+              </tbody></table></div></div>
               {filteredRankings.length === 0 && <div className="bg-white rounded-2xl p-10 text-center text-gray-500 text-sm border border-dashed border-gray-300">No students found.</div>}
             </div>
           )}
@@ -985,7 +1029,7 @@ export default function StreamDashboard() {
                           <tr>
                             <td className="py-3 px-6 font-bold text-gray-900">TOTAL</td>
                             <td className="py-3 px-6 font-bold text-gray-900">{cp.totalMarks === 0 ? '—' : cp.totalMarks}</td>
-                            <td className="py-3 px-6 text-gray-600">{cp.rows.length * 100}</td>
+                            <td className="py-3 px-6 text-gray-600">{cp.totalOutOf}</td>
                             <td className="py-3 px-6 font-bold text-gray-900">{cp.grade}</td>
                             <td className="py-3 px-6 font-bold text-gray-900">{cp.totalPoints === 0 ? '—' : cp.totalPoints}</td>
                           </tr>
@@ -1004,51 +1048,51 @@ export default function StreamDashboard() {
           )}
 
           {activeTab === 'improved' && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-5 border-b border-gray-100">
-                  <h3 className="font-bold text-gray-900">Most Improved Learners — {selectedGrade}</h3>
-                  <p className="text-xs text-gray-500 mt-1">Top 5 learners with the largest improvement versus their previous assessment average.</p>
-                </div>
-                {improved.length === 0 ? (
-                  <div className="p-10 text-center text-gray-500 text-sm">No improvement data available. Previous assessment averages are required.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Rank</th>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Student</th>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Stream</th>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Adm No</th>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Previous</th>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Current</th>
-                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Diff</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {improved.map((r, idx) => (
-                          <tr key={r.studentId} className="hover:bg-gray-50">
-                            <td className="py-3 px-6">
-                              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ${idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-amber-600' : 'bg-blue-500'}`}>{idx + 1}</span>
-                            </td>
-                            <td className="py-3 px-6 font-medium text-gray-900">{r.first_name} {r.last_name}</td>
-                            <td className="py-3 px-6 text-gray-600">{r.label}</td>
-                            <td className="py-3 px-6 text-gray-500">{r.admission_number}</td>
-                            <td className="py-3 px-6 text-gray-600">{r.prevAvg === null ? '—' : `${r.prevAvg}%`}</td>
-                            <td className="py-3 px-6 font-bold text-gray-900">{r.avg === null ? '—' : `${r.avg}%`}</td>
-                            <td className="py-3 px-6"><span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">+{r.diff}%</span></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            <div className="grid gap-4 xl:grid-cols-2">
+              {[
+                { title: 'Most Improved Learners', rows: improved, positive: true },
+                { title: 'Most Dropped Learners', rows: dropped, positive: false },
+              ].map((section) => (
+                <div key={section.title} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-5 border-b border-gray-100">
+                    <h3 className="font-bold text-gray-900">{section.title} — {selectedGrade}</h3>
+                    <p className="text-xs text-gray-500 mt-1">Top 5 learners compared with the previous term.</p>
                   </div>
-                )}
-              </div>
+                  {section.rows.length === 0 ? (
+                    <div className="p-10 text-center text-gray-500 text-sm">No comparison data available.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            {['Rank', 'Student', 'Stream', 'Adm No', 'Previous', 'Current', 'Diff'].map((head) => (
+                              <th key={head} className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">{head}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {section.rows.map((r, idx) => (
+                            <tr key={r.studentId} className="hover:bg-gray-50">
+                              <td className="py-3 px-4 font-bold">{idx + 1}</td>
+                              <td className="py-3 px-4 font-medium text-gray-900 whitespace-nowrap">{r.first_name} {r.last_name}</td>
+                              <td className="py-3 px-4 text-gray-600">{r.label}</td>
+                              <td className="py-3 px-4 text-gray-500">{r.admission_number}</td>
+                              <td className="py-3 px-4">{r.prevAvg}%</td>
+                              <td className="py-3 px-4 font-bold">{r.avg}%</td>
+                              <td className={`py-3 px-4 font-bold ${section.positive ? 'text-green-700' : 'text-red-700'}`}>{section.positive ? '+' : ''}{r.diff}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </>
       )}
+      <PdfFontSizeDialog open={pdfOptionsOpen} title="Download Stream Dashboard PDF" description="Choose the font size for the full stream summary and learner performance report." onCancel={() => setPdfOptionsOpen(false)} onConfirm={async (fontSize) => { await downloadPdf(fontSize); setPdfOptionsOpen(false); }} />
     </div>
   );
 }

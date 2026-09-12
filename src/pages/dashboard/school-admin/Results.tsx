@@ -107,6 +107,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  const [comparisonTermA, setComparisonTermA] = useState('');
+  const [comparisonTermB, setComparisonTermB] = useState('');
+  const [comparisonExamA, setComparisonExamA] = useState('');
+  const [comparisonExamB, setComparisonExamB] = useState('');
+  const [comparisonRows, setComparisonRows] = useState<any[]>([]);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatingBulk, setGeneratingBulk] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -131,6 +137,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   useEffect(() => { fetchAll(); }, []);
 
+  useEffect(() => {
+    if (selectedTerm) {
+      setComparisonTermA((current) => current || selectedTerm);
+      setComparisonTermB((current) => current || selectedTerm);
+    }
+  }, [selectedTerm]);
+
   const getPercentage = (r: any) => {
     if (r.percentage !== undefined && r.percentage !== null) return Number(r.percentage);
     return Math.round((r.marks / (r.out_of || 100)) * 100);
@@ -152,7 +165,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
@@ -220,7 +233,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term first'); return; }
     setPublishing(true);
     try {
-      const { error: updateError } = await supabaseUntyped.from('results').update({ status: 'published', published_at: new Date().toISOString() }).eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+      let publishQuery = supabaseUntyped.from('results').update({ status: 'published', published_at: new Date().toISOString() }).eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+      if (selectedExam) publishQuery = publishQuery.eq('exam_id', selectedExam);
+      const { error: updateError } = await publishQuery;
       if (updateError) throw updateError;
       const { data: classStudents } = await supabaseUntyped.from('students').select('id, profile_id, first_name, last_name, parent_phone, parent_name').eq('class_id', selectedClass).eq('is_active', true);
       if (!classStudents) throw new Error('Failed to fetch learners');
@@ -233,7 +248,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const examData = exams.find(e => e.id === selectedExam);
       const assessmentLabel = examData ? `(${examData.name})` : '';
       const notifTitle = 'Results Published';
-      const notifMessage = `Results for ${classData?.name} - ${termData?.name} ${termData?.academic_year} ${assessmentLabel} have been published. Check your report card now!`;
+      const notifMessage = `Results for ${streamLabel(classData)} - ${termData?.name} ${termData?.academic_year} ${assessmentLabel} have been published. Check your report card now!`;
       const notifications = allUserIds.map(userId => ({ user_id: userId, school_id: user?.schoolId, title: notifTitle, message: notifMessage, type: 'results_published', is_read: false, action_url: '/student/results', created_at: new Date().toISOString() }));
       if (notifications.length > 0) {
         const { error: notifError } = await supabaseUntyped.from('notifications').insert(notifications);
@@ -291,7 +306,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               const totalStudentsInClass = allStudentSummaries.length;
               const smsMsg = SMS_TEMPLATES.resultsToParent(
                 `${student.first_name} ${student.last_name}`,
-                classData?.name || '',
+                streamLabel(classData),
                 subjectList,
                 smsTotalPoints,
                 smsTotalPossible,
@@ -315,11 +330,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   useEffect(() => {
     if (selectedClass && selectedTerm) { fetchAndComputeBestPerSubject(); } else { setBestPerSubjectList([]); }
-  }, [selectedClass, selectedTerm]);
+  }, [selectedClass, selectedTerm, selectedExam]);
 
   const fetchAndComputeBestPerSubject = async () => {
     const classObj = classes.find(c => c.id === selectedClass);
-    const { data } = await supabaseUntyped.from('results').select('*, students(id, first_name, last_name), subjects(name)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    let bestQuery = supabaseUntyped.from('results').select('*, students(id, first_name, last_name), subjects(name)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
+    if (selectedExam) bestQuery = bestQuery.eq('exam_id', selectedExam);
+    const { data } = await bestQuery;
     if (data && data.length > 0) { setBestPerSubjectList(computeBestPerSubject(data, classObj)); } else { setBestPerSubjectList([]); }
   };
 
@@ -414,7 +431,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     if (!currentTerm) return null;
     const prevTerm = terms.find(t => t.academic_year === currentTerm.academic_year && t.name !== currentTerm.name);
     if (!prevTerm) return null;
-    const { data } = await supabaseUntyped.from('results').select('percentage, marks, out_of').eq('student_id', studentId).eq('term_id', prevTerm.id);
+    const { data } = await supabaseUntyped.from('results').select('percentage, marks, out_of').eq('student_id', studentId).eq('term_id', prevTerm.id).eq('school_id', user?.schoolId);
     if (!data || data.length === 0) return null;
     return data.reduce((s, r) => s + (r.percentage ?? (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0) / data.length;
   };
@@ -491,11 +508,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const previousTerm = currentTermIndex > 0 ? orderedTerms[currentTermIndex - 1] : null;
       let previousSubjectStats = new Map<string, number>();
       if (previousTerm) {
-        const { data: previousResults } = await supabaseUntyped
+        let previousQuery = supabaseUntyped
           .from('results')
           .select('subject_id, marks, out_of, percentage, subjects(name)')
           .eq('class_id', scope === 'class_teacher' ? scopedClassId : selectedClass)
-          .eq('term_id', previousTerm.id);
+          .eq('term_id', previousTerm.id)
+          .eq('school_id', user?.schoolId);
+        if (selectedExam) previousQuery = previousQuery.eq('exam_id', selectedExam);
+        const { data: previousResults } = await previousQuery;
         const previousBySubject = new Map<string, number[]>();
         (previousResults || []).forEach((result: any) => {
           const subjectName = result.subjects?.name;
@@ -522,8 +542,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text('CLASS RESULTS SUMMARY', logoAdded ? 40 : 105, 22, { align: logoAdded ? 'left' : 'center' });
         doc.setFontSize(pdfFontSize(doc, 9));
         const summarySubtitle = assessmentLabel
-          ? `${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''} — ${assessmentLabel}`
-          : `${classObj?.name || 'Class'} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`;
+          ? `${streamLabel(classObj)} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''} — ${assessmentLabel}`
+          : `${streamLabel(classObj)} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`;
         doc.text(summarySubtitle, logoAdded ? 40 : 105, 30, { align: logoAdded ? 'left' : 'center' });
 
         const classGrade = overallGradeWithBand(classMean, band);
@@ -673,8 +693,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 14)); doc.setFont('helvetica', 'bold');
         doc.text(displaySchoolName, centerX, 8, { align: 'center' }); doc.setFontSize(pdfFontSize(doc, 10));
         const tableSubtitle = assessmentLabel
-          ? `LEARNER RESULTS TABLE — ${classObj?.name || ''} — ${termObj?.name || ''} ${termObj?.academic_year || ''} — ${assessmentLabel}`
-          : `LEARNER RESULTS TABLE — ${classObj?.name || ''} — ${termObj?.name || ''} ${termObj?.academic_year || ''}`;
+          ? `LEARNER RESULTS TABLE — ${streamLabel(classObj)} — ${termObj?.name || ''} ${termObj?.academic_year || ''} — ${assessmentLabel}`
+          : `LEARNER RESULTS TABLE — ${streamLabel(classObj)} — ${termObj?.name || ''} ${termObj?.academic_year || ''}`;
         doc.text(tableSubtitle, centerX, 16, { align: 'center' });
 
         const subjectShorts = allSubjects.map(s => shortName(s));
@@ -838,7 +858,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
-      const pdfName = `class_results_${classObj?.name || 'Class'}_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_');
+      const pdfName = `class_results_${streamLabel(classObj)}_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_');
       doc.save(pdfName);
       toast.success('Class results PDF generated!');
     } catch (err: any) { toast.error('Failed to generate PDF: ' + err.message); console.error(err); }
@@ -904,7 +924,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const cardAssessment = s.examName || assessmentLabel || '';
       const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
       
-      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', classObj?.name || 'N/A', termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined);
+        drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined);
 
       const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({
         subjects: { name: subName },
@@ -1026,7 +1046,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           mainDoc,
           studentFullName,
           s.student?.admission_number || 'N/A',
-          classObj?.name || 'N/A',
+          streamLabel(classObj),
           termObj?.name || '',
           termObj?.academic_year || '',
           studentPosition,
@@ -1072,7 +1092,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         }
       }
 
-      const pdfName = ['bulk_report_cards', classObj?.name, termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
+      const pdfName = ['bulk_report_cards', streamLabel(classObj), termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
       mainDoc.save(`${pdfName}.pdf`);
       toast.success(assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);
     } catch (err: any) { toast.error('Failed to generate bulk report cards: ' + err.message); console.error(err); }
@@ -1080,6 +1100,39 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   const filteredExams = exams.filter(e => !selectedTerm || e.term_id === selectedTerm);
+  const streamLabel = (classData: any) => {
+    const stream = String(classData?.stream_name || classData?.stream || '').trim();
+    return stream ? `${classData?.name || 'Class'} ${stream}` : (classData?.name || 'Class');
+  };
+  const loadExamComparison = async () => {
+    if (!selectedClass || !comparisonTermA || !comparisonTermB || !comparisonExamA || !comparisonExamB || (comparisonTermA === comparisonTermB && comparisonExamA === comparisonExamB)) {
+      toast.error('Select a class, two terms, and two different assessments to compare.');
+      return;
+    }
+    setComparisonLoading(true);
+    try {
+      const [first, second] = await Promise.all([
+        supabaseUntyped.from('results').select('student_id, subject_id, marks, out_of, percentage, students(first_name, last_name, admission_number), subjects(name)').eq('school_id', user?.schoolId).eq('class_id', selectedClass).eq('term_id', comparisonTermA).eq('exam_id', comparisonExamA),
+        supabaseUntyped.from('results').select('student_id, subject_id, marks, out_of, percentage, students(first_name, last_name, admission_number), subjects(name)').eq('school_id', user?.schoolId).eq('class_id', selectedClass).eq('term_id', comparisonTermB).eq('exam_id', comparisonExamB),
+      ]);
+      if (first.error) throw first.error;
+      if (second.error) throw second.error;
+      const byKey = new Map<string, any>();
+      const add = (rows: any[] | null | undefined, side: 'a' | 'b') => (rows || []).forEach((row: any) => {
+        const key = `${row.student_id}:${row.subject_id}`;
+        const value = Number(row.percentage ?? (Number(row.out_of) > 0 ? Number(row.marks || 0) / Number(row.out_of) * 100 : 0));
+        const current = byKey.get(key) || { student_id: row.student_id, subject_id: row.subject_id, student: row.students, subject: row.subjects?.name || 'Learning Area' };
+        current[side] = value;
+        byKey.set(key, current);
+      });
+      add(first.data, 'a'); add(second.data, 'b');
+      setComparisonRows(Array.from(byKey.values()).map((row) => ({ ...row, diff: row.a != null && row.b != null ? Math.round((row.b - row.a) * 10) / 10 : null })));
+    } catch (error: any) { toast.error(error.message || 'Unable to compare assessments.'); setComparisonRows([]); }
+    finally { setComparisonLoading(false); }
+  };
+
+  const comparisonExamsA = exams.filter((exam) => !comparisonTermA || exam.term_id === comparisonTermA);
+  const comparisonExamsB = exams.filter((exam) => !comparisonTermB || exam.term_id === comparisonTermB);
 
   // Class Teachers must never see school-wide summary counts. Use the resolved
   // assigned class as the source of truth, with selectedClass as a safe fallback.
@@ -1130,7 +1183,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             <label className="block text-sm font-medium text-[#666666] mb-1">Select Class</label>
             <select value={selectedClass} disabled={scope === 'class_teacher'} onChange={e => setSelectedClass(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white disabled:bg-gray-100">
               <option value="">-- Select Class --</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {classes.map(c => <option key={c.id} value={c.id}>{streamLabel(c)}</option>)}
             </select>
           </div>
           <div>
@@ -1175,6 +1228,20 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           </button>
         </div>
       </div>
+
+      <section className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div><h2 className="text-lg font-semibold text-[#111111]">Compare Exams</h2><p className="text-sm text-gray-500">Compare assessments within or outside a term without creating or changing result records.</p></div>
+          <button onClick={() => void loadExamComparison()} disabled={comparisonLoading} className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">{comparisonLoading ? 'Comparing…' : 'Compare'}</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <label className="text-sm font-medium text-gray-600">Term A<select value={comparisonTermA} onChange={(e) => { setComparisonTermA(e.target.value); setComparisonExamA(''); }} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select term</option>{terms.map((term) => <option key={term.id} value={term.id}>{term.name} {term.academic_year}</option>)}</select></label>
+          <label className="text-sm font-medium text-gray-600">Assessment A<select value={comparisonExamA} onChange={(e) => setComparisonExamA(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select first assessment</option>{comparisonExamsA.map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select></label>
+          <label className="text-sm font-medium text-gray-600">Term B<select value={comparisonTermB} onChange={(e) => { setComparisonTermB(e.target.value); setComparisonExamB(''); }} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select term</option>{terms.map((term) => <option key={term.id} value={term.id}>{term.name} {term.academic_year}</option>)}</select></label>
+          <label className="text-sm font-medium text-gray-600">Assessment B<select value={comparisonExamB} onChange={(e) => setComparisonExamB(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select second assessment</option>{comparisonExamsB.map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select></label>
+        </div>
+        {comparisonRows.length > 0 && <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left p-3">Learner</th><th className="text-left p-3">Learning Area</th><th className="text-right p-3">{exams.find((e) => e.id === comparisonExamA)?.name || 'A'}</th><th className="text-right p-3">{exams.find((e) => e.id === comparisonExamB)?.name || 'B'}</th><th className="text-right p-3">Difference</th></tr></thead><tbody className="divide-y divide-gray-100">{comparisonRows.map((row) => <tr key={`${row.student_id}:${row.subject_id}`}><td className="p-3 font-medium">{row.student?.first_name} {row.student?.last_name}<div className="text-xs text-gray-400">{row.student?.admission_number}</div></td><td className="p-3">{row.subject}</td><td className="p-3 text-right">{row.a == null ? '—' : `${row.a.toFixed(1)}%`}</td><td className="p-3 text-right">{row.b == null ? '—' : `${row.b.toFixed(1)}%`}</td><td className={`p-3 text-right font-bold ${row.diff == null ? 'text-gray-400' : row.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{row.diff == null ? 'Missing on one side' : `${row.diff >= 0 ? '+' : ''}${row.diff.toFixed(1)}%`}</td></tr>)}</tbody></table></div>}
+      </section>
 
       {/* LEARNER RESULTS TABLE GRID */}
       {selectedClass && selectedTerm && (
@@ -1278,7 +1345,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                   <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-bold text-[#111111]">{r.students?.first_name} {r.students?.last_name}</div>
-                      <div className="text-[10px] text-[#666666] uppercase font-bold tracking-tight">{r.students?.admission_number} • {r.students?.gender || 'N/A'}</div>
+                      <div className="text-[10px] text-[#666666] uppercase font-bold tracking-tight">{r.students?.admission_number} • {streamLabel(r.classes)} • {r.students?.gender || 'N/A'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#111111]">{r.subjects?.name === 'Creative Arts' ? 'C-Arts' : r.subjects?.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-bold">{r.marks} / {r.out_of}</td>

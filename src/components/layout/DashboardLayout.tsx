@@ -209,7 +209,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (user.role === 'teacher') {
         const { data: teacherData } = await (supabase as any)
           .from('teachers')
-          .select('is_class_teacher, id, school_id')
+          .select('is_class_teacher, is_dean_of_studies, id, school_id')
           .eq('profile_id', user.id)
           .maybeSingle();
         setIsClassTeacher(Boolean(teacherData?.is_class_teacher));
@@ -227,7 +227,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             .select('dean_of_studies_id')
             .eq('id', teacherData.school_id)
             .maybeSingle();
-          if (schoolInfo?.dean_of_studies_id === teacherData.id) setIsDoS(true);
+          if (teacherData.is_dean_of_studies || schoolInfo?.dean_of_studies_id === teacherData.id) setIsDoS(true);
         }
       }
     };

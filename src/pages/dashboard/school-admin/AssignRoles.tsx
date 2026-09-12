@@ -221,25 +221,12 @@ export default function AssignRoles() {
     setSavingDoS(true);
     try {
       const dosIds = Array.from(dosSet).filter((id) => teachers.some((t) => t.id === id));
-      // Clear the flag on all teachers first, then set it for the selected set.
-      await (supabase as any)
-        .from('teachers')
-        .update({ is_dean_of_studies: false })
-        .eq('school_id', user?.schoolId);
-      if (dosIds.length > 0) {
-        await (supabase as any)
-          .from('teachers')
-          .update({ is_dean_of_studies: true })
-          .in('id', dosIds);
-      }
-      // Keep the legacy single column pointing at the first selected DoS for
-      // backward compatibility with any code still reading schools.dean_of_studies_id.
-      const firstProfile = teachers.find((t) => t.id === dosIds[0])?.profile_id || null;
-      await (supabase as any)
-        .from('schools')
-        .update({ dean_of_studies_id: firstProfile })
-        .eq('id', user?.schoolId);
-      toast.success(`Dean(s) of Studies saved (${dosIds.length} assigned)`);
+      const { data: assignedCount, error } = await (supabase as any).rpc('assign_school_dos', {
+        p_school_id: user?.schoolId,
+        p_teacher_ids: dosIds,
+      });
+      if (error) throw error;
+      toast.success(`Dean(s) of Studies saved (${assignedCount ?? dosIds.length} assigned)`);
       fetchData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to assign Dean of Studies');
@@ -285,7 +272,7 @@ export default function AssignRoles() {
           <div className="mb-4 flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-xl">
             <CheckCircle className="w-4 h-4 text-purple-600" />
             <span className="text-sm text-purple-800">
-              Current DoS: <strong>{getTeacherName(school.dean_of_studies_id)}</strong>
+              Primary DoS: <strong>{getTeacherName(school.dean_of_studies_id)}</strong>
             </span>
           </div>
         )}

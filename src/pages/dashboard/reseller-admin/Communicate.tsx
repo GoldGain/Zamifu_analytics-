@@ -33,8 +33,8 @@ export default function ResellerCommunicate() {
         if (!ids.length) return;
         const [{ data: admins, error: adminError }, { data: teachers, error: teacherError }, { data: dos, error: dosError }] = await Promise.all([
           supabaseUntyped.from('school_admins').select('id, school_id, first_name, last_name, phone').in('school_id', ids).eq('is_active', true),
-          supabaseUntyped.from('teachers').select('id, school_id, first_name, last_name, phone').in('school_id', ids).eq('is_active', true),
-          supabaseUntyped.from('profiles').select('id, school_id, first_name, last_name, phone').in('school_id', ids).eq('role', 'dean_of_studies').eq('is_active', true),
+          supabaseUntyped.from('teachers').select('id, school_id, profile_id, first_name, last_name, phone, is_dean_of_studies').in('school_id', ids).eq('is_active', true),
+          supabaseUntyped.from('teachers').select('id, school_id, profile_id, first_name, last_name, phone').in('school_id', ids).eq('is_active', true).eq('is_dean_of_studies', true),
         ]);
         if (adminError || teacherError || dosError) throw adminError || teacherError || dosError;
         const toRecipient = (row: any, role: Recipient['role']): Recipient => ({

@@ -1,6 +1,6 @@
-import { Routes, Route, Navigate, Outlet } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 import { Toaster } from '@/components/ui/sonner';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { TrialProvider } from '@/contexts/TrialContext';
 import MainLayout from '@/components/layout/MainLayout';
@@ -34,6 +34,7 @@ import ResellerPricing from '@/pages/dashboard/reseller-admin/Pricing';
 import ResellerStudents from '@/pages/dashboard/reseller-admin/Students';
 import ResellerCommunicate from '@/pages/dashboard/reseller-admin/Communicate';
 import SchoolPortalLockGate from '@/components/SchoolPortalLockGate';
+import { supabaseUntyped } from '@/lib/supabase/client';
 // Dashboard pages
 import SuperAdminDashboard from '@/pages/dashboard/super-admin/Dashboard';
 import SuperAdminSchools from '@/pages/dashboard/super-admin/Schools';
@@ -142,6 +143,24 @@ function ProtectedRoute({
   lockTarget?: 'school_admin' | 'dean_of_studies';
 }) {
   const { user, loading } = useAuth();
+  const [dosAuthorization, setDosAuthorization] = useState<'checking' | 'authorized' | 'denied'>(() => (
+    lockTarget === 'dean_of_studies' && user?.role === 'teacher' ? 'checking' : 'authorized'
+  ));
+
+  useEffect(() => {
+    if (lockTarget !== 'dean_of_studies' || user?.role !== 'teacher' || !user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data: teacher } = await supabaseUntyped.from('teachers').select('id, school_id, is_dean_of_studies').eq('profile_id', user.id).maybeSingle();
+      let authorized = Boolean(teacher?.is_dean_of_studies);
+      if (!authorized && teacher?.school_id) {
+        const { data: school } = await supabaseUntyped.from('schools').select('dean_of_studies_id').eq('id', teacher.school_id).maybeSingle();
+        authorized = school?.dean_of_studies_id === teacher.id;
+      }
+      if (!cancelled) setDosAuthorization(authorized ? 'authorized' : 'denied');
+    })().catch(() => { if (!cancelled) setDosAuthorization('denied'); });
+    return () => { cancelled = true; };
+  }, [lockTarget, user?.id, user?.role]);
 
   if (loading) {
     return <LoadingSpinner />;
@@ -149,6 +168,9 @@ function ProtectedRoute({
 
   if (!user) return <Navigate to="/auth/login" replace />;
   if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
+
+  if (dosAuthorization === 'checking' && lockTarget === 'dean_of_studies' && user.role === 'teacher') return <LoadingSpinner />;
+  if (lockTarget === 'dean_of_studies' && dosAuthorization === 'denied') return <Navigate to="/teacher" replace />;
 
   const schoolScopedRole = ['school_admin', 'teacher', 'student', 'parent'].includes(user.role);
   const body = schoolScopedRole ? (
