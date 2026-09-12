@@ -14,7 +14,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, Cell,
 } from 'recharts';
-import { getSchoolLevelBand, is844Curriculum, calculateCompetencyGrade, calculate844Grade } from '@/lib/grading';
+import { getSchoolLevelBand, is844Curriculum, calculateCompetencyGrade, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import { addLogoToPDF } from '@/lib/reportCardPdf';
 import { configurePdfFontSize, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
 
@@ -56,6 +56,7 @@ interface ResultRow {
 
 interface StudentStats {
   avg: number | null;
+  pctTotal: number;
   totalPoints: number;
   totalMarks: number;
   totalOutOf: number;
@@ -68,6 +69,8 @@ interface OverviewRow {
   learners: number;
   withResults: number;
   average: number | null;
+  meanMarks: number | null;
+  meanMarksOutOf: number;
   points: number | null;
   grade: string;
   rank: number | null;
@@ -156,6 +159,7 @@ export default function StreamDashboard() {
   const [search, setSearch] = useState('');
   const [showTop10, setShowTop10] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
+  const [pdfTarget, setPdfTarget] = useState<'full' | 'tab'>('full');
 
   const classById = new Map(classes.map((c) => [c.id, c]));
 
@@ -313,9 +317,10 @@ export default function StreamDashboard() {
 
       resultList.forEach((r) => {
         const sid = r.student_id;
-        if (!statsByStudent[sid]) statsByStudent[sid] = { avg: null, totalPoints: 0, totalMarks: 0, totalOutOf: 0, count: 0 };
+        if (!statsByStudent[sid]) statsByStudent[sid] = { avg: null, pctTotal: 0, totalPoints: 0, totalMarks: 0, totalOutOf: 0, count: 0 };
         if (!subjectValuesByStudent[sid]) subjectValuesByStudent[sid] = {};
         const pct = pctOf(r);
+        statsByStudent[sid].pctTotal += pct;
         statsByStudent[sid].count += 1;
         const rowPoints = pointsOf(r);
         statsByStudent[sid].totalPoints += rowPoints;
@@ -364,23 +369,31 @@ export default function StreamDashboard() {
       const overviewRows: OverviewRow[] = streamClasses.map((c) => {
         const ids = studentList.filter((s) => s.class_id === c.id).map((s) => s.id);
         const avgs = ids.map((id) => statsByStudent[id]?.avg).filter((v): v is number => v != null);
+        const pctTotals = ids.map((id) => statsByStudent[id]?.pctTotal ?? 0);
         const pts = ids.map((id) => statsByStudent[id]?.totalPoints ?? 0);
         const nonZeroPts = pts.filter((p) => p > 0);
         const bandCheck = getSchoolLevelBand(c);
         const avg = avgs.length ? Math.round(avgs.reduce((a, b) => a + b, 0) / avgs.length) : null;
+        const learnersWithResults = avgs.length;
+        const subjectCountForClass = Object.keys(subjectAgg).filter((subId) => subjectAgg[subId]?.byClass[c.id]?.count > 0).length;
+        const meanMarksOutOf = subjectCountForClass > 0 ? subjectCountForClass * 100 : (getRequiredLearningAreas(c) !== null ? (getRequiredLearningAreas(c) as number) * 100 : learnersWithResults * 100);
+        const meanMarks = learnersWithResults > 0 ? Math.round((pctTotals.reduce((a, b) => a + b, 0) / learnersWithResults) * 10) / 10 : null;
         return {
           classId: c.id,
           label: c.label,
           learners: rosterByClass[c.id] || ids.length,
-          withResults: avgs.length,
+          withResults: learnersWithResults,
           average: avg,
+          meanMarks,
+          meanMarksOutOf,
           points: (bandCheck === 'primary' || nonZeroPts.length === 0) ? null : Math.round(nonZeroPts.reduce((a, b) => a + b, 0) / nonZeroPts.length),
-          grade: gradeFromAvg(c, avg),
+          grade: meanMarks === null ? '' : gradeFromAvg(c, meanMarksOutOf > 0 ? (meanMarks / meanMarksOutOf) * 100 : null),
           rank: null,
         };
       });
-      const sortedOverview = [...overviewRows].sort((a, b) => (b.average ?? -1) - (a.average ?? -1));
-      sortedOverview.forEach((row, i) => { row.rank = row.average === null ? null : i + 1; });
+      // RANK STREAMS BY CLASS MEAN MARKS (not average marks)
+      const sortedOverview = [...overviewRows].sort((a, b) => (b.meanMarks ?? -1) - (a.meanMarks ?? -1));
+      sortedOverview.forEach((row, i) => { row.rank = row.meanMarks === null ? null : i + 1; });
       setOverview(sortedOverview);
 
       // ---- Subject matrix ----
@@ -553,8 +566,8 @@ export default function StreamDashboard() {
       ['Assessment', examName ? examName.name : 'All Assessments'],
       [],
       ['Stream Overview'],
-      ['Rank', 'Stream', 'Learners', 'Results In', 'Average %', 'Points', 'Grade'],
-      ...overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.average ?? '', r.points ?? '', r.grade]),
+      ['Rank', 'Stream', 'Learners', 'Results In', 'Class Mean Marks', 'Points', 'Grade'],
+      ...overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.meanMarks !== null ? `${r.meanMarks} / ${r.meanMarksOutOf}` : '', r.points ?? '', r.grade]),
       [],
       ['Subject Performance by Stream'],
       ['Subject', ...overview.map((r) => r.label), 'Best Stream', 'Highest %', 'Diff'],
@@ -604,8 +617,8 @@ export default function StreamDashboard() {
       doc.setFontSize(pdfFontSize(doc, 11)); doc.text('Stream Overview', 14, startY + 2);
       autoTable(doc, {
         startY: startY + 5,
-        head: [['Rank', 'Stream', 'Learners', 'Results In', 'Average %', 'Points', 'Grade']],
-        body: overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.average ?? '', r.points ?? '', r.grade]),
+        head: [['Rank', 'Stream', 'Learners', 'Results In', 'Class Mean Marks', 'Points', 'Grade']],
+        body: overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.meanMarks !== null ? `${r.meanMarks} / ${r.meanMarksOutOf}` : '', r.points ?? '', r.grade]),
         styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
       });
     }
@@ -684,6 +697,37 @@ export default function StreamDashboard() {
     doc.save(`stream_dashboard_${(selectedGrade || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.pdf`);
   };
 
+
+  const downloadTabPdf = async (fontSize: PdfFontSize) => {
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    configurePdfFontSize(doc, fontSize);
+    await addLogoToPDF(doc, schoolData?.logo_url, 135, 2, 18, 18);
+    const tabLabels: Record<TabKey, string> = { overview: 'Stream Overview', subjects: 'Subject Performance', rankings: 'Student Rankings', comparison: 'Stream Comparison', class: 'Class Performance', improved: 'Improved & Dropped' };
+    const tabLabel = tabLabels[activeTab] || activeTab;
+    doc.setFontSize(pdfFontSize(doc, 15)); doc.text(tabLabel, 14, 12);
+    doc.setFontSize(pdfFontSize(doc, 9));
+    doc.text(`Grade: ${selectedGrade || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 19);
+    const startY = 25;
+    if (activeTab === 'overview') {
+      autoTable(doc, { startY, head: [['Rank', 'Stream', 'Learners', 'Results In', 'Class Mean Marks', 'Points', 'Grade']], body: overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.meanMarks !== null ? `${r.meanMarks} / ${r.meanMarksOutOf}` : '', r.points ?? '', r.grade]), styles: { fontSize: pdfFontSize(doc, 9), cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid' });
+    } else if (activeTab === 'subjects' || activeTab === 'comparison') {
+      autoTable(doc, { startY, head: [['Subject', ...overview.map((r) => r.label), 'Best', activeTab === 'comparison' ? 'Gap' : 'Diff']], body: subjectMatrix.map((m) => [m.subjectName, ...overview.map((o) => m.byClass[o.classId] != null ? `${m.byClass[o.classId]}%` : ''), m.bestClassId ? classById.get(m.bestClassId)?.label || '' : '', m.diff != null ? `+${m.diff}%` : ''].map((v) => String(v ?? ''))), styles: { fontSize: pdfFontSize(doc, 7.5), cellPadding: 2 }, headStyles: { fillColor: [16, 185, 129] }, theme: 'grid' });
+    } else if (activeTab === 'rankings') {
+      const rankingSubjects = Array.from(new Set(rankings.flatMap((r) => Object.keys(r.subjects)))).sort();
+      const visibleRankings = showTop10 ? rankings.slice(0, 10) : rankings;
+      autoTable(doc, { startY, head: [['POS', 'Student', 'Adm No', 'Stream', ...rankingSubjects.map((s) => s.slice(0, 9)), 'Total Marks', 'Points', 'Grade']], body: visibleRankings.map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.label, ...rankingSubjects.map((s) => { const v = r.subjects[s]; return v ? `${v.marks ?? v.percentage} / ${v.points}pt / ${v.grade}` : ''; }), r.totalMarks, r.points, r.grade]), styles: { fontSize: pdfFontSize(doc, 6.5), cellPadding: 1.3 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid' });
+    } else if (activeTab === 'class') {
+      classPerf.forEach((cp, idx) => {
+        if (idx > 0) doc.addPage();
+        doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Class Performance — ${cp.label}`, 14, 15);
+        autoTable(doc, { startY: 20, head: [['Subject', 'Avg Marks', 'Out Of', 'Grade', 'Points']], body: [...cp.rows.map((r) => [r.subject, r.avgMarks ?? '', r.outOf, r.grade, r.points ?? '']), ['TOTAL', cp.totalMarks || '', cp.totalOutOf, cp.grade, cp.totalPoints || '']], styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid' });
+      });
+    } else if (activeTab === 'improved') {
+      autoTable(doc, { startY, head: [['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %']], body: [...improved.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff != null ? `+${r.diff}%` : '']), ...dropped.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff != null ? `${r.diff}%` : ''])], styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [245, 158, 11] }, theme: 'grid' });
+    }
+    doc.save(`stream_dashboard_${tabLabel.replace(/\s+/g, '_')}_${(selectedGrade || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.pdf`);
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
 
   const tabs: { key: TabKey; label: string; icon: any }[] = [
@@ -725,8 +769,11 @@ export default function StreamDashboard() {
               ))}
             </select>
           )}
-          <button onClick={() => setPdfOptionsOpen(true)} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
-            <Download className="w-4 h-4" /> PDF
+          <button onClick={() => { setPdfTarget('full'); setPdfOptionsOpen(true); }} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40">
+            <Download className="w-4 h-4" /> Full PDF
+          </button>
+          <button onClick={() => { setPdfTarget('tab'); setPdfOptionsOpen(true); }} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-40">
+            <Download className="w-4 h-4" /> Page PDF
           </button>
           <button onClick={downloadExcel} disabled={overview.length === 0 && rankings.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-40">
             <FileSpreadsheet className="w-4 h-4" /> Excel
@@ -785,7 +832,7 @@ export default function StreamDashboard() {
                         <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Stream</th>
                         <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Learners</th>
                         <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Results In</th>
-                        <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Average</th>
+                        <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Class Mean Marks</th>
                         <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Points</th>
                         <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Grade</th>
                       </tr>
@@ -801,7 +848,7 @@ export default function StreamDashboard() {
                           <td className="py-3 px-6 font-medium text-gray-900">{row.label}</td>
                           <td className="py-3 px-6 text-gray-600">{row.learners}</td>
                           <td className="py-3 px-6 text-gray-600">{row.withResults}</td>
-                          <td className={`py-3 px-6 font-bold ${row.average === null ? 'text-gray-300' : avgColor(row.average)}`}>{row.average === null ? '—' : `${row.average}%`}</td>
+                          <td className="py-3 px-6 font-bold text-gray-900">{row.meanMarks === null ? '—' : `${row.meanMarks} / ${row.meanMarksOutOf}`}</td>
                           <td className="py-3 px-6 text-gray-600">{row.points === null ? '—' : row.points}</td>
                           <td className="py-3 px-6">{row.grade ? <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(row.grade)}`}>{row.grade}</span> : '—'}</td>
                         </tr>
@@ -815,7 +862,7 @@ export default function StreamDashboard() {
                   <Trophy className="w-8 h-8 text-yellow-500" />
                   <div>
                     <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wide">Top Stream</p>
-                    <p className="font-bold text-gray-900">{topStream.label} <span className="text-sm font-medium text-gray-500">— {topStream.average}% average</span></p>
+                    <p className="font-bold text-gray-900">{topStream.label} <span className="text-sm font-medium text-gray-500">— {topStream.meanMarks} / {topStream.meanMarksOutOf} class mean marks</span></p>
                   </div>
                 </div>
               )}
@@ -981,7 +1028,7 @@ export default function StreamDashboard() {
                     <li key={r.classId} className="flex items-center gap-3 text-sm">
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${r.rank === 1 ? 'bg-yellow-500' : r.rank === 2 ? 'bg-gray-400' : r.rank === 3 ? 'bg-amber-600' : 'bg-gray-300'}`}>{r.rank ?? '—'}</span>
                       <span className="font-medium text-gray-900">{r.label}</span>
-                      <span className={`ml-auto font-bold ${r.average !== null ? avgColor(r.average) : 'text-gray-300'}`}>{r.average !== null ? `${r.average}%` : '—'}</span>
+                      <span className="ml-auto font-bold text-gray-900">{r.meanMarks !== null ? `${r.meanMarks} / ${r.meanMarksOutOf}` : '—'}</span>
                     </li>
                   ))}
                 </ol>
@@ -1092,7 +1139,7 @@ export default function StreamDashboard() {
           )}
         </>
       )}
-      <PdfFontSizeDialog open={pdfOptionsOpen} title="Download Stream Dashboard PDF" description="Choose the font size for the full stream summary and learner performance report." onCancel={() => setPdfOptionsOpen(false)} onConfirm={async (fontSize) => { await downloadPdf(fontSize); setPdfOptionsOpen(false); }} />
+      <PdfFontSizeDialog open={pdfOptionsOpen} title={pdfTarget === 'tab' ? 'Download Current Page PDF' : 'Download Stream Dashboard PDF (All Pages)'} description="Choose the font size for the downloaded PDF. Font options: 10 (Small), 12 (Compact), 14 (Default), 16 (Large)." onCancel={() => setPdfOptionsOpen(false)} onConfirm={async (fontSize) => { if (pdfTarget === 'tab') await downloadTabPdf(fontSize); else await downloadPdf(fontSize); setPdfOptionsOpen(false); }} />
     </div>
   );
 }

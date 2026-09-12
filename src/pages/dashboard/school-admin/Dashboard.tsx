@@ -160,7 +160,7 @@ export default function SchoolAdminDashboard() {
               { label: 'Record Payment', icon: <CreditCard className="w-4 h-4" />, link: '/school-admin/fees', color: 'bg-orange-50 text-orange-600' },
               { label: 'Post Announcement', icon: <Bell className="w-4 h-4" />, link: '/school-admin/announcements', color: 'bg-purple-50 text-purple-600' },
               { label: 'Assign Roles', icon: <UserCheck className="w-4 h-4" />, link: '/school-admin/assign-roles', color: 'bg-indigo-50 text-indigo-600' },
-              { label: 'Marks Overview', icon: <BarChart3 className="w-4 h-4" />, link: '/school-admin/marks-overview', color: 'bg-green-50 text-green-600' },
+              { label: 'Assessment Progress', icon: <BarChart3 className="w-4 h-4" />, link: '/school-admin/assessment-progress', color: 'bg-green-50 text-green-600' },
             ].map((action, i) => (
               <Link key={i} to={action.link} className={`flex items-center gap-2 p-3 rounded-xl ${action.color} hover:opacity-80 transition-opacity text-sm font-medium`}>
                 {action.icon} {action.label}
