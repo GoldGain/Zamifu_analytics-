@@ -1374,7 +1374,7 @@ export default function TimetableGenerate() {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
                   // A configured double day is an atomic pair. It may not be
                   // downgraded to one lesson when the pair is still required.
-                  const preferredUnitSize: 1 | 2 = isDoubleLesson && !placementContext.doublePlaced && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
+                  const preferredUnitSize: 1 | 2 = isDoubleLesson && !placementContext.doublePlaced ? 2 : 1;
                   let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
                   if (placed === 0 && isDoubleLesson && scheduled + 2 <= lessonsToSchedule) continue;
                   if (placed > 0) {
@@ -1576,8 +1576,10 @@ export default function TimetableGenerate() {
               if (repaired) break;
               const dayName = TIMETABLE_DAYS[day - 1];
               if (!context.availableDays.includes(dayName)) continue;
-              const pendingRequiredDouble = context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay));
-              const onConfiguredDoubleDay = context.isDoubleLesson && context.requiredDoubleDays.includes(dayName);
+              const pendingRequiredDouble = context.isDoubleLesson && !context.doublePlaced;
+              const onConfiguredDoubleDay = context.isDoubleLesson
+                && !context.doublePlaced
+                && (context.requiredDoubleDays.length === 0 || context.requiredDoubleDays.includes(dayName));
               if (pendingRequiredDouble && !onConfiguredDoubleDay) continue;
               if (onConfiguredDoubleDay && remaining < 2) continue;
               const desiredUnit: 1 | 2 = onConfiguredDoubleDay ? 2 : 1;
