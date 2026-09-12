@@ -678,14 +678,6 @@ export default function TimetableGenerate() {
         }
       }
 
-      // Clear existing entries/slots for selected levels + legacy "default" (old generator)
-      // so View Timetable never mixes wrong lesson counts across levels.
-      const levelsToClear = new Set<string>([...Array.from(selectedLevels), 'default']);
-      for (const levelKey of Array.from(levelsToClear)) {
-        await (supabase as any).from('timetable_entries').delete().eq('school_id', schoolId).eq('level_group', levelKey);
-        await (supabase as any).from('timetable_time_slots').delete().eq('school_id', schoolId).eq('level_group', levelKey);
-      }
-
       const teacherBusy = new Set<string>();
       const classBusy = new Set<string>();
       const allEntries: any[] = [];
@@ -729,6 +721,8 @@ export default function TimetableGenerate() {
       const assignmentContexts = new Map<string, AssignmentPlacementContext>();
       const placementRecords: LessonPlacementRecord[] = [];
       const generatedSummary: string[] = [];
+      const pendingSlots: any[] = [];
+      const pendingClassIds = new Set<string>();
       const underScheduled: Array<{
         className: string;
         subjectName: string;
@@ -768,6 +762,7 @@ export default function TimetableGenerate() {
         if (classesToProcess.length === 0) {
           throw new Error(`No active classes match ${LEVEL_GROUPS.find(l => l.key === levelKey)?.label || levelKey}. Select a level that has classes and teacher assignments, or update the class grade level first.`);
         }
+        classesToProcess.forEach((cls: any) => pendingClassIds.add(String(cls.id)));
 
         // Generate the normal level-specific clock once. Explicit activities do
         // not shift this clock and do not add lesson columns. A blocking activity
@@ -834,30 +829,23 @@ export default function TimetableGenerate() {
         const slots = combinedSlots.map(({ activityMeta: _activityMeta, ...slot }: any) => slot);
         console.info(`[timetable] ${levelKey}: ${targets.totalLessons} lessons (${targets.afterLunch} after lunch), ${slots.filter(s => s.slot_type === 'lesson').length} lesson slots generated, ${activityMetaByOrder.size} explicit activities`);
 
-        const { data: createdSlots, error: slotError } = await (supabase as any)
-          .from('timetable_time_slots')
-          .insert(slots.map(s => ({
-            ...s,
-            school_id: schoolId,
-            level_group: levelKey,
-            slot_type: s.slot_type === 'activities' ? 'activity' : s.slot_type,
-          })))
-          .select();
-        if (slotError) throw slotError;
+        // Keep generated slots in memory until every selected level passes all
+        // validation. This prevents failed generation from deleting the
+        // client’s existing timetable or leaving orphaned time slots.
+        const createdSlots = slots.map((slot) => ({
+          ...slot,
+          id: crypto.randomUUID(),
+          school_id: schoolId,
+          level_group: levelKey,
+          slot_type: slot.slot_type === 'activities' ? 'activity' : slot.slot_type,
+        }));
+        pendingSlots.push(...createdSlots);
 
         const lessonN = (createdSlots || []).filter((s: any) => s.slot_type === 'lesson').length;
         const afterN = targets.afterLunch;
         generatedSummary.push(
           `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${lessonN} lessons (${afterN} after lunch), start ${config.school_start}`
         );
-
-        // Remove any leftover entries for these classes under other level_groups.
-        const classIds = classesToProcess.map((c: any) => c.id);
-        await (supabase as any)
-          .from('timetable_entries')
-          .delete()
-          .eq('school_id', schoolId)
-          .in('class_id', classIds);
 
         const orderedSlots = (createdSlots || []).slice().sort((a: any, b: any) => a.slot_order - b.slot_order);
         const fixedSlots = orderedSlots.filter((s: any) => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type));
@@ -2399,7 +2387,17 @@ export default function TimetableGenerate() {
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
-          throw new Error(`Timetable generation stopped: ${stillMissing.length} lesson cells could not be filled with valid assigned subjects (${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}). Review lesson demand, teacher availability, or class assignments and generate again.`);
+          const shortageByClass = new Map<string, { name: string; demand: number; cells: number }>();
+          classesToProcess.forEach((cls: any) => shortageByClass.set(String(cls.id), { name: String(cls.name || 'Class'), demand: 0, cells: lessonSlots.length * TIMETABLE_DAYS.length }));
+          assignmentContexts.forEach((context) => {
+            const item = shortageByClass.get(String(context.cls.id));
+            if (item) item.demand += Math.max(0, Number(context.assignment.lessons_per_week || 0));
+          });
+          const shortageDetails = Array.from(shortageByClass.values())
+            .filter((item) => item.demand < item.cells)
+            .map((item) => `${item.name}: ${item.demand}/${item.cells} assigned lessons`)
+            .join(', ');
+          throw new Error(`Timetable generation stopped safely: ${stillMissing.length} lesson cells could not be filled. ${shortageDetails ? `Current lesson demand is below the timetable capacity (${shortageDetails}). ` : ''}Add the missing weekly subject lessons or configure explicit activities/free periods, then generate again. Existing timetable data was not changed. Example cells: ${missingLabels.join('; ')}${missingLabels.length < stillMissing.length ? ` and ${stillMissing.length - missingLabels.length} more` : ''}.`);
         }
 
         // The no-blank fallback above may have used an extra real subject in
@@ -2915,6 +2913,39 @@ export default function TimetableGenerate() {
           }
         }
 
+      }
+
+      // Commit only after every selected level has passed generation and the
+      // no-blank validation above. A failed generation therefore leaves the
+      // client’s existing timetable untouched.
+      const levelsToClear = new Set<string>([...Array.from(selectedLevels), 'default']);
+      for (const levelKey of Array.from(levelsToClear)) {
+        const { error: slotDeleteError } = await (supabase as any)
+          .from('timetable_time_slots')
+          .delete()
+          .eq('school_id', schoolId)
+          .eq('level_group', levelKey);
+        if (slotDeleteError) throw slotDeleteError;
+        const { error: entryDeleteError } = await (supabase as any)
+          .from('timetable_entries')
+          .delete()
+          .eq('school_id', schoolId)
+          .eq('level_group', levelKey);
+        if (entryDeleteError) throw entryDeleteError;
+      }
+      if (pendingClassIds.size > 0) {
+        const { error: classEntryDeleteError } = await (supabase as any)
+          .from('timetable_entries')
+          .delete()
+          .eq('school_id', schoolId)
+          .in('class_id', Array.from(pendingClassIds));
+        if (classEntryDeleteError) throw classEntryDeleteError;
+      }
+      if (pendingSlots.length > 0) {
+        const { error: slotInsertError } = await (supabase as any)
+          .from('timetable_time_slots')
+          .insert(pendingSlots);
+        if (slotInsertError) throw slotInsertError;
       }
 
       // Bulk insert all entries. Final safety net: collapse exact duplicates
