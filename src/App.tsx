@@ -146,6 +146,7 @@ function ProtectedRoute({
   const [dosAuthorization, setDosAuthorization] = useState<'checking' | 'authorized' | 'denied'>(() => (
     lockTarget === 'dean_of_studies' && user?.role === 'teacher' ? 'checking' : 'authorized'
   ));
+  const [dosCheckedUserId, setDosCheckedUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (lockTarget !== 'dean_of_studies' || user?.role !== 'teacher' || !user?.id) return;
@@ -157,8 +158,16 @@ function ProtectedRoute({
         const { data: school } = await supabaseUntyped.from('schools').select('dean_of_studies_id').eq('id', teacher.school_id).maybeSingle();
         authorized = school?.dean_of_studies_id === teacher.id;
       }
-      if (!cancelled) setDosAuthorization(authorized ? 'authorized' : 'denied');
-    })().catch(() => { if (!cancelled) setDosAuthorization('denied'); });
+      if (!cancelled) {
+        setDosAuthorization(authorized ? 'authorized' : 'denied');
+        setDosCheckedUserId(user.id);
+      }
+    })().catch(() => {
+      if (!cancelled) {
+        setDosAuthorization('denied');
+        setDosCheckedUserId(user.id);
+      }
+    });
     return () => { cancelled = true; };
   }, [lockTarget, user?.id, user?.role]);
 
@@ -169,7 +178,7 @@ function ProtectedRoute({
   if (!user) return <Navigate to="/auth/login" replace />;
   if (!allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
 
-  if (dosAuthorization === 'checking' && lockTarget === 'dean_of_studies' && user.role === 'teacher') return <LoadingSpinner />;
+  if (lockTarget === 'dean_of_studies' && user.role === 'teacher' && (dosAuthorization === 'checking' || dosCheckedUserId !== user.id)) return <LoadingSpinner />;
   if (lockTarget === 'dean_of_studies' && dosAuthorization === 'denied') return <Navigate to="/teacher" replace />;
 
   const schoolScopedRole = ['school_admin', 'teacher', 'student', 'parent'].includes(user.role);
