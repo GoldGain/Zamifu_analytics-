@@ -705,6 +705,7 @@ export default function TimetableGenerate() {
         configuredDoubleDays: string[];
         requiredDoubleDays: string[];
         placedDoubleDays: Set<string>;
+        doublePlaced: boolean;
         dayUsage: Map<number, number>;
         lessonSlots: any[];
         nextLessonById: Map<string, any>;
@@ -1114,7 +1115,12 @@ export default function TimetableGenerate() {
             assignments,
             lessonSlots,
           });
-          if (perfectEntries && perfectEntries.length > 0) {
+          const hasConfiguredDouble = assignments.some((assignment: any) =>
+            classesInLevel.has(String(assignment.class_id)) && isEnabledFlag(assignment.is_double_lesson),
+          );
+          // The perfect-grid solver models every occurrence as a single lesson;
+          // assignments with a configured double must use the atomic path below.
+          if (!hasConfiguredDouble && perfectEntries && perfectEntries.length > 0) {
             allEntries.push(...perfectEntries);
             generatedSummary.push(
               `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (no blanks, exact weekly totals, one subject per day)`
@@ -1157,7 +1163,7 @@ export default function TimetableGenerate() {
             const isDoubleLesson = isEnabledFlag(assignment.is_double_lesson);
             const rawAvailableDays = normalizeDayNames(assignment.available_days);
             const availableDays = rawAvailableDays.length > 0 ? rawAvailableDays : [...TIMETABLE_DAYS];
-            const rawDoubleDays: string[] = [];
+            const rawDoubleDays = normalizeDayNames(assignment.double_lesson_days);
             // Only explicitly selected weekdays are double days. The Teacher
             // Assignments screen displays “Set double days” when the double flag
             // is on but no weekdays have been chosen; those lessons must remain
@@ -1165,7 +1171,9 @@ export default function TimetableGenerate() {
             const configuredDoubleDays = rawDoubleDays.length > 0
               ? rawDoubleDays.filter((day) => availableDays.includes(day))
               : [];
-            const requiredDoubleDays = configuredDoubleDays.slice(0, Math.floor(lessonsToSchedule / 2));
+            // A double-enabled assignment gets one atomic pair per week;
+            // remaining weekly demand is placed as single lessons.
+            const requiredDoubleDays = configuredDoubleDays.slice(0, 1);
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
             const isMath = /mathemat/.test(subjectName);
             const isScience = /integrated\s*science|science|environment/.test(subjectName);
@@ -1215,7 +1223,7 @@ export default function TimetableGenerate() {
               // hard constraint. If two double assignments share a teacher on
               // the same configured day, the pair must move as a whole to
               // another available day rather than leaving the timetable blank.
-              if (unitSize === 2 && !isDoubleLesson) return 0;
+              if (unitSize === 2 && (!isDoubleLesson || placementContext.doublePlaced)) return 0;
               if (unitSize === 2 && !isValidDoubleLessonPair(subjectName, startSlot, secondSlot)) return 0;
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
               if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${assignment.teacher_id}-${day}-${startSlot.id}`)) return 0;
@@ -1297,6 +1305,7 @@ export default function TimetableGenerate() {
                 const requirement = requiredDoubleDays.find((doubleDay) => !placementContext.placedDoubleDays.has(doubleDay));
                 if (requirement) placementContext.placedDoubleDays.add(requirement);
               }
+              if (unitSize === 2) placementContext.doublePlaced = true;
               return unitSize;
             };
 
@@ -1318,6 +1327,7 @@ export default function TimetableGenerate() {
               configuredDoubleDays,
               requiredDoubleDays,
               placedDoubleDays: new Set<string>(),
+              doublePlaced: false,
               dayUsage: new Map<number, number>(),
               lessonSlots,
               nextLessonById,
@@ -1376,7 +1386,7 @@ export default function TimetableGenerate() {
                   if (shouldSkipPreferredSlot(skipPreferredStarts, preferredSlotIds, lessonSlots.length, String(slot.id))) continue;
                   // A configured double day is an atomic pair. It may not be
                   // downgraded to one lesson when the pair is still required.
-                  const preferredUnitSize: 1 | 2 = isDoubleLesson && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
+                  const preferredUnitSize: 1 | 2 = isDoubleLesson && !placementContext.doublePlaced && scheduled + 2 <= lessonsToSchedule ? 2 : 1;
                   let placed = tryPlaceUnit(slot, day, dayActivities, daySlotTimes, preferredUnitSize);
                   if (placed === 0 && isDoubleLesson && scheduled + 2 <= lessonsToSchedule) continue;
                   if (placed > 0) {
@@ -1447,6 +1457,7 @@ export default function TimetableGenerate() {
           else subjectDayUsage.delete(placement.subjectDayKey);
           const recordIndex = placementRecords.indexOf(placement);
           if (recordIndex >= 0) placementRecords.splice(recordIndex, 1);
+          if (placement.unitSize === 2) placement.context.doublePlaced = false;
         };
 
         const getUnitSlots = (context: AssignmentPlacementContext, startSlot: any, unitSize: 1 | 2) => {
@@ -1471,7 +1482,7 @@ export default function TimetableGenerate() {
           if (subjectAlreadyUsedToday) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
           if (!context.availableDays.includes(dayName)) return false;
-            if (unitSize === 2 && !context.isDoubleLesson) return false;
+            if (unitSize === 2 && (!context.isDoubleLesson || context.doublePlaced)) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${startSlot.id}`)) return false;
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
@@ -1544,6 +1555,7 @@ export default function TimetableGenerate() {
           context.dayUsage.set(day, (context.dayUsage.get(day) || 0) + 1);
           const placement = { context, unitSize, day, slots: unitSlots, classKeys, teacherKeys, entries, subjectDayKey };
           placementRecords.push(placement);
+          if (unitSize === 2) context.doublePlaced = true;
           return placement;
         };
 
@@ -1648,6 +1660,7 @@ export default function TimetableGenerate() {
           subjectDayUsage.set(placement.subjectDayKey, (subjectDayUsage.get(placement.subjectDayKey) || 0) + placement.unitSize);
           placement.context.dayUsage.set(placement.day, (placement.context.dayUsage.get(placement.day) || 0) + 1);
           placementRecords.push(placement);
+          if (placement.unitSize === 2) placement.context.doublePlaced = true;
         };
 
         const normalizeNonDoubleDayDistribution = (context: AssignmentPlacementContext) => {
@@ -2386,7 +2399,7 @@ export default function TimetableGenerate() {
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
-          console.warn(`[timetable] saved with ${stillMissing.length} unresolved cells: ${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}.`);
+          throw new Error(`Timetable generation stopped: ${stillMissing.length} lesson cells could not be filled with valid assigned subjects (${missingLabels.join('; ')}${stillMissing.length > 8 ? ` and ${stillMissing.length - 8} more` : ''}). Review lesson demand, teacher availability, or class assignments and generate again.`);
         }
 
         // The no-blank fallback above may have used an extra real subject in
