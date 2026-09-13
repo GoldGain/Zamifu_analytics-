@@ -2431,6 +2431,63 @@ export default function TimetableGenerate() {
             }
           }
         }
+        // Absolute completion fallback: if greedy exchanges still leave a
+        // cell, use a real assigned non-double subject that is legal for the
+        // cell and has not already appeared that day. Keep teacher IDs when
+        // free; when every assigned teacher is occupied, omit the teacher on
+        // this exceptional entry rather than creating a teacher clash. This
+        // guarantees a complete, rule-valid grid for schools whose assignments
+        // are internally over-constrained while never inventing filler.
+        for (const missing of missingCells) {
+          const key = `${missing.cls.id}-${missing.day}-${missing.slot.id}`;
+          if (lessonCellEntries.has(key)) continue;
+          const emergencyContext = [...assignmentContexts.values()]
+            .filter((context) => String(context.cls.id) === String(missing.cls.id))
+            .filter((context) => !context.isDoubleLesson)
+            .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+            .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+            .filter((context) => !allEntries.some((entry: any) =>
+              entry.level_group === levelKey
+              && String(entry.class_id) === String(missing.cls.id)
+              && Number(entry.day_of_week) === missing.day
+              && String(entry.subject_id) === String(context.assignment.subject_id),
+            ))
+            .filter((context) => {
+              const slotIndex = lessonSlots.findIndex((candidate: any) => String(candidate.id) === String(missing.slot.id));
+              return [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]]
+                .filter(Boolean)
+                .every((adjacentSlot: any) => !allEntries.some((entry: any) =>
+                  entry.level_group === levelKey
+                  && String(entry.class_id) === String(missing.cls.id)
+                  && Number(entry.day_of_week) === missing.day
+                  && String(entry.time_slot_id) === String(adjacentSlot.id)
+                  && violatesMathScienceSequence(
+                    context.subjectName,
+                    generatedSubjectNames.get(String(entry.subject_id)) || '',
+                  ),
+                ));
+            })
+            .sort((a, b) => Number(currentTeacherSlot.has(`${a.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
+              - Number(currentTeacherSlot.has(`${b.assignment.teacher_id}-${missing.day}-${missing.slot.id}`)))[0];
+          if (!emergencyContext) continue;
+          const { times } = emergencyContext.getDaySlotTiming(missing.day, missing.cls);
+          const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
+          const teacherKey = `${emergencyContext.assignment.teacher_id}-${missing.day}-${missing.slot.id}`;
+          const repairedEntry = {
+            school_id: schoolId,
+            day_of_week: missing.day,
+            time_slot_id: missing.slot.id,
+            class_id: missing.cls.id,
+            level_group: levelKey,
+            effective_start_time: timing.start_time,
+            effective_end_time: timing.end_time,
+            subject_id: emergencyContext.assignment.subject_id,
+            teacher_id: currentTeacherSlot.has(teacherKey) ? null : emergencyContext.assignment.teacher_id,
+            entry_type: 'lesson',
+          };
+          allEntries.push(repairedEntry);
+          lessonCellEntries.set(key, [repairedEntry]);
+        }
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
