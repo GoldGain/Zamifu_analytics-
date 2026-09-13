@@ -2436,7 +2436,6 @@ export default function TimetableGenerate() {
           const key = `${missing.cls.id}-${missing.day}-${missing.slot.id}`;
           if (lessonCellEntries.has(key)) continue;
           const emergencyContext = [...assignmentContexts.values()]
-            .filter((context) => !context.isDoubleLesson)
             .sort((a, b) => Number(currentTeacherSlot.has(`${a.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
               - Number(currentTeacherSlot.has(`${b.assignment.teacher_id}-${missing.day}-${missing.slot.id}`)))[0];
           if (!emergencyContext) continue;
