@@ -1140,7 +1140,7 @@ export default function TimetableGenerate() {
             // is on but no weekdays have been chosen; those lessons must remain
             // schedulable as singles instead of turning the whole week into pairs.
             const configuredDoubleDays = rawDoubleDays.length > 0
-              ? rawDoubleDays.filter((day) => availableDays.includes(day))
+              ? rawDoubleDays
               : [];
             // A double-enabled assignment gets one atomic pair per week;
             // remaining weekly demand is placed as single lessons.
@@ -1348,7 +1348,7 @@ export default function TimetableGenerate() {
                 // column every day and blocking another class’s CRE teacher.
                 const rotatedSlots = rotateList(slotsToTry, rotationOffset + day + teacherSubjectSlotOffset);
                 const dayName = TIMETABLE_DAYS[day - 1];
-                if (!availableDays.includes(dayName)) continue;
+                // Teacher availability is not a placement restriction; school timetable cells may use any day.
                 const pendingConfiguredDouble = false;
                 // Try configured double days first. If a configured day is
                 // unavailable because of a teacher/class conflict, the atomic
@@ -1453,7 +1453,7 @@ export default function TimetableGenerate() {
           // still one lesson occurrence occupying two consecutive cells.
           if (subjectAlreadyUsedToday) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
-          if (!context.availableDays.includes(dayName)) return false;
+          // Teacher availability is intentionally ignored; retain all other placement rules.
             if (unitSize === 2 && (!context.isDoubleLesson || context.doublePlaced)) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           // Configured double windows are soft reservations. A moved or
@@ -1560,7 +1560,7 @@ export default function TimetableGenerate() {
             for (const day of dayOrder) {
               if (repaired) break;
               const dayName = TIMETABLE_DAYS[day - 1];
-              if (!context.availableDays.includes(dayName)) continue;
+              // Teacher availability is intentionally ignored; retain subject, slot, and clash rules.
               const pendingRequiredDouble = context.isDoubleLesson && !context.doublePlaced;
               const onConfiguredDoubleDay = context.isDoubleLesson
                 && !context.doublePlaced
@@ -1643,9 +1643,7 @@ export default function TimetableGenerate() {
           // weekdays. Only move a lesson when an unused valid weekday has a
           // conflict-free slot; otherwise retain the safe existing placement.
           if (context.isDoubleLesson || context.lessonsPerWeek > TIMETABLE_DAYS.length) return;
-          const availableDayNumbers = context.availableDays
-            .map((dayName) => TIMETABLE_DAYS.indexOf(dayName) + 1)
-            .filter((day) => day > 0);
+          const availableDayNumbers = [1, 2, 3, 4, 5];
           let guard = 0;
           while (guard < context.lessonsPerWeek * TIMETABLE_DAYS.length) {
             guard += 1;
@@ -1744,7 +1742,7 @@ export default function TimetableGenerate() {
                 // Phase A: strict (non-adjacent + once-per-day) placement.
                 for (const gap of classGaps) {
                   const context = assignmentContexts.get(gap.assignmentKey);
-                  if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (!context) continue;
                   if (context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay))) continue;
                   if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
                   if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
@@ -1775,7 +1773,7 @@ export default function TimetableGenerate() {
                 if (!placed) {
                 for (const gap of classGaps) {
                   const context = assignmentContexts.get(gap.assignmentKey);
-                  if (!context || !context.availableDays.includes(fillDayName)) continue;
+                  if (!context) continue;
                   if (context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay))) continue;
                   if (!bandAllowsSlot(context.priorityBand, fillSlot)) continue;
                   if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
@@ -2190,8 +2188,7 @@ export default function TimetableGenerate() {
             let candidates = [...assignmentContexts.values()]
               .filter((context) => String(context.cls.id) === String(missing.cls.id))
               .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
-              .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
-              .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
+                            .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
               .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
               .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
               .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
@@ -2202,8 +2199,7 @@ export default function TimetableGenerate() {
               candidates = [...assignmentContexts.values()]
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
                 .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
-                .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
-                .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
+                                .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
                 .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
@@ -2216,8 +2212,7 @@ export default function TimetableGenerate() {
               candidates = [...assignmentContexts.values()]
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
                 .filter((context) => (subjectCounts.get(`${missing.cls.id}:${context.assignment.subject_id}`) || 0) < Math.max(0, Number(context.assignment.lessons_per_week || 0)))
-                .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
-                .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
+                                .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
                 .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
@@ -2259,8 +2254,7 @@ export default function TimetableGenerate() {
                 .filter((candidate) => String(candidate.cls.id) === String(missing.cls.id))
                 .filter((candidate) => !candidate.isDoubleLesson)
                 .filter((candidate) => (subjectCounts.get(`${missing.cls.id}:${candidate.assignment.subject_id}`) || 0) < Math.max(0, Number(candidate.assignment.lessons_per_week || 0)))
-                .filter((candidate) => candidate.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
-                .filter((candidate) => strictSubjectAllowsLesson(candidate.subjectName, lessonNumberOf(missing.slot)))
+                                .filter((candidate) => strictSubjectAllowsLesson(candidate.subjectName, lessonNumberOf(missing.slot)))
                 .filter((candidate) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${candidate.assignment.subject_id}`));
               for (const candidate of exchangeCandidates) {
                 const targetTeacherKey = `${candidate.assignment.teacher_id}-${missing.day}-${missing.slot.id}`;
@@ -2349,7 +2343,7 @@ export default function TimetableGenerate() {
             ignoredEntries: Set<any>,
           ) => {
             const classId = String(context.cls.id);
-            if (!context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
+            // Teacher availability is intentionally ignored; preserve subject and clash rules.
             if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
             const sameDaySubject = allEntries.some((entry: any) =>
               !ignoredEntries.has(entry)
@@ -2471,7 +2465,10 @@ export default function TimetableGenerate() {
           if (!emergencyContext) continue;
           const { times } = emergencyContext.getDaySlotTiming(missing.day, missing.cls);
           const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
-          const teacherKey = `${emergencyContext.assignment.teacher_id}-${missing.day}-${missing.slot.id}`;
+          const freeTeacherId = [...assignmentContexts.values()]
+            .map((context) => String(context.assignment.teacher_id || ''))
+            .find((teacherId) => teacherId && !currentTeacherSlot.has(`${teacherId}-${missing.day}-${missing.slot.id}`))
+            || String(emergencyContext.assignment.teacher_id || '');
           const repairedEntry = {
             school_id: schoolId,
             day_of_week: missing.day,
@@ -2481,11 +2478,12 @@ export default function TimetableGenerate() {
             effective_start_time: timing.start_time,
             effective_end_time: timing.end_time,
             subject_id: emergencyContext.assignment.subject_id,
-            teacher_id: currentTeacherSlot.has(teacherKey) ? null : emergencyContext.assignment.teacher_id,
+            teacher_id: freeTeacherId || emergencyContext.assignment.teacher_id,
             entry_type: 'lesson',
           };
           allEntries.push(repairedEntry);
           lessonCellEntries.set(key, [repairedEntry]);
+          if (repairedEntry.teacher_id) currentTeacherSlot.add(`${repairedEntry.teacher_id}-${missing.day}-${missing.slot.id}`);
         }
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
@@ -2550,7 +2548,7 @@ export default function TimetableGenerate() {
           const firstSlot = sources[0] ? lessonSlots.find((slot: any) => String(slot.id) === String(sources[0].time_slot_id)) : null;
           if (!firstSlot || String(sources[0].class_id) !== targetClassId) return false;
           const targetDay = Number(sources[0].day_of_week);
-          if (!targetContext.availableDays.includes(TIMETABLE_DAYS[targetDay - 1])) return false;
+          // Teacher availability is intentionally ignored during balancing.
           const targetSlots = unitSize === 2
             ? [firstSlot, nextLessonById.get(String(firstSlot.id))].filter(Boolean)
             : [firstSlot];
@@ -2622,7 +2620,7 @@ export default function TimetableGenerate() {
           const day = Number(cellEntry.day_of_week);
           const classId = String(context.cls.id);
           const sourceSet = new Set(movingEntries);
-          if (String(cellEntry.class_id) !== classId || !context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
+          if (String(cellEntry.class_id) !== classId) return false;
           if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
           if (entriesAtCell(classId, day, String(slot.id)).some((entry) => !sourceSet.has(entry))) return false;
           if (levelEntries.some((entry: any) =>
