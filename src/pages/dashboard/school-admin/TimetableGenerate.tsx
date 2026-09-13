@@ -950,40 +950,10 @@ export default function TimetableGenerate() {
             subjectDemandByClass.set(key, (subjectDemandByClass.get(key) || 0) + Math.max(0, Number(assignment.lessons_per_week || 0)));
           });
 
-        // Reserve each teacher’s configured double-day priority window before
-        // any single lesson is placed. Without this, Grade 7 Science singles
-        // can consume Wednesday Lesson 3/4 and make Grade 8 Science’s explicitly
-        // configured Wednesday double impossible when the same teacher serves
-        // both classes.
-        const teacherDoubleReservedSlotKeys = new Set<string>();
-        assignments.forEach((assignment: any) => {
-          if (!classesInLevel.has(String(assignment.class_id)) || !isEnabledFlag(assignment.is_double_lesson)) return;
-          const assignmentBand = defaultBandFor(String(assignment.subjects?.name || ''));
-          const assignmentPreferredSlots = assignmentBand === 'early_morning'
-            ? prioritySlots.early_morning
-            : assignmentBand === 'mid_morning'
-              ? prioritySlots.mid_morning
-              : assignmentBand === 'late_morning'
-                ? prioritySlots.late_morning
-                : assignmentBand === 'afternoon'
-                  ? prioritySlots.afternoon
-                  : lessonSlots;
-          const reservationSlots = assignmentPreferredSlots.length > 0 ? assignmentPreferredSlots : lessonSlots;
-          const assignmentAvailableDays = normalizeDayNames(assignment.available_days);
-          const assignmentDoubleDays: string[] = [];
-          // A double flag without selected weekdays means “double days not yet
-          // configured”, not “reserve every day”. Do not block ordinary lessons
-          // for this teacher until the administrator explicitly chooses days.
-          if (assignmentDoubleDays.length === 0) return;
-          const reservationDays = assignmentDoubleDays;
-          reservationDays.forEach((dayName) => {
-            const dayNumber = TIMETABLE_DAYS.indexOf(dayName) + 1;
-            if (dayNumber < 1) return;
-            reservationSlots.forEach((slot: any) => {
-              teacherDoubleReservedSlotKeys.add(`${assignment.teacher_id}-${dayNumber}-${slot.id}`);
-            });
-          });
-        });
+        // Track each teacher’s configured double-day window as a soft preference.
+        // It must not become a hard block: when two double assignments share a
+        // teacher/day, one pair may move to another valid day and the released
+        // cells must remain available to ordinary lessons.
         const overlaps = (startA: string, endA: string, startB: string, endB: string) =>
           toMinutes(startA) < toMinutes(endB) && toMinutes(endA) > toMinutes(startB);
         const matchesTarget = (activity: ScheduledActivity, cls: any) => {
@@ -1227,7 +1197,8 @@ export default function TimetableGenerate() {
               if (unitSize === 2 && (!isDoubleLesson || placementContext.doublePlaced)) return 0;
               if (unitSize === 2 && !isValidDoubleLessonPair(subjectName, startSlot, secondSlot)) return 0;
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
-              if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${assignment.teacher_id}-${day}-${startSlot.id}`)) return 0;
+              // teacherBusy below is the authoritative no-clash guard after
+              // pairs are placed; configured double windows are not blockers.
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const subjectDayKey = `${cls.id}-${day}-${assignment.subject_id}`;
               const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
@@ -1485,7 +1456,8 @@ export default function TimetableGenerate() {
           if (!context.availableDays.includes(dayName)) return false;
             if (unitSize === 2 && (!context.isDoubleLesson || context.doublePlaced)) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
-          if (unitSize === 1 && teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${startSlot.id}`)) return false;
+          // Configured double windows are soft reservations. A moved or
+          // unplaceable pair must not strand this otherwise valid single cell.
           const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
           const timings = unitSlots.map((slot: any) =>
             times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
@@ -2480,7 +2452,6 @@ export default function TimetableGenerate() {
           if (unitSize === 2 && !targetContext.isDoubleLesson) return false;
           if (unitSize === 2 && !isValidDoubleLessonPair(targetName, targetSlots[0], targetSlots[1])) return false;
           if (targetSlots.some((slot: any) => !strictSubjectAllowsLesson(targetName, lessonNumberOf(slot)))) return false;
-          if (targetSlots.some((slot: any) => teacherDoubleReservedSlotKeys.has(`${targetContext.assignment.teacher_id}-${targetDay}-${slot.id}`))) return false;
 
           const targetSubjectEntries = levelEntries.filter((entry: any) =>
             String(entry.class_id) === targetClassId
@@ -2547,7 +2518,6 @@ export default function TimetableGenerate() {
           const sourceSet = new Set(movingEntries);
           if (String(cellEntry.class_id) !== classId || !context.availableDays.includes(TIMETABLE_DAYS[day - 1])) return false;
           if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
-          if (teacherDoubleReservedSlotKeys.has(`${context.assignment.teacher_id}-${day}-${slot.id}`)) return false;
           if (entriesAtCell(classId, day, String(slot.id)).some((entry) => !sourceSet.has(entry))) return false;
           if (levelEntries.some((entry: any) =>
             !sourceSet.has(entry)
