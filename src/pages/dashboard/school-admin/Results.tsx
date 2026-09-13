@@ -550,7 +550,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       // ── PAGE 1: CLASS SUMMARY ────────────────────────────────────────────────────
       {
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 40, 'F');
-        if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 2, 16, 16);
+        if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 97, 2, 16, 16);
         doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold');
         doc.setFontSize(pdfFontSize(doc, 13));
         doc.text(displaySchoolName, 105, 21, { align: 'center' });
@@ -1170,7 +1170,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
     // ── PAGE 1: CLASS SUMMARY ──────────────────────────────────────────────
     doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 40, 'F');
-    if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 2, 16, 16);
+    if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 97, 2, 16, 16);
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 13));
     doc.text(schoolInfo.name || schoolName || 'School', 105, 21, { align: 'center' });
     doc.setFontSize(pdfFontSize(doc, 10)); doc.text('CLASS RESULTS SUMMARY', 105, 27, { align: 'center' });
@@ -1248,17 +1248,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 9));
     subjectStats.forEach((subject, index) => {
       const y = 32 + index * 6;
-      const previous = previousSubjectStats.get(subject.name) ?? 0;
+      const previous = previousSubjectStats.has(subject.name) ? previousSubjectStats.get(subject.name) : null;
       const label = subject.name.length > 20 ? `${subject.name.slice(0, 19)}…` : subject.name;
       doc.text(label, 14, y);
       doc.setFillColor(225, 230, 240); doc.rect(44, y - 2, 52, 3, 'F');
       doc.setFillColor(37, 99, 235); doc.rect(44, y - 2, 52 * Math.min(100, subject.mean) / 100, 3, 'F');
-      if (previousTerm) {
+      if (previousTerm && previous != null) {
         doc.setFillColor(225, 230, 240); doc.rect(142, y - 2, 52, 3, 'F');
         doc.setFillColor(106, 27, 154); doc.rect(142, y - 2, 52 * Math.min(100, previous) / 100, 3, 'F');
       }
       doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 100, y);
-      if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(`${previous.toFixed(1)}%`, 198, y); }
+      if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(previous != null ? `${previous.toFixed(1)}%` : '—', 198, y); }
       doc.setTextColor(0, 0, 0);
     });
 
