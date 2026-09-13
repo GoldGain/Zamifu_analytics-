@@ -50,7 +50,30 @@ export default function SchoolAdminAssessmentProgress() {
           const baseIds = taughtIds.length > 0 ? taughtIds : coreSubjectIds;
           const allIds = Array.from(new Set([...baseIds, ...enteredIds]));
           const enteredSet = new Set(enteredIds);
-          const subjectProgress = allIds.map((sid: string) => ({ subjectId: sid, subjectName: subjectName.get(sid) || sid, hasMarks: enteredSet.has(sid), studentCount: 0 }));
+          const isReligiousId = (sid: string) => {
+            const n = (subjectName.get(sid) || '').toUpperCase().replace(/[.\s]/g, '');
+            return n === 'CRE' || n === 'IRE' || n === 'HRE' || n.includes('CHRISTIAN') || n.includes('ISLAMIC') || n.includes('HINDU') || n.includes('RELIGIOUS');
+          };
+          const religiousIds = allIds.filter(isReligiousId);
+          const nonReligiousIds = allIds.filter((sid) => !isReligiousId(sid));
+          // A learner takes only one religious-education variant (CRE, IRE or HRE),
+          // so collapse every religious learning area into a single slot that is
+          // counted as entered when ANY of its variants has marks. This stops the
+          // other variants from being reported as "missing results".
+          let religiousLabel = '';
+          if (religiousIds.length > 0) {
+            const shortNames = Array.from(new Set(religiousIds.map((sid) => subjectName.get(sid) || sid).filter(Boolean))).map((n) => { const u = n.toUpperCase().replace(/[.\s]/g, ''); if (u === 'CRE' || u.includes('CHRISTIAN')) return 'CRE'; if (u === 'IRE' || u.includes('ISLAMIC')) return 'IRE'; if (u === 'HRE' || u.includes('HINDU')) return 'HRE'; return n; });
+            religiousLabel = Array.from(new Set(shortNames)).sort().join('/');
+          }
+          const subjectProgress: { subjectId: string; subjectName: string; hasMarks: boolean; studentCount: number }[] = [
+            ...(religiousIds.length > 0 ? [{
+              subjectId: religiousIds[0],
+              subjectName: religiousLabel || 'Religious Education',
+              hasMarks: religiousIds.some((sid) => enteredSet.has(sid)),
+              studentCount: 0,
+            }] : []),
+            ...nonReligiousIds.map((sid) => ({ subjectId: sid, subjectName: subjectName.get(sid) || sid, hasMarks: enteredSet.has(sid), studentCount: 0 })),
+          ];
           const totalSubjects = subjectProgress.length;
           const enteredSubjects = subjectProgress.filter((s) => s.hasMarks).length;
           const level = getEffectiveGradeLevel(cls);
