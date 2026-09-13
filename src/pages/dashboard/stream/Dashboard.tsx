@@ -530,7 +530,7 @@ export default function StreamDashboard() {
           ? ['EE', 'ME', 'AE', 'BE']
           : ['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2'];
       const currentBandCounts: Record<string, number> = {};
-      rankings.forEach((r) => { if (r.grade) currentBandCounts[r.grade] = (currentBandCounts[r.grade] || 0) + 1; });
+      rankRows.forEach((r) => { if (r.grade) currentBandCounts[r.grade] = (currentBandCounts[r.grade] || 0) + 1; });
       const previousBandCounts: Record<string, number> = {};
       Object.keys(statsByStudent).forEach((sid) => {
         const prev = prevAvgById[sid] ?? null;
