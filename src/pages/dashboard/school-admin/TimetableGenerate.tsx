@@ -2444,7 +2444,6 @@ export default function TimetableGenerate() {
           const emergencyContext = [...assignmentContexts.values()]
             .filter((context) => String(context.cls.id) === String(missing.cls.id))
             .filter((context) => !context.isDoubleLesson)
-            .filter((context) => context.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
             .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
             .filter((context) => !allEntries.some((entry: any) =>
               entry.level_group === levelKey
