@@ -7,8 +7,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { deleteResults } from '@/lib/resultActions';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
 
 import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import { normalizeLearningAreaName, normalizeLearningAreas } from '@/lib/learningAreas';
@@ -118,6 +116,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [generatingBulk, setGeneratingBulk] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [scopedClassId, setScopedClassId] = useState('');
+  const [showAllStreams, setShowAllStreams] = useState(false);
 
   const [editingResult, setEditingResult] = useState<any | null>(null);
   const [editMarks, setEditMarks] = useState('');
@@ -132,7 +131,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({ name: '' });
   const [principalSignatureUrl, setPrincipalSignatureUrl] = useState<string | null>(null);
   const [pendingPdfDownload, setPendingPdfDownload] = useState<{
-    target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary' | 'per-stream-summary';
+    target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary';
     student?: any;
   } | null>(null);
 
@@ -204,8 +203,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     setLoading(false);
   };
 
+  const selectedClassObjForView = classes.find((c: any) => c.id === selectedClass);
+  const allStreamClassIds = selectedClassObjForView
+    ? classes
+      .filter((c: any) => c.name === selectedClassObjForView.name && String(c.grade_level ?? c.level ?? '') === String(selectedClassObjForView.grade_level ?? selectedClassObjForView.level ?? ''))
+      .map((c: any) => c.id)
+    : [];
+  const activeResultClassIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
+    ? new Set(allStreamClassIds)
+    : selectedClass ? new Set([selectedClass]) : null;
+
   const filtered = results.filter(r => {
-    if (selectedClass && r.class_id !== selectedClass) return false;
+    if (activeResultClassIds && !activeResultClassIds.has(r.class_id)) return false;
     if (selectedTerm && r.term_id !== selectedTerm) return false;
     if (selectedExam) {
       const examName = r.school_exams?.name || r.exams?.name || '';
@@ -465,7 +474,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return names.length === 1 ? (names[0] as string) : '';
   };
 
-  const openPdfFontSizeDialog = (target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary' | 'per-stream-summary', student?: any) => {
+  const openPdfFontSizeDialog = (target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary', student?: any) => {
     if (generatingPDF || generatingBulk) return;
     setPendingPdfDownload({ target, student });
   };
@@ -480,7 +489,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       else if (request.target === 'bulk-report-cards') await downloadBulkReportCards(fontSize);
       else if (request.target === 'all-streams-bulk') await downloadAllStreamsBulkReportCards(fontSize);
       else if (request.target === 'all-streams-summary') await downloadAllStreamsSummary(fontSize);
-      else if (request.target === 'per-stream-summary') await downloadPerStreamSummary(fontSize);
       else if (request.student) await downloadSingleReportCard(request.student, fontSize);
     } finally {
       setPendingPdfDownload(null);
@@ -502,7 +510,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const allSubjectsRaw = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
       const allSubjects = sortSubjects(normalizeLearningAreas(allSubjectsRaw));
       const totalStudents = summaries.length;
-      const classMean = totalStudents > 0 ? summaries.reduce((sum, s) => sum + s.avgPct, 0) / totalStudents : 0;
       
       const subjectStats = allSubjects.map(sub => {
         const vals = summaries.map(s => s.subjects[sub]).filter(v => v !== undefined);
@@ -543,18 +550,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       // ── PAGE 1: CLASS SUMMARY ────────────────────────────────────────────────────
       {
         doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 35, 'F');
-        const logoAdded = schoolInfo.logo_url ? await addLogoToPDF(doc, schoolInfo.logo_url, 10, 3, 26, 26) : false;
+        if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 3, 26, 26);
         doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 16)); doc.setFont('helvetica', 'bold');
-        doc.text(displaySchoolName, logoAdded ? 40 : 105, 13, { align: logoAdded ? 'left' : 'center' });
+        doc.text(displaySchoolName, 105, 13, { align: 'center' });
         doc.setFontSize(pdfFontSize(doc, 11));
-        doc.text('CLASS RESULTS SUMMARY', logoAdded ? 40 : 105, 22, { align: logoAdded ? 'left' : 'center' });
+        doc.text('CLASS RESULTS SUMMARY', 105, 22, { align: 'center' });
         doc.setFontSize(pdfFontSize(doc, 9));
         const summarySubtitle = assessmentLabel
           ? `${streamLabel(classObj)} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''} — ${assessmentLabel}`
           : `${streamLabel(classObj)} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`;
-        doc.text(summarySubtitle, logoAdded ? 40 : 105, 30, { align: logoAdded ? 'left' : 'center' });
+        doc.text(summarySubtitle, 105, 30, { align: 'center' });
 
-        const classGrade = overallGradeWithBand(classMean, band);
         const statsY = 42;
         const boys = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('m')).length;
         const girls = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('f')).length;
@@ -566,11 +572,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         // Class Mean Marks = Total Marks of ALL Learners ÷ Number of Learners
         // Each student's totalPct is the sum of their subject percentages (each out of 100)
         // totalPct / count = avgPct (their average %). Total marks = avgPct * numSubjects
-        const numSubjects = allSubjects.length;
+        const numSubjects = getRequiredLearningAreas(classObj) ?? allSubjects.length;
         const classMeanMarksValue = totalStudents > 0
           ? summaries.reduce((sum, s) => sum + s.totalPct, 0) / totalStudents
           : 0;
         const classMeanMarksOutOf = numSubjects * 100;
+        const classMeanPercentage = classMeanMarksOutOf > 0 ? (classMeanMarksValue / classMeanMarksOutOf) * 100 : 0;
+        const classGrade = overallGradeWithBand(classMeanPercentage, band);
 
         doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 68, 'F');
         doc.setFontSize(pdfFontSize(doc, 8.5)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
@@ -1140,38 +1148,92 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
     const totalStudents = summaries.length;
     const classMeanMarks = totalStudents > 0 ? summaries.reduce((s, x) => s + x.totalPct, 0) / totalStudents : 0;
-    const classGrade = overallGradeWithBand(classMeanMarks, band);
+    const requiredLearningAreas = getRequiredLearningAreas(opts.classObj) ?? allSubjects.length;
+    const classMeanMarksOutOf = requiredLearningAreas * 100;
+    const classMeanPercentage = classMeanMarksOutOf > 0 ? (classMeanMarks / classMeanMarksOutOf) * 100 : 0;
+    const classGrade = overallGradeWithBand(classMeanPercentage, band);
     const boys = summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('m')).length;
     const girls = summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('f')).length;
-    doc.addPage();
-    doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 32, 'F');
-    if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 10, 4, 24, 24);
+    const subjectStats = allSubjects.map((name) => {
+      const values = summaries.map((s: any) => s.subjects[name]).filter((value: any) => value !== undefined);
+      return { name, mean: values.length ? values.reduce((sum: number, value: number) => sum + value, 0) / values.length : 0 };
+    }).sort((a, b) => b.mean - a.mean);
+    const gradeBands = isPrimary
+      ? [{ label: 'EE', min: 75 }, { label: 'ME', min: 41 }, { label: 'AE', min: 21 }, { label: 'BE', min: 0 }]
+      : [{ label: 'EE1', min: 90 }, { label: 'EE2', min: 75 }, { label: 'ME1', min: 58 }, { label: 'ME2', min: 41 }, { label: 'AE1', min: 31 }, { label: 'AE2', min: 21 }, { label: 'BE1', min: 11 }, { label: 'BE2', min: 0 }];
+
+    // jsPDF starts with page 1. Render directly on it so the exported PDF
+    // never contains a blank cover page.
+    doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 35, 'F');
+    if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 3, 26, 26);
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 16));
-    doc.text(schoolInfo.name || schoolName || 'School', 40, 12);
-    doc.setFontSize(pdfFontSize(doc, 12)); doc.text('CLASS RESULTS SUMMARY', 40, 20);
-    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'normal');
-    doc.text(`${opts.label} — ${opts.termObj?.name || 'Term'} ${opts.termObj?.academic_year || ''}${opts.assessmentLabel ? ` — ${opts.assessmentLabel}` : ''}`, 40, 27);
-    doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 9));
-    const statsY = 40;
+    doc.text(schoolInfo.name || schoolName || 'School', 105, 13, { align: 'center' });
+    doc.setFontSize(pdfFontSize(doc, 11)); doc.text('CLASS RESULTS SUMMARY', 105, 22, { align: 'center' });
+    doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'normal');
+    doc.text(`${opts.label} — ${opts.termObj?.name || 'Term'} ${opts.termObj?.academic_year || ''}${opts.assessmentLabel ? ` — ${opts.assessmentLabel}` : ''}`, 105, 30, { align: 'center' });
+    doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
+    const statsY = 42;
     doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 30, 'F');
     doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
     doc.text(`Boys: ${boys}`, 72, statsY + 8); doc.text(`Girls: ${girls}`, 110, statsY + 8);
     doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}`, 20, statsY + 18);
-    doc.text(`Class Mean Marks: ${classMeanMarks.toFixed(1)} / ${allSubjects.length * 100}`, 72, statsY + 18);
-    doc.text(`Learning Areas: ${allSubjects.length}`, 20, statsY + 27);
+    doc.text(`Class Mean Marks: ${classMeanMarks.toFixed(1)} / ${classMeanMarksOutOf}`, 72, statsY + 18);
+    doc.text(`Learning Areas: ${requiredLearningAreas}`, 20, statsY + 27);
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
+    doc.text('TOP 5 PERFORMERS', 14, 82); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
+    summaries.slice(0, 5).forEach((s: any, index: number) => {
+      const grade = overallGradeWithBand(s.avgPct, band);
+      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? grade.grade : grade.subLevel}`, 20, 89 + index * 6);
+    });
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('PERFORMANCE DISTRIBUTION', 14, 124);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
+    gradeBands.forEach((gradeBand, index) => {
+      const count = summaries.filter((s: any) => {
+        const value = overallGradeWithBand(s.avgPct, band);
+        return isPrimary ? value.grade === gradeBand.label : value.subLevel === gradeBand.label;
+      }).length;
+      doc.text(`${gradeBand.label}: ${count} learner${count === 1 ? '' : 's'} (${totalStudents ? ((count / totalStudents) * 100).toFixed(1) : '0.0'}%)`, 20, 131 + index * 6);
+    });
+    const bestStartY = isPrimary ? 161 : 179;
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35); doc.text('BEST LEARNER PER LEARNING AREA', 14, bestStartY);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 7.5));
+    subjectStats.slice(0, 6).forEach((subject, index) => {
+      const best = summaries.filter((s: any) => s.subjects[subject.name] !== undefined).sort((a: any, b: any) => b.subjects[subject.name] - a.subjects[subject.name])[0];
+      if (best) doc.text(`Best in ${subject.name}: ${best.student?.first_name || ''} ${best.student?.last_name || ''} (${best.subjects[subject.name].toFixed(1)}%)`, 20, bestStartY + 7 + index * 5);
+    });
+    doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
+
+    doc.addPage();
+    doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
+    doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
+    doc.text(opts.assessmentLabel ? `LEARNING AREA PERFORMANCE ANALYSIS — ${opts.assessmentLabel}` : 'LEARNING AREA PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
+    autoTable(doc, {
+      startY: 28,
+      head: [['Rank', 'Learning Area', 'Average', 'Grade']],
+      body: subjectStats.map((subject, index) => [String(index + 1), subject.name, `${subject.mean.toFixed(1)}%`, overallGradeWithBand(subject.mean, band).subLevel]),
+      styles: { fontSize: pdfFontSize(doc, 9), cellPadding: 2 },
+      headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 9), fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [232, 234, 246] },
+    });
+    doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
+
+    doc.addPage();
+    doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 13)); doc.setFont('helvetica', 'bold'); doc.text('LEARNER RESULTS — ALL STREAMS', 105, 12, { align: 'center' });
     const subjectShorts = allSubjects.map((s) => shortName(s));
-    const headers = isPrimary ? ['POS', 'Learner', ...subjectShorts, 'Total', 'Avg%', 'Grade'] : ['POS', 'Learner', ...subjectShorts, 'Total', 'Avg%', 'Pts', 'Grade'];
+    const headers = isPrimary ? ['POS', 'Learner', 'Stream', ...subjectShorts, 'Total', 'Avg%', 'Grade'] : ['POS', 'Learner', 'Stream', ...subjectShorts, 'Total', 'Avg%', 'Pts', 'Grade'];
     const body = summaries.map((s: any) => {
       const gr = overallGradeWithBand(s.avgPct, band);
+      const studentClass = classes.find((c: any) => c.id === s.classId);
       const cells = allSubjects.map((sub) => { const p = s.subjects[sub]; if (p === undefined) return '—'; return `${p.toFixed(0)}% ${overallGradeWithBand(p, band).subLevel}`; });
-      const row: any[] = [String(s.position), `${s.student?.first_name} ${s.student?.last_name}`, ...cells, s.totalPct.toFixed(0), `${s.avgPct.toFixed(1)}%`];
+      const row: any[] = [String(s.position), `${s.student?.first_name || ''} ${s.student?.last_name || ''}`, streamLabel(studentClass), ...cells, s.totalPct.toFixed(0), `${s.avgPct.toFixed(1)}%`];
       if (!isPrimary) row.push(String(s.totalPoints));
       row.push(isPrimary ? gr.grade : gr.subLevel);
       return row;
     });
-    autoTable(doc, { startY: statsY + 34, head: [headers], body, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.5, overflow: 'linebreak', halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, showHead: 'everyPage', margin: { left: 10, right: 10 } });
-    doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
-    doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
+    autoTable(doc, { startY: 26, head: [headers], body, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, overflow: 'linebreak', halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, showHead: 'everyPage', margin: { left: 8, right: 8 } });
+    doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
   };
 
   const downloadAllStreamsSummary = async (fontSize: PdfFontSize) => {
@@ -1191,28 +1253,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     finally { setGeneratingPDF(false); }
   };
 
-  const downloadPerStreamSummary = async (fontSize: PdfFontSize) => {
-    const seedClassObj = classes.find((c) => c.id === selectedClass);
-    if (!seedClassObj || !selectedTerm) { toast.error('Select a class and term first'); return; }
-    setGeneratingPDF(true);
-    try {
-      const streamClasses = await fetchGradeStreamClasses(seedClassObj); const termObj = terms.find((t) => t.id === selectedTerm);
-      const zip = new JSZip();
-      for (const sc of streamClasses) {
-        const classResults = await fetchResultsForClassIds([sc.id], selectedTerm, selectedExam || undefined);
-        if (!classResults.length) continue;
-        const assessmentLabel = resolveAssessmentLabel(classResults);
-        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }); configurePdfFontSize(doc, fontSize);
-        await renderCompactStreamSummary(doc, { classObj: sc, label: streamLabel(sc), rawResults: classResults, termObj, assessmentLabel, fontSize });
-        zip.file(`${streamLabel(sc)}_summary.pdf`.replace(/\s+/g, '_'), doc.output('blob'));
-      }
-      const blob = await zip.generateAsync({ type: 'blob' });
-      saveAs(blob, `class_summary_per_stream_${seedClassObj.name || 'grade'}_${termObj?.name || 'Term'}.zip`.replace(/\s+/g, '_'));
-      toast.success(`Per-stream summaries generated (${streamClasses.length} stream(s))!`);
-    } catch (err: any) { toast.error('Failed: ' + err.message); console.error(err); }
-    finally { setGeneratingPDF(false); }
-  };
-
   const downloadAllStreamsBulkReportCards = async (fontSize: PdfFontSize) => {
     const seedClassObj = classes.find((c) => c.id === selectedClass);
     if (!seedClassObj || !selectedTerm) { toast.error('Select a class and term first'); return; }
@@ -1223,7 +1263,24 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       if (!rawResults.length) { toast.error('No results found'); return; }
       const termObj = terms.find((t) => t.id === selectedTerm); const assessmentLabel = resolveAssessmentLabel(rawResults);
       const classById = new Map(streamClasses.map((c) => [c.id, c]));
-      const summaries = streamClasses.flatMap((c) => buildStudentSummary(rawResults.filter((r) => r.class_id === c.id), c)).sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct)).map((s, i) => ({ ...s, position: i + 1, classObj: classById.get(s.classId) || seedClassObj }));
+      const streamSummaries = streamClasses.flatMap((c) => buildStudentSummary(rawResults.filter((r) => r.class_id === c.id), c).map((s) => ({ ...s, classObj: c })));
+      const classTotalsById = new Map<string, number>();
+      const classPositionByStudent = new Map<string, number>();
+      streamClasses.forEach((c) => {
+        const classSummaries = streamSummaries.filter((s) => s.classId === c.id);
+        classTotalsById.set(c.id, classSummaries.length);
+        classSummaries.forEach((s) => classPositionByStudent.set(s.studentId, s.position));
+      });
+      const summaries = [...streamSummaries]
+        .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct))
+        .map((s, i) => ({
+          ...s,
+          position: i + 1,
+          streamPosition: i + 1,
+          classPosition: classPositionByStudent.get(s.studentId) || null,
+          classTotal: classTotalsById.get(s.classId) || 0,
+          classObj: classById.get(s.classId) || seedClassObj,
+        }));
       const totalStudents = summaries.length;
       const sigById: Record<string, SignatureInfo> = {};
       for (const sc of streamClasses) { sigById[sc.id] = await getSignatureInfo(sc); }
@@ -1243,8 +1300,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         if (addedFirst) mainDoc.addPage(); addedFirst = true;
         await drawReportHeader(mainDoc, schoolInfo, { name: studentFullName, photoUrl: s.student?.photo_url });
         const cardAssessment = s.examName || assessmentLabel || '';
-        const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${totalStudents}`;
-        drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined);
+        const studentPosition = `${s.streamPosition}${s.streamPosition === 1 ? 'st' : s.streamPosition === 2 ? 'nd' : s.streamPosition === 3 ? 'rd' : 'th'} out of ${totalStudents}`;
+        const classPosition = s.classPosition ? `${s.classPosition}${s.classPosition === 1 ? 'st' : s.classPosition === 2 ? 'nd' : s.classPosition === 3 ? 'rd' : 'th'} out of ${s.classTotal}` : 'N/A';
+        drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition });
         const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
         let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63);
         const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
@@ -1300,13 +1358,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   // Class Teachers must never see school-wide summary counts. Use the resolved
   // assigned class as the source of truth, with selectedClass as a safe fallback.
   const summaryClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
-  const summaryResults = summaryClassId
-    ? results.filter(r => r.class_id === summaryClassId)
-    : scope === 'class_teacher' ? [] : filtered;
+  const summaryResults = scope === 'class_teacher' && !summaryClassId ? [] : filtered;
   const totalLearners = new Set(summaryResults.map(r => r.student_id).filter(Boolean)).size;
-  const totalSubjects = new Set(summaryResults.map(r => r.subject_id).filter(Boolean)).size;
 
   const classObj = classes.find(c => c.id === summaryClassId || c.id === selectedClass);
+  const totalSubjects = getRequiredLearningAreas(classObj) ?? new Set(summaryResults.map(r => r.subject_id).filter(Boolean)).size;
   const summaries = buildStudentSummary(filtered, classObj);
   const allSubjectsRaw = Array.from(new Set(filtered.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
   const allSubjects = sortSubjects(normalizeLearningAreas(allSubjectsRaw));
@@ -1366,6 +1422,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             </select>
           </div>
         </div>
+        {scope === 'school' && selectedClass && allStreamClassIds.length > 1 && (
+          <label className="mb-4 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[#666666]">
+            <input
+              type="checkbox"
+              checked={showAllStreams}
+              onChange={(event) => setShowAllStreams(event.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 accent-indigo-600"
+            />
+            Show all streams for this grade in the results table
+          </label>
+        )}
         <div className="flex flex-wrap gap-2 sm:gap-3">
           <button onClick={() => openPdfFontSizeDialog('class-results')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-[#2563EB] text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-[#1d4ed8] disabled:opacity-50 transition-colors shadow-sm">
@@ -1384,11 +1451,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-indigo-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm">
                 {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                 Class Summary — All Streams
-              </button>
-              <button onClick={() => openPdfFontSizeDialog('per-stream-summary')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm}
-                className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-purple-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
-                {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                Class Summary — Per Stream
               </button>
               <button onClick={() => openPdfFontSizeDialog('all-streams-bulk')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm}
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-teal-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors shadow-sm">
@@ -1441,6 +1503,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 <tr className="bg-gray-50/50">
                   <th className="w-[52px] min-w-[52px] px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-0 bg-gray-50 z-10 border-r border-gray-100">POS</th>
                   <th className="min-w-[170px] px-4 py-3 text-[10px] font-black text-[#666666] uppercase sticky left-[52px] bg-gray-50 z-10 border-r border-gray-100">Learner</th>
+                  {showAllStreams && <th className="min-w-[120px] px-4 py-3 text-[10px] font-black text-[#666666] uppercase border-r border-gray-100">Stream</th>}
                   {allSubjects.map(sub => (
                     <th key={sub} className="px-4 py-3 text-[10px] font-black text-[#666666] uppercase text-center border-r border-gray-100 min-w-[100px]">{shortName(sub)}</th>
                   ))}
@@ -1453,6 +1516,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               <tbody className="divide-y divide-gray-100">
                 {summaries.map((s: any) => {
                   const gr = overallGradeWithBand(s.avgPct, band);
+                  const studentClass = classes.find((c: any) => c.id === s.classId);
                   return (
                     <tr key={s.studentId} className="hover:bg-blue-50/30 transition-colors">
                       <td className="w-[52px] min-w-[52px] px-4 py-3 text-xs font-bold text-gray-500 sticky left-0 bg-white z-10 border-r border-gray-100">{s.position}</td>
@@ -1460,6 +1524,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                         <div className="max-w-[170px] whitespace-normal break-words text-xs font-bold leading-tight text-[#111111]">{s.student?.first_name} {s.student?.last_name}</div>
                         <div className="text-[9px] text-gray-400 font-bold uppercase">{s.student?.admission_number}</div>
                       </td>
+                      {showAllStreams && <td className="px-4 py-3 text-xs font-semibold text-gray-600 border-r border-gray-100">{streamLabel(studentClass)}</td>}
                       {allSubjects.map(sub => {
                         const pct = s.subjects[sub];
                         if (pct === undefined) return <td key={sub} className="px-4 py-3 text-center text-gray-300 text-xs border-r border-gray-100">—</td>;
@@ -1595,7 +1660,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       {pendingPdfDownload && (
         <PdfFontSizeDialog
           open
-          title={pendingPdfDownload.target === 'class-results' ? 'Download Class Results' : pendingPdfDownload.target === 'bulk-report-cards' ? 'Download Bulk Report Cards' : pendingPdfDownload.target === 'all-streams-bulk' ? 'Download All Report Cards' : pendingPdfDownload.target === 'all-streams-summary' ? 'Class Summary — All Streams' : pendingPdfDownload.target === 'per-stream-summary' ? 'Class Summary — Per Stream' : 'Download Report Card'}
+          title={pendingPdfDownload.target === 'class-results' ? 'Download Class Results' : pendingPdfDownload.target === 'bulk-report-cards' ? 'Download Bulk Report Cards' : pendingPdfDownload.target === 'all-streams-bulk' ? 'Download All Report Cards' : pendingPdfDownload.target === 'all-streams-summary' ? 'Class Summary — All Streams' : 'Download Report Card'}
           description="Choose the font size for the downloaded PDF. The default and recommended size is 14."
           onCancel={closePdfFontSizeDialog}
           onConfirm={confirmPdfFontSize}

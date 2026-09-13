@@ -10,13 +10,13 @@ export const TRIAL_DAYS = 60;
 export const PRICE_PER_LEARNER = DEFAULT_FEE_PER_LEARNER;
 export const ANNUAL_PRICE_PER_LEARNER = DEFAULT_ANNUAL_FEE_PER_LEARNER;
 
-export type SubscriptionPlanId = 'full_access_20' | 'full_access_50' | 'results_only' | 'timetabler_only' | 'generator_only';
+export type SubscriptionPlanId = 'full_access_20' | 'full_access_50' | 'exam_analysis_junior' | 'exam_analysis_primary' | 'timetabler_only' | 'generator_only' | 'sms_non_subscriber';
 
 export interface SubscriptionPlanOption {
   id: SubscriptionPlanId;
   name: string;
   price: number;
-  unit: 'learner' | 'school';
+  unit: 'learner' | 'school' | 'sms';
   period: 'term' | 'annual';
   featureSummary: string;
   includesSms: boolean;
@@ -25,10 +25,21 @@ export interface SubscriptionPlanOption {
 export const SUBSCRIPTION_PLANS: SubscriptionPlanOption[] = [
   { id: 'full_access_20', name: 'Full Access (Per Learner)', price: 10, unit: 'learner', period: 'term', featureSummary: 'Full access to all features', includesSms: true },
   { id: 'full_access_50', name: 'Full Access (Per Learner)', price: 20, unit: 'learner', period: 'annual', featureSummary: 'Full access to all features', includesSms: true },
-  { id: 'results_only', name: 'Results Access Only', price: 1000, unit: 'school', period: 'term', featureSummary: 'Results access only; SMS at KES 1 each', includesSms: false },
-  { id: 'timetabler_only', name: 'Timetabler Access Only', price: 500, unit: 'school', period: 'term', featureSummary: 'Timetable generation only', includesSms: false },
-  { id: 'generator_only', name: 'Generator Access Only', price: 500, unit: 'school', period: 'term', featureSummary: 'Exam Generator, Scheme of Work, Notes and Lesson Plan', includesSms: false },
+  { id: 'exam_analysis_junior', name: 'Exam Analysis Only — Junior School', price: 500, unit: 'school', period: 'term', featureSummary: 'Results, report cards and exam analysis; SMS at KES 1 each', includesSms: false },
+  { id: 'exam_analysis_primary', name: 'Exam Analysis Only — Primary School', price: 500, unit: 'school', period: 'term', featureSummary: 'Results, report cards and exam analysis; SMS at KES 1 each', includesSms: false },
+  { id: 'timetabler_only', name: 'Timetabler', price: 500, unit: 'school', period: 'term', featureSummary: 'Timetable generation only', includesSms: false },
+  { id: 'generator_only', name: 'Exam Generator', price: 500, unit: 'school', period: 'term', featureSummary: 'Exam Generator, Scheme of Work, Notes and Lesson Plan', includesSms: false },
 ];
+
+export const SMS_NON_SUBSCRIBER_PLAN: SubscriptionPlanOption = {
+  id: 'sms_non_subscriber',
+  name: 'SMS (Non-Subscribers)',
+  price: 1,
+  unit: 'sms',
+  period: 'term',
+  featureSummary: 'Pay-per-SMS; purchase SMS credits from the SMS Wallet',
+  includesSms: false,
+};
 
 export interface TrialData {
   trialStartDate: string;

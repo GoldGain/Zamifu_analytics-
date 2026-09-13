@@ -12,6 +12,7 @@ import {
   isPostLessonActivity,
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
+import { assertTimetableRules } from '@/lib/timetable-validator';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -1109,6 +1110,18 @@ export default function TimetableGenerate() {
           // The perfect-grid solver models every occurrence as a single lesson;
           // assignments with a configured double must use the atomic path below.
           if (!hasConfiguredDouble && perfectEntries && perfectEntries.length > 0) {
+            const perfectSubjectNames = new Map<string, string>();
+            assignments
+              .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+              .forEach((assignment: any) => perfectSubjectNames.set(String(assignment.subject_id), String(assignment.subjects?.name || '')));
+            assertTimetableRules({
+              entries: [...allEntries, ...perfectEntries],
+              slots: createdSlots,
+              subjectNames: perfectSubjectNames,
+              classes: classesToProcess,
+              levelGroup: levelKey,
+              requireComplete: true,
+            });
             allEntries.push(...perfectEntries);
             generatedSummary.push(
               `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (no blanks, exact weekly totals, one subject per day)`
@@ -2211,10 +2224,8 @@ export default function TimetableGenerate() {
               .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
               .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
               .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
-            // The final fallback still uses a real assigned subject and the
-            // hard subject-window rules, but permits a shared teacher slot
-            // when the school has fewer teachers than parallel classes. This
-            // is preferable to leaving a blank cell or inventing a subject.
+            // The final fallback still uses a real assigned subject and keeps
+            // the subject-window, once-per-day, and teacher-clash rules.
             if (candidates.length === 0) {
               candidates = [...assignmentContexts.values()]
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
@@ -2249,6 +2260,18 @@ export default function TimetableGenerate() {
               // relaxed only here, after every normal repair has failed.
               candidates = [...assignmentContexts.values()]
                 .filter((context) => String(context.cls.id) === String(missing.cls.id))
+                .filter((context) => !context.isDoubleLesson)
+                .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
+                .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
+                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
+                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+            }
+            if (candidates.length === 0) {
+              // A class can exist before its own teacher assignments are entered.
+              // Use a real non-double learning area already assigned in the same
+              // level as a last-resort label so the grid remains complete; the
+              // hard subject-window and once-per-day rules still apply.
+              candidates = [...assignmentContexts.values()]
                 .filter((context) => !context.isDoubleLesson)
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
@@ -2914,6 +2937,15 @@ export default function TimetableGenerate() {
             console.warn(`[timetable] preserving generated double-lesson rows for ${context?.cls?.name || 'a class'} despite an imperfect pair.`);
           }
         }
+
+        assertTimetableRules({
+          entries: allEntries,
+          slots: createdSlots,
+          subjectNames: generatedSubjectNames,
+          classes: classesToProcess,
+          levelGroup: levelKey,
+          requireComplete: true,
+        });
 
       }
 

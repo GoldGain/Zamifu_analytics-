@@ -3,7 +3,7 @@ import { useTrial } from '@/contexts/TrialContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lucide-react';
-import { ANNUAL_PRICE_PER_LEARNER, SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '@/lib/trial';
+import { ANNUAL_PRICE_PER_LEARNER, SMS_NON_SUBSCRIBER_PLAN, SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '@/lib/trial';
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
@@ -51,7 +51,6 @@ export const TrialCountdown: React.FC = () => {
 
   const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
   const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : ANNUAL_PRICE_PER_LEARNER;
-  const selectedFee = billingPeriod === 'annual' ? annualFee : pricePerLearner;
   const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) || SUBSCRIPTION_PLANS[0];
   const selectedPlanAmount = selectedPlan.unit === 'learner' ? learnersCount * selectedPlan.price : selectedPlan.price;
   const annualBaseline = pricePerLearner * 3;
@@ -115,6 +114,11 @@ export const TrialCountdown: React.FC = () => {
                 );
               })}
             </div>
+            <div className="mx-auto mb-5 max-w-5xl rounded-xl border border-amber-200 bg-amber-50 p-3 text-left">
+              <span className="block font-bold text-gray-900">{SMS_NON_SUBSCRIBER_PLAN.name}</span>
+              <span className="block text-sm text-gray-600">KES {SMS_NON_SUBSCRIBER_PLAN.price.toLocaleString()} per SMS</span>
+              <span className="block text-xs text-gray-500 mt-1">{SMS_NON_SUBSCRIBER_PLAN.featureSummary}</span>
+            </div>
 
             {/* Auto-calculated learner count summary */}
             <div className="bg-gray-50 rounded-xl p-4 mb-5 text-left max-w-xs mx-auto">
@@ -157,7 +161,7 @@ export const TrialCountdown: React.FC = () => {
               ) : (
                 <>
                   <CreditCard className="w-4 h-4" />
-                  Subscribe Now — KES {selectedPlanAmount.toLocaleString()} per term
+                  Subscribe Now — KES {selectedPlanAmount.toLocaleString()} per {selectedPlan.period === 'annual' ? 'year' : 'term'}
                 </>
               )}
             </button>
@@ -225,7 +229,7 @@ export const TrialCountdown: React.FC = () => {
                   <div className={`text-xs ${subTextColor} space-y-1`}>
                     <p>Trial started: {new Date(trialStatus.trialData.trialStartDate).toLocaleDateString()}</p>
                     <p>Trial ends: {new Date(trialStatus.trialData.trialEndDate).toLocaleDateString()}</p>
-                    <p>Five subscription options are available below, including full access, results-only, timetabler-only, and generator-only plans.</p>
+                    <p>Six subscription options are available below, including full access, primary or junior exam-analysis, timetabler-only, and generator-only plans.</p>
                     <button onClick={() => setShowPayment(true)} className="mt-2 text-xs font-medium underline">View subscription plans</button>
                   </div>
                 </div>
@@ -239,6 +243,7 @@ export const TrialCountdown: React.FC = () => {
                       return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {plan.price.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
                     })}
                   </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-gray-700"><strong>{SMS_NON_SUBSCRIBER_PLAN.name}:</strong> KES {SMS_NON_SUBSCRIBER_PLAN.price.toLocaleString()} per SMS. Purchase credits from the SMS Wallet.</div>
                   <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3"><span>Selected: {selectedPlan.name}</span><span className="font-bold text-gray-900">KES {selectedPlanAmount.toLocaleString()}</span></div>
                   <PaystackButton learnersCount={learnersCount} feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined} fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined} subscriptionPlan={selectedPlan.id} billingPeriod={selectedPlan.period === 'annual' ? 'annual' : selectedPlan.unit === 'school' ? 'school-term' : 'term'} onSuccess={() => { setShowPayment(false); setExpanded(false); }} onClose={() => setShowPayment(false)} />
                   <button onClick={() => setShowPayment(false)} className="w-full mt-2 text-[10px] text-gray-500 hover:text-gray-700">Cancel</button>

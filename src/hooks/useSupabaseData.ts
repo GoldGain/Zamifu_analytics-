@@ -32,11 +32,29 @@ export function useStudents(schoolId?: string) {
   const fetchStudents = useCallback(async () => {
     try {
       setLoading(true);
-      let query = supabase.from('students').select('*, classes(name)').eq('is_active', true).order('created_at', { ascending: false });
+      let query = supabase
+        .from('students')
+        .select('*, classes(name)')
+        .or('is_active.eq.true,is_active.is.null')
+        .order('created_at', { ascending: false });
       if (schoolId) query = query.eq('school_id', schoolId);
-      const { data, error } = await query;
+      let { data, error } = await query;
+
+      // Some deployed databases do not expose the optional classes relation.
+      // The learner record itself is still authoritative, so retry without the
+      // relation rather than returning an apparently empty page.
+      if (error) {
+        let fallback = supabase.from('students').select('*').or('is_active.eq.true,is_active.is.null').order('created_at', { ascending: false });
+        if (schoolId) fallback = fallback.eq('school_id', schoolId);
+        const fallbackResult = await fallback;
+        data = fallbackResult.data;
+        error = fallbackResult.error;
+      }
       if (error) throw error;
-      setStudents(data || []);
+      setStudents((data || []).filter((student: any) => {
+        const status = String(student.status || '').trim().toLowerCase();
+        return student.is_active !== false && !['graduated', 'inactive', 'withdrawn', 'left'].includes(status);
+      }) as Student[]);
     } catch (err) {
       console.error(err);
     } finally {

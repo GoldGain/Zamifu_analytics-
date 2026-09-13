@@ -79,12 +79,20 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     .slice()
     .sort((a, b) => a.slot_order - b.slot_order);
   const slotById = new Map(lessonSlots.map((slot) => [String(slot.id), slot]));
+  const occupiedCells = new Set(
+    options.entries
+      .filter((entry) => options.levelGroup == null || entry.level_group === options.levelGroup)
+      .filter((entry) => slotById.has(String(entry.time_slot_id)))
+      .map((entry) => entryKey(entry.class_id, entry.day_of_week, entry.time_slot_id)),
+  );
   const filteredEntries = options.entries.filter((entry) => {
     if (!isLessonEntry(entry)) return false;
     return options.levelGroup == null || entry.level_group === options.levelGroup;
   });
   const cellEntries = new Map<string, TimetableValidationEntry[]>();
   const subjectDayEntries = new Map<string, SubjectDayGroup>();
+  const doubleEntriesBySubject = new Map<string, TimetableValidationEntry[]>();
+  const teacherSlotEntries = new Map<string, TimetableValidationEntry>();
 
   for (const entry of filteredEntries) {
     const slot = slotById.get(String(entry.time_slot_id));
@@ -110,6 +118,18 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
 
     const cell = entryKey(entry.class_id, entry.day_of_week, entry.time_slot_id);
     cellEntries.set(cell, [...(cellEntries.get(cell) || []), entry]);
+    if (entry.teacher_id) {
+      const teacherKey = `${String(entry.teacher_id)}-${entry.day_of_week}-${String(entry.time_slot_id)}`;
+      const previous = teacherSlotEntries.get(teacherKey);
+      if (previous && String(previous.class_id) !== String(entry.class_id)) {
+        issues.push({
+          rule: 'teacher-clash',
+          message: `Teacher ${String(entry.teacher_id)} is assigned to classes ${String(previous.class_id)} and ${String(entry.class_id)} at the same time on day ${entry.day_of_week}.`,
+        });
+      } else if (!previous) {
+        teacherSlotEntries.set(teacherKey, entry);
+      }
+    }
     const dayKey = subjectDayKey(entry);
     const group = subjectDayEntries.get(dayKey) || {
       classId: String(entry.class_id),
@@ -119,6 +139,10 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     };
     group.entries.push(entry);
     subjectDayEntries.set(dayKey, group);
+    if (entry.entry_type === 'lesson_double') {
+      const weeklyKey = `${String(entry.class_id)}-${String(entry.subject_id)}`;
+      doubleEntriesBySubject.set(weeklyKey, [...(doubleEntriesBySubject.get(weeklyKey) || []), entry]);
+    }
   }
 
   for (const group of subjectDayEntries.values()) {
@@ -138,6 +162,16 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
       issues.push({
         rule: 'once-per-day',
         message: `${subjectName || `Subject ${subjectId}`} appears more than once on day ${day} for class ${classId}; only one consecutive configured double is allowed.`,
+      });
+    }
+  }
+
+  for (const [weeklyKey, entries] of doubleEntriesBySubject) {
+    if (entries.length > 2) {
+      const [classId, ...subjectParts] = weeklyKey.split('-');
+      issues.push({
+        rule: 'double-once-per-week',
+        message: `Subject ${subjectParts.join('-')} has more than one double lesson in the week for class ${classId}.`,
       });
     }
   }
@@ -172,7 +206,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     for (const cls of options.classes) {
       for (const day of days) {
         for (const slot of lessonSlots) {
-          if (!(cellEntries.get(entryKey(cls.id, day, slot.id)) || []).length) {
+          if (!occupiedCells.has(entryKey(cls.id, day, slot.id))) {
             issues.push({
               rule: 'no-blanks',
               message: `${cls.name || `Class ${String(cls.id)}`} has a blank ${slot.label || 'lesson'} on day ${day}.`,

@@ -763,7 +763,8 @@ export function drawStudentInfo(
   position: string,
   y: number = 38,
   assessmentName?: string,
-  assessmentNumber?: string
+  assessmentNumber?: string,
+  positionDetails?: { classPosition?: string; streamPosition?: string }
 ) {
   // Compact: two-column grid, denser rows so the info block uses <= 14mm
   const fs = pdfFontSize(doc, COMPACT_MODE ? 8 : 9);
@@ -775,7 +776,12 @@ export function drawStudentInfo(
   doc.text(`Term: ${termName} ${academicYear}`, 120, y);
   if (assessmentName) {
     doc.text(`Assessment: ${assessmentName}`, 120, y + ROW);
-    doc.text(`Position: ${position}`, 120, y + ROW * 2);
+    doc.text(`Class Position: ${positionDetails?.classPosition || position}`, 120, y + ROW * 2);
+    doc.text(`Stream Position: ${positionDetails?.streamPosition || position}`, 120, y + ROW * 3);
+  } else if (positionDetails) {
+    doc.text(`Class Position: ${positionDetails.classPosition || position}`, 120, y + ROW);
+    doc.text(`Stream Position: ${positionDetails.streamPosition || position}`, 120, y + ROW * 2);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + ROW * 3);
   } else {
     doc.text(`Position: ${position}`, 120, y + ROW);
     doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + ROW * 2);
