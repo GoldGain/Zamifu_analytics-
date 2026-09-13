@@ -2436,7 +2436,6 @@ export default function TimetableGenerate() {
           const key = `${missing.cls.id}-${missing.day}-${missing.slot.id}`;
           if (lessonCellEntries.has(key)) continue;
           const emergencyContext = [...assignmentContexts.values()]
-            .filter((context) => String(context.cls.id) === String(missing.cls.id))
             .filter((context) => !context.isDoubleLesson)
             .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
             .filter((context) => !allEntries.some((entry: any) =>
