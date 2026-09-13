@@ -2437,28 +2437,6 @@ export default function TimetableGenerate() {
           if (lessonCellEntries.has(key)) continue;
           const emergencyContext = [...assignmentContexts.values()]
             .filter((context) => !context.isDoubleLesson)
-            .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
-            .filter((context) => !allEntries.some((entry: any) =>
-              entry.level_group === levelKey
-              && String(entry.class_id) === String(missing.cls.id)
-              && Number(entry.day_of_week) === missing.day
-              && String(entry.subject_id) === String(context.assignment.subject_id),
-            ))
-            .filter((context) => {
-              const slotIndex = lessonSlots.findIndex((candidate: any) => String(candidate.id) === String(missing.slot.id));
-              return [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]]
-                .filter(Boolean)
-                .every((adjacentSlot: any) => !allEntries.some((entry: any) =>
-                  entry.level_group === levelKey
-                  && String(entry.class_id) === String(missing.cls.id)
-                  && Number(entry.day_of_week) === missing.day
-                  && String(entry.time_slot_id) === String(adjacentSlot.id)
-                  && violatesMathScienceSequence(
-                    context.subjectName,
-                    generatedSubjectNames.get(String(entry.subject_id)) || '',
-                  ),
-                ));
-            })
             .sort((a, b) => Number(currentTeacherSlot.has(`${a.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
               - Number(currentTeacherSlot.has(`${b.assignment.teacher_id}-${missing.day}-${missing.slot.id}`)))[0];
           if (!emergencyContext) continue;
