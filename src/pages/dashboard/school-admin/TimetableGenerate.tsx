@@ -2250,8 +2250,58 @@ export default function TimetableGenerate() {
                 .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
                 .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
+            // If every legal subject is blocked only because its teacher is
+            // teaching another class in this period, move that single lesson to
+            // another legal cell and use the newly released cell. Double
+            // placements are never split or moved by this exchange.
+            if (candidates.length === 0) {
+              const exchangeCandidates = [...assignmentContexts.values()]
+                .filter((candidate) => String(candidate.cls.id) === String(missing.cls.id))
+                .filter((candidate) => !candidate.isDoubleLesson)
+                .filter((candidate) => (subjectCounts.get(`${missing.cls.id}:${candidate.assignment.subject_id}`) || 0) < Math.max(0, Number(candidate.assignment.lessons_per_week || 0)))
+                .filter((candidate) => candidate.availableDays.includes(TIMETABLE_DAYS[missing.day - 1]))
+                .filter((candidate) => strictSubjectAllowsLesson(candidate.subjectName, lessonNumberOf(missing.slot)))
+                .filter((candidate) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${candidate.assignment.subject_id}`));
+              for (const candidate of exchangeCandidates) {
+                const targetTeacherKey = `${candidate.assignment.teacher_id}-${missing.day}-${missing.slot.id}`;
+                const blocker = placementRecords.find((placement) =>
+                  placement.unitSize === 1 && placement.teacherKeys.includes(targetTeacherKey),
+                );
+                if (!blocker) continue;
+                removePlacement(blocker);
+                const targetPlacement = addPlacementAt(candidate, missing.slot, missing.day, 1);
+                if (!targetPlacement) {
+                  restorePlacement(blocker);
+                  continue;
+                }
+                let blockerMoved = false;
+                for (const blockerDay of [1, 2, 3, 4, 5]) {
+                  if (blockerMoved) break;
+                  for (const blockerSlot of orderedRepairSlots(blocker.context)) {
+                    if (canPlaceContextAt(blocker.context, blockerSlot, blockerDay, 1)
+                      && addPlacementAt(blocker.context, blockerSlot, blockerDay, 1)) {
+                      blockerMoved = true;
+                      break;
+                    }
+                  }
+                }
+                if (blockerMoved) {
+                  const exchangedEntry = targetPlacement.entries[0];
+                  lessonCellEntries.set(`${missing.cls.id}-${missing.day}-${missing.slot.id}`, [exchangedEntry]);
+                  currentSubjectDay.add(`${missing.cls.id}-${missing.day}-${candidate.assignment.subject_id}`);
+                  currentTeacherSlot.add(targetTeacherKey);
+                  const countKey = `${missing.cls.id}:${candidate.assignment.subject_id}`;
+                  subjectCounts.set(countKey, (subjectCounts.get(countKey) || 0) + 1);
+                  candidates = [candidate];
+                  break;
+                }
+                removePlacement(targetPlacement);
+                restorePlacement(blocker);
+              }
+            }
             const context = candidates[0];
             if (!context) continue;
+            if (lessonCellEntries.has(`${missing.cls.id}-${missing.day}-${missing.slot.id}`)) continue;
             const { times } = context.getDaySlotTiming(missing.day, context.cls);
             const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
             const repairedEntry = {
