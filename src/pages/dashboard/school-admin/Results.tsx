@@ -1362,8 +1362,30 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const rawResults = await fetchResultsForClassIds(streamClasses.map((c) => c.id), selectedTerm, selectedExam || undefined);
       if (!rawResults.length) { toast.error('No results found'); return; }
       const termObj = terms.find((t) => t.id === selectedTerm); const assessmentLabel = resolveAssessmentLabel(rawResults);
+      const orderedTerms = [...terms].sort((a, b) => Number(a.academic_year) - Number(b.academic_year) || Number(a.term_number || 0) - Number(b.term_number || 0));
+      const currentTermIndex = orderedTerms.findIndex((term) => term.id === selectedTerm);
+      const previousTerm = currentTermIndex > 0 ? orderedTerms[currentTermIndex - 1] : null;
+      const previousSubjectStats = new Map<string, number>();
+      if (previousTerm) {
+        const { data: previousResults } = await supabaseUntyped
+          .from('results')
+          .select('subject_id, marks, out_of, percentage, subjects(name)')
+          .in('class_id', streamClasses.map((c) => c.id))
+          .eq('term_id', previousTerm.id)
+          .eq('school_id', user?.schoolId);
+        const previousBySubject = new Map<string, number[]>();
+        (previousResults || []).forEach((res: any) => {
+          const name = res.subjects?.name;
+          if (!name) return;
+          const percentage = Number(res.percentage ?? (Number(res.out_of) > 0 ? Number(res.marks || 0) / Number(res.out_of) * 100 : 0));
+          const values = previousBySubject.get(name) || [];
+          values.push(percentage);
+          previousBySubject.set(name, values);
+        });
+        previousBySubject.forEach((values, name) => previousSubjectStats.set(name, values.reduce((sum, v) => sum + v, 0) / values.length));
+      }
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }); configurePdfFontSize(doc, fontSize);
-      await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, fontSize });
+      await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, previousTerm, previousSubjectStats, fontSize });
       doc.save(`class_summary_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
       toast.success(`Class summary generated for all ${streamClasses.length} stream(s)!`);
     } catch (err: any) { toast.error('Failed: ' + err.message); console.error(err); }
