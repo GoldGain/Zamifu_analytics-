@@ -533,8 +533,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const { data: previousResults } = await previousQuery;
         const previousBySubject = new Map<string, number[]>();
         (previousResults || []).forEach((result: any) => {
-          const subjectName = result.subjects?.name;
-          if (!subjectName) return;
+          const subjectName = normalizeLearningAreaName(result.subjects?.name || '');
+          if (!subjectName || subjectName === 'Unknown') return;
           const percentage = Number(result.percentage ?? (Number(result.out_of) > 0 ? Number(result.marks || 0) / Number(result.out_of) * 100 : 0));
           const values = previousBySubject.get(subjectName) || [];
           values.push(percentage);
@@ -1375,8 +1375,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           .eq('school_id', user?.schoolId);
         const previousBySubject = new Map<string, number[]>();
         (previousResults || []).forEach((res: any) => {
-          const name = res.subjects?.name;
-          if (!name) return;
+          const name = normalizeLearningAreaName(res.subjects?.name || '');
+          if (!name || name === 'Unknown') return;
           const percentage = Number(res.percentage ?? (Number(res.out_of) > 0 ? Number(res.marks || 0) / Number(res.out_of) * 100 : 0));
           const values = previousBySubject.get(name) || [];
           values.push(percentage);
