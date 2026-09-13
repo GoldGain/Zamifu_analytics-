@@ -1143,13 +1143,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return (data || []) as any[];
   };
 
-  const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; fontSize: PdfFontSize }) => {
+  const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; previousTerm: any; previousSubjectStats: Map<string, number>; fontSize: PdfFontSize }) => {
     const band = getSchoolLevelBand(opts.classObj); const isPrimary = band === 'primary';
     const summaries = buildStudentSummary(opts.rawResults, opts.classObj);
     const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
     const totalStudents = summaries.length;
-    const classMeanMarks = totalStudents > 0 ? summaries.reduce((s, x) => s + x.totalPct, 0) / totalStudents : 0;
+    // Class Mean Marks = sum of every learner's total percentage marks ÷ number of learners.
+    // Each learner's totalPct sums their subject percentages (each out of 100). For Junior School
+    // the fixed denominator is 9 learning areas, so the mean is expressed OUT OF 900.
     const requiredLearningAreas = getRequiredLearningAreas(opts.classObj) ?? allSubjects.length;
+    const classMeanMarks = totalStudents > 0 ? summaries.reduce((s, x) => s + x.totalPct, 0) / totalStudents : 0;
     const classMeanMarksOutOf = requiredLearningAreas * 100;
     const classMeanPercentage = classMeanMarksOutOf > 0 ? (classMeanMarks / classMeanMarksOutOf) * 100 : 0;
     const classGrade = overallGradeWithBand(classMeanPercentage, band);
@@ -1159,12 +1162,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const values = summaries.map((s: any) => s.subjects[name]).filter((value: any) => value !== undefined);
       return { name, mean: values.length ? values.reduce((sum: number, value: number) => sum + value, 0) / values.length : 0 };
     }).sort((a, b) => b.mean - a.mean);
+    const previousSubjectStats = opts.previousSubjectStats || new Map<string, number>();
+    const previousTerm = opts.previousTerm || null;
     const gradeBands = isPrimary
-      ? [{ label: 'EE', min: 75 }, { label: 'ME', min: 41 }, { label: 'AE', min: 21 }, { label: 'BE', min: 0 }]
-      : [{ label: 'EE1', min: 90 }, { label: 'EE2', min: 75 }, { label: 'ME1', min: 58 }, { label: 'ME2', min: 41 }, { label: 'AE1', min: 31 }, { label: 'AE2', min: 21 }, { label: 'BE1', min: 11 }, { label: 'BE2', min: 0 }];
+      ? [{ label: 'EE', min: 75, color: [76, 175, 80] }, { label: 'ME', min: 41, color: [33, 150, 243] }, { label: 'AE', min: 21, color: [255, 152, 0] }, { label: 'BE', min: 0, color: [244, 67, 54] }]
+      : [{ label: 'EE1', min: 90, color: [76, 175, 80] }, { label: 'EE2', min: 75, color: [139, 195, 74] }, { label: 'ME1', min: 58, color: [33, 150, 243] }, { label: 'ME2', min: 41, color: [3, 169, 244] }, { label: 'AE1', min: 31, color: [255, 152, 0] }, { label: 'AE2', min: 21, color: [255, 193, 7] }, { label: 'BE1', min: 11, color: [255, 87, 34] }, { label: 'BE2', min: 0, color: [244, 67, 54] }];
 
-    // jsPDF starts with page 1. Render directly on it so the exported PDF
-    // never contains a blank cover page.
+    // ── PAGE 1: CLASS SUMMARY ──────────────────────────────────────────────
     doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 40, 'F');
     if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 2, 16, 16);
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 13));
@@ -1174,18 +1178,25 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.text(`${opts.label} — ${opts.termObj?.name || 'Term'} ${opts.termObj?.academic_year || ''}${opts.assessmentLabel ? ` — ${opts.assessmentLabel}` : ''}`, 105, 33, { align: 'center' });
     doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     const statsY = 42;
-    doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 30, 'F');
+    doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 32, 'F');
     doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
     doc.text(`Boys: ${boys}`, 72, statsY + 8); doc.text(`Girls: ${girls}`, 110, statsY + 8);
-    doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}`, 20, statsY + 18);
-    doc.text(`Class Mean Marks: ${classMeanMarks.toFixed(1)} / ${classMeanMarksOutOf}`, 72, statsY + 18);
-    doc.text(`Learning Areas: ${requiredLearningAreas}`, 20, statsY + 27);
+    doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} pts)` : ''}`, 140, statsY + 8);
+    doc.text(`Class Mean Marks: ${classMeanMarks.toFixed(1)} / ${classMeanMarksOutOf}`, 20, statsY + 18);
+    doc.text(`Learning Areas: ${requiredLearningAreas}`, 72, statsY + 18);
+    doc.text(`Grading System: ${isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 110, statsY + 18);
+    doc.setFontSize(pdfFontSize(doc, 8));
+    doc.text(`Out of: ${classMeanMarksOutOf} marks`, 20, statsY + 27);
+
+    // TOP 5
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
     doc.text('TOP 5 PERFORMERS', 14, 82); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     summaries.slice(0, 5).forEach((s: any, index: number) => {
       const grade = overallGradeWithBand(s.avgPct, band);
-      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? grade.grade : grade.subLevel}`, 20, 89 + index * 6);
+      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? grade.grade : grade.subLevel}${!isPrimary ? ` (${grade.points}pts)` : ''}`, 20, 89 + index * 6);
     });
+
+    // PERFORMANCE DISTRIBUTION
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('PERFORMANCE DISTRIBUTION', 14, 124);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     gradeBands.forEach((gradeBand, index) => {
@@ -1193,8 +1204,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const value = overallGradeWithBand(s.avgPct, band);
         return isPrimary ? value.grade === gradeBand.label : value.subLevel === gradeBand.label;
       }).length;
-      doc.text(`${gradeBand.label}: ${count} learner${count === 1 ? '' : 's'} (${totalStudents ? ((count / totalStudents) * 100).toFixed(1) : '0.0'}%)`, 20, 131 + index * 6);
+      const pct = totalStudents ? count / totalStudents : 0;
+      const y = 131 + index * 6;
+      doc.text(`${gradeBand.label}: ${count} learner${count === 1 ? '' : 's'} (${(pct * 100).toFixed(1)}%)`, 20, y);
+      doc.setFillColor(240, 240, 245); doc.rect(90, y - 3, 80, 4, 'F');
+      doc.setFillColor(gradeBand.color[0], gradeBand.color[1], gradeBand.color[2]); doc.rect(90, y - 3, 80 * pct, 4, 'F');
     });
+
+    // BEST LEARNER PER LEARNING AREA
     const bestStartY = isPrimary ? 161 : 179;
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35); doc.text('BEST LEARNER PER LEARNING AREA', 14, bestStartY);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 7.5));
@@ -1202,23 +1219,121 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const best = summaries.filter((s: any) => s.subjects[subject.name] !== undefined).sort((a: any, b: any) => b.subjects[subject.name] - a.subjects[subject.name])[0];
       if (best) doc.text(`Best in ${subject.name}: ${best.student?.first_name || ''} ${best.student?.last_name || ''} (${best.subjects[subject.name].toFixed(1)}%)`, 20, bestStartY + 7 + index * 5);
     });
+
+    // GENDER SUMMARY
+    const genderSummaryY = bestStartY + 45;
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('GENDER BREAKDOWN', 14, genderSummaryY);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
+    const maleAvg = boys > 0 ? summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('m')).reduce((sum, s) => sum + s.avgPct, 0) / boys : 0;
+    const femaleAvg = girls > 0 ? summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('f')).reduce((sum, s) => sum + s.avgPct, 0) / girls : 0;
+    doc.text(`Boys average: ${boys > 0 ? maleAvg.toFixed(1) + '%' : 'N/A'}`, 20, genderSummaryY + 7);
+    doc.text(`Girls average: ${girls > 0 ? femaleAvg.toFixed(1) + '%' : 'N/A'}`, 90, genderSummaryY + 7);
+    if (boys > 0 && girls > 0) {
+      const gap = Math.abs(maleAvg - femaleAvg);
+      const leader = maleAvg >= femaleAvg ? 'Boys' : 'Girls';
+      doc.text(`Gap: ${gap.toFixed(1)}% — ${leader} lead`, 150, genderSummaryY + 7);
+    }
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
 
+    // ── PAGE 2: LEARNING AREA / SUBJECT PERFORMANCE (with previous exam) ──
     doc.addPage();
     doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
     doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
-    doc.text(opts.assessmentLabel ? `LEARNING AREA PERFORMANCE ANALYSIS — ${opts.assessmentLabel}` : 'LEARNING AREA PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
+    doc.setFontSize(pdfFontSize(doc, 10));
+    doc.text(previousTerm ? 'SUBJECT PERFORMANCE ANALYSIS — CURRENT VS PREVIOUS EXAM' : 'LEARNING AREA PERFORMANCE COMPARISON', 105, 16, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80); doc.setFontSize(pdfFontSize(doc, 9));
+    doc.text(`Current: ${opts.assessmentLabel || opts.termObj?.name || 'Selected assessment'}`, 14, 26);
+    if (previousTerm) doc.text(`Previous: ${previousTerm.name} ${previousTerm.academic_year || ''}`, 112, 26);
+    doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 9));
+    subjectStats.forEach((subject, index) => {
+      const y = 32 + index * 6;
+      const previous = previousSubjectStats.get(subject.name) ?? 0;
+      const label = subject.name.length > 20 ? `${subject.name.slice(0, 19)}…` : subject.name;
+      doc.text(label, 14, y);
+      doc.setFillColor(225, 230, 240); doc.rect(44, y - 2, 52, 3, 'F');
+      doc.setFillColor(37, 99, 235); doc.rect(44, y - 2, 52 * Math.min(100, subject.mean) / 100, 3, 'F');
+      if (previousTerm) {
+        doc.setFillColor(225, 230, 240); doc.rect(142, y - 2, 52, 3, 'F');
+        doc.setFillColor(106, 27, 154); doc.rect(142, y - 2, 52 * Math.min(100, previous) / 100, 3, 'F');
+      }
+      doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 100, y);
+      if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(`${previous.toFixed(1)}%`, 198, y); }
+      doc.setTextColor(0, 0, 0);
+    });
+
+    const subRows = subjectStats.map((subject, i) => {
+      const previous = previousSubjectStats.get(subject.name);
+      const change = previous != null ? subject.mean - previous : null;
+      let status = 'AVERAGE';
+      if (i === 0) status = 'STRONG';
+      else if (i === subjectStats.length - 1) status = 'WEAK';
+      let changeLabel = '—';
+      if (change != null) changeLabel = change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
+      return [String(i + 1), subject.name, `${subject.mean.toFixed(1)}%`, previous != null ? `${previous.toFixed(1)}%` : '—', changeLabel, overallGradeWithBand(subject.mean, band).subLevel, status];
+    });
     autoTable(doc, {
-      startY: 28,
-      head: [['Rank', 'Learning Area', 'Average', 'Grade']],
-      body: subjectStats.map((subject, index) => [String(index + 1), subject.name, `${subject.mean.toFixed(1)}%`, overallGradeWithBand(subject.mean, band).subLevel]),
-      styles: { fontSize: pdfFontSize(doc, 9), cellPadding: 2 },
-      headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 9), fontStyle: 'bold' },
+      startY: Math.min(190, 32 + subjectStats.length * 6 + 2),
+      head: [['Rank', 'Learning Area', 'Average', 'Previous', 'Change', 'Grade', 'Status']],
+      body: subRows,
+      styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 },
+      headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
       alternateRowStyles: { fillColor: [232, 234, 246] },
     });
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
 
+    // ── PAGE 3: GENDER PERFORMANCE ANALYSIS ────────────────────────────────
+    doc.addPage();
+    doc.setFillColor(37, 99, 235); doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
+    doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.text('GENDER PERFORMANCE ANALYSIS', 105, 16, { align: 'center' });
+    doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 9));
+    doc.setFillColor(245, 247, 255); doc.rect(14, 28, 182, 28, 'F');
+    doc.text(`Total Learners: ${totalStudents}`, 20, 36);
+    doc.text(`Male: ${boys} (${totalStudents ? ((boys / totalStudents) * 100).toFixed(1) : '0.0'}%)`, 75, 36);
+    doc.text(`Female: ${girls} (${totalStudents ? ((girls / totalStudents) * 100).toFixed(1) : '0.0'}%)`, 130, 36);
+    doc.text(`Male Average: ${boys > 0 ? maleAvg.toFixed(1) + '%' : 'N/A'}`, 75, 46);
+    doc.text(`Female Average: ${girls > 0 ? femaleAvg.toFixed(1) + '%' : 'N/A'}`, 130, 46);
+    if (boys > 0) {
+      doc.setFillColor(37, 99, 235); doc.rect(14, 64, 8, 8, 'F');
+      doc.setTextColor(0, 0, 0); doc.text(`Male (${boys} learners): ${maleAvg.toFixed(1)}%`, 25, 70);
+      doc.setFillColor(200, 220, 255); doc.rect(14, 74, 182, 6, 'F');
+      doc.setFillColor(37, 99, 235); doc.rect(14, 74, Math.max(1, 182 * maleAvg / 100), 6, 'F');
+    }
+    if (girls > 0) {
+      doc.setFillColor(236, 72, 153); doc.rect(14, 86, 8, 8, 'F');
+      doc.setTextColor(0, 0, 0); doc.text(`Female (${girls} learners): ${femaleAvg.toFixed(1)}%`, 25, 92);
+      doc.setFillColor(255, 200, 230); doc.rect(14, 96, 182, 6, 'F');
+      doc.setFillColor(236, 72, 153); doc.rect(14, 96, Math.max(1, 182 * femaleAvg / 100), 6, 'F');
+    }
+    if (boys > 0 && girls > 0) {
+      const gap = Math.abs(maleAvg - femaleAvg); const leader = maleAvg >= femaleAvg ? 'Male' : 'Female';
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 9));
+      doc.setTextColor(gap > 10 ? 220 : gap > 5 ? 249 : 22, gap > 10 ? 38 : gap > 5 ? 115 : 163, gap > 10 ? 38 : gap > 5 ? 115 : 74);
+      doc.text(`Gender Gap: ${gap.toFixed(1)}% — ${leader} learners lead by ${gap.toFixed(1)}%`, 14, 110);
+      doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 8));
+    }
+    const genderSubjectRows = allSubjects.map((sub) => {
+      const maleVals = summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('m')).map((s: any) => s.subjects[sub]).filter((v: any) => v !== undefined);
+      const femaleVals = summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('f')).map((s: any) => s.subjects[sub]).filter((v: any) => v !== undefined);
+      const mAvg = maleVals.length ? maleVals.reduce((a: number, b: number) => a + b, 0) / maleVals.length : null;
+      const fAvg = femaleVals.length ? femaleVals.reduce((a: number, b: number) => a + b, 0) / femaleVals.length : null;
+      const diff = mAvg !== null && fAvg !== null ? mAvg - fAvg : null;
+      const leader = diff === null ? 'N/A' : diff > 0.5 ? `M +${diff.toFixed(1)}%` : diff < -0.5 ? `F +${Math.abs(diff).toFixed(1)}%` : 'Equal';
+      return [sub === 'Creative Arts' ? 'C-Arts' : sub, mAvg !== null ? `${mAvg.toFixed(1)}%` : 'N/A', fAvg !== null ? `${fAvg.toFixed(1)}%` : 'N/A', leader];
+    });
+    autoTable(doc, {
+      startY: 120,
+      head: [['Learning Area', 'Male Avg', 'Female Avg', 'Leader']],
+      body: genderSubjectRows,
+      styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 247, 255] },
+    });
+    doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
+
+    // ── PAGE 4: LEARNER RESULTS TABLE ──────────────────────────────────────
     doc.addPage();
     doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
     doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 13)); doc.setFont('helvetica', 'bold'); doc.text('LEARNER RESULTS — ALL STREAMS', 105, 12, { align: 'center' });
@@ -1235,6 +1350,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     });
     autoTable(doc, { startY: 26, head: [headers], body, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, overflow: 'linebreak', halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, showHead: 'everyPage', margin: { left: 8, right: 8 } });
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
+
   };
 
   const downloadAllStreamsSummary = async (fontSize: PdfFontSize) => {
