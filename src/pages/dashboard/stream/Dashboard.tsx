@@ -27,6 +27,8 @@ interface StreamClass {
   curriculum: string | null;
   level: number | null;
   grade_level: number | null;
+  gradeKey: string;
+  gradeLabel: string;
 }
 
 interface StudentRow {
@@ -122,6 +124,13 @@ interface ClassPerfRow {
   grade: string;
 }
 
+interface PerfDistRow {
+  grade: string;
+  current: number;
+  previous: number;
+  difference: number;
+}
+
 type TabKey = 'overview' | 'subjects' | 'rankings' | 'comparison' | 'class' | 'improved';
 
 function deduplicateResults(rows: ResultRow[]): ResultRow[] {
@@ -136,12 +145,41 @@ function deduplicateResults(rows: ResultRow[]): ResultRow[] {
   return Array.from(byStudentSubject.values());
 }
 
+function gradeLevelOf(c: any): number | null {
+  if (c?.level != null) { const n = Number(c.level); if (Number.isFinite(n)) return n; }
+  if (c?.grade_level != null) { const n = Number(c.grade_level); if (Number.isFinite(n)) return n; }
+  const parsed = parseInt(String(c?.name || '').replace(/[^0-9]/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function gradeGroupOf(c: any): { key: string; label: string } {
+  const name = String(c?.name || '').trim();
+  const lvl = gradeLevelOf(c);
+  if (lvl != null && lvl >= 1) {
+    if (/^form\s*\d+/i.test(name)) return { key: `lvl:${lvl}`, label: name };
+    let label = name;
+    const stream = String(c?.stream_name || c?.stream || '').trim();
+    if (stream) {
+      const esc = stream.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      label = label.replace(new RegExp(`\\s+${esc}\\s*$`, 'i'), '').trim();
+    }
+    const leading = label.match(/^(grade\s*\d+)(.*)$/i);
+    if (leading) {
+      const tail = leading[2].trim();
+      if (tail && !/^\d+$/.test(tail)) label = leading[1].trim();
+    }
+    if (!/\d/.test(label)) label = `Grade ${lvl}`;
+    return { key: `lvl:${lvl}`, label: label || `Grade ${lvl}` };
+  }
+  return { key: `name:${name || 'unassigned'}`, label: name || 'Unassigned' };
+}
+
 export default function StreamDashboard() {
   const { user, schoolData } = useAuth();
   const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [classes, setClasses] = useState<StreamClass[]>([]);
-  const [grades, setGrades] = useState<string[]>([]);
+  const [grades, setGrades] = useState<{ key: string; label: string }[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
 
@@ -156,6 +194,7 @@ export default function StreamDashboard() {
   const [dropped, setDropped] = useState<ImprovedRow[]>([]);
   const [pdfOptionsOpen, setPdfOptionsOpen] = useState(false);
   const [classPerf, setClassPerf] = useState<ClassPerfRow[]>([]);
+  const [perfDistribution, setPerfDistribution] = useState<PerfDistRow[]>([]);
   const [search, setSearch] = useState('');
   const [showTop10, setShowTop10] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
@@ -203,21 +242,27 @@ export default function StreamDashboard() {
           .eq('is_active', true)
           .order('created_at', { ascending: false }),
       ]);
-      const streamClasses: StreamClass[] = (classesData || []).map((c: any) => ({
-        id: c.id, name: c.name, stream: c.stream ?? null, stream_name: c.stream_name ?? null,
-        label: streamLabel(c), curriculum: c.curriculum ?? null,
-        level: c.level ?? null, grade_level: c.grade_level ?? null,
-      }));
+      const streamClasses: StreamClass[] = (classesData || []).map((c: any) => {
+        const group = gradeGroupOf(c);
+        return {
+          id: c.id, name: c.name, stream: c.stream ?? null, stream_name: c.stream_name ?? null,
+          label: streamLabel(c), curriculum: c.curriculum ?? null,
+          level: c.level ?? null, grade_level: c.grade_level ?? null,
+          gradeKey: group.key, gradeLabel: group.label,
+        };
+      });
       setClasses(streamClasses);
-      const gradeNames: string[] = [];
-      streamClasses.forEach((c) => { if (!gradeNames.includes(c.name)) gradeNames.push(c.name); });
-      gradeNames.sort((a, b) => {
-        const an = parseInt(String(a).replace(/[^0-9]/g, ''), 10) || 999;
-        const bn = parseInt(String(b).replace(/[^0-9]/g, ''), 10) || 999;
+      const gradeOptions: { key: string; label: string }[] = [];
+      streamClasses.forEach((c) => {
+        if (!gradeOptions.some((g) => g.key === c.gradeKey)) gradeOptions.push({ key: c.gradeKey, label: c.gradeLabel });
+      });
+      gradeOptions.sort((a, b) => {
+        const an = parseInt(String(a.label).replace(/[^0-9]/g, ''), 10) || 999;
+        const bn = parseInt(String(b.label).replace(/[^0-9]/g, ''), 10) || 999;
         return an - bn;
       });
-      setGrades(gradeNames);
-      if (gradeNames.length > 0) setSelectedGrade(gradeNames[0]);
+      setGrades(gradeOptions);
+      if (gradeOptions.length > 0) setSelectedGrade(gradeOptions[0].key);
       const allTerms = termsData || [];
       setTerms(allTerms);
       const current = allTerms.find((t: any) => t.is_current);
@@ -235,11 +280,11 @@ export default function StreamDashboard() {
     setLoadingData(true);
     try {
       const streamClasses = classes
-        .filter((c) => c.name === selectedGrade)
+        .filter((c) => c.gradeKey === selectedGrade)
         .sort((a, b) => (a.stream || a.name).localeCompare(b.stream || b.name));
       const classIds = streamClasses.map((c) => c.id);
       if (classIds.length === 0) {
-        setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setDropped([]); setClassPerf([]);
+        setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setDropped([]); setClassPerf([]); setPerfDistribution([]);
         return;
       }
 
@@ -477,6 +522,31 @@ export default function StreamDashboard() {
       setImproved(movementRows.filter((row) => (row.diff || 0) > 0).sort((a, b) => (b.diff ?? -1) - (a.diff ?? -1)).slice(0, 5));
       setDropped(movementRows.filter((row) => (row.diff || 0) < 0).sort((a, b) => (a.diff ?? 1) - (b.diff ?? 1)).slice(0, 5));
 
+
+      // ---- Performance Distribution (current vs previous exam) ----
+      const bandOrder: string[] = streamClasses.some((c) => is844Curriculum(c))
+        ? ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'E']
+        : streamClasses.every((c) => getSchoolLevelBand(c) === 'primary')
+          ? ['EE', 'ME', 'AE', 'BE']
+          : ['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2'];
+      const currentBandCounts: Record<string, number> = {};
+      rankings.forEach((r) => { if (r.grade) currentBandCounts[r.grade] = (currentBandCounts[r.grade] || 0) + 1; });
+      const previousBandCounts: Record<string, number> = {};
+      Object.keys(statsByStudent).forEach((sid) => {
+        const prev = prevAvgById[sid] ?? null;
+        if (prev == null) return;
+        const st = studentList.find((s) => s.id === sid);
+        const ci = st ? (classById.get(st.stream_id || st.class_id) || classById.get(st.class_id)) : undefined;
+        const b = gradeFromAvg(ci, prev);
+        if (b) previousBandCounts[b] = (previousBandCounts[b] || 0) + 1;
+      });
+      const perfDistBands = [...new Set([...bandOrder, ...Object.keys(currentBandCounts), ...Object.keys(previousBandCounts)])];
+      setPerfDistribution(perfDistBands.map((b) => {
+        const current = currentBandCounts[b] || 0;
+        const previous = previousBandCounts[b] || 0;
+        return { grade: b, current, previous, difference: current - previous };
+      }));
+
       // ---- Class performance per stream (all subjects + totals) ----
       const perfRows: ClassPerfRow[] = streamClasses.map((c) => {
         const band = getSchoolLevelBand(c);
@@ -513,7 +583,7 @@ export default function StreamDashboard() {
       setClassPerf(perfRows);
     } catch (err) {
       console.error(err);
-      setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setDropped([]); setClassPerf([]);
+      setOverview([]); setSubjectMatrix([]); setRankings([]); setImproved([]); setDropped([]); setClassPerf([]); setPerfDistribution([]);
     } finally {
       setLoadingData(false);
     }
@@ -540,6 +610,7 @@ export default function StreamDashboard() {
 
   const termName = terms.find((t) => t.id === selectedTerm);
   const examName = exams.find((e) => e.id === selectedExam);
+  const selectedGradeLabel = grades.find((g) => g.key === selectedGrade)?.label || '';
 
   const STREAM_COLORS = ['#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#8B5CF6', '#0891B2', '#DB2777', '#65A30D'];
   const chartData = overview.map((o) => ({ name: o.label, average: o.average ?? 0 }));
@@ -561,7 +632,7 @@ export default function StreamDashboard() {
   const downloadExcel = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ['Stream Dashboard — ' + (selectedGrade || 'All'), '', '', '', '', '', ''],
+      ['Stream Dashboard — ' + (selectedGradeLabel || 'All'), '', '', '', '', '', ''],
       ['Term', termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')],
       ['Assessment', examName ? examName.name : 'All Assessments'],
       [],
@@ -584,16 +655,16 @@ export default function StreamDashboard() {
       ...rankings.map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.label, ...Array.from(new Set(rankings.flatMap((row) => Object.keys(row.subjects)))).sort().flatMap((subject) => [r.subjects[subject]?.marks ?? '', r.subjects[subject]?.points ?? '', r.subjects[subject]?.grade ?? '']), r.totalMarks, r.totalOutOf, r.points, r.avg ?? '', r.grade]),
     ]), { sheetName: 'Stream Dashboard' });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ['Most Improved Learners — ' + (selectedGrade || '')],
+      ['Most Improved Learners — ' + (selectedGradeLabel || '')],
       ['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %'],
       ...improved.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff ?? '']),
     ]), 'Most Improved');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ['Most Dropped Learners — ' + (selectedGrade || '')],
+      ['Most Dropped Learners — ' + (selectedGradeLabel || '')],
       ['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %'],
       ...dropped.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff ?? '']),
     ]), 'Most Dropped');
-    const cpRows: any[] = [['Class Performance — ' + (selectedGrade || '')], []];
+    const cpRows: any[] = [['Class Performance — ' + (selectedGradeLabel || '')], []];
     classPerf.forEach((cp) => {
       cpRows.push([cp.label]);
       cpRows.push(['Subject', 'Avg Marks', 'Out Of', 'Grade', 'Points']);
@@ -602,7 +673,12 @@ export default function StreamDashboard() {
       cpRows.push([]);
     });
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cpRows), 'Class Performance');
-    XLSX.writeFile(wb, `stream_dashboard_${(selectedGrade || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ['Performance Distribution \u2014 ' + (selectedGradeLabel || 'All')],
+      ['Grade', 'Current Exam', 'Previous Exam', 'Difference'],
+      ...perfDistribution.map((r) => [r.grade, r.current, r.previous, (r.difference > 0 ? `+${r.difference}` : r.difference)]),
+    ]), 'Performance Distribution');
+    XLSX.writeFile(wb, `stream_dashboard_${(selectedGradeLabel || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.xlsx`);
   };
 
   const downloadPdf = async (fontSize: PdfFontSize) => {
@@ -611,7 +687,7 @@ export default function StreamDashboard() {
     configurePdfFontSize(doc, fontSize);
     await addLogoToPDF(doc, schoolData?.logo_url, 135, 2, 18, 18);
     doc.setFontSize(pdfFontSize(doc, 16)); doc.text('Stream Dashboard', 14, 14);
-    doc.setFontSize(pdfFontSize(doc, 9)); doc.text(`Grade: ${selectedGrade || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 20);
+    doc.setFontSize(pdfFontSize(doc, 9)); doc.text(`Grade: ${selectedGradeLabel || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 20);
     const startY = 26;
     if (overview.length) {
       doc.setFontSize(pdfFontSize(doc, 11)); doc.text('Stream Overview', 14, startY + 2);
@@ -639,7 +715,7 @@ export default function StreamDashboard() {
     }
     if (rankings.length) {
       doc.addPage();
-      doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Learner Performance — ${selectedGrade || 'All Streams'}`, 14, 15);
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Learner Performance — ${selectedGradeLabel || 'All Streams'}`, 14, 15);
       const rankingSubjects = Array.from(new Set(rankings.flatMap((r) => Object.keys(r.subjects)))).sort();
       autoTable(doc, {
         startY: 20,
@@ -694,7 +770,7 @@ export default function StreamDashboard() {
         });
       });
     }
-    doc.save(`stream_dashboard_${(selectedGrade || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.pdf`);
+    doc.save(`stream_dashboard_${(selectedGradeLabel || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.pdf`);
   };
 
 
@@ -706,7 +782,7 @@ export default function StreamDashboard() {
     const tabLabel = tabLabels[activeTab] || activeTab;
     doc.setFontSize(pdfFontSize(doc, 15)); doc.text(tabLabel, 14, 12);
     doc.setFontSize(pdfFontSize(doc, 9));
-    doc.text(`Grade: ${selectedGrade || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 19);
+    doc.text(`Grade: ${selectedGradeLabel || 'All'}  |  Term: ${termName ? `${termName.name} ${termName.academic_year || ''}` : (selectedTerm || '')}  |  Assessment: ${examName ? examName.name : 'All Assessments'}`, 14, 19);
     const startY = 25;
     if (activeTab === 'overview') {
       autoTable(doc, { startY, head: [['Rank', 'Stream', 'Learners', 'Results In', 'Class Mean Marks', 'Points', 'Grade']], body: overview.map((r) => [r.rank ?? '', r.label, r.learners, r.withResults, r.meanMarks !== null ? `${r.meanMarks} / ${r.meanMarksOutOf}` : '', r.points ?? '', r.grade]), styles: { fontSize: pdfFontSize(doc, 9), cellPadding: 2 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid' });
@@ -725,7 +801,7 @@ export default function StreamDashboard() {
     } else if (activeTab === 'improved') {
       autoTable(doc, { startY, head: [['Rank', 'Student', 'Stream', 'Adm No', 'Previous %', 'Current %', 'Diff %']], body: [...improved.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff != null ? `+${r.diff}%` : '']), ...dropped.map((r, i) => [i + 1, `${r.first_name} ${r.last_name}`, r.label, r.admission_number, r.prevAvg ?? '', r.avg ?? '', r.diff != null ? `${r.diff}%` : ''])], styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 }, headStyles: { fillColor: [245, 158, 11] }, theme: 'grid' });
     }
-    doc.save(`stream_dashboard_${tabLabel.replace(/\s+/g, '_')}_${(selectedGrade || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.pdf`);
+    doc.save(`stream_dashboard_${tabLabel.replace(/\s+/g, '_')}_${(selectedGradeLabel || 'grade').replace(/\s+/g, '_')}_${(termName?.name || 'term').replace(/\s+/g, '_')}.pdf`);
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
@@ -753,7 +829,7 @@ export default function StreamDashboard() {
           <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl shadow-sm border border-gray-200">
             <BarChart3 className="w-4 h-4 text-gray-400" />
             <select value={selectedGrade} onChange={(e) => { setSelectedGrade(e.target.value); setSelectedExam(''); }} className="text-sm font-medium border-none focus:ring-0 bg-transparent">
-              {grades.map((g) => <option key={g} value={g}>{g}</option>)}
+              {grades.map((g) => <option key={g.key} value={g.key}>{g.label}</option>)}
             </select>
             {terms.length > 0 && (
               <select value={selectedTerm} onChange={(e) => { setSelectedTerm(e.target.value); setSelectedExam(''); }} className="text-sm font-medium border-none focus:ring-0 bg-transparent">
@@ -821,7 +897,7 @@ export default function StreamDashboard() {
             <div className="space-y-4">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-5 border-b border-gray-100">
-                  <h3 className="font-bold text-gray-900">Stream Overview — {selectedGrade}</h3>
+                  <h3 className="font-bold text-gray-900">Stream Overview — {selectedGradeLabel}</h3>
                   <p className="text-xs text-gray-500 mt-1">Ranking of every stream in this grade for the selected term and assessment.</p>
                 </div>
                 <div className="overflow-x-auto">
@@ -868,7 +944,7 @@ export default function StreamDashboard() {
               )}
               {overview.length > 1 && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                  <h3 className="font-bold text-gray-900 mb-1">Stream Performance — {selectedGrade}</h3>
+                  <h3 className="font-bold text-gray-900 mb-1">Stream Performance — {selectedGradeLabel}</h3>
                   <p className="text-xs text-gray-500 mb-4">Average performance of each stream for the selected assessment.</p>
                   <ResponsiveContainer width="100%" height={240}>
                     <BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 0 }}>
@@ -908,7 +984,7 @@ export default function StreamDashboard() {
               )}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-5 border-b border-gray-100">
-                  <h3 className="font-bold text-gray-900">Subject Performance by Stream — {selectedGrade}</h3>
+                  <h3 className="font-bold text-gray-900">Subject Performance by Stream — {selectedGradeLabel}</h3>
                   <p className="text-xs text-gray-500 mt-1">Average score per subject for each stream. Best stream highlighted.</p>
                 </div>
                 {subjectMatrix.length === 0 ? (
@@ -960,7 +1036,7 @@ export default function StreamDashboard() {
                 <input type="text" placeholder="Search students by name or admission number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-white rounded-2xl text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div className="flex items-center justify-between">
-                <div><h3 className="font-bold text-gray-900">Learner Performance — {selectedGrade} — All Streams</h3><p className="text-xs text-gray-500">Ranked by total marks first, then points. Each subject shows marks and points.</p></div>
+                <div><h3 className="font-bold text-gray-900">Learner Performance — {selectedGradeLabel} — All Streams</h3><p className="text-xs text-gray-500">Ranked by total marks first, then points. Each subject shows marks and points.</p></div>
                 <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none"><input type="checkbox" checked={showTop10} onChange={(e) => setShowTop10(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" /> Show top 10</label>
               </div>
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr>
@@ -980,7 +1056,7 @@ export default function StreamDashboard() {
             <div className="space-y-4">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-5 border-b border-gray-100">
-                  <h3 className="font-bold text-gray-900">Stream Comparison — {selectedGrade}</h3>
+                  <h3 className="font-bold text-gray-900">Stream Comparison — {selectedGradeLabel}</h3>
                   <p className="text-xs text-gray-500 mt-1">Side-by-side subject averages and the gap between the best and weakest stream.</p>
                 </div>
                 <div className="overflow-x-auto">
@@ -1008,8 +1084,40 @@ export default function StreamDashboard() {
                   </table>
                 </div>
               </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-5 border-b border-gray-100">
+                  <h3 className="font-bold text-gray-900">Performance Distribution</h3>
+                  <p className="text-xs text-gray-500 mt-1">Learners by grade band compared with the previous exam.</p>
+                </div>
+                {perfDistribution.length === 0 ? (
+                  <div className="p-10 text-center text-gray-500 text-sm">No distribution data available.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Grade</th>
+                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Current Exam</th>
+                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Previous Exam</th>
+                          <th className="text-left py-3 px-6 text-xs font-semibold text-gray-500 uppercase">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {perfDistribution.map((row) => (
+                          <tr key={row.grade} className="hover:bg-gray-50">
+                            <td className="py-3 px-6 font-medium text-gray-900">{row.grade}</td>
+                            <td className="py-3 px-6 text-gray-600">{row.current} learner{row.current === 1 ? '' : 's'}</td>
+                            <td className="py-3 px-6 text-gray-600">{row.previous} learner{row.previous === 1 ? '' : 's'}</td>
+                            <td className={`py-3 px-6 font-bold ${row.difference > 0 ? 'text-green-700' : row.difference < 0 ? 'text-red-700' : 'text-gray-500'}`}>{row.difference > 0 ? `+${row.difference}` : row.difference}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                <h3 className="font-bold text-gray-900 mb-1">Learner Performance Distribution</h3>
+                <h3 className="font-bold text-gray-900 mb-1">Score Histogram</h3>
                 <p className="text-xs text-gray-500 mb-4">Histogram of average learner scores across all streams.</p>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={distributionData} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
@@ -1102,7 +1210,7 @@ export default function StreamDashboard() {
               ].map((section) => (
                 <div key={section.title} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="p-5 border-b border-gray-100">
-                    <h3 className="font-bold text-gray-900">{section.title} — {selectedGrade}</h3>
+                    <h3 className="font-bold text-gray-900">{section.title} — {selectedGradeLabel}</h3>
                     <p className="text-xs text-gray-500 mt-1">Top 5 learners compared with the previous term.</p>
                   </div>
                   {section.rows.length === 0 ? (

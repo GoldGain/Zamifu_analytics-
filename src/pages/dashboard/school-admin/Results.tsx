@@ -206,7 +206,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const selectedClassObjForView = classes.find((c: any) => c.id === selectedClass);
   const allStreamClassIds = selectedClassObjForView
     ? classes
-      .filter((c: any) => c.name === selectedClassObjForView.name && String(c.grade_level ?? c.level ?? '') === String(selectedClassObjForView.grade_level ?? selectedClassObjForView.level ?? ''))
+      .filter((c: any) => {
+        const selLevel = Number(selectedClassObjForView.level ?? selectedClassObjForView.grade_level);
+        const curLevel = Number(c.level ?? c.grade_level);
+        if (Number.isFinite(selLevel) && Number.isFinite(curLevel)) return curLevel === selLevel;
+        return c.name === selectedClassObjForView.name;
+      })
       .map((c: any) => c.id)
     : [];
   const activeResultClassIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
@@ -1126,9 +1131,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   const fetchGradeStreamClasses = async (seedClassObj: any): Promise<any[]> => {
+    const seedLevel = seedClassObj?.level ?? seedClassObj?.grade_level;
     let q = supabaseUntyped.from('classes').select('*').eq('school_id', user?.schoolId).eq('is_active', true);
-    if (seedClassObj?.name) q = q.eq('name', seedClassObj.name);
-    else if (seedClassObj?.grade_level != null) q = q.eq('grade_level', seedClassObj.grade_level);
+    if (seedLevel != null) q = q.eq('level', seedLevel);
+    else if (seedClassObj?.name) q = q.eq('name', seedClassObj.name);
     const { data } = await q;
     return ((data || []) as any[]).sort((a, b) => String(a.stream || '').localeCompare(String(b.stream || '')));
   };
