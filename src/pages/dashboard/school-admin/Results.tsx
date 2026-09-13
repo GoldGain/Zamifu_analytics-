@@ -549,17 +549,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
       // ── PAGE 1: CLASS SUMMARY ────────────────────────────────────────────────────
       {
-        doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 35, 'F');
-        if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 3, 26, 26);
-        doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 16)); doc.setFont('helvetica', 'bold');
-        doc.text(displaySchoolName, 105, 13, { align: 'center' });
-        doc.setFontSize(pdfFontSize(doc, 11));
-        doc.text('CLASS RESULTS SUMMARY', 105, 22, { align: 'center' });
-        doc.setFontSize(pdfFontSize(doc, 9));
+        doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 40, 'F');
+        if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 2, 16, 16);
+        doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold');
+        doc.setFontSize(pdfFontSize(doc, 13));
+        doc.text(displaySchoolName, 105, 21, { align: 'center' });
+        doc.setFontSize(pdfFontSize(doc, 10));
+        doc.text('CLASS RESULTS SUMMARY', 105, 27, { align: 'center' });
+        doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'normal');
         const summarySubtitle = assessmentLabel
           ? `${streamLabel(classObj)} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''} — ${assessmentLabel}`
           : `${streamLabel(classObj)} — ${termObj?.name || 'Term'} ${termObj?.academic_year || ''}`;
-        doc.text(summarySubtitle, 105, 30, { align: 'center' });
+        doc.text(summarySubtitle, 105, 33, { align: 'center' });
 
         const statsY = 42;
         const boys = summaries.filter(s => String(s.student?.gender || '').toLowerCase().startsWith('m')).length;
@@ -1164,13 +1165,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
     // jsPDF starts with page 1. Render directly on it so the exported PDF
     // never contains a blank cover page.
-    doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 35, 'F');
-    if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 3, 26, 26);
-    doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 16));
-    doc.text(schoolInfo.name || schoolName || 'School', 105, 13, { align: 'center' });
-    doc.setFontSize(pdfFontSize(doc, 11)); doc.text('CLASS RESULTS SUMMARY', 105, 22, { align: 'center' });
+    doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 40, 'F');
+    if (schoolInfo.logo_url) await addLogoToPDF(doc, schoolInfo.logo_url, 92, 2, 16, 16);
+    doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 13));
+    doc.text(schoolInfo.name || schoolName || 'School', 105, 21, { align: 'center' });
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.text('CLASS RESULTS SUMMARY', 105, 27, { align: 'center' });
     doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'normal');
-    doc.text(`${opts.label} — ${opts.termObj?.name || 'Term'} ${opts.termObj?.academic_year || ''}${opts.assessmentLabel ? ` — ${opts.assessmentLabel}` : ''}`, 105, 30, { align: 'center' });
+    doc.text(`${opts.label} — ${opts.termObj?.name || 'Term'} ${opts.termObj?.academic_year || ''}${opts.assessmentLabel ? ` — ${opts.assessmentLabel}` : ''}`, 105, 33, { align: 'center' });
     doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     const statsY = 42;
     doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 30, 'F');
