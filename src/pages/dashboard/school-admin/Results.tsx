@@ -183,6 +183,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [classes, setClasses] = useState<any[]>([]);
+  const [activeLearnerCounts, setActiveLearnerCounts] = useState<Record<string, number>>({});
   const [terms, setTerms] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
   const [selectedClass, setSelectedClass] = useState('');
@@ -252,6 +253,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('students').select('id, class_id').eq('school_id', schoolId).eq('is_active', true),
       ]);
       setResults((resultsData[0].data as any[]) || []);
       const loadedClasses = (resultsData[1].data as any[]) || [];
@@ -262,6 +264,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       setTerms((resultsData[2].data as any[]) || []);
       sch = resultsData[3].data;
       setExams((resultsData[4].data as any[]) || []);
+      const learnerCounts: Record<string, number> = {};
+      ((resultsData[5].data as any[]) || []).forEach((student: any) => {
+        if (student.class_id) learnerCounts[student.class_id] = (learnerCounts[student.class_id] || 0) + 1;
+      });
+      setActiveLearnerCounts(learnerCounts);
       if (scope === 'class_teacher' && resolvedScopedClassId) setSelectedClass(resolvedScopedClassId);
     } catch (err: any) {
       console.error('Fetch error:', err);
@@ -1715,7 +1722,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   // assigned class as the source of truth, with selectedClass as a safe fallback.
   const summaryClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
   const summaryResults = scope === 'class_teacher' && !summaryClassId ? [] : filtered;
-  const totalLearners = new Set(summaryResults.map(r => r.student_id).filter(Boolean)).size;
+  const summaryClassIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
+    ? allStreamClassIds
+    : summaryClassId ? [summaryClassId] : [];
+  // The dashboard badge represents the active learner roster, not only learners
+  // who happen to have a result row for the current term/exam/filter.
+  const totalLearners = summaryClassIds.reduce((total, classId) => total + (activeLearnerCounts[classId] || 0), 0);
 
   const classObj = classes.find(c => c.id === summaryClassId || c.id === selectedClass);
   const totalSubjects = getRequiredLearningAreas(classObj) ?? new Set(summaryResults.map(r => r.subject_id).filter(Boolean)).size;
