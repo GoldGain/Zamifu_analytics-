@@ -8,7 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { deleteResults } from '@/lib/resultActions';
 
-import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
+import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas, getCanonicalLearningAreas, statusForGrade, gradeLabelsForBand } from '@/lib/grading';
 import { normalizeLearningAreaName, normalizeLearningAreas } from '@/lib/learningAreas';
 import type { SchoolLevelBand, SubjectResult } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
@@ -55,6 +55,57 @@ function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
   const g = calculateCompetencyGrade(avgPct, band);
   return { subLevel: g.subLevel, grade: g.grade, points: g.points, descriptor: g.descriptor };
 }
+
+function mergedLearningAreas(canonical: string[], dynamic: string[]) {
+  const aliasGroups: string[][] = [
+    ['CRE', 'IRE', 'HRE', 'Religious Education'],
+    ['Agriculture', 'Agriculture and Nutrition'],
+    ['Creative Arts', 'Creative Arts and Sports', 'Creative Arts & Sports'],
+  ];
+  const canonicalKey = (name: string): string => {
+    const group = aliasGroups.find((g) => g.includes(name));
+    return group ? group[0] : name;
+  };
+  const used = new Set<string>();
+  const out: string[] = [];
+  const actualName = (name: string): string => {
+    const group = aliasGroups.find((g) => g.includes(name));
+    if (!group) return name;
+    return dynamic.find((d) => group.includes(d)) || name;
+  };
+  const push = (name: string) => {
+    const key = canonicalKey(name);
+    if (used.has(key)) return;
+    used.add(key);
+    out.push(actualName(name));
+  };
+  canonical.forEach(push);
+  dynamic.forEach(push);
+  return out;
+}
+
+function computeTopLearnersPerArea(summaries: any[], areas: string[], band: SchoolLevelBand, topN: number) {
+  const rows: { area: string; rank: number; name: string; marks: number; grade: string }[] = [];
+  areas.forEach((area) => {
+    summaries
+      .filter((s: any) => s.subjects[area] !== undefined)
+      .sort((a: any, b: any) => b.subjects[area] - a.subjects[area])
+      .slice(0, topN)
+      .forEach((s: any, i: number) => {
+        const pct = Number(s.subjects[area]);
+        const gr = overallGradeWithBand(pct, band);
+        rows.push({
+          area,
+          rank: i + 1,
+          name: `${s.student?.first_name || ''} ${s.student?.last_name || ''}`.trim() || '—',
+          marks: Math.round(pct),
+          grade: band === 'primary' ? gr.grade : gr.subLevel,
+        });
+      });
+  });
+  return rows;
+}
+
 
 const SUBJECT_SHORT: Record<string, string> = {
   'Mathematics Activities': 'MATH-ACT',
@@ -513,7 +564,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const isPrimary = band === 'primary';
       const summaries = buildStudentSummary(rawResults, classObj);
       const allSubjectsRaw = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
-      const allSubjects = sortSubjects(normalizeLearningAreas(allSubjectsRaw));
+      const allSubjects = sortSubjects(mergedLearningAreas(getCanonicalLearningAreas(classObj), normalizeLearningAreas(allSubjectsRaw)));
       const totalStudents = summaries.length;
       
       const subjectStats = allSubjects.map(sub => {
@@ -647,11 +698,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         });
 
         const bestSubjY = top5Y + 42;
-        if (bestPerSubjectList.length > 0) {
-          doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
-          doc.text('BEST LEARNER PER LEARNING AREA', 14, bestSubjY); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal');
-          bestPerSubjectList.slice(0, 10).forEach((b, i) => { const pts = b.points !== null ? ` (${b.points} pts)` : ''; doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 20, bestSubjY + 8 + i * 6); });
-        }
+        doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
+        doc.text('BEST LEARNER PER LEARNING AREA', 14, bestSubjY); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 7.5)); doc.setFont('helvetica', 'normal');
+        allSubjects.forEach((subject, i) => {
+          const top = summaries.filter((s: any) => s.subjects[subject] !== undefined).sort((a: any, b: any) => b.subjects[subject] - a.subjects[subject])[0];
+          if (top) {
+            const pct = Number(top.subjects[subject]);
+            const g = overallGradeWithBand(pct, band);
+            doc.text(`Best in ${subject}: ${top.student?.first_name || ''} ${top.student?.last_name || ''} (${Math.round(pct)} — ${isPrimary ? g.grade : g.subLevel})`, 20, bestSubjY + 8 + i * 5);
+          } else {
+            doc.text(`Best in ${subject}: —`, 20, bestSubjY + 8 + i * 5);
+          }
+        });
         doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
@@ -1176,7 +1234,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; previousTerm: any; previousSubjectStats: Map<string, number>; previousDistribution: Map<string, number>; previousTotalStudents: number | null; fontSize: PdfFontSize }) => {
     const band = getSchoolLevelBand(opts.classObj); const isPrimary = band === 'primary';
     const summaries = buildStudentSummary(opts.rawResults, opts.classObj);
-    const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
+    const allSubjects = sortSubjects(mergedLearningAreas(getCanonicalLearningAreas(opts.classObj), normalizeLearningAreas(Array.from(new Set(opts.rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[])));
     const totalStudents = summaries.length;
     // Class Mean Marks = sum of every learner's total percentage marks ÷ number of learners.
     // Each learner's totalPct sums their subject percentages (each out of 100). For Junior School
@@ -1263,13 +1321,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const bestStartY = (((doc as any).lastAutoTable?.finalY) ?? (isPrimary ? 161 : 179)) + 8;
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35); doc.text('BEST LEARNER PER LEARNING AREA', 14, bestStartY);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 7.5));
-    subjectStats.slice(0, 6).forEach((subject, index) => {
+    subjectStats.forEach((subject, index) => {
       const best = summaries.filter((s: any) => s.subjects[subject.name] !== undefined).sort((a: any, b: any) => b.subjects[subject.name] - a.subjects[subject.name])[0];
       if (best) doc.text(`Best in ${subject.name}: ${best.student?.first_name || ''} ${best.student?.last_name || ''} (${best.subjects[subject.name].toFixed(1)}%)`, 20, bestStartY + 7 + index * 5);
     });
 
     // GENDER SUMMARY
-    const genderSummaryY = bestStartY + 45;
+    const genderSummaryY = bestStartY + 12 + subjectStats.length * 5;
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('GENDER BREAKDOWN', 14, genderSummaryY);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     const maleAvg = boys > 0 ? summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('m')).reduce((sum, s) => sum + s.avgPct, 0) / boys : 0;

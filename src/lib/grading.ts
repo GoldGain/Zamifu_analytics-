@@ -362,3 +362,57 @@ export function getRequiredLearningAreas(classData?: {
   if (/junior|jss|grade\s*[789]/.test(name)) return 9;
   return null; // playgroup / PP / unknown: keep old divide-by-count behaviour
 }
+
+// ── Learning Area Performance status band ────────────────────────────────────
+// Maps a competency grade to a display status. EE1/EE2/ME1 are STRONG,
+// ME2 is AVERAGE, and AE1 or below is WEAK (AE1 must never show AVERAGE).
+export function statusForGrade(subLevel?: string | null): 'STRONG' | 'AVERAGE' | 'WEAK' {
+  const g = String(subLevel || '').trim().toUpperCase();
+  if (g === 'EE1' || g === 'EE2' || g === 'ME1' || g === 'EE' || g === 'ME') return 'STRONG';
+  if (g === 'ME2') return 'AVERAGE';
+  if (g === 'AE1' || g === 'AE2' || g === 'BE1' || g === 'BE2' || g === 'AE' || g === 'BE') return 'WEAK';
+  return 'AVERAGE';
+}
+
+// ── Grade band labels for a school level band ────────────────────────────────
+export function gradeLabelsForBand(band: SchoolLevelBand): string[] {
+  if (band === 'primary') return ['EE', 'ME', 'AE', 'BE'];
+  return ['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2'];
+}
+
+// ── Canonical learning areas per curriculum level ────────────────────────────
+// Returns the fixed, ordered learning areas for levels whose national
+// curriculum defines a stable set (Junior School and Upper Primary). Returns an
+// empty list for Lower Primary, Senior School, 8-4-4 and unknown levels so
+// callers fall back to the learning areas actually present in the results.
+export function getCanonicalLearningAreas(classData?: {
+  curriculum?: Curriculum | string | null;
+  grade_level?: number | string | null;
+  level?: number | string | null;
+  name?: string | null;
+}): string[] {
+  if (is844Curriculum(classData)) return [];
+  const rawLevel = classData?.grade_level ?? classData?.level;
+  const grade = typeof rawLevel === 'number'
+    ? rawLevel
+    : parseInt(String(rawLevel ?? '').replace(/[^0-9-]/g, ''), 10);
+
+  const junior = [
+    'English', 'Kiswahili', 'Mathematics', 'Integrated Science',
+    'Pre-Technical Studies', 'Agriculture', 'Social Studies', 'CRE', 'Creative Arts',
+  ];
+  const upperPrimary = [
+    'English', 'Kiswahili', 'Mathematics', 'Science and Technology',
+    'Social Studies', 'CRE', 'Creative Arts',
+  ];
+
+  if (Number.isFinite(grade)) {
+    if (grade >= 7 && grade <= 9) return junior;
+    if (grade >= 4 && grade <= 6) return upperPrimary;
+  }
+
+  const name = String(classData?.name || '').toLowerCase();
+  if (/junior|jss|grade\s*[789]/.test(name)) return junior;
+  if (/grade\s*[4-6]/.test(name)) return upperPrimary;
+  return [];
+}
