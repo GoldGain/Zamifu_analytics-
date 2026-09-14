@@ -1284,7 +1284,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     });
 
     // PERFORMANCE DISTRIBUTION (current vs previous exam)
-    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('PERFORMANCE DISTRIBUTION', 14, 124);
+    // Start below the tenth Top 10 row so the distribution heading/table never covers learner names.
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('PERFORMANCE DISTRIBUTION', 14, 157);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     const distributionRows = gradeBands.map((gradeBand) => {
       const count = summaries.filter((s: any) => {
@@ -1305,7 +1306,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const totalDiffLabel = totalDiff === null ? '—' : (totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`);
     const distTotals = [['TOTAL', `${totalStudents}`, previousTotalStudents != null ? `${previousTotalStudents}` : '—', totalDiffLabel]];
     autoTable(doc, {
-      startY: 130,
+      startY: 163,
       head: [['Grade', 'Current Exam', 'Previous Exam', 'Difference']],
       body: [...distributionRows, ...distTotals],
       styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2, halign: 'center' },
