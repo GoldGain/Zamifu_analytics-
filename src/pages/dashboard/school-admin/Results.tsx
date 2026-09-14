@@ -1561,10 +1561,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const centerX = pageWidth / 2;
       doc.setFillColor(245, 166, 35); doc.rect(0, 0, pageWidth, 20, 'F');
       doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 14)); doc.setFont('helvetica', 'bold');
-      doc.text(displaySchoolName, centerX, 8, { align: 'center' }); doc.setFontSize(pdfFontSize(doc, 10));
-      const tableSubtitle = assessmentLabel
-        ? `LEARNER PERFORMANCE RESULTS — ${streamLabel(classObj)} — ${termObj?.name || ''} ${termObj?.academic_year || ''} — ${assessmentLabel}`
-        : `LEARNER PERFORMANCE RESULTS — ${streamLabel(classObj)} — ${termObj?.name || ''} ${termObj?.academic_year || ''}`;
+      doc.text(schoolInfo.name || schoolName || 'School', centerX, 8, { align: 'center' }); doc.setFontSize(pdfFontSize(doc, 10));
+      const tableSubtitle = opts.assessmentLabel
+        ? `LEARNER PERFORMANCE RESULTS — ${opts.label} — ${opts.termObj?.name || ''} ${opts.termObj?.academic_year || ''} — ${opts.assessmentLabel}`
+        : `LEARNER PERFORMANCE RESULTS — ${opts.label} — ${opts.termObj?.name || ''} ${opts.termObj?.academic_year || ''}`;
       doc.text(tableSubtitle, centerX, 16, { align: 'center' });
 
       const subjectShorts = allSubjects.map(s => shortName(s));
