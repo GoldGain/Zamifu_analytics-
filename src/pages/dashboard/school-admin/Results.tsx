@@ -1131,25 +1131,49 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   const fetchGradeStreamClasses = async (seedClassObj: any): Promise<any[]> => {
-    const seedLevel = seedClassObj?.level ?? seedClassObj?.grade_level;
-    let q = supabaseUntyped.from('classes').select('*').eq('school_id', user?.schoolId).eq('is_active', true);
-    if (seedLevel != null) q = q.eq('level', seedLevel);
-    else if (seedClassObj?.name) q = q.eq('name', seedClassObj.name);
-    const { data } = await q;
-    return ((data || []) as any[]).sort((a, b) => String(a.stream || '').localeCompare(String(b.stream || '')));
+    const selLevel = Number(seedClassObj?.level ?? seedClassObj?.grade_level);
+    const { data } = await supabaseUntyped
+      .from('classes')
+      .select('*')
+      .eq('school_id', user?.schoolId)
+      .eq('is_active', true);
+    const classesForSchool = (data || []) as any[];
+    const streams = classesForSchool.filter((c: any) => {
+      const curLevel = Number(c.level ?? c.grade_level);
+      if (Number.isFinite(selLevel) && Number.isFinite(curLevel)) return curLevel === selLevel;
+      return c.name === seedClassObj?.name;
+    });
+    return streams.sort((a, b) =>
+      String(a.stream || a.stream_name || '').localeCompare(String(b.stream || b.stream_name || '')),
+    );
   };
 
-  const fetchResultsForClassIds = async (classIds: string[], termId: string, examId?: string): Promise<any[]> => {
-    let q = supabaseUntyped.from('results')
-      .select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
-      .in('class_id', classIds).eq('term_id', termId).eq('school_id', user?.schoolId);
-    if (examId) q = q.eq('exam_id', examId);
-    const { data, error } = await q;
-    if (error) throw error;
-    return (data || []) as any[];
+  const fetchResultsAll = async (classIds: string[], termId: string, examId?: string, selectCols?: string): Promise<any[]> => {
+    const pageSize = 1000;
+    const selected = selectCols || '*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)';
+    const allResults: any[] = [];
+    let from = 0;
+    while (true) {
+      let q = supabaseUntyped.from('results')
+        .select(selected)
+        .in('class_id', classIds)
+        .eq('term_id', termId)
+        .eq('school_id', user?.schoolId);
+      if (examId) q = q.eq('exam_id', examId);
+      const { data, error } = await q.range(from, from + pageSize - 1);
+      if (error) throw error;
+      const batch = (data || []) as any[];
+      allResults.push(...batch);
+      if (batch.length < pageSize) break;
+      from += pageSize;
+    }
+    return allResults;
   };
 
-  const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; previousTerm: any; previousSubjectStats: Map<string, number>; fontSize: PdfFontSize }) => {
+  const fetchResultsForClassIds = async (classIds: string[], termId: string, examId?: string): Promise<any[]> =>
+    fetchResultsAll(classIds, termId, examId);
+
+  const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; previousTerm: any; previousSubjectStats: Map<string, number>; previousDistribution: Map<string, number>; previousTotalStudents: number | null; fontSize: PdfFontSize }) => {
     const band = getSchoolLevelBand(opts.classObj); const isPrimary = band === 'primary';
     const summaries = buildStudentSummary(opts.rawResults, opts.classObj);
     const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
@@ -1170,6 +1194,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     }).sort((a, b) => b.mean - a.mean);
     const previousSubjectStats = opts.previousSubjectStats || new Map<string, number>();
     const previousTerm = opts.previousTerm || null;
+    const previousDistribution = opts.previousDistribution || new Map<string, number>();
+    const previousTotalStudents = opts.previousTotalStudents ?? null;
     const gradeBands = isPrimary
       ? [{ label: 'EE', min: 75, color: [76, 175, 80] }, { label: 'ME', min: 41, color: [33, 150, 243] }, { label: 'AE', min: 21, color: [255, 152, 0] }, { label: 'BE', min: 0, color: [244, 67, 54] }]
       : [{ label: 'EE1', min: 90, color: [76, 175, 80] }, { label: 'EE2', min: 75, color: [139, 195, 74] }, { label: 'ME1', min: 58, color: [33, 150, 243] }, { label: 'ME2', min: 41, color: [3, 169, 244] }, { label: 'AE1', min: 31, color: [255, 152, 0] }, { label: 'AE2', min: 21, color: [255, 193, 7] }, { label: 'BE1', min: 11, color: [255, 87, 34] }, { label: 'BE2', min: 0, color: [244, 67, 54] }];
@@ -1202,23 +1228,39 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? grade.grade : grade.subLevel}${!isPrimary ? ` (${grade.points}pts)` : ''}`, 20, 89 + index * 6);
     });
 
-    // PERFORMANCE DISTRIBUTION
+    // PERFORMANCE DISTRIBUTION (current vs previous exam)
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('PERFORMANCE DISTRIBUTION', 14, 124);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
-    gradeBands.forEach((gradeBand, index) => {
+    const distributionRows = gradeBands.map((gradeBand) => {
       const count = summaries.filter((s: any) => {
         const value = overallGradeWithBand(s.avgPct, band);
         return isPrimary ? value.grade === gradeBand.label : value.subLevel === gradeBand.label;
       }).length;
-      const pct = totalStudents ? count / totalStudents : 0;
-      const y = 131 + index * 6;
-      doc.text(`${gradeBand.label}: ${count} learner${count === 1 ? '' : 's'} (${(pct * 100).toFixed(1)}%)`, 20, y);
-      doc.setFillColor(240, 240, 245); doc.rect(90, y - 3, 80, 4, 'F');
-      doc.setFillColor(gradeBand.color[0], gradeBand.color[1], gradeBand.color[2]); doc.rect(90, y - 3, 80 * pct, 4, 'F');
+      const prevCount = previousDistribution.has(gradeBand.label) ? previousDistribution.get(gradeBand.label) : null;
+      const diff = prevCount != null ? count - prevCount : null;
+      const diffLabel = diff === null ? '—' : (diff > 0 ? `+${diff}` : `${diff}`);
+      return [
+        gradeBand.label,
+        `${count}${totalStudents ? ` (${(count / totalStudents * 100).toFixed(1)}%)` : ''}`,
+        prevCount != null ? `${prevCount}${previousTotalStudents ? ` (${(prevCount / previousTotalStudents * 100).toFixed(1)}%)` : ''}` : '—',
+        diffLabel,
+      ];
+    });
+    const totalDiff = previousTotalStudents != null ? totalStudents - previousTotalStudents : null;
+    const totalDiffLabel = totalDiff === null ? '—' : (totalDiff > 0 ? `+${totalDiff}` : `${totalDiff}`);
+    const distTotals = [['TOTAL', `${totalStudents}`, previousTotalStudents != null ? `${previousTotalStudents}` : '—', totalDiffLabel]];
+    autoTable(doc, {
+      startY: 130,
+      head: [['Grade', 'Current Exam', 'Previous Exam', 'Difference']],
+      body: [...distributionRows, ...distTotals],
+      styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2, halign: 'center' },
+      headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [232, 234, 246] },
+      margin: { left: 14, right: 14 },
     });
 
     // BEST LEARNER PER LEARNING AREA
-    const bestStartY = isPrimary ? 161 : 179;
+    const bestStartY = (((doc as any).lastAutoTable?.finalY) ?? (isPrimary ? 161 : 179)) + 8;
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35); doc.text('BEST LEARNER PER LEARNING AREA', 14, bestStartY);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 7.5));
     subjectStats.slice(0, 6).forEach((subject, index) => {
@@ -1372,26 +1414,49 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const currentTermIndex = orderedTerms.findIndex((term) => term.id === selectedTerm);
       const previousTerm = currentTermIndex > 0 ? orderedTerms[currentTermIndex - 1] : null;
       const previousSubjectStats = new Map<string, number>();
+      const previousDistribution = new Map<string, number>();
+      let previousTotalStudents: number | null = null;
       if (previousTerm) {
-        const { data: previousResults } = await supabaseUntyped
-          .from('results')
-          .select('subject_id, marks, out_of, percentage, subjects(name)')
-          .in('class_id', streamClasses.map((c) => c.id))
-          .eq('term_id', previousTerm.id)
-          .eq('school_id', user?.schoolId);
+        const previousResults = await fetchResultsAll(
+          streamClasses.map((c) => c.id),
+          previousTerm.id,
+          undefined,
+          'student_id, marks, out_of, percentage, subjects(name)',
+        );
         const previousBySubject = new Map<string, number[]>();
+        const previousByStudent = new Map<string, Record<string, number>>();
+        const prevBand = getSchoolLevelBand(seedClassObj);
         (previousResults || []).forEach((res: any) => {
           const name = normalizeLearningAreaName(res.subjects?.name || '');
-          if (!name || name === 'Unknown') return;
-          const percentage = Number(res.percentage ?? (Number(res.out_of) > 0 ? Number(res.marks || 0) / Number(res.out_of) * 100 : 0));
-          const values = previousBySubject.get(name) || [];
-          values.push(percentage);
-          previousBySubject.set(name, values);
+          if (name && name !== 'Unknown') {
+            const percentage = Number(res.percentage ?? (Number(res.out_of) > 0 ? Number(res.marks || 0) / Number(res.out_of) * 100 : 0));
+            const values = previousBySubject.get(name) || [];
+            values.push(percentage);
+            previousBySubject.set(name, values);
+          }
+          const sid = res.student_id;
+          if (sid) {
+            if (!previousByStudent.has(sid)) previousByStudent.set(sid, {});
+            const nm = normalizeLearningAreaName(res.subjects?.name || '');
+            if (nm && nm !== 'Unknown') {
+              const pct = Number(res.percentage ?? (Number(res.out_of) > 0 ? Number(res.marks || 0) / Number(res.out_of) * 100 : 0));
+              previousByStudent.get(sid)![nm] = pct;
+            }
+          }
         });
         previousBySubject.forEach((values, name) => previousSubjectStats.set(name, values.reduce((sum, v) => sum + v, 0) / values.length));
+        previousTotalStudents = previousByStudent.size;
+        const prevRequired = getRequiredLearningAreas(seedClassObj) ?? 9;
+        previousByStudent.forEach((subjMap) => {
+          const totalPct = Object.values(subjMap).reduce((sum, v) => sum + v, 0);
+          const avgPct = prevRequired ? totalPct / prevRequired : (Object.keys(subjMap).length ? totalPct / Object.keys(subjMap).length : 0);
+          const g = overallGradeWithBand(avgPct, prevBand);
+          const label = prevBand === 'primary' ? g.grade : g.subLevel;
+          previousDistribution.set(label, (previousDistribution.get(label) || 0) + 1);
+        });
       }
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }); configurePdfFontSize(doc, fontSize);
-      await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, previousTerm, previousSubjectStats, fontSize });
+      await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, previousTerm, previousSubjectStats, previousDistribution, previousTotalStudents, fontSize });
       doc.save(`class_summary_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
       toast.success(`Class summary generated for all ${streamClasses.length} stream(s)!`);
     } catch (err: any) { toast.error('Failed: ' + err.message); console.error(err); }
