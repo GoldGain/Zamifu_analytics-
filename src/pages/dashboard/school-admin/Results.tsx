@@ -694,7 +694,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text('TOP 5 PERFORMERS', 14, top5Y); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         summaries.slice(0, 5).forEach((s: any, i: number) => {
           const gr = overallGradeWithBand(s.avgPct, band);
-          doc.text(`${i + 1}. ${s.student?.first_name} ${s.student?.last_name} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? gr.grade : gr.subLevel}${!isPrimary ? ` (${gr.points}pts)` : ''}`, 20, top5Y + 7 + i * 6);
+          const topMarks = Math.round(s.totalPct || 0);
+          const topPoints = s.totalPoints || 0;
+          const topGrade = isPrimary ? gr.grade : gr.subLevel;
+          doc.text(`${i + 1}. ${s.student?.first_name} ${s.student?.last_name} — ${topMarks} — ${topGrade}${!isPrimary ? ` (${topPoints} Points)` : ''}`, 20, top5Y + 7 + i * 6);
         });
 
         const bestSubjY = top5Y + 42;
@@ -1283,7 +1286,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.text('TOP 5 PERFORMERS', 14, 82); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     summaries.slice(0, 5).forEach((s: any, index: number) => {
       const grade = overallGradeWithBand(s.avgPct, band);
-      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${s.avgPct.toFixed(1)}% — ${isPrimary ? grade.grade : grade.subLevel}${!isPrimary ? ` (${grade.points}pts)` : ''}`, 20, 89 + index * 6);
+      const topMarks = Math.round(s.totalPct || 0);
+      const topPoints = s.totalPoints || 0;
+      const topGrade = isPrimary ? grade.grade : grade.subLevel;
+      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${topMarks} — ${topGrade}${!isPrimary ? ` (${topPoints} Points)` : ''}`, 20, 89 + index * 6);
     });
 
     // PERFORMANCE DISTRIBUTION (current vs previous exam)
