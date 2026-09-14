@@ -1213,7 +1213,9 @@ export default function TimetableGenerate() {
                 teacherKey: `${assignment.teacher_id}-${day}-${slot.id}`,
                 classKey: `${cls.id}-${day}-${slot.id}`,
               }));
-              if (keys.some(({ teacherKey, classKey }) => teacherBusy.has(teacherKey) || classBusy.has(classKey))) return 0;
+              // Teachers may teach multiple classes in the same period; only
+              // the target class cell itself remains an occupancy constraint.
+              if (keys.some(({ classKey }) => classBusy.has(classKey))) return 0;
               if (dayActivities.some((activity) => timings.some((timing) =>
                 overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time)))) return 0;
 
@@ -1466,7 +1468,7 @@ export default function TimetableGenerate() {
             teacherKey: `${context.assignment.teacher_id}-${day}-${slot.id}`,
             classKey: `${context.cls.id}-${day}-${slot.id}`,
           }));
-          if (keys.some(({ teacherKey, classKey }) => teacherBusy.has(teacherKey) || classBusy.has(classKey))) return false;
+          if (keys.some(({ classKey }) => classBusy.has(classKey))) return false;
           if (blockingActivities.some((activity) => timings.some((timing) =>
             overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time)))) return false;
 
@@ -1748,7 +1750,6 @@ export default function TimetableGenerate() {
                   if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
                   if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
                   const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
-                  if (teacherBusy.has(teacherKey)) continue;
                   const previousSlot = context.lessonSlots
                     .filter((slot: any) => slot.slot_order < fillSlot.slot_order)
                     .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
@@ -1779,7 +1780,6 @@ export default function TimetableGenerate() {
                   if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(fillSlot))) continue;
                   if (subjectDayUsage.get(`${cls.id}-${fillDay}-${context.assignment.subject_id}`)) continue;
                   const teacherKey = `${context.assignment.teacher_id}-${fillDay}-${fillSlot.id}`;
-                    if (teacherBusy.has(teacherKey)) continue;
                     const prevForB = context.lessonSlots
                       .filter((slot: any) => slot.slot_order < fillSlot.slot_order)
                       .sort((a: any, b: any) => b.slot_order - a.slot_order)[0];
@@ -1934,7 +1934,6 @@ export default function TimetableGenerate() {
                   if (deficit <= 0) break;
                   const classKey = `${classId}-${day}-${slot.id}`;
                   if (reconClassBusy.has(classKey)) continue;
-                  if (teacherId && reconTeacherBusy.has(`${teacherId}-${day}-${slot.id}`)) continue;
                   if (reconSubjectDay.get(`${classId}-${day}-${subjectId}`)) continue;
                   if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
                   const idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(slot.id));
@@ -1956,7 +1955,6 @@ export default function TimetableGenerate() {
                     entry_type: 'lesson',
                   });
                   reconClassBusy.add(classKey);
-                  if (teacherId) reconTeacherBusy.add(`${teacherId}-${day}-${slot.id}`);
                   reconCellSubject.set(classKey, subjectName);
                   reconSubjectDay.set(`${classId}-${day}-${subjectId}`, (reconSubjectDay.get(`${classId}-${day}-${subjectId}`) || 0) + 1);
                   deficit -= 1;
@@ -2039,7 +2037,7 @@ export default function TimetableGenerate() {
                   if (reconSubjectDay2.get(`${classId}-${day}-${subjectId}`)) continue;
                   if (!teacherId) continue;
                   const teacherKey = `${teacherId}-${day}-${slot.id}`;
-                  if (!reconTeacherBusy2.has(teacherKey)) {
+                  {
                     if (meta?.band && !bandAllowsSlot(meta.band, slot)) continue;
                     if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
                     if (!adjOk2(subjectName, classId, day, slot.id)) continue;
@@ -2063,7 +2061,6 @@ export default function TimetableGenerate() {
                       if (bMeta?.band && !bandAllowsSlot(bMeta.band, s2)) continue;
                       if (!strictSubjectAllowsLesson(bName, lessonNumberOf(s2))) continue;
                       if (reconClassBusy2.has(`${blocker.class_id}-${d2}-${s2.id}`)) continue;
-                      if (blocker.teacher_id && reconTeacherBusy2.has(`${blocker.teacher_id}-${d2}-${s2.id}`)) continue;
                       if (reconSubjectDay2.get(`${blocker.class_id}-${d2}-${blocker.subject_id}`)) continue;
                       const p2 = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(s2.id)) - 1 >= 0 ? orderedLessonSlots[orderedLessonSlots.findIndex((s: any) => String(s.id) === String(s2.id)) - 1] : null;
                       const n2idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(s2.id));
@@ -2544,13 +2541,6 @@ export default function TimetableGenerate() {
           for (const slot of targetSlots) {
             const existing = entriesAtCell(targetClassId, targetDay, String(slot.id));
             if (existing.some((entry) => !sourceSet.has(entry))) return false;
-            const teacherConflict = levelEntries.some((entry: any) =>
-              !sourceSet.has(entry)
-              && String(entry.teacher_id || '') === String(targetContext.assignment.teacher_id || '')
-              && Number(entry.day_of_week) === targetDay
-              && String(entry.time_slot_id) === String(slot.id),
-            );
-            if (teacherConflict) return false;
             const { blockingActivities, times } = targetContext.getDaySlotTiming(targetDay, targetContext.cls);
             const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
             if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) return false;
