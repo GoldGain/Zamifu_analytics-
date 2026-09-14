@@ -2576,6 +2576,20 @@ export default function TimetableGenerate() {
           });
         };
         const replaceBalancedCells = (sources: any[], targetContext: AssignmentPlacementContext, unitSize: 1 | 2, forceSurplusSingle = false) => {
+          // Balancing can replace two ordinary cells with a double pair. That
+          // path must obey the same one-double-per-assignment invariant as the
+          // primary scheduler; otherwise an assignment that already received
+          // its configured double can acquire a second pair here.
+          if (unitSize === 2) {
+            if (!targetContext.isDoubleLesson || targetContext.doublePlaced) return false;
+            const existingDouble = allEntries.some((entry: any) =>
+              entry.level_group === levelKey
+              && String(entry.class_id) === String(targetContext.cls.id)
+              && String(entry.subject_id) === String(targetContext.assignment.subject_id)
+              && entry.entry_type === 'lesson_double',
+            );
+            if (existingDouble) return false;
+          }
           if (!forceSurplusSingle && !canRemoveSourceCells(sources)) return false;
           if (!canBalanceIntoCells(sources, targetContext, unitSize)) return false;
           sources.forEach((source) => {
@@ -2588,6 +2602,7 @@ export default function TimetableGenerate() {
             source.entry_type = unitSize === 2 ? 'lesson_double' : 'lesson';
             usedBalanceCells.add(`${source.class_id}:${source.day_of_week}:${source.time_slot_id}`);
           });
+          if (unitSize === 2) targetContext.doublePlaced = true;
           return true;
         };
         const canMoveSingleToCell = (context: AssignmentPlacementContext, cellEntry: any, movingEntries: any[]) => {
