@@ -1315,8 +1315,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       margin: { left: 14, right: 14 },
     });
 
-    // GENDER SUMMARY
-    const genderSummaryY = Math.min(220, ((doc as any).lastAutoTable?.finalY || 160) + 12);
+    // GENDER SUMMARY — use a separate page so the distribution table can show every row
+    // without the summary heading or values covering its final bands/totals.
+    doc.addPage();
+    doc.setFillColor(37, 99, 235); doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
+    doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
+    doc.setFontSize(pdfFontSize(doc, 10)); doc.text('GENDER BREAKDOWN', 105, 16, { align: 'center' });
+    const genderSummaryY = 32;
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126); doc.text('GENDER BREAKDOWN', 14, genderSummaryY);
     doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 8));
     const maleAvg = boys > 0 ? summaries.filter((s: any) => String(s.student?.gender || '').toLowerCase().startsWith('m')).reduce((sum, s) => sum + s.avgPct, 0) / boys : 0;
