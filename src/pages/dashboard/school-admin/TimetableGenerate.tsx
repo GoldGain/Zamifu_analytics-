@@ -2161,6 +2161,14 @@ export default function TimetableGenerate() {
             }
           }
         }
+        // Track teacher occupancy for preference ordering only. Teacher
+        // double-booking is allowed by the timetable rules.
+        const currentTeacherSlot = new Set<string>();
+        allEntries.forEach((entry: any) => {
+          if (entry.level_group === levelKey && entry.teacher_id) {
+            currentTeacherSlot.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+          }
+        });
         // A final real-subject repair handles otherwise feasible schedules
         // where the greedy/reconciliation passes leave one or two cells open.
         // It still respects subject windows, teacher availability, teacher
@@ -2168,7 +2176,6 @@ export default function TimetableGenerate() {
         // study/revision entry.
         if (missingCells.length > 0) {
           const currentSubjectDay = new Set<string>();
-          const currentTeacherSlot = new Set<string>();
           allEntries.forEach((entry: any) => {
             if (entry.level_group !== levelKey || !entry.subject_id) return;
             currentSubjectDay.add(`${entry.class_id}-${entry.day_of_week}-${entry.subject_id}`);
