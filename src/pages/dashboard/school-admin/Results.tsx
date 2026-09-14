@@ -751,11 +751,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         const subRows = subjectStats.map((s, i) => {
           const gr = s.grade.subLevel;
-          let status = '--> AVERAGE';
-          if (i === 0) status = 'Up STRONG';
-          else if (i === 1 && subjectStats.length > 3) status = 'Up GOOD';
-          else if (i === subjectStats.length - 1) status = 'Down WEAK';
-          else if (i === subjectStats.length - 2) status = 'Down NEEDS WORK';
+          const status = statusForGrade(gr);
           const displayName = s.name === 'Creative Arts' ? 'C-Arts' : s.name;
           return [String(i + 1), displayName, `${s.mean.toFixed(1)}%`, gr, status];
         });
@@ -1377,12 +1373,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const subRows = subjectStats.map((subject, i) => {
       const previous = previousSubjectStats.get(subject.name);
       const change = previous != null ? subject.mean - previous : null;
-      let status = 'AVERAGE';
-      if (i === 0) status = 'STRONG';
-      else if (i === subjectStats.length - 1) status = 'WEAK';
+      const grade = overallGradeWithBand(subject.mean, band).subLevel;
+      const status = statusForGrade(grade);
       let changeLabel = '—';
       if (change != null) changeLabel = change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
-      return [String(i + 1), subject.name, `${subject.mean.toFixed(1)}%`, previous != null ? `${previous.toFixed(1)}%` : '—', changeLabel, overallGradeWithBand(subject.mean, band).subLevel, status];
+      return [String(i + 1), subject.name, `${subject.mean.toFixed(1)}%`, previous != null ? `${previous.toFixed(1)}%` : '—', changeLabel, grade, status];
     });
     autoTable(doc, {
       startY: Math.min(190, 32 + subjectStats.length * 6 + 2),
