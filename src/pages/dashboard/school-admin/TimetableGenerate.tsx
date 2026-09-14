@@ -2435,6 +2435,13 @@ export default function TimetableGenerate() {
           const key = `${missing.cls.id}-${missing.day}-${missing.slot.id}`;
           if (lessonCellEntries.has(key)) continue;
           const emergencyContext = [...assignmentContexts.values()]
+            .filter((context) => String(context.cls.id) === String(missing.cls.id))
+            .filter((context) => !allEntries.some((entry: any) =>
+              entry.level_group === levelKey
+              && String(entry.class_id) === String(missing.cls.id)
+              && Number(entry.day_of_week) === missing.day
+              && String(entry.subject_id) === String(context.assignment.subject_id),
+            ))
             .sort((a, b) => Number(currentTeacherSlot.has(`${a.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
               - Number(currentTeacherSlot.has(`${b.assignment.teacher_id}-${missing.day}-${missing.slot.id}`)))[0];
           if (!emergencyContext) continue;
