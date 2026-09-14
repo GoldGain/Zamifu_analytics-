@@ -715,13 +715,26 @@ export default function StreamDashboard() {
     }
     if (rankings.length) {
       doc.addPage();
-      doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`Learner Performance — ${selectedGradeLabel || 'All Streams'}`, 14, 15);
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text(`TOP 10 PERFORMERS — ${selectedGradeLabel || 'All Streams'}`, 14, 15);
       const rankingSubjects = Array.from(new Set(rankings.flatMap((r) => Object.keys(r.subjects)))).sort();
       autoTable(doc, {
         startY: 20,
         head: [['POS', 'Student', 'Adm No', 'Stream', ...rankingSubjects.map((subject) => subject.slice(0, 9)), 'Total Marks', 'Points', 'Grade']],
-        body: rankings.map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.label, ...rankingSubjects.map((subject) => { const value = r.subjects[subject]; return value ? `${value.marks ?? value.percentage} / ${value.points}pt / ${value.grade}` : ''; }), r.totalMarks, r.points, r.grade]),
+        body: rankings.slice(0, 10).map((r) => [r.position ?? '', `${r.first_name} ${r.last_name}`, r.admission_number, r.label, ...rankingSubjects.map((subject) => { const value = r.subjects[subject]; return value ? `${value.marks ?? value.percentage} / ${value.points}pt / ${value.grade}` : ''; }), r.totalMarks, r.points, r.grade]),
         styles: { fontSize: pdfFontSize(doc, 6.5), cellPadding: 1.3 }, headStyles: { fillColor: [37, 99, 235] }, theme: 'grid',
+      });
+      doc.addPage();
+      doc.setFontSize(pdfFontSize(doc, 11)); doc.text('TOP 10 LEARNERS PER LEARNING AREA', 14, 15);
+      const topAreaRows = rankingSubjects.flatMap((subject) => rankings
+        .filter((r) => r.subjects[subject])
+        .sort((a, b) => (b.subjects[subject].percentage - a.subjects[subject].percentage) || a.last_name.localeCompare(b.last_name))
+        .slice(0, 10)
+        .map((r, index) => [subject, index + 1, `${r.first_name} ${r.last_name}`, r.label, r.subjects[subject].marks ?? r.subjects[subject].percentage, r.subjects[subject].grade]));
+      autoTable(doc, {
+        startY: 20,
+        head: [['Learning Area', 'Rank', 'Learner', 'Stream', 'Marks', 'Grade']],
+        body: topAreaRows,
+        styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.5 }, headStyles: { fillColor: [245, 158, 11] }, theme: 'grid',
       });
       const labels = [...new Set(rankings.map((r) => r.label))];
       labels.forEach((label) => {
