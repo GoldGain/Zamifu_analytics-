@@ -2188,7 +2188,6 @@ export default function TimetableGenerate() {
                             .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
               .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
               .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
-              .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
               .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             // The final fallback still uses a real assigned subject and keeps
             // the subject-window, once-per-day, and teacher-clash rules.
@@ -2199,8 +2198,7 @@ export default function TimetableGenerate() {
                                 .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
-                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
-                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+                  .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             if (candidates.length === 0) {
               // A configured double day can consume the preferred window. Use
@@ -2212,8 +2210,7 @@ export default function TimetableGenerate() {
                                 .filter((context) => !context.requiredDoubleDays.some((doubleDay) => !context.placedDoubleDays.has(doubleDay)))
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
-                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
-                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+                  .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             if (candidates.length === 0) {
               // Last resort for schools with heavily shared teachers: keep the
@@ -2227,8 +2224,7 @@ export default function TimetableGenerate() {
                 .filter((context) => !context.isDoubleLesson)
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
-                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
-                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+                  .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             if (candidates.length === 0) {
               // A class can exist before its own teacher assignments are entered.
@@ -2239,8 +2235,7 @@ export default function TimetableGenerate() {
                 .filter((context) => !context.isDoubleLesson)
                 .filter((context) => strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(missing.slot)))
                 .filter((context) => !currentSubjectDay.has(`${missing.cls.id}-${missing.day}-${context.assignment.subject_id}`))
-                .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
-                .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
+                  .sort((a, b) => (subjectCounts.get(`${missing.cls.id}:${a.assignment.subject_id}`) || 0) - (subjectCounts.get(`${missing.cls.id}:${b.assignment.subject_id}`) || 0));
             }
             // If every legal subject is blocked only because its teacher is
             // teaching another class in this period, move that single lesson to

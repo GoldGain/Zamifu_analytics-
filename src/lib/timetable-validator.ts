@@ -92,6 +92,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
   const cellEntries = new Map<string, TimetableValidationEntry[]>();
   const subjectDayEntries = new Map<string, SubjectDayGroup>();
   const doubleEntriesBySubject = new Map<string, TimetableValidationEntry[]>();
+  const teacherSlotEntries = new Map<string, TimetableValidationEntry>();
 
   for (const entry of filteredEntries) {
     const slot = slotById.get(String(entry.time_slot_id));
@@ -117,8 +118,8 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
 
     const cell = entryKey(entry.class_id, entry.day_of_week, entry.time_slot_id);
     cellEntries.set(cell, [...(cellEntries.get(cell) || []), entry]);
-    // A teacher may intentionally teach multiple classes in the same period.
-    // Class-cell occupancy remains enforced independently below.
+    // Teacher double-booking is intentionally allowed: the timetable follows
+    // the assignments configured by the school administrator.
     const dayKey = subjectDayKey(entry);
     const group = subjectDayEntries.get(dayKey) || {
       classId: String(entry.class_id),
