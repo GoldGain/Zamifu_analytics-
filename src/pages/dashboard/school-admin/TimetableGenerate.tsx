@@ -3029,6 +3029,59 @@ export default function TimetableGenerate() {
           }
         }
 
+        // Final defensive repair: balancing can mutate an existing entry's
+        // subject/teacher after the normal occupancy maps were built. Relocate
+        // any duplicate teacher booking to a legal blank cell before the hard
+        // validator runs, rather than returning a timetable with a collision.
+        for (let repairPass = 0; repairPass < 4; repairPass += 1) {
+          const seenTeacherCells = new Map<string, any>();
+          let repairedCollision = false;
+          for (const entry of exactCellEntries()) {
+            if (!entry.teacher_id || entry.entry_type !== 'lesson') continue;
+            const teacherCell = `${entry.teacher_id}:${entry.day_of_week}:${entry.time_slot_id}`;
+            const previous = seenTeacherCells.get(teacherCell);
+            if (!previous || String(previous.class_id) === String(entry.class_id)) {
+              seenTeacherCells.set(teacherCell, entry);
+              continue;
+            }
+            const context = targetBySubject.get(`${entry.class_id}:${entry.subject_id}`)?.context;
+            if (!context) continue;
+            const replacement = lessonSlots.flatMap((slot: any) =>
+              TIMETABLE_DAYS.map((_, dayIndex) => ({ day: dayIndex + 1, slot })),
+            ).find(({ day, slot }) => {
+              if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
+              if (exactCellEntries().some((candidate: any) =>
+                candidate !== entry
+                && String(candidate.class_id) === String(entry.class_id)
+                && Number(candidate.day_of_week) === day
+                && String(candidate.time_slot_id) === String(slot.id),
+              )) return false;
+              if (exactCellEntries().some((candidate: any) =>
+                candidate !== entry
+                && String(candidate.teacher_id || '') === String(entry.teacher_id)
+                && Number(candidate.day_of_week) === day
+                && String(candidate.time_slot_id) === String(slot.id),
+              )) return false;
+              return !exactCellEntries().some((candidate: any) =>
+                candidate !== entry
+                && String(candidate.class_id) === String(entry.class_id)
+                && Number(candidate.day_of_week) === day
+                && String(candidate.subject_id) === String(entry.subject_id),
+              );
+            });
+            if (!replacement) continue;
+            const timing = context.getDaySlotTiming(replacement.day, context.cls).times.get(String(replacement.slot.label))
+              || { start_time: replacement.slot.start_time, end_time: replacement.slot.end_time };
+            entry.day_of_week = replacement.day;
+            entry.time_slot_id = replacement.slot.id;
+            entry.effective_start_time = timing.start_time;
+            entry.effective_end_time = timing.end_time;
+            repairedCollision = true;
+            break;
+          }
+          if (!repairedCollision) break;
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
