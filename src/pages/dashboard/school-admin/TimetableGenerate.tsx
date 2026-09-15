@@ -3155,12 +3155,12 @@ export default function TimetableGenerate() {
           if (!strictSubjectAllowsLesson(leftContext.subjectName, lessonNumberOf(rightSlot))) return false;
           if (!strictSubjectAllowsLesson(rightContext.subjectName, lessonNumberOf(leftSlot))) return false;
           const entries = exactCellEntries();
-          const wouldHave = (entry: any, subjectId: string, day: number, slotId: string) =>
-            entry === left ? { ...entry, subject_id: subjectId, day_of_week: day, time_slot_id: slotId }
-              : entry === right ? { ...entry, subject_id: subjectId, day_of_week: day, time_slot_id: slotId }
+          const wouldHave = (entry: any, subjectId: string, teacherId: string, day: number, slotId: string) =>
+            entry === left ? { ...entry, subject_id: subjectId, teacher_id: teacherId, day_of_week: day, time_slot_id: slotId }
+              : entry === right ? { ...entry, subject_id: subjectId, teacher_id: teacherId, day_of_week: day, time_slot_id: slotId }
                 : entry;
-          const leftAfter = wouldHave(left, String(right.subject_id), Number(left.day_of_week), String(left.time_slot_id));
-          const rightAfter = wouldHave(right, String(left.subject_id), Number(right.day_of_week), String(right.time_slot_id));
+          const leftAfter = wouldHave(left, String(right.subject_id), String(right.teacher_id || ''), Number(left.day_of_week), String(left.time_slot_id));
+          const rightAfter = wouldHave(right, String(left.subject_id), String(left.teacher_id || ''), Number(right.day_of_week), String(right.time_slot_id));
           const simulated = entries.map((entry: any) => entry === left ? leftAfter : entry === right ? rightAfter : entry);
           for (const changed of [leftAfter, rightAfter]) {
             if (changed.teacher_id && simulated.some((other: any) => other !== changed
