@@ -3142,6 +3142,84 @@ export default function TimetableGenerate() {
           if (!repairedCollision) break;
         }
 
+        // Final hard-rule repair: a complete grid can require an assignment
+        // swap rather than a blank-cell fill. Repair illegal subject windows
+        // and Math/Science adjacency without deleting or duplicating cells.
+        const canSwapAssignments = (left: any, right: any): boolean => {
+          if (left === right || left.entry_type === 'lesson_double' || right.entry_type === 'lesson_double') return false;
+          const leftContext = targetBySubject.get(`${left.class_id}:${left.subject_id}`)?.context;
+          const rightContext = targetBySubject.get(`${right.class_id}:${right.subject_id}`)?.context;
+          const leftSlot = lessonSlots.find((slot: any) => String(slot.id) === String(left.time_slot_id));
+          const rightSlot = lessonSlots.find((slot: any) => String(slot.id) === String(right.time_slot_id));
+          if (!leftContext || !rightContext || !leftSlot || !rightSlot) return false;
+          if (!strictSubjectAllowsLesson(leftContext.subjectName, lessonNumberOf(rightSlot))) return false;
+          if (!strictSubjectAllowsLesson(rightContext.subjectName, lessonNumberOf(leftSlot))) return false;
+          const entries = exactCellEntries();
+          const wouldHave = (entry: any, subjectId: string, day: number, slotId: string) =>
+            entry === left ? { ...entry, subject_id: subjectId, day_of_week: day, time_slot_id: slotId }
+              : entry === right ? { ...entry, subject_id: subjectId, day_of_week: day, time_slot_id: slotId }
+                : entry;
+          const leftAfter = wouldHave(left, String(right.subject_id), Number(left.day_of_week), String(left.time_slot_id));
+          const rightAfter = wouldHave(right, String(left.subject_id), Number(right.day_of_week), String(right.time_slot_id));
+          const simulated = entries.map((entry: any) => entry === left ? leftAfter : entry === right ? rightAfter : entry);
+          for (const changed of [leftAfter, rightAfter]) {
+            const subjectName = generatedSubjectNames.get(String(changed.subject_id)) || '';
+            if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(changed === leftAfter ? leftSlot : rightSlot))) return false;
+            if (simulated.some((other: any) => other !== changed
+              && String(other.class_id) === String(changed.class_id)
+              && Number(other.day_of_week) === Number(changed.day_of_week)
+              && String(other.subject_id) === String(changed.subject_id))) return false;
+            const slotIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(changed.time_slot_id));
+            for (const adjacentSlot of [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean)) {
+              const adjacent = simulated.filter((other: any) => other !== changed
+                && String(other.class_id) === String(changed.class_id)
+                && Number(other.day_of_week) === Number(changed.day_of_week)
+                && String(other.time_slot_id) === String(adjacentSlot.id));
+              if (adjacent.some((other: any) => violatesMathScienceSequence(
+                subjectName,
+                generatedSubjectNames.get(String(other.subject_id)) || '',
+              ))) return false;
+            }
+          }
+          return true;
+        };
+        for (let hardRulePass = 0; hardRulePass < 160; hardRulePass += 1) {
+          const entries = exactCellEntries();
+          const illegal = entries.find((entry: any) => {
+            const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
+            return slot && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double')
+              && !strictSubjectAllowsLesson(generatedSubjectNames.get(String(entry.subject_id)) || '', lessonNumberOf(slot));
+          });
+          let target = illegal;
+          if (!target) {
+            target = entries.find((entry: any) => {
+              if (entry.entry_type !== 'lesson') return false;
+              const slotIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id));
+              const subjectName = generatedSubjectNames.get(String(entry.subject_id)) || '';
+              return [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean).some((adjacentSlot) =>
+                entries.some((other: any) => other !== entry
+                  && String(other.class_id) === String(entry.class_id)
+                  && Number(other.day_of_week) === Number(entry.day_of_week)
+                  && String(other.time_slot_id) === String(adjacentSlot.id)
+                  && violatesMathScienceSequence(subjectName, generatedSubjectNames.get(String(other.subject_id)) || '')),
+              );
+            });
+          }
+          if (!target) break;
+          const swap = entries.find((candidate: any) =>
+            String(candidate.class_id) === String(target.class_id)
+            && candidate.entry_type === 'lesson'
+            && canSwapAssignments(target, candidate),
+          );
+          if (!swap) break;
+          const subjectId = target.subject_id;
+          const teacherId = target.teacher_id;
+          target.subject_id = swap.subject_id;
+          target.teacher_id = swap.teacher_id;
+          swap.subject_id = subjectId;
+          swap.teacher_id = teacherId;
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
