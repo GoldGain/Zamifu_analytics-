@@ -3163,6 +3163,11 @@ export default function TimetableGenerate() {
           const rightAfter = wouldHave(right, String(left.subject_id), Number(right.day_of_week), String(right.time_slot_id));
           const simulated = entries.map((entry: any) => entry === left ? leftAfter : entry === right ? rightAfter : entry);
           for (const changed of [leftAfter, rightAfter]) {
+            if (changed.teacher_id && simulated.some((other: any) => other !== changed
+              && String(other.class_id) !== String(changed.class_id)
+              && String(other.teacher_id || '') === String(changed.teacher_id)
+              && Number(other.day_of_week) === Number(changed.day_of_week)
+              && String(other.time_slot_id) === String(changed.time_slot_id))) return false;
             const subjectName = generatedSubjectNames.get(String(changed.subject_id)) || '';
             if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(changed === leftAfter ? leftSlot : rightSlot))) return false;
             if (simulated.some((other: any) => other !== changed
@@ -3185,7 +3190,12 @@ export default function TimetableGenerate() {
         };
         for (let hardRulePass = 0; hardRulePass < 160; hardRulePass += 1) {
           const entries = exactCellEntries();
-          const illegal = entries.find((entry: any) => {
+          const collision = entries.find((entry: any) => entry.teacher_id && entries.some((other: any) => other !== entry
+            && String(other.class_id) !== String(entry.class_id)
+            && String(other.teacher_id || '') === String(entry.teacher_id)
+            && Number(other.day_of_week) === Number(entry.day_of_week)
+            && String(other.time_slot_id) === String(entry.time_slot_id)));
+          const illegal = collision || entries.find((entry: any) => {
             const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
             return slot && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double')
               && !strictSubjectAllowsLesson(generatedSubjectNames.get(String(entry.subject_id)) || '', lessonNumberOf(slot));
