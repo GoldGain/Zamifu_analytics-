@@ -118,9 +118,9 @@ export default function TeacherTimetable() {
       // slots ensures that this page contains only lessons assigned to this teacher.
       const { data: timetableEntries, error: timetableError } = await supabaseUntyped
         .from('timetable_entries')
-        .select('id, day_of_week, teacher_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
+        .select('id, day_of_week, teacher_id, entry_type, effective_start_time, effective_end_time, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
         .eq('teacher_id', teacherData.id)
-        .in('entry_type', ['lesson', 'class', 'activity'])
+        .in('entry_type', ['lesson', 'lesson_double', 'class', 'activity', 'activities'])
         .order('day_of_week');
       if (timetableError) throw timetableError;
 
@@ -130,8 +130,8 @@ export default function TeacherTimetable() {
       const mappedSlots: TeacherSlot[] = (timetableEntries || []).map((entry: any) => ({
         id: entry.id,
         day: dayNames[entry.day_of_week] || 'Monday',
-        start_time: entry.timetable_time_slots?.start_time?.toString().substring(0, 5) || '',
-        end_time: entry.timetable_time_slots?.end_time?.toString().substring(0, 5) || '',
+        start_time: (entry.effective_start_time || entry.timetable_time_slots?.start_time)?.toString().substring(0, 5) || '',
+        end_time: (entry.effective_end_time || entry.timetable_time_slots?.end_time)?.toString().substring(0, 5) || '',
         subject_name: entry.subjects?.name || 'Learning Area',
         class_name: entry.classes?.name || 'Class',
       })).sort((a, b) => a.day.localeCompare(b.day) || a.start_time.localeCompare(b.start_time));
