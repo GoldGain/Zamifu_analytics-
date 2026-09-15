@@ -3,6 +3,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { AlertCircle, Loader2, CheckCircle, CalendarDays, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { promoteSchoolToNextTerm } from '@/lib/term-promotion';
 
 function nextTermFor(currentTerm: any) {
   const name = String(currentTerm?.name || 'Term 1');
@@ -34,32 +35,8 @@ export default function PromoteClass() {
     if (!user?.schoolId) return;
     setPromoting(true);
     try {
-      const next = nextTermFor(currentTerm);
-      const { data: terms, error: termsError } = await supabaseUntyped.from('terms').select('id, name, academic_year').eq('school_id', user.schoolId);
-      if (termsError) throw termsError;
-
-      const existing = (terms || []).find((term: any) => term.name === next.name && String(term.academic_year) === String(next.year));
-      const { error: deactivateError } = await supabaseUntyped.from('terms').update({ is_current: false }).eq('school_id', user.schoolId).eq('is_current', true);
-      if (deactivateError) throw deactivateError;
-
-      if (existing) {
-        const { error } = await supabaseUntyped.from('terms').update({ is_current: true }).eq('id', existing.id).eq('school_id', user.schoolId);
-        if (error) throw error;
-      } else {
-        const start = new Date();
-        const end = new Date(start);
-        end.setDate(end.getDate() + 90);
-        const { error } = await supabaseUntyped.from('terms').insert({
-          school_id: user.schoolId,
-          name: next.name,
-          academic_year: String(next.year),
-          start_date: start.toISOString().slice(0, 10),
-          end_date: end.toISOString().slice(0, 10),
-          is_current: true,
-        });
-        if (error) throw error;
-      }
-      toast.success(`Successfully moved the school from ${currentTerm?.name || 'the current term'} to ${next.name} ${next.year}. Students remain in their classes.`);
+      const promoted = await promoteSchoolToNextTerm(user.schoolId);
+      toast.success(`Successfully moved the school from ${currentTerm?.name || 'the current term'} to ${promoted.next_term_name} ${promoted.next_academic_year}. Students remain in their classes.`);
       setConfirming(false);
       await loadCurrentTerm();
     } catch (error: any) {

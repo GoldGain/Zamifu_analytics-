@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { supabaseUntyped } from '@/lib/supabase/client';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { promoteSchoolToNextTerm } from '@/lib/term-promotion';
 
 interface PromoteToNextTermModalProps {
   schoolId: string;
@@ -40,77 +40,8 @@ export default function PromoteToNextTermModal({
   const handlePromote = async () => {
     setPromoting(true);
     try {
-      // Get all terms for this school
-      const { data: allTerms, error: fetchError } = await supabaseUntyped
-        .from('terms')
-        .select('id, name, academic_year, is_current')
-        .eq('school_id', schoolId);
-
-      if (fetchError) {
-        toast.error('Failed to fetch terms: ' + fetchError.message);
-        setPromoting(false);
-        return;
-      }
-
-      // Update all current terms to not current
-      const { error: updateError } = await supabaseUntyped
-        .from('terms')
-        .update({ is_current: false })
-        .eq('school_id', schoolId)
-        .eq('is_current', true);
-
-      if (updateError) {
-        toast.error('Failed to update current term: ' + updateError.message);
-        setPromoting(false);
-        return;
-      }
-
-      // Find or create next term
-      const existingNextTerm = (allTerms || []).find(
-        (t: any) => t.name === nextTerm.name && t.academic_year === nextTerm.year.toString()
-      );
-
-      let nextTermId = existingNextTerm?.id;
-
-      if (!existingNextTerm) {
-        // Create new term
-        const { data: newTerm, error: createError } = await supabaseUntyped
-          .from('terms')
-          .insert({
-            school_id: schoolId,
-            name: nextTerm.name,
-            academic_year: nextTerm.year.toString(),
-            start_date: new Date().toISOString().split('T')[0],
-            end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            is_current: true,
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          toast.error('Failed to create next term: ' + createError.message);
-          setPromoting(false);
-          return;
-        }
-
-        nextTermId = newTerm?.id;
-      } else {
-        // Update existing term to current
-        const { error: updateNextError } = await supabaseUntyped
-          .from('terms')
-          .update({ is_current: true })
-          .eq('id', nextTermId);
-
-        if (updateNextError) {
-          toast.error('Failed to set next term as current: ' + updateNextError.message);
-          setPromoting(false);
-          return;
-        }
-      }
-
-      toast.success(
-        `Promoted to ${nextTerm.name} ${nextTerm.year}. All students are now in the new term.`
-      );
+      const promoted = await promoteSchoolToNextTerm(schoolId);
+      toast.success(`Promoted to ${promoted.next_term_name} ${promoted.next_academic_year}. Students remain in their current classes.`);
 
       onSuccess();
       onClose();
