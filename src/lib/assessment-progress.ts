@@ -63,6 +63,27 @@ export function matchesAssessmentScope(
   return true;
 }
 
+/** A result row counts as entered only when it contains a real mark. */
+export function resultHasMarks(result: { marks?: number | string | null; out_of?: number | string | null; status?: string | null }): boolean {
+  const marks = Number(result.marks);
+  const outOf = result.out_of == null || result.out_of === '' ? null : Number(result.out_of);
+  return Number.isFinite(marks) && marks >= 0 && (outOf === null || (Number.isFinite(outOf) && outOf > 0));
+}
+
+/**
+ * Match a result to an assessment. New rows use exam_id; legacy rows without
+ * an exam id are still visible for the term they belong to (or for an exam
+ * whose term is unavailable), so old uploaded marks are not reported missing.
+ */
+export function resultBelongsToAssessment(
+  result: { exam_id?: string | null; term_id?: string | null },
+  exam: { id: string; term_id?: string | null },
+): boolean {
+  if (result.exam_id) return String(result.exam_id) === String(exam.id);
+  if (!result.term_id || !exam.term_id) return true;
+  return String(result.term_id) === String(exam.term_id);
+}
+
 export const ASSESSMENT_LEVEL_OPTIONS = [
   { value: 'all', label: 'All levels' },
   { value: '-3', label: 'Playgroup' },

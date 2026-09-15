@@ -5,7 +5,7 @@ import { Loader2, CheckCircle, AlertCircle, BarChart3, Trash2 } from 'lucide-rea
 import { toast } from 'sonner';
 import { deleteResults } from '@/lib/resultActions';
 import { resolveTeacherIdentity } from '@/lib/teacher-restrictions';
-import { ASSESSMENT_LEVEL_OPTIONS, getAssessmentLevelLabel, getEffectiveGradeLevel, matchesAssessmentScope } from '@/lib/assessment-progress';
+import { ASSESSMENT_LEVEL_OPTIONS, getAssessmentLevelLabel, getEffectiveGradeLevel, matchesAssessmentScope, resultBelongsToAssessment, resultHasMarks } from '@/lib/assessment-progress';
 
 interface ProgressData {
   assessmentId: string;
@@ -70,7 +70,7 @@ export default function AssessmentProgress() {
 
       const { data: exams, error: examsError } = await supabaseUntyped
         .from('school_exams')
-        .select('id, name, type, target_type, target_class_id, target_grade_level, terms(name, academic_year)')
+        .select('id, name, type, term_id, target_type, target_class_id, target_grade_level, terms(name, academic_year)')
         .eq('school_id', resolvedSchoolId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -78,13 +78,16 @@ export default function AssessmentProgress() {
 
       const { data: teacherResults, error: resultsError } = await supabaseUntyped
         .from('results')
-        .select('subject_id, class_id, exam_id')
-        .eq('teacher_id', identity.teacherId);
+        .select('subject_id, class_id, exam_id, term_id, marks, out_of')
+        .eq('teacher_id', identity.teacherId)
+        .eq('school_id', resolvedSchoolId);
       if (resultsError) throw resultsError;
 
-      const resultsMap = new Set<string>();
+      const resultsByClassSubject = new Map<string, any[]>();
       (teacherResults || []).forEach((result: any) => {
-        resultsMap.add(`${result.class_id}-${result.subject_id}-${result.exam_id || 'no-exam'}`);
+        if (!resultHasMarks(result)) return;
+        const key = `${result.class_id}-${result.subject_id}`;
+        resultsByClassSubject.set(key, [...(resultsByClassSubject.get(key) || []), result]);
       });
 
       const classMap = new Map<string, { classRecord: any; assignments: any[] }>();
@@ -111,7 +114,8 @@ export default function AssessmentProgress() {
           const subjectProgress = subjects.map((subject: any) => ({
             subjectId: subject.subjectId,
             subjectName: subject.subjectName,
-            hasMarks: resultsMap.has(`${classId}-${subject.subjectId}-${exam.id}`),
+            hasMarks: (resultsByClassSubject.get(`${classId}-${subject.subjectId}`) || [])
+              .some((result) => resultBelongsToAssessment(result, exam)),
             studentCount: 0,
           }));
           const enteredSubjects = subjectProgress.filter((subject) => subject.hasMarks).length;

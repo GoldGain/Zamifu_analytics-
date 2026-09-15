@@ -3,7 +3,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, CheckCircle, AlertCircle, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ASSESSMENT_LEVEL_OPTIONS, getAssessmentLevelLabel, getEffectiveGradeLevel, matchesAssessmentScope } from '@/lib/assessment-progress';
+import { ASSESSMENT_LEVEL_OPTIONS, getAssessmentLevelLabel, getEffectiveGradeLevel, matchesAssessmentScope, resultBelongsToAssessment, resultHasMarks } from '@/lib/assessment-progress';
 
 interface ProgressData {
   assessmentId: string; assessmentName: string; assessmentType: string;
@@ -29,8 +29,8 @@ export default function SchoolAdminAssessmentProgress() {
         supabaseUntyped.from('classes').select('id, name, stream, stream_name, grade_level, level, curriculum').eq('school_id', schoolId).eq('is_active', true),
         supabaseUntyped.from('subjects').select('id, name, is_core').eq('school_id', schoolId).order('name'),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level, terms(name, academic_year)').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
-        supabaseUntyped.from('teacher_subject_assignments').select('class_id, subject_id').eq('school_id', schoolId),
-        supabaseUntyped.from('results').select('class_id, subject_id, exam_id').eq('school_id', schoolId),
+        supabaseUntyped.from('teacher_subject_assignments').select('class_id, subject_id').eq('school_id', schoolId).eq('is_active', true),
+        supabaseUntyped.from('results').select('class_id, subject_id, exam_id, term_id, marks, out_of').eq('school_id', schoolId),
       ]);
       const classes = (classesRes.data || []) as any[];
       const subjects = (subjectsRes.data || []) as any[];
@@ -38,15 +38,24 @@ export default function SchoolAdminAssessmentProgress() {
       const subjectName = new Map<string, string>(subjects.map((s: any) => [s.id, s.name]));
       const taughtByClass = new Map<string, Set<string>>();
       (assignmentsRes.data || []).forEach((a: any) => { if (!a.class_id) return; if (!taughtByClass.has(a.class_id)) taughtByClass.set(a.class_id, new Set()); taughtByClass.get(a.class_id)!.add(a.subject_id); });
-      const enteredByClassExam = new Map<string, Set<string>>();
-      (resultsRes.data || []).forEach((r: any) => { if (!r.class_id) return; const key = `${r.class_id}-${r.exam_id || 'no-exam'}`; if (!enteredByClassExam.has(key)) enteredByClassExam.set(key, new Set()); enteredByClassExam.get(key)!.add(r.subject_id); });
+      const resultRowsByClassSubject = new Map<string, any[]>();
+      (resultsRes.data || []).forEach((r: any) => {
+        if (!r.class_id || !r.subject_id || !resultHasMarks(r)) return;
+        const key = `${r.class_id}-${r.subject_id}`;
+        resultRowsByClassSubject.set(key, [...(resultRowsByClassSubject.get(key) || []), r]);
+      });
       const coreSubjectIds = subjects.filter((s: any) => s.is_core !== false).map((s: any) => s.id);
       const progressData: ProgressData[] = [];
       for (const cls of classes) {
         const taughtIds = [...(taughtByClass.get(cls.id) || new Set())];
         for (const exam of exams) {
           if (!matchesAssessmentScope(exam, cls)) continue;
-          const enteredIds = [...(enteredByClassExam.get(`${cls.id}-${exam.id}`) || new Set())];
+          const classResultSubjectIds = Array.from(resultRowsByClassSubject.keys())
+            .filter((key) => key.startsWith(`${cls.id}-`))
+            .map((key) => key.slice(`${cls.id}-`.length));
+          const enteredIds = classResultSubjectIds.filter((subjectId) =>
+            (resultRowsByClassSubject.get(`${cls.id}-${subjectId}`) || []).some((result) => resultBelongsToAssessment(result, exam)),
+          );
           const baseIds = taughtIds.length > 0 ? taughtIds : coreSubjectIds;
           const allIds = Array.from(new Set([...baseIds, ...enteredIds]));
           const enteredSet = new Set(enteredIds);
