@@ -3089,6 +3089,18 @@ export default function TimetableGenerate() {
                   || { start_time: candidateSlot.start_time, end_time: candidateSlot.end_time };
                 const candidateTargetTiming = candidateContext.getDaySlotTiming(Number(entry.day_of_week), candidateContext.cls).times.get(String(entrySlot.label))
                   || { start_time: entrySlot.start_time, end_time: entrySlot.end_time };
+                if (exactCellEntries().some((other: any) =>
+                  other !== entry && other !== candidate
+                  && String(other.class_id) === String(entry.class_id)
+                  && Number(other.day_of_week) === Number(candidate.day_of_week)
+                  && String(other.subject_id) === String(entry.subject_id),
+                )) return false;
+                if (exactCellEntries().some((other: any) =>
+                  other !== entry && other !== candidate
+                  && String(other.class_id) === String(entry.class_id)
+                  && Number(other.day_of_week) === Number(entry.day_of_week)
+                  && String(other.subject_id) === String(candidate.subject_id),
+                )) return false;
                 return !exactCellEntries().some((other: any) =>
                   other !== entry && other !== candidate
                   && String(other.teacher_id || '') === String(entry.teacher_id || '')
