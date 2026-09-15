@@ -3072,7 +3072,52 @@ export default function TimetableGenerate() {
                 && String(candidate.subject_id) === String(entry.subject_id),
               );
             });
-            if (!replacement) continue;
+            if (!replacement) {
+              // A complete timetable has no blank cell to receive the lesson.
+              // Try a legal assignment swap inside the same class instead.
+              const swap = exactCellEntries().find((candidate: any) => {
+                if (candidate === entry || String(candidate.class_id) !== String(entry.class_id)) return false;
+                if (candidate.entry_type === 'lesson_double' || entry.entry_type === 'lesson_double') return false;
+                const candidateContext = targetBySubject.get(`${candidate.class_id}:${candidate.subject_id}`)?.context;
+                if (!candidateContext) return false;
+                const entrySlot = lessonSlots.find((slot: any) => String(slot.id) === String(entry.time_slot_id));
+                const candidateSlot = lessonSlots.find((slot: any) => String(slot.id) === String(candidate.time_slot_id));
+                if (!entrySlot || !candidateSlot) return false;
+                if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(candidateSlot))) return false;
+                if (!strictSubjectAllowsLesson(candidateContext.subjectName, lessonNumberOf(entrySlot))) return false;
+                const entryTargetTiming = context.getDaySlotTiming(Number(candidate.day_of_week), context.cls).times.get(String(candidateSlot.label))
+                  || { start_time: candidateSlot.start_time, end_time: candidateSlot.end_time };
+                const candidateTargetTiming = candidateContext.getDaySlotTiming(Number(entry.day_of_week), candidateContext.cls).times.get(String(entrySlot.label))
+                  || { start_time: entrySlot.start_time, end_time: entrySlot.end_time };
+                return !exactCellEntries().some((other: any) =>
+                  other !== entry && other !== candidate
+                  && String(other.teacher_id || '') === String(entry.teacher_id || '')
+                  && Number(other.day_of_week) === Number(candidate.day_of_week)
+                  && String(other.effective_start_time || '') === String(entryTargetTiming.start_time || '')
+                  && String(other.effective_end_time || '') === String(entryTargetTiming.end_time || ''),
+                ) && !exactCellEntries().some((other: any) =>
+                  other !== entry && other !== candidate
+                  && String(other.teacher_id || '') === String(candidate.teacher_id || '')
+                  && Number(other.day_of_week) === Number(entry.day_of_week)
+                  && String(other.effective_start_time || '') === String(candidateTargetTiming.start_time || '')
+                  && String(other.effective_end_time || '') === String(candidateTargetTiming.end_time || ''),
+                );
+              });
+              if (swap) {
+                const entrySubject = entry.subject_id;
+                const entryTeacher = entry.teacher_id;
+                const entryType = entry.entry_type;
+                entry.subject_id = swap.subject_id;
+                entry.teacher_id = swap.teacher_id;
+                entry.entry_type = swap.entry_type;
+                swap.subject_id = entrySubject;
+                swap.teacher_id = entryTeacher;
+                swap.entry_type = entryType;
+                repairedCollision = true;
+                break;
+              }
+              continue;
+            }
             const timing = context.getDaySlotTiming(replacement.day, context.cls).times.get(String(replacement.slot.label))
               || { start_time: replacement.slot.start_time, end_time: replacement.slot.end_time };
             entry.day_of_week = replacement.day;
