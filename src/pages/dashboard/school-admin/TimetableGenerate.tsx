@@ -3208,6 +3208,35 @@ export default function TimetableGenerate() {
             });
           }
           if (!target) break;
+          if (illegal) {
+            const sameClass = entries.filter((candidate: any) =>
+              candidate !== target
+              && String(candidate.class_id) === String(target.class_id)
+              && candidate.entry_type === 'lesson'
+              && Number(candidate.day_of_week) === Number(target.day_of_week),
+            );
+            let rotated = false;
+            for (const first of sameClass) {
+              const firstSlot = lessonSlots.find((slot: any) => String(slot.id) === String(first.time_slot_id));
+              if (!firstSlot || !strictSubjectAllowsLesson(generatedSubjectNames.get(String(target.subject_id)) || '', lessonNumberOf(firstSlot))) continue;
+              for (const second of sameClass) {
+                if (second === first) continue;
+                const secondSlot = lessonSlots.find((slot: any) => String(slot.id) === String(second.time_slot_id));
+                const targetSlot = lessonSlots.find((slot: any) => String(slot.id) === String(target.time_slot_id));
+                if (!secondSlot || !targetSlot) continue;
+                if (!strictSubjectAllowsLesson(generatedSubjectNames.get(String(first.subject_id)) || '', lessonNumberOf(secondSlot))) continue;
+                if (!strictSubjectAllowsLesson(generatedSubjectNames.get(String(second.subject_id)) || '', lessonNumberOf(targetSlot))) continue;
+                const subjects = [second.subject_id, target.subject_id, first.subject_id];
+                if (new Set(subjects.map(String)).size !== subjects.length) continue;
+                [target.subject_id, first.subject_id, second.subject_id] = subjects;
+                [target.teacher_id, first.teacher_id, second.teacher_id] = [second.teacher_id, target.teacher_id, first.teacher_id];
+                rotated = true;
+                break;
+              }
+              if (rotated) break;
+            }
+            if (rotated) continue;
+          }
           const swap = entries.find((candidate: any) =>
             String(candidate.class_id) === String(target.class_id)
             && candidate.entry_type === 'lesson'
