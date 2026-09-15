@@ -3037,8 +3037,8 @@ export default function TimetableGenerate() {
           const seenTeacherCells = new Map<string, any>();
           let repairedCollision = false;
           for (const entry of exactCellEntries()) {
-            if (!entry.teacher_id || entry.entry_type !== 'lesson') continue;
-            const teacherCell = `${entry.teacher_id}:${entry.day_of_week}:${entry.time_slot_id}`;
+            if (!entry.teacher_id || (entry.entry_type !== 'lesson' && entry.entry_type !== 'lesson_double')) continue;
+            const teacherCell = `${entry.teacher_id}:${entry.day_of_week}:${entry.effective_start_time || ''}:${entry.effective_end_time || ''}`;
             const previous = seenTeacherCells.get(teacherCell);
             if (!previous || String(previous.class_id) === String(entry.class_id)) {
               seenTeacherCells.set(teacherCell, entry);
@@ -3050,6 +3050,8 @@ export default function TimetableGenerate() {
               TIMETABLE_DAYS.map((_, dayIndex) => ({ day: dayIndex + 1, slot })),
             ).find(({ day, slot }) => {
               if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
+              const candidateTiming = context.getDaySlotTiming(day, context.cls).times.get(String(slot.label))
+                || { start_time: slot.start_time, end_time: slot.end_time };
               if (exactCellEntries().some((candidate: any) =>
                 candidate !== entry
                 && String(candidate.class_id) === String(entry.class_id)
@@ -3060,7 +3062,8 @@ export default function TimetableGenerate() {
                 candidate !== entry
                 && String(candidate.teacher_id || '') === String(entry.teacher_id)
                 && Number(candidate.day_of_week) === day
-                && String(candidate.time_slot_id) === String(slot.id),
+                && String(candidate.effective_start_time || '') === String(candidateTiming.start_time || '')
+                && String(candidate.effective_end_time || '') === String(candidateTiming.end_time || ''),
               )) return false;
               return !exactCellEntries().some((candidate: any) =>
                 candidate !== entry
