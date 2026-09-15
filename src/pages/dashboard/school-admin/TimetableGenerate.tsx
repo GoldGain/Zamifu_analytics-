@@ -1467,20 +1467,19 @@ export default function TimetableGenerate() {
           // A subject may appear only once per day. A configured double is
           // still one lesson occurrence occupying two consecutive cells.
           if (subjectAlreadyUsedToday) return false;
-          const dayName = TIMETABLE_DAYS[day - 1];
-          if (keys.some(({ teacherKey }) => teacherBusy.has(teacherKey))) return false;
           if (unitSize === 2 && (!context.isDoubleLesson || context.doublePlaced)) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           // Configured double windows are soft reservations. A moved or
           // unplaceable pair must not strand this otherwise valid single cell.
-          const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
-          const timings = unitSlots.map((slot: any) =>
-            times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
-          );
           const keys = unitSlots.map((slot: any) => ({
             teacherKey: `${context.assignment.teacher_id}-${day}-${slot.id}`,
             classKey: `${context.cls.id}-${day}-${slot.id}`,
           }));
+          if (keys.some(({ teacherKey }) => teacherBusy.has(teacherKey))) return false;
+          const { blockingActivities, times } = context.getDaySlotTiming(day, context.cls);
+          const timings = unitSlots.map((slot: any) =>
+            times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time },
+          );
           if (keys.some(({ classKey }) => classBusy.has(classKey))) return false;
           if (blockingActivities.some((activity) => timings.some((timing) =>
             overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time)))) return false;
