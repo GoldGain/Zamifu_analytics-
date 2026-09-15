@@ -688,8 +688,6 @@ export default function TimetableGenerate() {
         cls: any;
         levelKey: string;
         subjectName: string;
-        isMath: boolean;
-        isScience: boolean;
         priorityBand: string;
         preferredLessonSlots: any[];
         availableDays: string[];
@@ -1165,8 +1163,6 @@ export default function TimetableGenerate() {
             // remaining weekly demand is placed as single lessons.
             const requiredDoubleDays = configuredDoubleDays.slice(0, 1);
             const subjectName = String(assignment.subjects?.name || '').toLowerCase();
-            const isMath = /mathemat/.test(subjectName);
-            const isScience = /integrated\s*science|science|environment/.test(subjectName);
             const priorityBand = defaultBandFor(subjectName);
             const preferredBandSlots = priorityBand === 'early_morning'
               ? prioritySlots.early_morning
@@ -1310,8 +1306,6 @@ export default function TimetableGenerate() {
               cls,
               levelKey,
               subjectName,
-              isMath,
-              isScience,
               priorityBand,
               preferredLessonSlots,
               availableDays,
