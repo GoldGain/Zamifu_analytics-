@@ -2929,7 +2929,14 @@ export default function TimetableGenerate() {
                 Number(entry.day_of_week) === current.day
                 && String(entry.subject_id) === String(deficitContext.assignment.subject_id),
               );
-              if (!sameDay) destination = current;
+              const teacherAlreadyBusy = allEntries.some((entry: any) =>
+                entry !== undefined
+                && String(entry.teacher_id) === String(deficitContext.assignment.teacher_id)
+                && Number(entry.day_of_week) === current.day
+                && String(entry.time_slot_id) === String(current.slot.id)
+                && String(entry.class_id) !== String(cls.id),
+              );
+              if (!sameDay && !teacherAlreadyBusy) destination = current;
             }
             if (destination) break;
             const map = occupied();
