@@ -3212,8 +3212,7 @@ export default function TimetableGenerate() {
             const sameClass = entries.filter((candidate: any) =>
               candidate !== target
               && String(candidate.class_id) === String(target.class_id)
-              && candidate.entry_type === 'lesson'
-              && Number(candidate.day_of_week) === Number(target.day_of_week),
+              && candidate.entry_type === 'lesson',
             );
             let rotated = false;
             for (const first of sameClass) {
