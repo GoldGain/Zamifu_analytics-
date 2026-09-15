@@ -893,7 +893,7 @@ export default function TimetableView() {
           .set({
             margin: [0.05, 0.05, 0.05, 0.05],
             filename,
-            image: { type: 'jpeg', quality: 0.98 },
+            image: { type: 'png', quality: 1 },
             pagebreak: { mode: ['css', 'legacy'], avoid: ['.bb-wrap', 'tr', '.tt-summary-panel'] },
             html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, windowWidth: Math.max(element.scrollWidth, element.offsetWidth || 0), width: Math.max(element.scrollWidth, element.offsetWidth || 0), height: Math.max(element.scrollHeight, element.offsetHeight || 0) },
             jsPDF: { unit: 'in', format: classId ? 'a4' : 'a3', orientation: 'landscape', compress: true },
@@ -1342,6 +1342,39 @@ export default function TimetableView() {
       color: #374151 !important;
       font-weight: 700 !important;
     }
+    .pdf-class-export .tt-day,
+    .pdf-class-export .tt-class,
+    .pdf-class-export .tt-break,
+    .pdf-class-export .tt-lunch,
+    .pdf-class-export .tt-break-header,
+    .pdf-class-export .tt-header,
+    .pdf-full-export .tt-day,
+    .pdf-full-export .tt-class,
+    .pdf-full-export .tt-break,
+    .pdf-full-export .tt-lunch,
+    .pdf-full-export .tt-break-header,
+    .pdf-full-export .tt-header {
+      background: #000 !important;
+      color: #fff !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      font-weight: 900 !important;
+    }
+    .pdf-class-export .tt-day *,
+    .pdf-class-export .tt-class *,
+    .pdf-class-export .tt-break *,
+    .pdf-class-export .tt-lunch *,
+    .pdf-class-export .tt-break-header *,
+    .pdf-class-export .tt-header *,
+    .pdf-full-export .tt-day *,
+    .pdf-full-export .tt-class *,
+    .pdf-full-export .tt-break *,
+    .pdf-full-export .tt-lunch *,
+    .pdf-full-export .tt-break-header *,
+    .pdf-full-export .tt-header * {
+      color: #fff !important;
+      font-weight: 900 !important;
+    }
     /* Full-school exports must fit the complete timetable horizontally. The
        on-screen view intentionally scrolls wide tables, but html2pdf places
        that scroll width directly on a fixed A3 page unless we constrain it. */
@@ -1390,8 +1423,21 @@ export default function TimetableView() {
     @media print {
       .no-print { display: none !important; }
       .bb-wrap { border: none; box-shadow: none; background: white; color: black; }
-      .tt-table th, .tt-table td { border: 1px solid black; color: black !important; }
-      .tt-day, .tt-class, .tt-break, .tt-lunch, .tt-activity, .tt-cell, .tt-header, .tt-break-header { color: black !important; background: white !important; }
+      .tt-table th, .tt-table td { border: 1px solid black !important; }
+      .tt-day, .tt-class, .tt-break, .tt-lunch, .tt-activity, .tt-header, .tt-break-header {
+        background: #000 !important;
+        color: #fff !important;
+        font-weight: 900 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .tt-day *, .tt-class *, .tt-break *, .tt-lunch *, .tt-activity *, .tt-header *, .tt-break-header * {
+        color: #fff !important;
+        font-weight: 900 !important;
+      }
+      .tt-cell { background: #fff !important; color: #111 !important; }
+      .tt-cell strong { color: #111 !important; font-weight: 900 !important; }
+      .tt-cell .tt-subtime { color: #374151 !important; font-weight: 800 !important; }
     }
   `;
 
