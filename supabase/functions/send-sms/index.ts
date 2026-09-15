@@ -372,7 +372,7 @@ Deno.serve(async (req) => {
     });
     if (reservationError) {
       if (/INSUFFICIENT_SMS_CREDITS/i.test(reservationError.message || "")) {
-        return json({ error: `Insufficient SMS credits. This message needs ${smsSegments} SMS credit${smsSegments === 1 ? "" : "s"}.` }, 402);
+        return json({ error: "School has no SMS balance. Please ask the school admin to top up." }, 402);
       }
       console.error("SMS credit reservation failed:", reservationError.message);
       return json({ error: "SMS credits could not be reserved. Please try again." }, 500);

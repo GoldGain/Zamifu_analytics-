@@ -25,21 +25,16 @@ export default function ResellerCommunicate() {
       try {
         const { data: reseller } = await supabaseUntyped.from('resellers').select('id').eq('user_id', user.id).maybeSingle();
         if (!reseller) return;
-        const [{ data: schoolRows, error: schoolError }, { data: ownedSchoolRows, error: ownedSchoolError }] = await Promise.all([
-          supabaseUntyped.rpc('get_reseller_communication_schools'),
-          supabaseUntyped.from('schools').select('id').eq('reseller_id', reseller.id),
-        ]);
+        const { data: schoolRows, error: schoolError } = await supabaseUntyped.rpc('get_reseller_communication_schools');
         if (schoolError) throw schoolError;
-        if (ownedSchoolError) throw ownedSchoolError;
         const schoolRowsSafe = (schoolRows || []) as Array<{ id: string; name: string }>;
         setSchools(schoolRowsSafe);
         const ids = schoolRowsSafe.map((school) => school.id);
         if (!ids.length) return;
-        const ownedIds = ((ownedSchoolRows || []) as Array<{ id: string }>).map((school) => school.id);
         const [{ data: admins, error: adminError }, { data: teachers, error: teacherError }, { data: dos, error: dosError }] = await Promise.all([
           supabaseUntyped.rpc('get_reseller_school_admin_contacts'),
-          ownedIds.length ? supabaseUntyped.from('teachers').select('id, school_id, profile_id, first_name, last_name, phone, is_dean_of_studies').in('school_id', ownedIds).eq('is_active', true) : Promise.resolve({ data: [], error: null }),
-          ownedIds.length ? supabaseUntyped.from('teachers').select('id, school_id, profile_id, first_name, last_name, phone').in('school_id', ownedIds).eq('is_active', true).eq('is_dean_of_studies', true) : Promise.resolve({ data: [], error: null }),
+          supabaseUntyped.from('teachers').select('id, school_id, profile_id, first_name, last_name, phone, is_dean_of_studies').in('school_id', ids).eq('is_active', true),
+          supabaseUntyped.from('teachers').select('id, school_id, profile_id, first_name, last_name, phone').in('school_id', ids).eq('is_active', true).eq('is_dean_of_studies', true),
         ]);
         if (adminError || teacherError || dosError) throw adminError || teacherError || dosError;
         const toRecipient = (row: any, role: Recipient['role']): Recipient => ({
