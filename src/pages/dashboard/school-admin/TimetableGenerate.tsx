@@ -1067,13 +1067,28 @@ export default function TimetableGenerate() {
         // Runs only when the level is fully schedulable; otherwise the legacy
         // generator below runs unchanged as a fallback.
         {
-          const perfectEntries = buildPerfectTimetableEntries({
+          let perfectEntries = buildPerfectTimetableEntries({
             schoolId,
             levelKey,
             classes: classesToProcess,
             assignments,
             lessonSlots,
           });
+          if (perfectEntries?.length) {
+            const occupiedTeacherSlots = new Set(
+              allEntries
+                .filter((entry: any) => entry.teacher_id && entry.entry_type !== 'break' && entry.entry_type !== 'lunch' && entry.entry_type !== 'activity')
+                .map((entry: any) => `${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`),
+            );
+            const newTeacherSlots = new Set<string>();
+            const perfectHasTeacherCollision = perfectEntries.some((entry: any) => {
+              const key = `${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`;
+              if (occupiedTeacherSlots.has(key) || newTeacherSlots.has(key)) return true;
+              newTeacherSlots.add(key);
+              return false;
+            });
+            if (perfectHasTeacherCollision) perfectEntries = null;
+          }
           const hasConfiguredDouble = assignments.some((assignment: any) =>
             classesInLevel.has(String(assignment.class_id)) && isEnabledFlag(assignment.is_double_lesson),
           );
@@ -1093,6 +1108,10 @@ export default function TimetableGenerate() {
               requireComplete: true,
             });
             allEntries.push(...perfectEntries);
+            perfectEntries.forEach((entry: any) => {
+              if (entry.teacher_id) teacherBusy.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+              classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+            });
             generatedSummary.push(
               `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (no blanks, exact weekly totals, one subject per day)`
             );
@@ -1197,8 +1216,9 @@ export default function TimetableGenerate() {
               if (unitSize === 2 && (!isDoubleLesson || placementContext.doublePlaced)) return 0;
               if (unitSize === 2 && !isValidDoubleLessonPair(subjectName, startSlot, secondSlot)) return 0;
               if (!canUseAssignmentDay(placementContext.dayUsage, day, isDoubleLesson, lessonsToSchedule, unitSize)) return 0;
-              // teacherBusy below is the authoritative no-clash guard after
-              // pairs are placed; configured double windows are not blockers.
+              // Teacher occupancy is a hard constraint. A teacher can teach
+              // multiple classes during the week, but never two classes in
+              // the same day+lesson slot.
               const unitSlots = secondSlot ? [startSlot, secondSlot] : [startSlot];
               const subjectDayKey = `${cls.id}-${day}-${assignment.subject_id}`;
               const subjectAlreadyUsedToday = (subjectDayUsage.get(subjectDayKey) || 0) > 0;
@@ -1213,8 +1233,7 @@ export default function TimetableGenerate() {
                 teacherKey: `${assignment.teacher_id}-${day}-${slot.id}`,
                 classKey: `${cls.id}-${day}-${slot.id}`,
               }));
-              // Teachers may teach multiple classes in the same period; only
-              // the target class cell itself remains an occupancy constraint.
+              if (keys.some(({ teacherKey }) => teacherBusy.has(teacherKey))) return 0;
               if (keys.some(({ classKey }) => classBusy.has(classKey))) return 0;
               if (dayActivities.some((activity) => timings.some((timing) =>
                 overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time)))) return 0;
@@ -1455,8 +1474,8 @@ export default function TimetableGenerate() {
           // still one lesson occurrence occupying two consecutive cells.
           if (subjectAlreadyUsedToday) return false;
           const dayName = TIMETABLE_DAYS[day - 1];
-          // Teacher availability is intentionally ignored; retain all other placement rules.
-            if (unitSize === 2 && (!context.isDoubleLesson || context.doublePlaced)) return false;
+          if (keys.some(({ teacherKey }) => teacherBusy.has(teacherKey))) return false;
+          if (unitSize === 2 && (!context.isDoubleLesson || context.doublePlaced)) return false;
           if (!canUseAssignmentDay(context.dayUsage, day, context.isDoubleLesson, context.lessonsPerWeek, unitSize)) return false;
           // Configured double windows are soft reservations. A moved or
           // unplaceable pair must not strand this otherwise valid single cell.
@@ -1934,6 +1953,7 @@ export default function TimetableGenerate() {
                   if (deficit <= 0) break;
                   const classKey = `${classId}-${day}-${slot.id}`;
                   if (reconClassBusy.has(classKey)) continue;
+                  if (teacherId && reconTeacherBusy.has(`${teacherId}-${day}-${slot.id}`)) continue;
                   if (reconSubjectDay.get(`${classId}-${day}-${subjectId}`)) continue;
                   if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
                   const idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(slot.id));
@@ -1955,6 +1975,7 @@ export default function TimetableGenerate() {
                     entry_type: 'lesson',
                   });
                   reconClassBusy.add(classKey);
+                  if (teacherId) reconTeacherBusy.add(`${teacherId}-${day}-${slot.id}`);
                   reconCellSubject.set(classKey, subjectName);
                   reconSubjectDay.set(`${classId}-${day}-${subjectId}`, (reconSubjectDay.get(`${classId}-${day}-${subjectId}`) || 0) + 1);
                   deficit -= 1;
@@ -2037,7 +2058,7 @@ export default function TimetableGenerate() {
                   if (reconSubjectDay2.get(`${classId}-${day}-${subjectId}`)) continue;
                   if (!teacherId) continue;
                   const teacherKey = `${teacherId}-${day}-${slot.id}`;
-                  {
+                  if (!reconTeacherBusy2.has(teacherKey)) {
                     if (meta?.band && !bandAllowsSlot(meta.band, slot)) continue;
                     if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
                     if (!adjOk2(subjectName, classId, day, slot.id)) continue;
@@ -2061,6 +2082,7 @@ export default function TimetableGenerate() {
                       if (bMeta?.band && !bandAllowsSlot(bMeta.band, s2)) continue;
                       if (!strictSubjectAllowsLesson(bName, lessonNumberOf(s2))) continue;
                       if (reconClassBusy2.has(`${blocker.class_id}-${d2}-${s2.id}`)) continue;
+                      if (blocker.teacher_id && reconTeacherBusy2.has(`${blocker.teacher_id}-${d2}-${s2.id}`)) continue;
                       if (reconSubjectDay2.get(`${blocker.class_id}-${d2}-${blocker.subject_id}`)) continue;
                       const p2 = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(s2.id)) - 1 >= 0 ? orderedLessonSlots[orderedLessonSlots.findIndex((s: any) => String(s.id) === String(s2.id)) - 1] : null;
                       const n2idx = orderedLessonSlots.findIndex((s: any) => String(s.id) === String(s2.id));
@@ -2161,8 +2183,7 @@ export default function TimetableGenerate() {
             }
           }
         }
-        // Track teacher occupancy for preference ordering only. Teacher
-        // double-booking is allowed by the timetable rules.
+        // Track teacher occupancy as a hard constraint for final repairs.
         const currentTeacherSlot = new Set<string>();
         allEntries.forEach((entry: any) => {
           if (entry.level_group === levelKey && entry.teacher_id) {
@@ -2425,12 +2446,9 @@ export default function TimetableGenerate() {
           }
         }
         // Absolute completion fallback: if greedy exchanges still leave a
-        // cell, use a real assigned non-double subject that is legal for the
-        // cell and has not already appeared that day. Keep teacher IDs when
-        // free; when every assigned teacher is occupied, omit the teacher on
-        // this exceptional entry rather than creating a teacher clash. This
-        // guarantees a complete, rule-valid grid for schools whose assignments
-        // are internally over-constrained while never inventing filler.
+        // cell, use a real assigned non-double subject whose teacher is free
+        // for the cell. If no such assignment exists, leave the cell for the
+        // safe shortage error below rather than creating a teacher collision.
         for (const missing of missingCells) {
           const key = `${missing.cls.id}-${missing.day}-${missing.slot.id}`;
           if (lessonCellEntries.has(key)) continue;
@@ -2442,15 +2460,12 @@ export default function TimetableGenerate() {
               && Number(entry.day_of_week) === missing.day
               && String(entry.subject_id) === String(context.assignment.subject_id),
             ))
+            .filter((context) => !currentTeacherSlot.has(`${context.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
             .sort((a, b) => Number(currentTeacherSlot.has(`${a.assignment.teacher_id}-${missing.day}-${missing.slot.id}`))
               - Number(currentTeacherSlot.has(`${b.assignment.teacher_id}-${missing.day}-${missing.slot.id}`)))[0];
           if (!emergencyContext) continue;
           const { times } = emergencyContext.getDaySlotTiming(missing.day, missing.cls);
           const timing = times.get(String(missing.slot.label)) || { start_time: missing.slot.start_time, end_time: missing.slot.end_time };
-          const freeTeacherId = [...assignmentContexts.values()]
-            .map((context) => String(context.assignment.teacher_id || ''))
-            .find((teacherId) => teacherId && !currentTeacherSlot.has(`${teacherId}-${missing.day}-${missing.slot.id}`))
-            || String(emergencyContext.assignment.teacher_id || '');
           const repairedEntry = {
             school_id: schoolId,
             day_of_week: missing.day,
@@ -2460,7 +2475,7 @@ export default function TimetableGenerate() {
             effective_start_time: timing.start_time,
             effective_end_time: timing.end_time,
             subject_id: emergencyContext.assignment.subject_id,
-            teacher_id: freeTeacherId || emergencyContext.assignment.teacher_id,
+            teacher_id: emergencyContext.assignment.teacher_id,
             entry_type: 'lesson',
           };
           allEntries.push(repairedEntry);
@@ -2550,6 +2565,12 @@ export default function TimetableGenerate() {
           for (const slot of targetSlots) {
             const existing = entriesAtCell(targetClassId, targetDay, String(slot.id));
             if (existing.some((entry) => !sourceSet.has(entry))) return false;
+            if (targetContext.assignment.teacher_id && levelEntries.some((entry: any) =>
+              !sourceSet.has(entry)
+              && String(entry.teacher_id || '') === String(targetContext.assignment.teacher_id)
+              && Number(entry.day_of_week) === targetDay
+              && String(entry.time_slot_id) === String(slot.id),
+            )) return false;
             const { blockingActivities, times } = targetContext.getDaySlotTiming(targetDay, targetContext.cls);
             const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
             if (blockingActivities.some((activity) => overlaps(timing.start_time, timing.end_time, activity.start_time, activity.end_time))) return false;
@@ -2754,6 +2775,12 @@ export default function TimetableGenerate() {
           ignored: Set<any> = new Set(),
         ) => {
           if (!strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) return false;
+          if (context.assignment.teacher_id && exactCellEntries().some((entry: any) =>
+            !ignored.has(entry)
+            && String(entry.teacher_id || '') === String(context.assignment.teacher_id)
+            && Number(entry.day_of_week) === day
+            && String(entry.time_slot_id) === String(slot.id),
+          )) return false;
           // The exact-count completion pass is allowed to use any school day.
           // Teacher availability is a scheduling preference here; the user’s
           // hard requirements are completeness, the subject window, and no
@@ -3011,6 +3038,28 @@ export default function TimetableGenerate() {
           requireComplete: true,
         });
 
+        // Reconciliation and balancing may replace entries directly. Rebuild
+        // the shared occupancy sets from the authoritative array before the
+        // next selected level is processed.
+        teacherBusy.clear();
+        classBusy.clear();
+        allEntries.forEach((entry: any) => {
+          if (entry.teacher_id) teacherBusy.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+          classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+        });
+
+      }
+
+      const teacherTimeSlots = new Map<string, any>();
+      for (const entry of allEntries.filter((candidate: any) =>
+        (candidate.entry_type === 'lesson' || candidate.entry_type === 'lesson_double') && candidate.teacher_id,
+      )) {
+        const key = `${entry.teacher_id}-${entry.day_of_week}-${entry.effective_start_time || ''}-${entry.effective_end_time || ''}`;
+        const previous = teacherTimeSlots.get(key);
+        if (previous && String(previous.class_id) !== String(entry.class_id)) {
+          throw new Error(`Timetable generation stopped safely: teacher ${entry.teacher_id} is double-booked between classes ${previous.class_id} and ${entry.class_id} on day ${entry.day_of_week} at ${entry.effective_start_time || 'the same time'}. Adjust assignments or timetable setup and try again.`);
+        }
+        teacherTimeSlots.set(key, entry);
       }
 
       // Commit only after every selected level has passed generation and the

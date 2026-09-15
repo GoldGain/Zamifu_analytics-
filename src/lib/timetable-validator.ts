@@ -118,8 +118,18 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
 
     const cell = entryKey(entry.class_id, entry.day_of_week, entry.time_slot_id);
     cellEntries.set(cell, [...(cellEntries.get(cell) || []), entry]);
-    // Teacher double-booking is intentionally allowed: the timetable follows
-    // the assignments configured by the school administrator.
+    if (entry.teacher_id) {
+      const teacherKey = `${String(entry.teacher_id)}-${entry.day_of_week}-${String(entry.time_slot_id)}`;
+      const previous = teacherSlotEntries.get(teacherKey);
+      if (previous) {
+        issues.push({
+          rule: 'teacher-collision',
+          message: `Teacher ${String(entry.teacher_id)} is assigned to classes ${String(previous.class_id)} and ${String(entry.class_id)} at the same time on day ${entry.day_of_week} (${slot.label || 'lesson'}).`,
+        });
+      } else {
+        teacherSlotEntries.set(teacherKey, entry);
+      }
+    }
     const dayKey = subjectDayKey(entry);
     const group = subjectDayEntries.get(dayKey) || {
       classId: String(entry.class_id),
