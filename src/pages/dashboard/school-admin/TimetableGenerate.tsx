@@ -3174,17 +3174,9 @@ export default function TimetableGenerate() {
               && String(other.class_id) === String(changed.class_id)
               && Number(other.day_of_week) === Number(changed.day_of_week)
               && String(other.subject_id) === String(changed.subject_id))) return false;
-            const slotIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(changed.time_slot_id));
-            for (const adjacentSlot of [lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean)) {
-              const adjacent = simulated.filter((other: any) => other !== changed
-                && String(other.class_id) === String(changed.class_id)
-                && Number(other.day_of_week) === Number(changed.day_of_week)
-                && String(other.time_slot_id) === String(adjacentSlot.id));
-              if (adjacent.some((other: any) => violatesMathScienceSequence(
-                subjectName,
-                generatedSubjectNames.get(String(other.subject_id)) || '',
-              ))) return false;
-            }
+            // Adjacency is evaluated by the outer repair loop after the
+            // window-safe swap. This allows a constrained Pre-Tech move to
+            // become legal first, then be refined without locking the solver.
           }
           return true;
         };
