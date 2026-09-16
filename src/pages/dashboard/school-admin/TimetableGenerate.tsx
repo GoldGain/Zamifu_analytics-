@@ -3178,9 +3178,16 @@ export default function TimetableGenerate() {
               && String(other.class_id) === String(changed.class_id)
               && Number(other.day_of_week) === Number(changed.day_of_week)
               && String(other.subject_id) === String(changed.subject_id))) return false;
-            // Adjacency is evaluated by the outer repair loop after the
-            // window-safe swap. This allows a constrained Pre-Tech move to
-            // become legal first, then be refined without locking the solver.
+            const changedSlotIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(changed.time_slot_id));
+            const changedName = generatedSubjectNames.get(String(changed.subject_id)) || '';
+            const neighbours = [lessonSlots[changedSlotIndex - 1], lessonSlots[changedSlotIndex + 1]].filter(Boolean);
+            if (neighbours.some((neighbour: any) => simulated.some((other: any) =>
+              other !== changed
+              && String(other.class_id) === String(changed.class_id)
+              && Number(other.day_of_week) === Number(changed.day_of_week)
+              && String(other.time_slot_id) === String(neighbour.id)
+              && violatesMathScienceSequence(changedName, generatedSubjectNames.get(String(other.subject_id)) || ''),
+            ))) return false;
           }
           return true;
         };
