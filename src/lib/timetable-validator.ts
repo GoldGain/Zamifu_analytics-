@@ -30,6 +30,10 @@ export interface TimetableValidationOptions {
   days?: readonly number[];
   levelGroup?: string;
   requireComplete?: boolean;
+  /** Exact weekly lesson requirements keyed by `${classId}-${subjectId}`. */
+  requiredLessonCounts?: ReadonlyMap<string, number> | Readonly<Record<string, number>>;
+  /** Enforce same-day/same-slot pairing when both IRE and CRE are offered. */
+  requireReligiousPairing?: boolean;
 }
 
 export interface TimetableValidationIssue {
@@ -93,6 +97,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
   const subjectDayEntries = new Map<string, SubjectDayGroup>();
   const doubleEntriesBySubject = new Map<string, TimetableValidationEntry[]>();
   const teacherSlotEntries = new Map<string, TimetableValidationEntry>();
+  const weeklySubjectCounts = new Map<string, number>();
 
   for (const entry of filteredEntries) {
     const slot = slotById.get(String(entry.time_slot_id));
@@ -131,6 +136,8 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
       }
     }
     const dayKey = subjectDayKey(entry);
+    const weeklyKey = `${String(entry.class_id)}-${String(entry.subject_id)}`;
+    weeklySubjectCounts.set(weeklyKey, (weeklySubjectCounts.get(weeklyKey) || 0) + 1);
     const group = subjectDayEntries.get(dayKey) || {
       classId: String(entry.class_id),
       day: Number(entry.day_of_week),
@@ -142,6 +149,22 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     if (entry.entry_type === 'lesson_double') {
       const weeklyKey = `${String(entry.class_id)}-${String(entry.subject_id)}`;
       doubleEntriesBySubject.set(weeklyKey, [...(doubleEntriesBySubject.get(weeklyKey) || []), entry]);
+    }
+  }
+
+  if (options.requiredLessonCounts) {
+    const requiredEntries = options.requiredLessonCounts instanceof Map
+      ? Array.from(options.requiredLessonCounts.entries())
+      : Object.entries(options.requiredLessonCounts);
+    for (const [key, value] of requiredEntries) {
+      const required = Number(value);
+      const actual = weeklySubjectCounts.get(String(key)) || 0;
+      if (actual !== required) {
+        issues.push({
+          rule: 'exact-lesson-count',
+          message: `Class/subject ${String(key)} has ${actual} lessons but requires exactly ${required}.`,
+        });
+      }
     }
   }
 
@@ -197,6 +220,32 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
             }
           }
         }
+      }
+    }
+  }
+
+  if (options.requireReligiousPairing) {
+    const religiousByClass = new Map<string, { ire: Set<string>; cre: Set<string> }>();
+    for (const entry of filteredEntries) {
+      const name = nameFor(options.subjectNames, entry.subject_id).toLowerCase();
+      const family = /\bire\b|islamic|muslim/.test(name)
+        ? 'ire'
+        : /\bcre\b|christian/.test(name) ? 'cre' : null;
+      if (!family) continue;
+      const key = String(entry.class_id);
+      const group = religiousByClass.get(key) || { ire: new Set<string>(), cre: new Set<string>() };
+      group[family].add(`${entry.day_of_week}-${String(entry.time_slot_id)}`);
+      religiousByClass.set(key, group);
+    }
+    for (const [key, group] of religiousByClass) {
+      if (!group.ire.size || !group.cre.size) continue;
+      const paired = [...group.ire].every((slot) => group.cre.has(slot))
+        && [...group.cre].every((slot) => group.ire.has(slot));
+      if (!paired) {
+        issues.push({
+          rule: 'ire-cre-same-slot',
+          message: `IRE and CRE are not paired at the same day and lesson slot for class ${key}.`,
+        });
       }
     }
   }

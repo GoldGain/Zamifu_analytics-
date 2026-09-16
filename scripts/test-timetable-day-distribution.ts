@@ -82,7 +82,7 @@ assert.equal(getDefaultPriorityBand('Social Studies'), 'afternoon');
 assert.equal(getDefaultPriorityBand('Kiswahili'), 'late_morning');
 
 assert.equal(violatesMathScienceSequence('Mathematics', 'Integrated Science'), true);
-assert.equal(violatesMathScienceSequence('Integrated Science', 'Mathematics'), true);
+assert.equal(violatesMathScienceSequence('Integrated Science', 'Mathematics'), false);
 assert.equal(violatesMathScienceSequence('Mathematics', 'English'), false);
 
 console.log('PASS: day distribution, three-window defaults, and Math/Science sequence rules');

@@ -16,6 +16,8 @@ const subjectNames = new Map([
   ['art', 'Creative Arts'],
   ['social', 'Social Studies'],
   ['religious', 'Religious Education'],
+  ['ire', 'IRE'],
+  ['cre', 'CRE'],
   ['study', 'Study'],
 ]);
 const entry = (subject_id: string, time_slot_id: string, day = 1, entry_type = 'lesson') => ({
@@ -60,7 +62,7 @@ const duplicateSubjectIssues = validateTimetableRules({
 assert.equal(duplicateSubjectIssues.some((issue) => issue.rule === 'once-per-day'), true);
 
 const strictWindowIssues = validateTimetableRules({
-  entries: [entry('math', 'lesson-7'), entry('english', 'lesson-8'), entry('science', 'lesson-6'), entry('pretech', 'lesson-7')],
+  entries: [entry('math', 'lesson-6'), entry('english', 'lesson-6'), entry('science', 'lesson-7'), entry('pretech', 'lesson-7')],
   slots,
   subjectNames,
   levelGroup: 'junior',
@@ -74,6 +76,32 @@ const adjacencyIssues = validateTimetableRules({
   levelGroup: 'junior',
 });
 assert.equal(adjacencyIssues.some((issue) => issue.rule === 'math-science-adjacency'), true);
+
+const reverseAdjacencyIssues = validateTimetableRules({
+  entries: [entry('science', 'lesson-1'), entry('math', 'lesson-2')],
+  slots,
+  subjectNames,
+  levelGroup: 'junior',
+});
+assert.equal(reverseAdjacencyIssues.some((issue) => issue.rule === 'math-science-adjacency'), false);
+
+const exactCountIssues = validateTimetableRules({
+  entries: [entry('math', 'lesson-1'), entry('math', 'lesson-3')],
+  slots,
+  subjectNames,
+  levelGroup: 'junior',
+  requiredLessonCounts: new Map([['class-1-math', 3]]),
+});
+assert.equal(exactCountIssues.some((issue) => issue.rule === 'exact-lesson-count'), true);
+
+const religiousPairingIssues = validateTimetableRules({
+  entries: [entry('ire', 'lesson-1'), entry('cre', 'lesson-2')],
+  slots,
+  subjectNames,
+  levelGroup: 'junior',
+  requireReligiousPairing: true,
+});
+assert.equal(religiousPairingIssues.some((issue) => issue.rule === 'ire-cre-same-slot'), true);
 
 const invalidDoubleIssues = validateTimetableRules({
   entries: [entry('science', 'lesson-3', 1, 'lesson_double'), entry('science', 'lesson-5', 1, 'lesson_double')],

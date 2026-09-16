@@ -25,7 +25,7 @@ const breakSlot = { slot_order: 4, slot_type: 'break' as const, label: 'SECOND B
 
 assert.equal(isValidDoubleLessonPair('Integrated Science', lesson3, lesson4), true);
 assert.equal(isValidDoubleLessonPair('Pre-Technical Studies', lesson3, lesson4), true);
-assert.equal(isValidDoubleLessonPair('Integrated Science', lesson4, lesson5), false);
+assert.equal(isValidDoubleLessonPair('Integrated Science', lesson4, lesson5), true);
 assert.equal(isValidDoubleLessonPair('Integrated Science', lesson3, breakSlot), false);
 assert.equal(isValidDoubleLessonPair('Integrated Science', lesson3, null), false);
 

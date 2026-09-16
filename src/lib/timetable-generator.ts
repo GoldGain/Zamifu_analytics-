@@ -157,9 +157,9 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 /**
  * Final subject placement gate from the timetable requirements.
  *
- * Mathematics and English prioritize Lessons 1–2 and may use Lessons 1–5, Integrated Science and
- * Pre-Technical Studies use Lessons 3–5, Kiswahili may use Lessons 1–7, and
- * other learning areas may use the later lesson periods.
+ * Mathematics and English prioritize Lessons 1–4 and may use Lessons 1–5,
+ * Integrated Science and Pre-Technical Studies may use Lessons 1–6,
+ * Kiswahili may use Lessons 1–7, and other learning areas may use any lesson.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
@@ -167,9 +167,9 @@ export function strictSubjectAllowsLesson(
 ): boolean {
   const fam = classifySubject(subjectName);
   if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 5;
-  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 3 && lessonNumber <= 5;
+  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 1 && lessonNumber <= 6;
   if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
-  return lessonNumber >= 3;
+  return lessonNumber >= 1;
 }
 
 export interface LessonUnitSlot {
@@ -195,8 +195,6 @@ export function isValidDoubleLessonPair(
   const firstLesson = Number(String(firstSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   const secondLesson = Number(String(secondSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   if (!Number.isFinite(firstLesson) || !Number.isFinite(secondLesson)) return false;
-  const family = classifySubject(subjectName);
-  if ((family === 'science' || family === 'pretech') && (firstLesson !== 3 || secondLesson !== 4)) return false;
   return strictSubjectAllowsLesson(subjectName, firstLesson)
     && strictSubjectAllowsLesson(subjectName, secondLesson);
 }
@@ -211,9 +209,8 @@ export function violatesMathScienceSequence(
   const adjacent = String(adjacentSubject || '').trim().toLowerCase();
   const currentIsMath = /mathemat/.test(current);
   const currentIsScience = /integrated\s*science|\bscience\b|environment/.test(current);
-  const adjacentIsMath = /mathemat/.test(adjacent);
   const adjacentIsScience = /integrated\s*science|\bscience\b|environment/.test(adjacent);
-  return (currentIsMath && adjacentIsScience) || (currentIsScience && adjacentIsMath);
+  return currentIsMath && adjacentIsScience;
 }
 
 /**

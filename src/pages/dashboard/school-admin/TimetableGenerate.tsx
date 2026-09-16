@@ -215,9 +215,9 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
  *  - every subject's weekly lessons match its assignment exactly (no OVER /
  *    UNDER status)
  *  - a subject never repeats on the same day
- *  - Mathematics/English only in Lessons 1-2, Integrated Science / Pre-Technical
- *    Studies only in Lessons 3-5, Kiswahili up to Lesson 7
- *  - no Mathematics<->Science adjacency
+ *  - Mathematics/English never beyond Lesson 5, Integrated Science / Pre-Technical
+ *    Studies never beyond Lesson 6, Kiswahili never in Lesson 8
+ *  - Mathematics is never immediately followed by Integrated Science
  *  - a teacher never appears twice in the same day+lesson across parallel
  *    classes
  * Returns timetable_entries rows, or null when the level is not perfectly
@@ -258,14 +258,14 @@ function buildPerfectTimetableEntries(opts: {
 
   const allowsLesson = (name: string, ln: number): boolean => {
     const f = classifySubject(name);
-    if (f === 'math' || f === 'english') return ln === 1 || ln === 2;
-    if (f === 'science' || f === 'pretech') return ln >= 3 && ln <= 5;
+    if (f === 'math' || f === 'english') return ln >= 1 && ln <= 5;
+    if (f === 'science' || f === 'pretech') return ln >= 1 && ln <= 6;
     if (f === 'kiswahili') return ln >= 1 && ln <= 7;
-    return ln >= 3;
+    return ln >= 1;
   };
   const adjOk = (a: string, b: string): boolean => {
     if (!a || !b) return true;
-    return !violatesMathScienceSequence(a, b) && !violatesMathScienceSequence(b, a);
+    return !violatesMathScienceSequence(a, b);
   };
 
   // Valid lesson 1-2 patterns: which parallel class has Math@L1 / English@L2.
@@ -1104,6 +1104,15 @@ export default function TimetableGenerate() {
               classes: classesToProcess,
               levelGroup: levelKey,
               requireComplete: true,
+              requiredLessonCounts: new Map(
+                assignments
+                  .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+                  .map((assignment: any) => [
+                    `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
+                    Number(assignment.lessons_per_week || 0),
+                  ]),
+              ),
+              requireReligiousPairing: true,
             });
             allEntries.push(...perfectEntries);
             perfectEntries.forEach((entry: any) => {
@@ -3367,6 +3376,15 @@ export default function TimetableGenerate() {
           classes: classesToProcess,
           levelGroup: levelKey,
           requireComplete: true,
+          requiredLessonCounts: new Map(
+            assignments
+              .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+              .map((assignment: any) => [
+                `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
+                Number(assignment.lessons_per_week || 0),
+              ]),
+          ),
+          requireReligiousPairing: true,
         });
 
         // Reconciliation and balancing may replace entries directly. Rebuild
