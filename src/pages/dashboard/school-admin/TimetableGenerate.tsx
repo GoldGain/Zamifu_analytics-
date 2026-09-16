@@ -3228,8 +3228,19 @@ export default function TimetableGenerate() {
                 if (!strictSubjectAllowsLesson(generatedSubjectNames.get(String(second.subject_id)) || '', lessonNumberOf(targetSlot))) continue;
                 const subjects = [second.subject_id, target.subject_id, first.subject_id];
                 if (new Set(subjects.map(String)).size !== subjects.length) continue;
+                const proposedTeachers = [second.teacher_id, target.teacher_id, first.teacher_id];
+                const proposedCells = [
+                  { teacher: proposedTeachers[0], day: target.day_of_week, slot: target.time_slot_id },
+                  { teacher: proposedTeachers[1], day: first.day_of_week, slot: first.time_slot_id },
+                  { teacher: proposedTeachers[2], day: second.day_of_week, slot: second.time_slot_id },
+                ];
+                if (proposedCells.some((cell) => cell.teacher && entries.some((other: any) =>
+                  ![target, first, second].includes(other)
+                  && String(other.teacher_id || '') === String(cell.teacher)
+                  && Number(other.day_of_week) === Number(cell.day)
+                  && String(other.time_slot_id) === String(cell.slot)))) continue;
                 [target.subject_id, first.subject_id, second.subject_id] = subjects;
-                [target.teacher_id, first.teacher_id, second.teacher_id] = [second.teacher_id, target.teacher_id, first.teacher_id];
+                [target.teacher_id, first.teacher_id, second.teacher_id] = proposedTeachers;
                 rotated = true;
                 break;
               }

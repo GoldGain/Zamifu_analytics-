@@ -363,19 +363,27 @@ Deno.serve(async (req) => {
     const smsSegments = countSmsSegments(cleanMessage);
     if (!smsSegments) return json({ error: "Message is empty." }, 400);
 
-    const { data: reservation, error: reservationError } = await adminClient.rpc("reserve_school_sms_credits", {
-      p_school_id: resolvedSchoolId,
-      p_sms_segments: smsSegments,
-      p_recipient_phone: normalizePhone(phone),
-      p_message: cleanMessage,
-      p_sent_by: callerUser.id,
-    });
-    if (reservationError) {
-      if (/INSUFFICIENT_SMS_CREDITS/i.test(reservationError.message || "")) {
-        return json({ error: "School has no SMS balance. Please ask the school admin to top up." }, 402);
+    // Resellers communicate with assigned schools as a platform service. They
+    // must not be blocked by or charged against a personal/reseller wallet.
+    // School-admin messages continue to use the school's prepaid wallet.
+    const resellerSponsored = callerRole === "reseller_super_admin";
+    let reservation: any = null;
+    if (!resellerSponsored) {
+      const { data: schoolReservation, error: reservationError } = await adminClient.rpc("reserve_school_sms_credits", {
+        p_school_id: resolvedSchoolId,
+        p_sms_segments: smsSegments,
+        p_recipient_phone: normalizePhone(phone),
+        p_message: cleanMessage,
+        p_sent_by: callerUser.id,
+      });
+      if (reservationError) {
+        if (/INSUFFICIENT_SMS_CREDITS/i.test(reservationError.message || "")) {
+          return json({ error: "School has no SMS balance. Please ask the school admin to top up." }, 402);
+        }
+        console.error("SMS credit reservation failed:", reservationError.message);
+        return json({ error: "SMS credits could not be reserved. Please try again." }, 500);
       }
-      console.error("SMS credit reservation failed:", reservationError.message);
-      return json({ error: "SMS credits could not be reserved. Please try again." }, 500);
+      reservation = schoolReservation;
     }
 
     const { data: schoolSettings } = await adminClient.from("school_settings").select("sms_provider, sms_sender_id, sms_api_key, sms_username").eq("school_id", resolvedSchoolId).maybeSingle();
@@ -384,6 +392,26 @@ Deno.serve(async (req) => {
       ? await sendViaAfricasTalking(phone, cleanMessage, schoolSettings.sms_sender_id || "", schoolSettings.sms_api_key, schoolSettings.sms_username)
       : await sendViaOlympus(phone, cleanMessage);
 
+    if (resellerSponsored) {
+      // Audit the delivery but do not debit the selected school's wallet.
+      const { error: auditError } = await adminClient.from("school_sms_transactions").insert({
+        school_id: resolvedSchoolId,
+        transaction_type: "debit",
+        credits: -smsSegments,
+        amount_ksh: 0,
+        status: sms.success ? "success" : "failed",
+        recipient_phone: normalizePhone(phone),
+        message: cleanMessage,
+        sms_segments: smsSegments,
+        provider_message_id: sms.messageId || null,
+        error_message: sms.success ? null : (sms.error || "SMS delivery failed"),
+        sent_by: callerUser.id,
+        metadata: { sponsored_by: "reseller", wallet_charge: false },
+      });
+      if (auditError) console.error("Sponsored SMS audit failed:", auditError.message);
+      if (!sms.success) return json({ error: sms.error || "SMS delivery failed." }, 400);
+      return json({ success: true, messageId: sms.messageId, smsSegments, sponsored: true });
+    }
     const reservationId = reservation?.reservation_id;
     const { data: settlement, error: settlementError } = await adminClient.rpc("settle_school_sms_charge", {
       p_reservation_id: reservationId,
