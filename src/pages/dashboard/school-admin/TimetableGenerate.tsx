@@ -3209,6 +3209,41 @@ export default function TimetableGenerate() {
           }
           if (!target) break;
           if (illegal) {
+            // Prefer moving the offending single lesson into an actually empty
+            // legal cell before attempting swaps. This is the safest repair for
+            // constrained windows such as Pre-Technical Studies (Lessons 3–5)
+            // and avoids changing three unrelated teachers at once.
+            if (target.entry_type === 'lesson') {
+              const targetSubject = generatedSubjectNames.get(String(target.subject_id)) || '';
+              const emptyCell = [1, 2, 3, 4, 5].flatMap((day) => lessonSlots.map((slot: any) => ({ day, slot }))).find(({ day, slot }) => {
+                if (!strictSubjectAllowsLesson(targetSubject, lessonNumberOf(slot))) return false;
+                if (Number(day) === Number(target.day_of_week) && String(slot.id) === String(target.time_slot_id)) return false;
+                if (entries.some((other: any) => String(other.class_id) === String(target.class_id)
+                  && Number(other.day_of_week) === day && String(other.time_slot_id) === String(slot.id))) return false;
+                if (target.teacher_id && entries.some((other: any) => String(other.teacher_id || '') === String(target.teacher_id)
+                  && String(other.class_id) !== String(target.class_id)
+                  && Number(other.day_of_week) === day && String(other.time_slot_id) === String(slot.id))) return false;
+                if (entries.some((other: any) => String(other.class_id) === String(target.class_id)
+                  && Number(other.day_of_week) === day && String(other.subject_id) === String(target.subject_id))) return false;
+                const slotIndex = lessonSlots.findIndex((candidate: any) => String(candidate.id) === String(slot.id));
+                return ![lessonSlots[slotIndex - 1], lessonSlots[slotIndex + 1]].filter(Boolean).some((adjacentSlot) =>
+                  entries.some((other: any) => other !== target
+                    && String(other.class_id) === String(target.class_id)
+                    && Number(other.day_of_week) === day
+                    && String(other.time_slot_id) === String(adjacentSlot.id)
+                    && violatesMathScienceSequence(targetSubject, generatedSubjectNames.get(String(other.subject_id)) || '')),
+                );
+              });
+              if (emptyCell) {
+                const timing = getDaySlotTiming(emptyCell.day, classesToProcess.find((cls: any) => String(cls.id) === String(target.class_id)) || classesToProcess[0]).times.get(String(emptyCell.slot.label))
+                  || { start_time: emptyCell.slot.start_time, end_time: emptyCell.slot.end_time };
+                target.day_of_week = emptyCell.day;
+                target.time_slot_id = emptyCell.slot.id;
+                target.effective_start_time = timing.start_time;
+                target.effective_end_time = timing.end_time;
+                continue;
+              }
+            }
             const sameClass = entries.filter((candidate: any) =>
               candidate !== target
               && String(candidate.class_id) === String(target.class_id)
