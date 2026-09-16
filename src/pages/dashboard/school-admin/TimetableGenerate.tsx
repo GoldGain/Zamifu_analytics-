@@ -3147,8 +3147,12 @@ export default function TimetableGenerate() {
         // and Math/Science adjacency without deleting or duplicating cells.
         const canSwapAssignments = (left: any, right: any): boolean => {
           if (left === right || left.entry_type === 'lesson_double' || right.entry_type === 'lesson_double') return false;
-          const leftContext = targetBySubject.get(`${left.class_id}:${left.subject_id}`)?.context;
-          const rightContext = targetBySubject.get(`${right.class_id}:${right.subject_id}`)?.context;
+          const leftContext = targetBySubject.get(`${left.class_id}:${left.subject_id}`)?.context
+            || [...assignmentContexts.values()].find((context) => String(context.cls.id) === String(left.class_id)
+              && String(context.assignment.subject_id) === String(left.subject_id));
+          const rightContext = targetBySubject.get(`${right.class_id}:${right.subject_id}`)?.context
+            || [...assignmentContexts.values()].find((context) => String(context.cls.id) === String(right.class_id)
+              && String(context.assignment.subject_id) === String(right.subject_id));
           const leftSlot = lessonSlots.find((slot: any) => String(slot.id) === String(left.time_slot_id));
           const rightSlot = lessonSlots.find((slot: any) => String(slot.id) === String(right.time_slot_id));
           if (!leftContext || !rightContext || !leftSlot || !rightSlot) return false;
