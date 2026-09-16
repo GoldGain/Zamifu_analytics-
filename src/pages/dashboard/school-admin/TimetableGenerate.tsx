@@ -3308,6 +3308,58 @@ export default function TimetableGenerate() {
           swap.teacher_id = teacherId;
         }
 
+        // Canonicalize each full class/day as a small constraint permutation.
+        // This repairs Pre-Technical's L3-L5 window and Math/Science
+        // adjacency together, rather than relying only on pairwise swaps.
+        for (const cls of classesToProcess) {
+          for (let day = 1; day <= 5; day += 1) {
+            const dayEntries = exactCellEntries().filter((entry: any) =>
+              String(entry.class_id) === String(cls.id) && Number(entry.day_of_week) === day,
+            );
+            if (dayEntries.length !== lessonSlots.length || dayEntries.some((entry: any) => entry.entry_type !== 'lesson')) continue;
+            const outsideEntries = exactCellEntries().filter((entry: any) =>
+              !dayEntries.includes(entry) && Number(entry.day_of_week) === day,
+            );
+            const ordered = lessonSlots.slice().sort((a: any, b: any) => a.slot_order - b.slot_order);
+            const chosen: any[] = [];
+            const used = new Set<any>();
+            const solveDay = (slotIndex: number): boolean => {
+              if (slotIndex >= ordered.length) return true;
+              const slot = ordered[slotIndex];
+              for (const entry of dayEntries) {
+                if (used.has(entry)) continue;
+                const subjectName = generatedSubjectNames.get(String(entry.subject_id)) || '';
+                if (!strictSubjectAllowsLesson(subjectName, lessonNumberOf(slot))) continue;
+                if (entry.teacher_id && outsideEntries.some((other: any) =>
+                  String(other.teacher_id || '') === String(entry.teacher_id)
+                  && String(other.time_slot_id) === String(slot.id),
+                )) continue;
+                const previous = chosen[slotIndex - 1];
+                if (previous && violatesMathScienceSequence(
+                  subjectName,
+                  generatedSubjectNames.get(String(previous.subject_id)) || '',
+                )) continue;
+                used.add(entry);
+                chosen.push(entry);
+                if (solveDay(slotIndex + 1)) return true;
+                chosen.pop();
+                used.delete(entry);
+              }
+              return false;
+            };
+            if (!solveDay(0)) continue;
+            const { times } = getDaySlotTiming(day, cls);
+            chosen.forEach((entry: any, index: number) => {
+              const slot = ordered[index];
+              const timing = times.get(String(slot.label)) || { start_time: slot.start_time, end_time: slot.end_time };
+              entry.day_of_week = day;
+              entry.time_slot_id = slot.id;
+              entry.effective_start_time = timing.start_time;
+              entry.effective_end_time = timing.end_time;
+            });
+          }
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
