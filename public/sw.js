@@ -1,5 +1,5 @@
 // CBE-Analytics Service Worker - v2.0
-const CACHE_NAME = 'eduhub-v2';
+const CACHE_NAME = 'eduhub-v3-exact-assignment-counts';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
