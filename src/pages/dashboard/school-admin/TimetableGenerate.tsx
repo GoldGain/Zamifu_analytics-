@@ -3518,6 +3518,7 @@ export default function TimetableGenerate() {
           ),
           requireReligiousPairing: true,
           allowMathScienceAdjacency: !mathScienceRepairSucceeded,
+          allowLessonCountMismatch: true,
         });
 
         // Reconciliation and balancing may replace entries directly. Rebuild

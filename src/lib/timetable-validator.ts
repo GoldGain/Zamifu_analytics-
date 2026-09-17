@@ -36,6 +36,8 @@ export interface TimetableValidationOptions {
   requireReligiousPairing?: boolean;
   /** Allow generation to proceed when the assignment graph makes this ordering unsatisfiable. */
   allowMathScienceAdjacency?: boolean;
+  /** Allow a complete timetable to be saved when exact counts cannot be reconciled. */
+  allowLessonCountMismatch?: boolean;
 }
 
 export interface TimetableValidationIssue {
@@ -161,7 +163,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     for (const [key, value] of requiredEntries) {
       const required = Number(value);
       const actual = weeklySubjectCounts.get(String(key)) || 0;
-      if (actual !== required) {
+      if (actual !== required && !options.allowLessonCountMismatch) {
         issues.push({
           rule: 'exact-lesson-count',
           message: `Class/subject ${String(key)} has ${actual} lessons but requires exactly ${required}.`,
