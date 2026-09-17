@@ -3857,6 +3857,7 @@ export default function TimetableGenerate() {
             })
             .join(' ; ');
           console.error('[timetable] exact-count matrix before final assertion', matrix);
+          throw new Error(`Exact-count diagnostic matrix: ${matrix}`);
         }
 
         assertTimetableRules({
