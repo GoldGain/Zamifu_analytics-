@@ -2670,8 +2670,10 @@ export default function TimetableGenerate() {
           if (!canMoveSingleToCell(sourceContext, sourceEntry, movingEntries)) return false;
 
           const sourceKey = `${sourceEntry.class_id}:${sourceEntry.subject_id}`;
+          const destinationKey = `${destinationEntry.class_id}:${destinationEntry.subject_id}`;
           const targetKey = `${sourceEntry.class_id}:${targetContext.assignment.subject_id}`;
           balancedCounts.set(sourceKey, (balancedCounts.get(sourceKey) || 0) - 1);
+          balancedCounts.set(destinationKey, (balancedCounts.get(destinationKey) || 0) - 1);
           balancedCounts.set(targetKey, (balancedCounts.get(targetKey) || 0) + 1);
           sourceEntry.subject_id = destinationEntry.subject_id;
           sourceEntry.teacher_id = sourceContext.assignment.teacher_id;
