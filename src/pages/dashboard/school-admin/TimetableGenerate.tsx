@@ -12,7 +12,7 @@ import {
   isPostLessonActivity,
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
-import { assertTimetableRules } from '@/lib/timetable-validator';
+import { assertTimetableRules, validateTimetableRules } from '@/lib/timetable-validator';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -3696,6 +3696,79 @@ export default function TimetableGenerate() {
             break;
           }
           if (!repaired) break;
+        }
+
+        // A missing subject day can require a three-cell rotation: move the
+        // deficit subject into a surplus subject's cell, move the surplus
+        // subject into a donor cell, and move the donor into the freed cell.
+        // Validate each candidate against the complete hard-rule validator so
+        // this fallback cannot trade one violation for another.
+        for (const [targetKey, target] of targetBySubject) {
+          const currentCounts = new Map<string, number>();
+          finalEntries.forEach((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            currentCounts.set(key, (currentCounts.get(key) || 0) + 1);
+          });
+          if ((currentCounts.get(targetKey) || 0) >= target.target) continue;
+          const classId = String(target.context.cls.id);
+          const classSingles = finalEntries.filter((entry: any) =>
+            String(entry.class_id) === classId && entry.entry_type === 'lesson',
+          );
+          const surplus = classSingles.filter((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            return String(entry.subject_id) !== String(target.context.assignment.subject_id)
+              && (currentCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0);
+          });
+          const targetRows = classSingles.filter((entry: any) =>
+            String(entry.subject_id) === String(target.context.assignment.subject_id),
+          );
+          let rotated = false;
+          for (const targetRow of targetRows) {
+            if (rotated) break;
+            for (const sourceRow of surplus) {
+              if (rotated) break;
+              for (const donorRow of classSingles) {
+                if (donorRow === targetRow || donorRow === sourceRow) continue;
+                const sourceSubjectId = String(sourceRow.subject_id);
+                const donorSubjectId = String(donorRow.subject_id);
+                const original = [
+                  { entry: targetRow, subject_id: targetRow.subject_id, teacher_id: targetRow.teacher_id },
+                  { entry: sourceRow, subject_id: sourceRow.subject_id, teacher_id: sourceRow.teacher_id },
+                  { entry: donorRow, subject_id: donorRow.subject_id, teacher_id: donorRow.teacher_id },
+                ];
+                targetRow.subject_id = sourceSubjectId;
+                targetRow.teacher_id = targetBySubject.get(`${classId}:${sourceSubjectId}`)?.context.assignment.teacher_id;
+                sourceRow.subject_id = donorSubjectId;
+                sourceRow.teacher_id = targetBySubject.get(`${classId}:${donorSubjectId}`)?.context.assignment.teacher_id;
+                donorRow.subject_id = String(target.context.assignment.subject_id);
+                donorRow.teacher_id = target.context.assignment.teacher_id;
+                const issues = validateTimetableRules({
+                  entries: allEntries,
+                  slots: createdSlots,
+                  subjectNames: generatedSubjectNames,
+                  classes: classesToProcess,
+                  levelGroup: levelKey,
+                  requireComplete: true,
+                  requiredLessonCounts: new Map(assignments
+                    .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+                    .map((assignment: any) => [
+                      `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
+                      Number(assignment.lessons_per_week || 0),
+                    ])),
+                  requireReligiousPairing: true,
+                  allowMathScienceAdjacency: !mathScienceRepairSucceeded,
+                });
+                if (issues.length === 0) {
+                  rotated = true;
+                  break;
+                }
+                original.forEach(({ entry, subject_id, teacher_id }) => {
+                  entry.subject_id = subject_id;
+                  entry.teacher_id = teacher_id;
+                });
+              }
+            }
+          }
         }
 
         assertTimetableRules({
