@@ -3644,6 +3644,60 @@ export default function TimetableGenerate() {
           finalCounts.set(targetKey, (finalCounts.get(targetKey) || 0) + 1);
         }
 
+        // Recompute after every mutation; earlier repairs can change which
+        // surplus cell is the only legal source for a remaining deficit.
+        for (let exactPass = 0; exactPass < 240; exactPass += 1) {
+          const actual = new Map<string, number>();
+          finalEntries.forEach((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            actual.set(key, (actual.get(key) || 0) + 1);
+          });
+          const deficit = [...targetBySubject.entries()].find(([key, target]) =>
+            (actual.get(key) || 0) < target.target,
+          );
+          if (!deficit) break;
+          const [targetKey, target] = deficit;
+          const classId = String(target.context.cls.id);
+          const targetSubjectId = String(target.context.assignment.subject_id);
+          const surplus = finalEntries.filter((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            return String(entry.class_id) === classId
+              && entry.entry_type === 'lesson'
+              && String(entry.subject_id) !== targetSubjectId
+              && (actual.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0);
+          });
+          let repaired = false;
+          for (const source of surplus) {
+            const sourceKey = `${source.class_id}:${source.subject_id}`;
+            const sourceContext = targetBySubject.get(sourceKey)?.context;
+            const sourceSlot = lessonSlots.find((slot: any) => String(slot.id) === String(source.time_slot_id));
+            if (!sourceContext || !sourceSlot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(sourceSlot))) continue;
+            const sourceDay = Number(source.day_of_week);
+            const targetAlreadyThatDay = finalEntries.some((entry: any) => entry !== source
+              && String(entry.class_id) === classId
+              && Number(entry.day_of_week) === sourceDay
+              && String(entry.subject_id) === targetSubjectId);
+            if (targetAlreadyThatDay) continue;
+            if (target.context.assignment.teacher_id && finalEntries.some((entry: any) => entry !== source
+              && String(entry.teacher_id || '') === String(target.context.assignment.teacher_id)
+              && String(entry.class_id) !== classId
+              && Number(entry.day_of_week) === sourceDay
+              && String(entry.time_slot_id) === String(source.time_slot_id))) continue;
+            const sourceIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(source.time_slot_id));
+            const neighbours = [lessonSlots[sourceIndex - 1], lessonSlots[sourceIndex + 1]].filter(Boolean);
+            if (neighbours.some((neighbour: any) => finalEntries.some((entry: any) => entry !== source
+              && String(entry.class_id) === classId
+              && Number(entry.day_of_week) === sourceDay
+              && String(entry.time_slot_id) === String(neighbour.id)
+              && violatesMathScienceSequence(target.context.subjectName, generatedSubjectNames.get(String(entry.subject_id)) || '')))) continue;
+            source.subject_id = targetSubjectId;
+            source.teacher_id = target.context.assignment.teacher_id;
+            repaired = true;
+            break;
+          }
+          if (!repaired) break;
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
