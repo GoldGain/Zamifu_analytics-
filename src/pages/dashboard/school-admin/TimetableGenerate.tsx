@@ -3728,6 +3728,77 @@ export default function TimetableGenerate() {
           if (!repaired) break;
         }
 
+        // Correct three-cell cycle for a day-level deficit. The surplus
+        // subject moves into an existing target cell, the target moves into
+        // the donor cell on its missing day, and the donor fills the surplus
+        // cell. This preserves all three subject weights.
+        for (const [targetKey, target] of targetBySubject) {
+          const classId = String(target.context.cls.id);
+          const counts = new Map<string, number>();
+          finalEntries.filter((entry: any) => String(entry.class_id) === classId).forEach((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            counts.set(key, (counts.get(key) || 0) + 1);
+          });
+          if ((counts.get(targetKey) || 0) >= target.target) continue;
+          const singles = finalEntries.filter((entry: any) => String(entry.class_id) === classId && entry.entry_type === 'lesson');
+          const surplusRows = singles.filter((entry: any) => {
+            const key = `${classId}:${entry.subject_id}`;
+            return String(entry.subject_id) !== String(target.context.assignment.subject_id)
+              && (counts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0);
+          });
+          let repaired = false;
+          for (const targetRow of singles.filter((entry: any) => String(entry.subject_id) === String(target.context.assignment.subject_id))) {
+            if (repaired) break;
+            for (const sourceRow of surplusRows) {
+              if (repaired) break;
+              for (const donorRow of singles) {
+                if (donorRow === targetRow || donorRow === sourceRow) continue;
+                const sourceId = String(sourceRow.subject_id);
+                const donorId = String(donorRow.subject_id);
+                const sourceContext = targetBySubject.get(`${classId}:${sourceId}`)?.context;
+                const donorContext = targetBySubject.get(`${classId}:${donorId}`)?.context;
+                if (!sourceContext || !donorContext || donorId === String(target.context.assignment.subject_id)) continue;
+                const original = [
+                  { entry: targetRow, subject_id: targetRow.subject_id, teacher_id: targetRow.teacher_id },
+                  { entry: sourceRow, subject_id: sourceRow.subject_id, teacher_id: sourceRow.teacher_id },
+                  { entry: donorRow, subject_id: donorRow.subject_id, teacher_id: donorRow.teacher_id },
+                ];
+                // source -> target cell, target -> donor cell, donor -> source cell
+                targetRow.subject_id = sourceId;
+                targetRow.teacher_id = sourceContext.assignment.teacher_id;
+                sourceRow.subject_id = donorId;
+                sourceRow.teacher_id = donorContext.assignment.teacher_id;
+                donorRow.subject_id = String(target.context.assignment.subject_id);
+                donorRow.teacher_id = target.context.assignment.teacher_id;
+                const issues = validateTimetableRules({
+                  entries: allEntries,
+                  slots: createdSlots,
+                  subjectNames: generatedSubjectNames,
+                  classes: classesToProcess,
+                  levelGroup: levelKey,
+                  requireComplete: true,
+                  requiredLessonCounts: new Map(assignments
+                    .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+                    .map((assignment: any) => [
+                      `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
+                      Number(assignment.lessons_per_week || 0),
+                    ])),
+                  requireReligiousPairing: true,
+                  allowMathScienceAdjacency: !mathScienceRepairSucceeded,
+                });
+                if (issues.length === 0) {
+                  repaired = true;
+                  break;
+                }
+                original.forEach(({ entry, subject_id, teacher_id }) => {
+                  entry.subject_id = subject_id;
+                  entry.teacher_id = teacher_id;
+                });
+              }
+            }
+          }
+        }
+
         // Complete weighted-grid repair. Cell-by-cell swaps can get stuck
         // when a deficit subject needs a different day than every surplus
         // cell. Reassign all ordinary single cells for that class together;
@@ -3839,32 +3910,6 @@ export default function TimetableGenerate() {
               entry.entry_type = entry_type;
             });
           }
-        }
-
-        const finalMismatch = [...targetBySubject.entries()].filter(([key, target]) => {
-          const actual = finalEntries.filter((entry: any) => `${entry.class_id}:${entry.subject_id}` === key).length;
-          return actual !== target.target;
-        });
-        if (finalMismatch.length > 0) {
-          const mismatchClasses = new Set(finalMismatch.map(([key]) => key.split(':')[0]));
-          const shortNames = new Map<string, string>([
-            ['Mathematics', 'M'], ['Creative Arts', 'CA'], ['English', 'E'],
-            ['Integrated Science', 'S'], ['Agriculture', 'A'], ['Kiswahili', 'K'],
-            ['Pre-Technical Studies', 'P'], ['Religious Education', 'R'], ['Social Studies', 'SS'],
-          ]);
-          const matrix = [...Array(5)].map((_, dayIndex) => {
-            const rows = lessonSlots.slice().sort((a: any, b: any) => a.slot_order - b.slot_order).map((slot: any) => {
-              const entry = finalEntries.find((candidate: any) => mismatchClasses.has(String(candidate.class_id))
-                && Number(candidate.day_of_week) === dayIndex + 1
-                && String(candidate.time_slot_id) === String(slot.id));
-              if (!entry) return '-';
-              const name = generatedSubjectNames.get(String(entry.subject_id)) || '';
-              return `${shortNames.get(name) || name.slice(0, 3)}${entry.entry_type === 'lesson_double' ? 'D' : ''}`;
-            });
-            return `D${dayIndex + 1}[${rows.join(',')}]`;
-          }).join(' ');
-          console.error('[timetable] exact-count matrix before final assertion', matrix);
-          throw new Error(`Exact-count diagnostic matrix: ${matrix}`);
         }
 
         assertTimetableRules({
