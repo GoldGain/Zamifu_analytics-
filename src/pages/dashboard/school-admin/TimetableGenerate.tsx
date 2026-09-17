@@ -3345,8 +3345,8 @@ export default function TimetableGenerate() {
                 )) continue;
                 const previous = chosen[slotIndex - 1];
                 if (previous && violatesMathScienceSequence(
-                  subjectName,
                   generatedSubjectNames.get(String(previous.subject_id)) || '',
+                  subjectName,
                 )) continue;
                 used.add(entry);
                 chosen.push(entry);
