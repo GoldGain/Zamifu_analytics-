@@ -3513,6 +3513,50 @@ export default function TimetableGenerate() {
           console.warn('[timetable] Maths/Science ordering is unsatisfiable for at least one class; preserving all other hard constraints and continuing generation.');
         }
 
+        // Final count-preserving pass. A constrained swap may leave one
+        // surplus subject and one deficit subject even though a legal surplus
+        // cell can be reassigned to a day where the deficit subject is absent.
+        // Reassign only that cell; never create a duplicate subject day or a
+        // teacher collision, and never touch configured doubles.
+        const finalEntries = exactCellEntries();
+        const finalCounts = new Map<string, number>();
+        finalEntries.forEach((entry: any) => {
+          const key = `${entry.class_id}:${entry.subject_id}`;
+          finalCounts.set(key, (finalCounts.get(key) || 0) + 1);
+        });
+        for (const [targetKey, target] of targetBySubject) {
+          let deficit = target.target - (finalCounts.get(targetKey) || 0);
+          if (deficit <= 0) continue;
+          const targetClassId = String(target.context.cls.id);
+          const surplusEntries = finalEntries.filter((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            return String(entry.class_id) === targetClassId
+              && entry.entry_type === 'lesson'
+              && (finalCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0)
+              && !String(entry.subject_id).includes(String(target.context.assignment.subject_id));
+          });
+          for (const source of surplusEntries) {
+            if (deficit <= 0) break;
+            const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(source.time_slot_id));
+            if (!slot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(slot))) continue;
+            const day = Number(source.day_of_week);
+            if (finalEntries.some((entry: any) => entry !== source
+              && String(entry.class_id) === targetClassId
+              && Number(entry.day_of_week) === day
+              && String(entry.subject_id) === String(target.context.assignment.subject_id))) continue;
+            if (target.context.assignment.teacher_id && finalEntries.some((entry: any) => entry !== source
+              && String(entry.teacher_id || '') === String(target.context.assignment.teacher_id)
+              && Number(entry.day_of_week) === day
+              && String(entry.time_slot_id) === String(slot.id))) continue;
+            const oldKey = `${source.class_id}:${source.subject_id}`;
+            source.subject_id = target.context.assignment.subject_id;
+            source.teacher_id = target.context.assignment.teacher_id;
+            finalCounts.set(oldKey, (finalCounts.get(oldKey) || 0) - 1);
+            finalCounts.set(targetKey, (finalCounts.get(targetKey) || 0) + 1);
+            deficit -= 1;
+          }
+        }
+
 
 
         assertTimetableRules({
