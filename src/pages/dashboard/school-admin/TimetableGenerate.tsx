@@ -3529,7 +3529,7 @@ export default function TimetableGenerate() {
           const surplusEntries = finalEntries.filter((entry: any) => {
             const key = `${entry.class_id}:${entry.subject_id}`;
             return String(entry.class_id) === targetClassId
-              && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double')
+              && entry.entry_type === 'lesson'
               && (finalCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0)
               && !String(entry.subject_id).includes(String(target.context.assignment.subject_id));
           });
@@ -3555,66 +3555,6 @@ export default function TimetableGenerate() {
           }
         }
 
-        // If the deficit subject is constrained to early slots, rotate it
-        // with a surplus subject occupying an early slot. This preserves the
-        // weekly totals while keeping both subjects in legal windows.
-        for (const [targetKey, target] of targetBySubject) {
-          let deficit = target.target - (finalCounts.get(targetKey) || 0);
-          if (deficit <= 0) continue;
-          const classId = String(target.context.cls.id);
-          const targetEntries = finalEntries.filter((entry: any) =>
-            String(entry.class_id) === classId
-            && String(entry.subject_id) === String(target.context.assignment.subject_id),
-          );
-          const surplusEntries = finalEntries.filter((entry: any) => {
-            const key = `${entry.class_id}:${entry.subject_id}`;
-            return String(entry.class_id) === classId
-              && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double')
-              && (finalCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0)
-              && String(entry.subject_id) !== String(target.context.assignment.subject_id);
-          });
-          for (const source of surplusEntries) {
-            if (deficit <= 0) break;
-            const sourceContext = targetBySubject.get(`${source.class_id}:${source.subject_id}`)?.context;
-            const sourceSlot = lessonSlots.find((slot: any) => String(slot.id) === String(source.time_slot_id));
-            if (!sourceContext || !sourceSlot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(sourceSlot))) continue;
-            const destination = targetEntries.find((entry: any) => {
-              const destinationSlot = lessonSlots.find((slot: any) => String(slot.id) === String(entry.time_slot_id));
-              if (!destinationSlot || !strictSubjectAllowsLesson(sourceContext.subjectName, lessonNumberOf(destinationSlot))) return false;
-              const ignored = new Set<any>([source, entry]);
-              if (finalEntries.some((candidate: any) => !ignored.has(candidate)
-                && String(candidate.class_id) === classId
-                && Number(candidate.day_of_week) === Number(source.day_of_week)
-                && String(candidate.subject_id) === String(target.context.assignment.subject_id))) return false;
-              if (finalEntries.some((candidate: any) => !ignored.has(candidate)
-                && String(candidate.class_id) === classId
-                && Number(candidate.day_of_week) === Number(entry.day_of_week)
-                && String(candidate.subject_id) === String(source.subject_id))) return false;
-              if (target.context.assignment.teacher_id && finalEntries.some((candidate: any) => !ignored.has(candidate)
-                && String(candidate.teacher_id || '') === String(target.context.assignment.teacher_id)
-                && String(candidate.class_id) !== classId
-                && Number(candidate.day_of_week) === Number(source.day_of_week)
-                && String(candidate.time_slot_id) === String(source.time_slot_id))) return false;
-              if (sourceContext.assignment.teacher_id && finalEntries.some((candidate: any) => !ignored.has(candidate)
-                && String(candidate.teacher_id || '') === String(sourceContext.assignment.teacher_id)
-                && String(candidate.class_id) !== classId
-                && Number(candidate.day_of_week) === Number(entry.day_of_week)
-                && String(candidate.time_slot_id) === String(entry.time_slot_id))) return false;
-              return true;
-            });
-            if (!destination) continue;
-            const oldSubjectId = source.subject_id;
-            const oldTeacherId = source.teacher_id;
-            source.subject_id = target.context.assignment.subject_id;
-            source.teacher_id = target.context.assignment.teacher_id;
-            source.entry_type = 'lesson';
-            destination.subject_id = oldSubjectId;
-            destination.teacher_id = oldTeacherId;
-            destination.entry_type = 'lesson';
-            deficit -= 1;
-          }
-        }
-
         // Last exact-count correction when a two-cell rotation is impossible.
         for (const [targetKey, target] of targetBySubject) {
           if ((finalCounts.get(targetKey) || 0) >= target.target) continue;
@@ -3623,7 +3563,7 @@ export default function TimetableGenerate() {
             const sourceKey = `${entry.class_id}:${entry.subject_id}`;
             const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
             if (String(entry.class_id) !== classId || !slot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(slot))) return false;
-            if (entry.entry_type !== 'lesson' && entry.entry_type !== 'lesson_double') return false;
+            if (entry.entry_type !== 'lesson') return false;
             if ((finalCounts.get(sourceKey) || 0) <= (targetBySubject.get(sourceKey)?.target ?? 0)) return false;
             if (finalEntries.some((candidate: any) => candidate !== entry
               && String(candidate.class_id) === classId
@@ -3698,77 +3638,94 @@ export default function TimetableGenerate() {
           if (!repaired) break;
         }
 
-        // A missing subject day can require a three-cell rotation: move the
-        // deficit subject into a surplus subject's cell, move the surplus
-        // subject into a donor cell, and move the donor into the freed cell.
-        // Validate each candidate against the complete hard-rule validator so
-        // this fallback cannot trade one violation for another.
-        for (const [targetKey, target] of targetBySubject) {
+        // A constrained deficit can be in a window that none of the surplus
+        // cells can legally host (for example Math needs an early slot while
+        // Creative Arts' surplus is late in the day). Rotate the surplus into
+        // a donor's cell and the donor into the deficit's legal cell. Unlike
+        // the old three-row rotation, this changes the counts by exactly
+        // surplus -> deficit while leaving the donor's count unchanged.
+        // Every candidate is checked by the complete validator before it is
+        // retained, so windows, teacher collisions, adjacency, doubles, and
+        // exact counts remain hard constraints.
+        for (let exactPass = 0; exactPass < 240; exactPass += 1) {
           const currentCounts = new Map<string, number>();
           finalEntries.forEach((entry: any) => {
             const key = `${entry.class_id}:${entry.subject_id}`;
             currentCounts.set(key, (currentCounts.get(key) || 0) + 1);
           });
-          if ((currentCounts.get(targetKey) || 0) >= target.target) continue;
+          const deficit = [...targetBySubject.entries()].find(([key, target]) =>
+            (currentCounts.get(key) || 0) < target.target,
+          );
+          if (!deficit) break;
+          const [targetKey, target] = deficit;
           const classId = String(target.context.cls.id);
+          const targetSubjectId = String(target.context.assignment.subject_id);
           const classSingles = finalEntries.filter((entry: any) =>
             String(entry.class_id) === classId && entry.entry_type === 'lesson',
           );
           const surplus = classSingles.filter((entry: any) => {
             const key = `${entry.class_id}:${entry.subject_id}`;
-            return String(entry.subject_id) !== String(target.context.assignment.subject_id)
+            return String(entry.subject_id) !== targetSubjectId
               && (currentCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0);
           });
-          const targetRows = classSingles.filter((entry: any) =>
-            String(entry.subject_id) === String(target.context.assignment.subject_id),
-          );
-          let rotated = false;
-          for (const targetRow of targetRows) {
-            if (rotated) break;
-            for (const sourceRow of surplus) {
-              if (rotated) break;
-              for (const donorRow of classSingles) {
-                if (donorRow === targetRow || donorRow === sourceRow) continue;
-                const sourceSubjectId = String(sourceRow.subject_id);
-                const donorSubjectId = String(donorRow.subject_id);
-                const original = [
-                  { entry: targetRow, subject_id: targetRow.subject_id, teacher_id: targetRow.teacher_id },
-                  { entry: sourceRow, subject_id: sourceRow.subject_id, teacher_id: sourceRow.teacher_id },
-                  { entry: donorRow, subject_id: donorRow.subject_id, teacher_id: donorRow.teacher_id },
-                ];
-                targetRow.subject_id = sourceSubjectId;
-                targetRow.teacher_id = targetBySubject.get(`${classId}:${sourceSubjectId}`)?.context.assignment.teacher_id;
-                sourceRow.subject_id = donorSubjectId;
-                sourceRow.teacher_id = targetBySubject.get(`${classId}:${donorSubjectId}`)?.context.assignment.teacher_id;
-                donorRow.subject_id = String(target.context.assignment.subject_id);
-                donorRow.teacher_id = target.context.assignment.teacher_id;
-                const issues = validateTimetableRules({
-                  entries: allEntries,
-                  slots: createdSlots,
-                  subjectNames: generatedSubjectNames,
-                  classes: classesToProcess,
-                  levelGroup: levelKey,
-                  requireComplete: true,
-                  requiredLessonCounts: new Map(assignments
-                    .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
-                    .map((assignment: any) => [
-                      `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
-                      Number(assignment.lessons_per_week || 0),
-                    ])),
-                  requireReligiousPairing: true,
-                  allowMathScienceAdjacency: !mathScienceRepairSucceeded,
-                });
-                if (issues.length === 0) {
-                  rotated = true;
-                  break;
-                }
-                original.forEach(({ entry, subject_id, teacher_id }) => {
-                  entry.subject_id = subject_id;
-                  entry.teacher_id = teacher_id;
-                });
+          let repaired = false;
+          for (const source of surplus) {
+            if (repaired) break;
+            const sourceSubjectId = String(source.subject_id);
+            const sourceContext = targetBySubject.get(`${classId}:${sourceSubjectId}`)?.context;
+            const sourceSlot = lessonSlots.find((slot: any) => String(slot.id) === String(source.time_slot_id));
+            if (!sourceContext || !sourceSlot) continue;
+            for (const donor of classSingles) {
+              if (donor === source) continue;
+              const donorSubjectId = String(donor.subject_id);
+              if (donorSubjectId === targetSubjectId || donorSubjectId === sourceSubjectId) continue;
+              const donorContext = targetBySubject.get(`${classId}:${donorSubjectId}`)?.context;
+              const donorSlot = lessonSlots.find((slot: any) => String(slot.id) === String(donor.time_slot_id));
+              if (!donorContext || !donorSlot) continue;
+              if (!strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(donorSlot))) continue;
+              if (!strictSubjectAllowsLesson(donorContext.subjectName, lessonNumberOf(sourceSlot))) continue;
+
+              const original = [
+                { entry: source, subject_id: source.subject_id, teacher_id: source.teacher_id, entry_type: source.entry_type },
+                { entry: donor, subject_id: donor.subject_id, teacher_id: donor.teacher_id, entry_type: donor.entry_type },
+              ];
+              source.subject_id = donorSubjectId;
+              source.teacher_id = donorContext.assignment.teacher_id;
+              source.entry_type = 'lesson';
+              donor.subject_id = targetSubjectId;
+              donor.teacher_id = target.context.assignment.teacher_id;
+              donor.entry_type = 'lesson';
+              const issues = validateTimetableRules({
+                entries: allEntries,
+                slots: createdSlots,
+                subjectNames: generatedSubjectNames,
+                classes: classesToProcess,
+                levelGroup: levelKey,
+                requireComplete: true,
+                requiredLessonCounts: new Map(assignments
+                  .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+                  .map((assignment: any) => [
+                    `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
+                    Number(assignment.lessons_per_week || 0),
+                  ])),
+                requireReligiousPairing: true,
+                allowMathScienceAdjacency: !mathScienceRepairSucceeded,
+              });
+              if (issues.length === 0) {
+                const sourceKey = `${classId}:${sourceSubjectId}`;
+                finalCounts.set(sourceKey, (finalCounts.get(sourceKey) || 0) - 1);
+                finalCounts.set(targetKey, (finalCounts.get(targetKey) || 0) + 1);
+                repaired = true;
+                break;
               }
+              original.forEach(({ entry, subject_id, teacher_id, entry_type }) => {
+                entry.subject_id = subject_id;
+                entry.teacher_id = teacher_id;
+                entry.entry_type = entry_type;
+              });
             }
           }
+          if (!repaired) break;
         }
 
         assertTimetableRules({
