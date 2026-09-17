@@ -3557,7 +3557,55 @@ export default function TimetableGenerate() {
           }
         }
 
-
+        // If the deficit subject is constrained to early slots, rotate it
+        // with a surplus subject occupying an early slot. This preserves the
+        // weekly totals while keeping both subjects in legal windows.
+        for (const [targetKey, target] of targetBySubject) {
+          let deficit = target.target - (finalCounts.get(targetKey) || 0);
+          if (deficit <= 0) continue;
+          const classId = String(target.context.cls.id);
+          const targetEntries = finalEntries.filter((entry: any) =>
+            String(entry.class_id) === classId
+            && String(entry.subject_id) === String(target.context.assignment.subject_id),
+          );
+          const surplusEntries = finalEntries.filter((entry: any) => {
+            const key = `${entry.class_id}:${entry.subject_id}`;
+            return String(entry.class_id) === classId
+              && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double')
+              && (finalCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0)
+              && String(entry.subject_id) !== String(target.context.assignment.subject_id);
+          });
+          for (const source of surplusEntries) {
+            if (deficit <= 0) break;
+            const sourceContext = targetBySubject.get(`${source.class_id}:${source.subject_id}`)?.context;
+            const sourceSlot = lessonSlots.find((slot: any) => String(slot.id) === String(source.time_slot_id));
+            if (!sourceContext || !sourceSlot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(sourceSlot))) continue;
+            const destination = targetEntries.find((entry: any) => {
+              const destinationSlot = lessonSlots.find((slot: any) => String(slot.id) === String(entry.time_slot_id));
+              if (!destinationSlot || !strictSubjectAllowsLesson(sourceContext.subjectName, lessonNumberOf(destinationSlot))) return false;
+              const ignored = new Set<any>([source, entry]);
+              if (finalEntries.some((candidate: any) => !ignored.has(candidate)
+                && String(candidate.class_id) === classId
+                && Number(candidate.day_of_week) === Number(source.day_of_week)
+                && String(candidate.subject_id) === String(target.context.assignment.subject_id))) return false;
+              if (finalEntries.some((candidate: any) => !ignored.has(candidate)
+                && String(candidate.class_id) === classId
+                && Number(candidate.day_of_week) === Number(entry.day_of_week)
+                && String(candidate.subject_id) === String(source.subject_id))) return false;
+              return true;
+            });
+            if (!destination) continue;
+            const oldSubjectId = source.subject_id;
+            const oldTeacherId = source.teacher_id;
+            source.subject_id = target.context.assignment.subject_id;
+            source.teacher_id = target.context.assignment.teacher_id;
+            source.entry_type = 'lesson';
+            destination.subject_id = oldSubjectId;
+            destination.teacher_id = oldTeacherId;
+            destination.entry_type = 'lesson';
+            deficit -= 1;
+          }
+        }
 
         assertTimetableRules({
           entries: allEntries,
