@@ -3531,7 +3531,7 @@ export default function TimetableGenerate() {
           const surplusEntries = finalEntries.filter((entry: any) => {
             const key = `${entry.class_id}:${entry.subject_id}`;
             return String(entry.class_id) === targetClassId
-              && entry.entry_type === 'lesson'
+              && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double')
               && (finalCounts.get(key) || 0) > (targetBySubject.get(key)?.target ?? 0)
               && !String(entry.subject_id).includes(String(target.context.assignment.subject_id));
           });
