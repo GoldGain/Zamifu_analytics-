@@ -3430,6 +3430,41 @@ export default function TimetableGenerate() {
             });
             if (!violation) return true;
             const classId = String(violation.class_id);
+            const occupied = new Set(classEntries(classId).map((entry: any) =>
+              `${Number(entry.day_of_week)}:${String(entry.time_slot_id)}`,
+            ));
+            const blankTargets = TIMETABLE_DAYS.flatMap((_, dayIndex) => lessonSlots.map((slot: any) => ({
+              day: dayIndex + 1,
+              slot,
+            }))).filter(({ day, slot }) =>
+              !occupied.has(`${day}:${String(slot.id)}`)
+              && strictSubjectAllowsLesson(
+                generatedSubjectNames.get(String(violation.subject_id)) || '',
+                lessonNumberOf(slot),
+              ),
+            );
+            for (const target of blankTargets) {
+              const original = {
+                day_of_week: violation.day_of_week,
+                time_slot_id: violation.time_slot_id,
+                effective_start_time: violation.effective_start_time,
+                effective_end_time: violation.effective_end_time,
+              };
+              const { times } = getDaySlotTiming(target.day, classesToProcess.find((cls: any) => String(cls.id) === classId));
+              const timing = times.get(String(target.slot.label)) || {
+                start_time: target.slot.start_time,
+                end_time: target.slot.end_time,
+              };
+              violation.day_of_week = target.day;
+              violation.time_slot_id = target.slot.id;
+              violation.effective_start_time = timing.start_time;
+              violation.effective_end_time = timing.end_time;
+              if (validGrid(classId)) return true;
+              violation.day_of_week = original.day_of_week;
+              violation.time_slot_id = original.time_slot_id;
+              violation.effective_start_time = original.effective_start_time;
+              violation.effective_end_time = original.effective_end_time;
+            }
             const candidates = classEntries(classId).filter((candidate: any) =>
               candidate !== violation
               && candidate.entry_type === 'lesson'
