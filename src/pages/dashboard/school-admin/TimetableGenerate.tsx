@@ -3841,6 +3841,24 @@ export default function TimetableGenerate() {
           }
         }
 
+        const finalMismatch = [...targetBySubject.entries()].filter(([key, target]) => {
+          const actual = finalEntries.filter((entry: any) => `${entry.class_id}:${entry.subject_id}` === key).length;
+          return actual !== target.target;
+        });
+        if (finalMismatch.length > 0) {
+          const mismatchClasses = new Set(finalMismatch.map(([key]) => key.split(':')[0]));
+          const matrix = finalEntries
+            .filter((entry: any) => mismatchClasses.has(String(entry.class_id)))
+            .sort((a: any, b: any) => Number(a.day_of_week) - Number(b.day_of_week)
+              || String(a.time_slot_id).localeCompare(String(b.time_slot_id)))
+            .map((entry: any) => {
+              const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
+              return `${entry.class_id}|D${entry.day_of_week}|${slot?.label || entry.time_slot_id}|${generatedSubjectNames.get(String(entry.subject_id)) || entry.subject_id}|T${entry.teacher_id || '-'}|${entry.entry_type}`;
+            })
+            .join(' ; ');
+          console.error('[timetable] exact-count matrix before final assertion', matrix);
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
