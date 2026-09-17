@@ -2670,10 +2670,8 @@ export default function TimetableGenerate() {
           if (!canMoveSingleToCell(sourceContext, sourceEntry, movingEntries)) return false;
 
           const sourceKey = `${sourceEntry.class_id}:${sourceEntry.subject_id}`;
-          const destinationKey = `${destinationEntry.class_id}:${destinationEntry.subject_id}`;
           const targetKey = `${sourceEntry.class_id}:${targetContext.assignment.subject_id}`;
           balancedCounts.set(sourceKey, (balancedCounts.get(sourceKey) || 0) - 1);
-          balancedCounts.set(destinationKey, (balancedCounts.get(destinationKey) || 0) - 1);
           balancedCounts.set(targetKey, (balancedCounts.get(targetKey) || 0) + 1);
           sourceEntry.subject_id = destinationEntry.subject_id;
           sourceEntry.teacher_id = sourceContext.assignment.teacher_id;
@@ -3592,6 +3590,16 @@ export default function TimetableGenerate() {
                 && String(candidate.class_id) === classId
                 && Number(candidate.day_of_week) === Number(entry.day_of_week)
                 && String(candidate.subject_id) === String(source.subject_id))) return false;
+              if (target.context.assignment.teacher_id && finalEntries.some((candidate: any) => !ignored.has(candidate)
+                && String(candidate.teacher_id || '') === String(target.context.assignment.teacher_id)
+                && String(candidate.class_id) !== classId
+                && Number(candidate.day_of_week) === Number(source.day_of_week)
+                && String(candidate.time_slot_id) === String(source.time_slot_id))) return false;
+              if (sourceContext.assignment.teacher_id && finalEntries.some((candidate: any) => !ignored.has(candidate)
+                && String(candidate.teacher_id || '') === String(sourceContext.assignment.teacher_id)
+                && String(candidate.class_id) !== classId
+                && Number(candidate.day_of_week) === Number(entry.day_of_week)
+                && String(candidate.time_slot_id) === String(entry.time_slot_id))) return false;
               return true;
             });
             if (!destination) continue;
