@@ -3774,8 +3774,19 @@ export default function TimetableGenerate() {
             usedByDay.set(day, subjects);
           });
           let nodes = 0;
+          const remainingCellsCanHost = (subjectId: string, fromIndex: number): number => {
+            const context = subjectContexts.find(({ subjectId: candidateId }) => candidateId === subjectId)?.context;
+            if (!context) return 0;
+            return orderedCells.slice(fromIndex).filter((candidate: any) => {
+              const candidateSlot = lessonSlots.find((slot: any) => String(slot.id) === String(candidate.time_slot_id));
+              const candidateDay = Number(candidate.day_of_week);
+              return candidateSlot
+                && strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(candidateSlot))
+                && !(usedByDay.get(candidateDay) || new Set<string>()).has(subjectId);
+            }).length;
+          };
           const solveWeightedClass = (index: number): boolean => {
-            if (++nodes > 12000) return false;
+            if (++nodes > 500000) return false;
             if (index >= orderedCells.length) {
               const classRequired = new Map(subjectContexts.map(({ subjectId, target }) => [`${classId}-${subjectId}`, target]));
               return validateTimetableRules({
@@ -3810,7 +3821,8 @@ export default function TimetableGenerate() {
               cell.subject_id = subjectId;
               cell.teacher_id = context.assignment.teacher_id;
               cell.entry_type = 'lesson';
-              if (solveWeightedClass(index + 1)) return true;
+              const remaining = desiredSingles.get(subjectId) || 0;
+              if (remaining <= remainingCellsCanHost(subjectId, index + 1) && solveWeightedClass(index + 1)) return true;
               cell.subject_id = originalCells.find((original) => original.entry === cell)?.subject_id;
               cell.teacher_id = originalCells.find((original) => original.entry === cell)?.teacher_id;
               cell.entry_type = 'lesson';
