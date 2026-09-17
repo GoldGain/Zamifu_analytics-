@@ -3317,6 +3317,100 @@ export default function TimetableGenerate() {
           swap.teacher_id = teacherId;
         }
 
+        // Final cross-day adjacency repair. Earlier placement and balancing
+        // checks are local; a later count-normalization swap can still put
+        // Mathematics immediately before Integrated Science. Repair that
+        // complete class grid before the canonical day permutation runs.
+        const repairMathScienceAdjacency = (): boolean => {
+          const entries = exactCellEntries();
+          const slotById = new Map(lessonSlots.map((slot: any) => [String(slot.id), slot]));
+          const orderedSlots = lessonSlots.slice().sort((a: any, b: any) => a.slot_order - b.slot_order);
+          const classEntries = (classId: string) => entries.filter((entry: any) =>
+            String(entry.class_id) === classId && entry.entry_type === 'lesson',
+          );
+          const teacherFreeOutsideClass = (entry: any, classId: string): boolean => {
+            if (!entry.teacher_id) return true;
+            return !entries.some((other: any) => other !== entry
+              && String(other.class_id) !== classId
+              && String(other.teacher_id || '') === String(entry.teacher_id)
+              && Number(other.day_of_week) === Number(entry.day_of_week)
+              && String(other.time_slot_id) === String(entry.time_slot_id));
+          };
+          const validGrid = (classId: string): boolean => {
+            const grid = classEntries(classId);
+            const byDay = new Map<number, any[]>();
+            for (const entry of grid) {
+              const slot = slotById.get(String(entry.time_slot_id));
+              const name = generatedSubjectNames.get(String(entry.subject_id)) || '';
+              if (!slot || !strictSubjectAllowsLesson(name, lessonNumberOf(slot)) || !teacherFreeOutsideClass(entry, classId)) return false;
+              const day = Number(entry.day_of_week);
+              const dayRows = byDay.get(day) || [];
+              if (dayRows.some((other: any) => String(other.subject_id) === String(entry.subject_id))) return false;
+              dayRows.push(entry);
+              byDay.set(day, dayRows);
+            }
+            for (const dayRows of byDay.values()) {
+              const bySlot = new Map(dayRows.map((entry: any) => [String(entry.time_slot_id), entry]));
+              for (let index = 0; index < orderedSlots.length - 1; index += 1) {
+                const left = bySlot.get(String(orderedSlots[index].id));
+                const right = bySlot.get(String(orderedSlots[index + 1].id));
+                if (left && right && violatesMathScienceSequence(
+                  generatedSubjectNames.get(String(left.subject_id)) || '',
+                  generatedSubjectNames.get(String(right.subject_id)) || '',
+                )) return false;
+              }
+            }
+            return true;
+          };
+
+          for (let pass = 0; pass < 120; pass += 1) {
+            const violation = entries.find((entry: any) => {
+              if (entry.entry_type !== 'lesson') return false;
+              const slotIndex = orderedSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id));
+              if (slotIndex < 0 || slotIndex >= orderedSlots.length - 1) return false;
+              const next = entries.find((candidate: any) => String(candidate.class_id) === String(entry.class_id)
+                && Number(candidate.day_of_week) === Number(entry.day_of_week)
+                && String(candidate.time_slot_id) === String(orderedSlots[slotIndex + 1].id));
+              return Boolean(next) && violatesMathScienceSequence(
+                generatedSubjectNames.get(String(entry.subject_id)) || '',
+                generatedSubjectNames.get(String(next.subject_id)) || '',
+              );
+            });
+            if (!violation) return true;
+            const classId = String(violation.class_id);
+            const candidates = classEntries(classId).filter((candidate: any) =>
+              candidate !== violation
+              && candidate.entry_type === 'lesson'
+              && candidate !== entries.find((entry: any) => String(entry.class_id) === classId
+                && Number(entry.day_of_week) === Number(violation.day_of_week)
+                && String(entry.time_slot_id) === String(orderedSlots[orderedSlots.findIndex((slot: any) => String(slot.id) === String(violation.time_slot_id)) + 1]?.id))
+              && candidate.entry_type !== 'lesson_double',
+            );
+            let repaired = false;
+            for (const candidate of candidates) {
+              const originalViolation = { subject_id: violation.subject_id, teacher_id: violation.teacher_id };
+              const originalCandidate = { subject_id: candidate.subject_id, teacher_id: candidate.teacher_id };
+              violation.subject_id = originalCandidate.subject_id;
+              violation.teacher_id = originalCandidate.teacher_id;
+              candidate.subject_id = originalViolation.subject_id;
+              candidate.teacher_id = originalViolation.teacher_id;
+              if (validGrid(classId)) {
+                repaired = true;
+                break;
+              }
+              violation.subject_id = originalViolation.subject_id;
+              violation.teacher_id = originalViolation.teacher_id;
+              candidate.subject_id = originalCandidate.subject_id;
+              candidate.teacher_id = originalCandidate.teacher_id;
+            }
+            if (!repaired) return false;
+          }
+          return false;
+        };
+        if (!repairMathScienceAdjacency()) {
+          throw new Error('Timetable generation stopped safely: Mathematics is immediately followed by Integrated Science and no legal subject swap could repair the class grid. Reduce conflicting teacher assignments or adjust weekly lesson counts, then generate again.');
+        }
+
         // Canonicalize each full class/day as a small constraint permutation.
         // This repairs Pre-Technical's L3-L5 window and Math/Science
         // adjacency together, rather than relying only on pairwise swaps.
