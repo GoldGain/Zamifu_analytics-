@@ -3728,6 +3728,107 @@ export default function TimetableGenerate() {
           if (!repaired) break;
         }
 
+        // Complete weighted-grid repair. Cell-by-cell swaps can get stuck
+        // when a deficit subject needs a different day than every surplus
+        // cell. Reassign all ordinary single cells for that class together;
+        // configured double cells remain fixed and are never split.
+        for (const cls of classesToProcess) {
+          const classId = String(cls.id);
+          const classEntries = finalEntries.filter((entry: any) => String(entry.class_id) === classId);
+          const singleCells = classEntries.filter((entry: any) => entry.entry_type === 'lesson');
+          const fixedDoubles = classEntries.filter((entry: any) => entry.entry_type === 'lesson_double');
+          const subjectContexts = [...targetBySubject.entries()]
+            .filter(([key]) => key.startsWith(`${classId}:`))
+            .map(([key, value]) => ({ subjectId: key.slice(classId.length + 1), ...value }));
+          const fixedCounts = new Map<string, number>();
+          fixedDoubles.forEach((entry: any) => fixedCounts.set(String(entry.subject_id), (fixedCounts.get(String(entry.subject_id)) || 0) + 1));
+          const desiredSingles = new Map<string, number>();
+          subjectContexts.forEach(({ subjectId, target }) => desiredSingles.set(subjectId, Math.max(0, target - (fixedCounts.get(subjectId) || 0))));
+          const currentSingleCounts = new Map<string, number>();
+          singleCells.forEach((entry: any) => currentSingleCounts.set(String(entry.subject_id), (currentSingleCounts.get(String(entry.subject_id)) || 0) + 1));
+          const weightedMismatch = subjectContexts.some(({ subjectId, target }) =>
+            (fixedCounts.get(subjectId) || 0) + (currentSingleCounts.get(subjectId) || 0) !== target,
+          );
+          if (!weightedMismatch || desiredSingles.size === 0
+            || [...desiredSingles.values()].reduce((sum, count) => sum + count, 0) !== singleCells.length) continue;
+
+          const originalCells = singleCells.map((entry: any) => ({
+            entry,
+            subject_id: entry.subject_id,
+            teacher_id: entry.teacher_id,
+            entry_type: entry.entry_type,
+          }));
+          const orderedCells = singleCells.slice().sort((a: any, b: any) => {
+            const countCandidates = (cell: any) => subjectContexts.filter(({ context }) => {
+              const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(cell.time_slot_id));
+              return slot && strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot));
+            }).length;
+            return countCandidates(a) - countCandidates(b);
+          });
+          const assigned = new Map<any, string>();
+          const usedByDay = new Map<number, Set<string>>();
+          fixedDoubles.forEach((entry: any) => {
+            const day = Number(entry.day_of_week);
+            const subjects = usedByDay.get(day) || new Set<string>();
+            subjects.add(String(entry.subject_id));
+            usedByDay.set(day, subjects);
+          });
+          let nodes = 0;
+          const solveWeightedClass = (index: number): boolean => {
+            if (++nodes > 12000) return false;
+            if (index >= orderedCells.length) {
+              const classRequired = new Map(subjectContexts.map(({ subjectId, target }) => [`${classId}-${subjectId}`, target]));
+              return validateTimetableRules({
+                entries: allEntries,
+                slots: createdSlots,
+                subjectNames: generatedSubjectNames,
+                classes: classesToProcess,
+                levelGroup: levelKey,
+                requireComplete: true,
+                requiredLessonCounts: classRequired,
+                requireReligiousPairing: true,
+                allowMathScienceAdjacency: !mathScienceRepairSucceeded,
+              }).length === 0;
+            }
+            const cell = orderedCells[index];
+            const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(cell.time_slot_id));
+            if (!slot) return false;
+            const day = Number(cell.day_of_week);
+            const daySubjects = usedByDay.get(day) || new Set<string>();
+            for (const { subjectId, context } of subjectContexts) {
+              if ((desiredSingles.get(subjectId) || 0) <= 0 || daySubjects.has(subjectId)
+                || !strictSubjectAllowsLesson(context.subjectName, lessonNumberOf(slot))) continue;
+              if (context.assignment.teacher_id && finalEntries.some((other: any) => other !== cell
+                && String(other.class_id) !== classId
+                && String(other.teacher_id || '') === String(context.assignment.teacher_id)
+                && Number(other.day_of_week) === day
+                && String(other.time_slot_id) === String(cell.time_slot_id))) continue;
+              assigned.set(cell, subjectId);
+              desiredSingles.set(subjectId, (desiredSingles.get(subjectId) || 0) - 1);
+              daySubjects.add(subjectId);
+              usedByDay.set(day, daySubjects);
+              cell.subject_id = subjectId;
+              cell.teacher_id = context.assignment.teacher_id;
+              cell.entry_type = 'lesson';
+              if (solveWeightedClass(index + 1)) return true;
+              cell.subject_id = originalCells.find((original) => original.entry === cell)?.subject_id;
+              cell.teacher_id = originalCells.find((original) => original.entry === cell)?.teacher_id;
+              cell.entry_type = 'lesson';
+              assigned.delete(cell);
+              desiredSingles.set(subjectId, (desiredSingles.get(subjectId) || 0) + 1);
+              daySubjects.delete(subjectId);
+            }
+            return false;
+          };
+          if (!solveWeightedClass(0)) {
+            originalCells.forEach(({ entry, subject_id, teacher_id, entry_type }) => {
+              entry.subject_id = subject_id;
+              entry.teacher_id = teacher_id;
+              entry.entry_type = entry_type;
+            });
+          }
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
