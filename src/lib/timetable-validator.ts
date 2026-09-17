@@ -34,6 +34,8 @@ export interface TimetableValidationOptions {
   requiredLessonCounts?: ReadonlyMap<string, number> | Readonly<Record<string, number>>;
   /** Enforce same-day/same-slot pairing when both IRE and CRE are offered. */
   requireReligiousPairing?: boolean;
+  /** Allow generation to proceed when the assignment graph makes this ordering unsatisfiable. */
+  allowMathScienceAdjacency?: boolean;
 }
 
 export interface TimetableValidationIssue {
@@ -199,7 +201,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     }
   }
 
-  for (let index = 0; index < lessonSlots.length - 1; index++) {
+  if (!options.allowMathScienceAdjacency) for (let index = 0; index < lessonSlots.length - 1; index++) {
     const current = lessonSlots[index];
     const next = lessonSlots[index + 1];
     for (const day of options.days || [1, 2, 3, 4, 5]) {

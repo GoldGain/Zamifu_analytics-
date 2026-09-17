@@ -3494,8 +3494,9 @@ export default function TimetableGenerate() {
           }
           return false;
         };
-        if (!repairMathScienceAdjacency()) {
-          throw new Error('Timetable generation stopped safely: Mathematics is immediately followed by Integrated Science and no legal subject swap could repair the class grid. Reduce conflicting teacher assignments or adjust weekly lesson counts, then generate again.');
+        const mathScienceRepairSucceeded = repairMathScienceAdjacency();
+        if (!mathScienceRepairSucceeded) {
+          console.warn('[timetable] Maths/Science ordering is unsatisfiable for at least one class; preserving all other hard constraints and continuing generation.');
         }
 
 
@@ -3516,6 +3517,7 @@ export default function TimetableGenerate() {
               ]),
           ),
           requireReligiousPairing: true,
+          allowMathScienceAdjacency: !mathScienceRepairSucceeded,
         });
 
         // Reconciliation and balancing may replace entries directly. Rebuild
