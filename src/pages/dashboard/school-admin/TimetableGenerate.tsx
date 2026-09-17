@@ -3615,6 +3615,35 @@ export default function TimetableGenerate() {
           }
         }
 
+        // Last exact-count correction when a two-cell rotation is impossible.
+        for (const [targetKey, target] of targetBySubject) {
+          if ((finalCounts.get(targetKey) || 0) >= target.target) continue;
+          const classId = String(target.context.cls.id);
+          const source = finalEntries.find((entry: any) => {
+            const sourceKey = `${entry.class_id}:${entry.subject_id}`;
+            const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
+            if (String(entry.class_id) !== classId || !slot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(slot))) return false;
+            if (entry.entry_type !== 'lesson' && entry.entry_type !== 'lesson_double') return false;
+            if ((finalCounts.get(sourceKey) || 0) <= (targetBySubject.get(sourceKey)?.target ?? 0)) return false;
+            if (finalEntries.some((candidate: any) => candidate !== entry
+              && String(candidate.class_id) === classId
+              && Number(candidate.day_of_week) === Number(entry.day_of_week)
+              && String(candidate.subject_id) === String(target.context.assignment.subject_id))) return false;
+            if (target.context.assignment.teacher_id && finalEntries.some((candidate: any) => candidate !== entry
+              && String(candidate.teacher_id || '') === String(target.context.assignment.teacher_id)
+              && Number(candidate.day_of_week) === Number(entry.day_of_week)
+              && String(candidate.time_slot_id) === String(entry.time_slot_id))) return false;
+            return true;
+          });
+          if (!source) continue;
+          const oldKey = `${source.class_id}:${source.subject_id}`;
+          source.subject_id = target.context.assignment.subject_id;
+          source.teacher_id = target.context.assignment.teacher_id;
+          source.entry_type = 'lesson';
+          finalCounts.set(oldKey, (finalCounts.get(oldKey) || 0) - 1);
+          finalCounts.set(targetKey, (finalCounts.get(targetKey) || 0) + 1);
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
