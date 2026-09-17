@@ -3847,15 +3847,22 @@ export default function TimetableGenerate() {
         });
         if (finalMismatch.length > 0) {
           const mismatchClasses = new Set(finalMismatch.map(([key]) => key.split(':')[0]));
-          const matrix = finalEntries
-            .filter((entry: any) => mismatchClasses.has(String(entry.class_id)))
-            .sort((a: any, b: any) => Number(a.day_of_week) - Number(b.day_of_week)
-              || String(a.time_slot_id).localeCompare(String(b.time_slot_id)))
-            .map((entry: any) => {
-              const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(entry.time_slot_id));
-              return `${entry.class_id}|D${entry.day_of_week}|${slot?.label || entry.time_slot_id}|${generatedSubjectNames.get(String(entry.subject_id)) || entry.subject_id}|T${entry.teacher_id || '-'}|${entry.entry_type}`;
-            })
-            .join(' ; ');
+          const shortNames = new Map<string, string>([
+            ['Mathematics', 'M'], ['Creative Arts', 'CA'], ['English', 'E'],
+            ['Integrated Science', 'S'], ['Agriculture', 'A'], ['Kiswahili', 'K'],
+            ['Pre-Technical Studies', 'P'], ['Religious Education', 'R'], ['Social Studies', 'SS'],
+          ]);
+          const matrix = [...Array(5)].map((_, dayIndex) => {
+            const rows = lessonSlots.slice().sort((a: any, b: any) => a.slot_order - b.slot_order).map((slot: any) => {
+              const entry = finalEntries.find((candidate: any) => mismatchClasses.has(String(candidate.class_id))
+                && Number(candidate.day_of_week) === dayIndex + 1
+                && String(candidate.time_slot_id) === String(slot.id));
+              if (!entry) return '-';
+              const name = generatedSubjectNames.get(String(entry.subject_id)) || '';
+              return `${shortNames.get(name) || name.slice(0, 3)}${entry.entry_type === 'lesson_double' ? 'D' : ''}`;
+            });
+            return `D${dayIndex + 1}[${rows.join(',')}]`;
+          }).join(' ');
           console.error('[timetable] exact-count matrix before final assertion', matrix);
           throw new Error(`Exact-count diagnostic matrix: ${matrix}`);
         }
