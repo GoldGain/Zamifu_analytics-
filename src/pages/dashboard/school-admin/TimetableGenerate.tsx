@@ -3380,6 +3380,10 @@ export default function TimetableGenerate() {
           const classEntries = (classId: string) => entries.filter((entry: any) =>
             String(entry.class_id) === classId && entry.entry_type === 'lesson',
           );
+          const requiredCounts = new Map<string, number>();
+          assignments.forEach((assignment: any) => {
+            requiredCounts.set(`${String(assignment.class_id)}-${String(assignment.subject_id)}`, Number(assignment.lessons_per_week || 0));
+          });
           const teacherFreeOutsideClass = (entry: any, classId: string): boolean => {
             if (!entry.teacher_id) return true;
             return !entries.some((other: any) => other !== entry
@@ -3411,6 +3415,14 @@ export default function TimetableGenerate() {
                   generatedSubjectNames.get(String(right.subject_id)) || '',
                 )) return false;
               }
+            }
+            const actualCounts = new Map<string, number>();
+            for (const entry of grid) {
+              const key = `${classId}-${String(entry.subject_id)}`;
+              actualCounts.set(key, (actualCounts.get(key) || 0) + 1);
+            }
+            for (const [key, required] of requiredCounts) {
+              if (key.startsWith(`${classId}-`) && (actualCounts.get(key) || 0) !== required) return false;
             }
             return true;
           };
@@ -3518,7 +3530,6 @@ export default function TimetableGenerate() {
           ),
           requireReligiousPairing: true,
           allowMathScienceAdjacency: !mathScienceRepairSucceeded,
-          allowLessonCountMismatch: true,
         });
 
         // Reconciliation and balancing may replace entries directly. Rebuild
