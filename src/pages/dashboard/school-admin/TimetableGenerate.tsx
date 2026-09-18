@@ -235,8 +235,6 @@ function buildPerfectTimetableEntries(opts: {
   const K = lessonSlots.length;
   if (K < 2 || K > 9 || cids.length === 0) return null;
 
-  // Per-class requirements from teacher assignments. A class must fill every
-  // (day x lesson) cell exactly once, so weekly period totals must equal K * 5.
   const recsByClass: Record<string, { sid: string; name: string; teacher: string; need: number; double: boolean }[]> = {};
   for (const cid of cids) {
     recsByClass[cid] = assignments
@@ -253,16 +251,12 @@ function buildPerfectTimetableEntries(opts: {
     if (total !== K * 5) return null;
   }
 
-  // A single-cell model cannot place IRE and CRE in the same slot; leave those
-  // rare dual-religion classes to the legacy generator (which handles pairing).
   for (const cid of cids) {
     const hasIre = recsByClass[cid].some((r: any) => /\bire\b|islamic|muslim/i.test(r.name));
     const hasCre = recsByClass[cid].some((r: any) => /\bcre\b|christian/i.test(r.name));
     if (hasIre && hasCre) return null;
   }
 
-  // Placement units. A configured double is a single atomic unit occupying two
-  // consecutive cells; its remaining weekly lessons are single units on other days.
   type Unit = { cid: string; sid: string; name: string; teacher: string; size: 1 | 2 };
   const units: Unit[] = [];
   for (const cid of cids) {
@@ -276,9 +270,6 @@ function buildPerfectTimetableEntries(opts: {
     }
   }
 
-  // Backtracking with minimum-remaining-values (MRV) and randomised value order.
-  // Every unit is placed exactly once, so exact lesson counts are guaranteed by
-  // construction: an over/under-assignment can never be returned.
   const maxAttempts = 10000;
   const nodeCapPerAttempt = 300000;
   const deadline = Date.now() + 15000;
@@ -980,94 +971,10 @@ export default function TimetableGenerate() {
           }
         }
 
-        // === Perfect-grid solver: 120/120 cells, no OVER/UNDER, no duplicate subjects. ===
-        // Runs only when the level is fully schedulable; otherwise the legacy
-        // generator below runs unchanged as a fallback.
-        {
-          let perfectEntries = buildPerfectTimetableEntries({
-            schoolId,
-            levelKey,
-            classes: classesToProcess,
-            assignments,
-            lessonSlots,
-          });
-          if (perfectEntries?.length) {
-            const occupiedTeacherSlots = new Set(
-              allEntries
-                .filter((entry: any) => entry.teacher_id && entry.entry_type !== 'break' && entry.entry_type !== 'lunch' && entry.entry_type !== 'activity')
-                .map((entry: any) => `${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`),
-            );
-            const newTeacherSlots = new Set<string>();
-            const perfectHasTeacherCollision = perfectEntries.some((entry: any) => {
-              const key = `${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`;
-              if (occupiedTeacherSlots.has(key) || newTeacherSlots.has(key)) return true;
-              newTeacherSlots.add(key);
-              return false;
-            });
-            if (perfectHasTeacherCollision) perfectEntries = null;
-          }
-          const hasConfiguredDouble = assignments.some((assignment: any) =>
-            classesInLevel.has(String(assignment.class_id)) && isEnabledFlag(assignment.is_double_lesson),
-          );
-          // The perfect-grid solver models every occurrence as a single lesson;
-          // assignments with a configured double must use the atomic path below.
-          if (!hasConfiguredDouble && perfectEntries && perfectEntries.length > 0) {
-            const perfectSubjectNames = new Map<string, string>();
-            assignments
-              .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
-              .forEach((assignment: any) => perfectSubjectNames.set(String(assignment.subject_id), String(assignment.subjects?.name || '')));
-        assertTimetableRules({
-              entries: [...allEntries, ...perfectEntries],
-              slots: createdSlots,
-              subjectNames: perfectSubjectNames,
-              classes: classesToProcess,
-              levelGroup: levelKey,
-              requireComplete: true,
-              requiredLessonCounts: new Map(
-                assignments
-                  .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
-                  .map((assignment: any) => [
-                    `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
-                    Number(assignment.lessons_per_week || 0),
-                  ]),
-              ),
-              requireReligiousPairing: true,
-            });
-            allEntries.push(...perfectEntries);
-            perfectEntries.forEach((entry: any) => {
-              if (entry.teacher_id) teacherBusy.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
-              classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
-            });
-            generatedSummary.push(
-              `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (no blanks, exact weekly totals, one subject per day)`
-            );
-            console.info(`[timetable] ${levelKey}: perfect-grid solver placed ${perfectEntries.length} lesson entries`);
-            continue;
-          }
-        }
-
-        // Allocate lessons. Priority assignments are processed first, so they
-        // naturally receive the earliest available morning lesson slots.
-        for (const cls of classesToProcess) {
-          const classAssignments = assignments
-            .filter(a => a.class_id === cls.id)
-            .sort((a, b) => {
-              const aName = String(a.subjects?.name || '').toLowerCase();
-              const bName = String(b.subjects?.name || '').toLowerCase();
-              const aBand = defaultBandFor(aName);
-              const bBand = defaultBandFor(bName);
-              const bandOrder: Record<string, number> = { early_morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
-              const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
-              const aSciencePriority = Boolean(aBand === 'mid_morning' && /integrated\s*science/.test(aName));
-              const bSciencePriority = Boolean(bBand === 'mid_morning' && /integrated\s*science/.test(bName));
-              const aDoublePriority = isEnabledFlag(a.is_double_lesson);
         // === Exact-count solver: full-grid MRV backtracking that enforces every
         // teacher assignment's lessons_per_week exactly, supports configured double
         // lessons, never over/under-assigns, and never saves a broken timetable.
         {
-          // Fail loudly on misconfigured assignments: a class must have exactly
-          // (lessons-per-day x 5) configured periods, otherwise an exact fill with
-          // no blank cells is mathematically impossible.
           for (const cls of classesToProcess) {
             const periods = assignments
               .filter((assignment: any) => String(assignment.class_id) === String(cls.id))
@@ -1135,6 +1042,87 @@ export default function TimetableGenerate() {
             }
           }
         }
+
+        // Allocate lessons. Priority assignments are processed first, so they
+        // naturally receive the earliest available morning lesson slots.
+        for (const cls of classesToProcess) {
+          const classAssignments = assignments
+            .filter(a => a.class_id === cls.id)
+            .sort((a, b) => {
+              const aName = String(a.subjects?.name || '').toLowerCase();
+              const bName = String(b.subjects?.name || '').toLowerCase();
+              const aBand = defaultBandFor(aName);
+              const bBand = defaultBandFor(bName);
+              const bandOrder: Record<string, number> = { early_morning: 0, mid_morning: 1, late_morning: 2, afternoon: 3, none: 4 };
+              const coreOrder = (name: string) => /mathemat/.test(name) ? 0 : /english/.test(name) ? 1 : 2;
+              const aSciencePriority = Boolean(aBand === 'mid_morning' && /integrated\s*science/.test(aName));
+              const bSciencePriority = Boolean(bBand === 'mid_morning' && /integrated\s*science/.test(bName));
+              const aDoublePriority = isEnabledFlag(a.is_double_lesson);
+              const bDoublePriority = isEnabledFlag(b.is_double_lesson);
+              const aLessons = Number(a.lessons_per_week || 0);
+              const bLessons = Number(b.lessons_per_week || 0);
+              // Hard priority bands must be allocated before ordinary subjects;
+              // otherwise an unprioritized Maths/English assignment can consume
+              // the only cells reserved for a prioritized subject in the same class.
+              return (bandOrder[aBand] ?? 4) - (bandOrder[bBand] ?? 4)
+                || Number(bDoublePriority) - Number(aDoublePriority)
+                || Number(bSciencePriority) - Number(aSciencePriority)
+                || coreOrder(aName) - coreOrder(bName)
+                || bLessons - aLessons
+                || aName.localeCompare(bName);
+            });
+          for (const assignment of classAssignments) {
+            const lessonsToSchedule = Number(assignment.lessons_per_week || 0);
+            const isDoubleLesson = isEnabledFlag(assignment.is_double_lesson);
+            const rawAvailableDays = normalizeDayNames(assignment.available_days);
+            const availableDays = rawAvailableDays.length > 0 ? rawAvailableDays : [...TIMETABLE_DAYS];
+            const rawDoubleDays = normalizeDayNames(assignment.double_lesson_days);
+            // Only explicitly selected weekdays are double days. The Teacher
+            // Assignments screen displays “Set double days” when the double flag
+            // is on but no weekdays have been chosen; those lessons must remain
+            // schedulable as singles instead of turning the whole week into pairs.
+            const configuredDoubleDays = rawDoubleDays.length > 0
+              ? rawDoubleDays
+              : [];
+            // A double-enabled assignment gets one atomic pair per week;
+            // remaining weekly demand is placed as single lessons.
+            const requiredDoubleDays = configuredDoubleDays.slice(0, 1);
+            const subjectName = String(assignment.subjects?.name || '').toLowerCase();
+            const priorityBand = defaultBandFor(subjectName);
+            const preferredBandSlots = priorityBand === 'early_morning'
+              ? prioritySlots.early_morning
+              : priorityBand === 'mid_morning'
+                ? prioritySlots.mid_morning
+                : priorityBand === 'late_morning'
+                  ? prioritySlots.late_morning
+                  : priorityBand === 'afternoon'
+                    ? prioritySlots.afternoon
+                    : lessonSlots;
+            // Mathematics and English PREFER their anchor lesson (Maths L1,
+            // English L2) but may also use the other slot in the same priority
+            // window when the anchor is occupied by another stream taught by the
+            // same teacher. This keeps the subject inside its correct band instead
+            // of silently dropping it whenever one teacher serves several parallel
+            // classes (e.g. Grade 7/8/9 all needing English at L2).
+            const defaultAnchor = getDefaultPriorityLesson(subjectName);
+            const preferredLessonSlots = defaultAnchor
+              ? [
+                  ...preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) === defaultAnchor),
+                  ...preferredBandSlots.filter((slot: any) => lessonNumberOf(slot) !== defaultAnchor),
+                ]
+              : preferredBandSlots;
+            const hasExplicitPriority = priorityBand !== 'none';
+            // An explicit band with zero slots is a real configuration
+            // conflict, not permission to spill into another band.
+            const candidateLessonSlots = preferredLessonSlots.length > 0 || !hasExplicitPriority
+              ? (preferredLessonSlots.length > 0 ? preferredLessonSlots : lessonSlots)
+              : [];
+            let scheduled = 0;
+            // A double lesson is an atomic unit. We validate the whole pair before
+            // mutating either busy set or adding either entry, so a conflict can
+            // never leave a half-scheduled practical block behind.
+            const tryPlaceUnit = (
+              startSlot: any,
               day: number,
               dayActivities: ScheduledActivity[],
               daySlotTimes: Map<string, { start_time: string; end_time: string }>,
