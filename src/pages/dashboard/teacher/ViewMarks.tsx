@@ -75,9 +75,8 @@ export default function ViewMarks() {
     try {
       const { data } = await supabaseUntyped
         .from('school_exams')
-        .select('id, name, type')
+        .select('id, name, type, is_active')
         .eq('school_id', user?.schoolId)
-        .eq('is_active', true)
         .order('created_at', { ascending: false });
       setExams(data || []);
     } catch (err) {
@@ -93,6 +92,11 @@ export default function ViewMarks() {
       console.warn('Could not load terms', err);
     }
   };
+
+  // Assessments that are NOT active are view-only: their historical marks stay
+  // saved and visible but are locked from editing, submitting, or deleting.
+  const inactiveExamIds = new Set((exams || []).filter((e: any) => !e.is_active).map((e: any) => e.id));
+  const isMarkLocked = (m: MarkEntry) => !!m.exam_id && inactiveExamIds.has(m.exam_id);
 
   const fetchMarks = async () => {
     setLoading(true);
@@ -168,7 +172,11 @@ export default function ViewMarks() {
     setLoading(false);
   };
 
-  const handleSaveEdit = async (markId: string) => {
+  const handleSaveEdit = async (mark: MarkEntry) => {
+    if (isMarkLocked(mark)) {
+      toast.error('This assessment is inactive. Marks cannot be entered. Ask the admin to activate it.');
+      return;
+    }
     if (!editMarks || !editOutOf) {
       toast.error('Please enter marks and out of');
       return;
@@ -192,7 +200,7 @@ export default function ViewMarks() {
           status: 'draft',
           submitted_at: new Date().toISOString(),
         })
-        .eq('id', markId);
+        .eq('id', mark.id);
 
       if (error) throw error;
       toast.success('Marks updated successfully');
@@ -204,12 +212,16 @@ export default function ViewMarks() {
     setSaving(false);
   };
 
-  const handleSubmitDraft = async (markId: string) => {
+  const handleSubmitDraft = async (mark: MarkEntry) => {
+    if (isMarkLocked(mark)) {
+      toast.error('This assessment is inactive. Marks cannot be entered. Ask the admin to activate it.');
+      return;
+    }
     try {
       const { error } = await supabaseUntyped
         .from('results')
         .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .eq('id', markId);
+        .eq('id', mark.id);
 
       if (error) throw error;
       toast.success('Marks submitted successfully');
@@ -223,12 +235,18 @@ export default function ViewMarks() {
     if (!subjectMarks.length) return;
     
     const draftMarks = subjectMarks.filter(m => m.status === 'draft');
-    if (draftMarks.length === 0) {
+    const lockedMarks = draftMarks.filter(isMarkLocked);
+    const editableMarks = draftMarks.filter(m => !isMarkLocked(m));
+    if (lockedMarks.length > 0) {
+      toast.error('Some marks belong to an inactive assessment and are locked from editing. Ask the admin to activate it to submit them.');
+      if (editableMarks.length === 0) return;
+    }
+    if (editableMarks.length === 0) {
       toast.info('All marks are already submitted');
       return;
     }
 
-    if (!confirm(`Submit all ${draftMarks.length} draft mark(s) for ${subjectMarks[0].subjects?.name || 'this subject'}?`)) {
+    if (!confirm(`Submit all ${editableMarks.length} draft mark(s) for ${subjectMarks[0].subjects?.name || 'this subject'}?`)) {
       return;
     }
 
@@ -237,10 +255,10 @@ export default function ViewMarks() {
       const { error } = await supabaseUntyped
         .from('results')
         .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .in('id', draftMarks.map(m => m.id));
+        .in('id', editableMarks.map(m => m.id));
 
       if (error) throw error;
-      toast.success(`Submitted ${draftMarks.length} mark(s) successfully`);
+      toast.success(`Submitted ${editableMarks.length} mark(s) successfully`);
       fetchMarks();
     } catch (err: any) {
       toast.error('Failed to submit: ' + err.message);
@@ -254,10 +272,14 @@ export default function ViewMarks() {
     setEditOutOf(String(mark.out_of));
   };
 
-  const handleDeleteMark = async (markId: string) => {
+  const handleDeleteMark = async (mark: MarkEntry) => {
+    if (isMarkLocked(mark)) {
+      toast.error('This assessment is inactive and its marks are locked. Ask the admin to activate it to edit them.');
+      return;
+    }
     if (!confirm('Delete this mark? This cannot be undone.')) return;
     try {
-      const { error } = await supabaseUntyped.from('results').delete().eq('id', markId);
+      const { error } = await supabaseUntyped.from('results').delete().eq('id', mark.id);
       if (error) throw error;
       toast.success('Mark deleted');
       fetchMarks();
@@ -612,7 +634,7 @@ export default function ViewMarks() {
                                           {editingMark === m.id ? (
                                             <>
                                               <button
-                                                onClick={() => handleSaveEdit(m.id)}
+                                                onClick={() => handleSaveEdit(m)}
                                                 disabled={saving}
                                                 className="flex items-center gap-1 text-xs px-2 py-1 bg-green-50 text-green-600 rounded-lg hover:bg-green-100"
                                               >
@@ -625,11 +647,13 @@ export default function ViewMarks() {
                                                 <X className="w-3 h-3" /> Cancel
                                               </button>
                                             </>
+                                          ) : isMarkLocked(m) ? (
+                                            <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-1 bg-gray-100 text-gray-500 rounded-lg">View only</span>
                                           ) : (
                                             <>
                                               {m.status === 'draft' && (
                                                 <button
-                                                  onClick={() => handleSubmitDraft(m.id)}
+                                                  onClick={() => handleSubmitDraft(m)}
                                                   className="text-xs px-2 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
                                                 >
                                                   Submit
@@ -642,7 +666,7 @@ export default function ViewMarks() {
                                                 <Pencil className="w-3 h-3" /> Edit
                                               </button>
                                               <button
-                                                onClick={() => handleDeleteMark(m.id)}
+                                                onClick={() => handleDeleteMark(m)}
                                                 className="flex items-center gap-1 text-xs px-2 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
                                               >
                                                 <Trash2 className="w-3 h-3" /> Delete

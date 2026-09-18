@@ -3,6 +3,7 @@ import { Check, FilePlus2, Loader2, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { deactivateSameScopeActives } from '@/lib/assessment-active';
 
 type CombinedRow = {
   studentId: string;
@@ -122,6 +123,16 @@ export default function CombineExams() {
     }
     setSaving(true);
     try {
+      // A new combined assessment becomes the ACTIVE one for this class+term scope:
+      // deactivate any currently-active assessment for the same scope first.
+      const deactResult = await deactivateSameScopeActives({
+        schoolId: user.schoolId,
+        termId: selectedTerm,
+        targetType: 'class',
+        targetClassId: selectedClass,
+        actingUserId: user.id,
+      });
+      if (deactResult.error) throw deactResult.error;
       const { data: exam, error: examError } = await supabaseUntyped.from('school_exams').insert({
         school_id: user.schoolId,
         name: combinedName.trim() || 'Combined Exam',
@@ -130,6 +141,7 @@ export default function CombineExams() {
         target_type: 'class',
         target_class_id: selectedClass,
         is_active: true,
+        activated_at: new Date().toISOString(),
       }).select('id').single();
       if (examError) throw examError;
       const payload = (rows as any[]).filter((row) => row.teacherId).map((row) => ({
