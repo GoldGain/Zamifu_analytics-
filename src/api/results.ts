@@ -1,5 +1,6 @@
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { verifyTeacherSubjectAssignment } from '@/lib/teacher-restrictions';
+import { saveResultRecords } from '@/lib/save-results';
 
 export interface ResultUploadRecord {
   school_id: string;
@@ -58,21 +59,13 @@ export async function submitTeacherResults(params: {
     exam_id: params.examId ?? r.exam_id ?? null,
   }));
 
-  const conflictKey = params.examId
-    ? 'student_id,subject_id,term_id,exam_id'
-    : 'student_id,subject_id,term_id';
-
-  const { error: upsertError } = await supabaseUntyped.from('results').upsert(records, {
-    onConflict: conflictKey,
-    ignoreDuplicates: false,
+  const saved = await saveResultRecords({
+    records,
+    examId: params.examId ?? null,
+    classId: params.classId,
+    subjectId: params.subjectId,
+    actingUserId: params.profileId,
   });
-
-  if (upsertError) {
-    const { error: insertError } = await supabaseUntyped.from('results').insert(records);
-    if (insertError) {
-      return { success: false, error: insertError.message };
-    }
-  }
-
+  if (!saved.success) return { success: false, error: saved.error };
   return { success: true, count: records.length };
 }

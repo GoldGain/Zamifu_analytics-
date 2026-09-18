@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
+import { saveResultRecords } from '@/lib/save-results';
 import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade } from '@/lib/grading';
 import { Loader2, X, Save } from 'lucide-react';
 import { toast } from 'sonner';
@@ -53,12 +54,13 @@ export function AddMarksModal({ target, onClose, onSaved, defaultOutOf = 100 }: 
         cbc_descriptor: cbe.descriptor, grade_844: grade844 ? grade844.grade : cbe.grade, exam_id: target.examId || null,
         status: 'submitted' as const, submitted_at: new Date().toISOString(),
       };
-      const conflictKey = target.examId ? 'student_id,subject_id,term_id,exam_id' : 'student_id,subject_id,term_id';
-      const { error: upsertError } = await supabaseUntyped.from('results').upsert(record, { onConflict: conflictKey, ignoreDuplicates: false });
-      if (upsertError) {
-        const { error: insertError } = await supabaseUntyped.from('results').insert(record);
-        if (insertError) throw new Error(insertError.message);
-      }
+      const saved = await saveResultRecords({
+        records: [record],
+        examId: target.examId || null,
+        classId: target.classId,
+        subjectId: target.subjectId,
+      });
+      if (!saved.success) throw new Error(saved.error || 'Failed to save marks');
       toast.success(`Marks saved for ${target.studentName}`);
       onSaved?.(); onClose();
     } catch (err: any) { toast.error(err.message || 'Failed to save marks'); }

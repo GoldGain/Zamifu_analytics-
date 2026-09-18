@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { activateAssessment, deactivateAssessment, deactivateSameScopeActives } from '@/lib/assessment-active';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Trash2, Edit2, CheckCircle, XCircle, Calendar, BookOpen, Loader2, AlertCircle } from 'lucide-react';
@@ -195,7 +196,7 @@ export default function Assessments() {
         target_type: form.target_type,
         target_class_id: form.target_type === 'class' ? form.target_class_id : null,
         target_grade_level: form.target_type === 'grade' ? parseInt(form.target_grade_level, 10) : null,
-        is_active: true,
+        is_active: editingExam ? editingExam.is_active : true,
         created_by: user?.id,
       };
 
@@ -212,6 +213,18 @@ export default function Assessments() {
         }
         toast.success('Assessment updated successfully');
       } else {
+        // Creating a new assessment auto-deactivates any other ACTIVE assessment in the same scope
+        const deactResult = await deactivateSameScopeActives({
+          schoolId: user?.schoolId,
+          termId: form.term_id || null,
+          targetType: form.target_type,
+          targetClassId: form.target_type === 'class' ? form.target_class_id : null,
+          targetGradeLevel: form.target_type === 'grade' ? parseInt(form.target_grade_level, 10) : null,
+          actingUserId: user?.id,
+        });
+        if (deactResult.error) throw deactResult.error;
+        payload.is_active = true;
+        payload.activated_at = new Date().toISOString();
         const { data: newData, error } = await (supabase as any)
           .from('school_exams')
           .insert(payload)
@@ -276,12 +289,17 @@ export default function Assessments() {
 
   const toggleActive = async (exam: Exam) => {
     try {
-      const { error } = await (supabase as any)
-        .from('school_exams')
-        .update({ is_active: !exam.is_active })
-        .eq('id', exam.id);
-      if (error) throw error;
-      toast.success(`Assessment ${exam.is_active ? 'deactivated' : 'activated'}`);
+      if (exam.is_active) {
+        // Manual deactivation: leaves the scope with NO active assessment
+        const res = await deactivateAssessment(exam.id, user?.id);
+        if (res.error) throw res.error;
+        toast.success('Assessment deactivated');
+      } else {
+        // Manual activation: deactivates any other ACTIVE assessment in the same scope first
+        const res = await activateAssessment(exam, user?.id);
+        if (res.error) throw res.error;
+        toast.success('Assessment activated');
+      }
       fetchData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update assessment');

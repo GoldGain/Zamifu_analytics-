@@ -15,6 +15,7 @@ import {
   type TeacherAssignment,
 } from '@/lib/teacher-restrictions';
 import { resolveVisibleLearners } from '@/lib/optional-subjects';
+import { saveResultRecords } from '@/lib/save-results';
 
 interface ProcessedRow {
   student_id: string;
@@ -433,29 +434,26 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         submitted_at: new Date().toISOString(),
       }));
 
-      // Use exam_id in conflict key so different assessments don't overwrite each other
-      // If exam_id is set, use the exam-specific unique index; otherwise use the no-exam index
-      const conflictKey = selectedExam
-        ? 'student_id,subject_id,term_id,exam_id'
-        : 'student_id,subject_id,term_id';
-      const { error: insertError } = await supabaseUntyped.from('results').upsert(records, {
-        onConflict: conflictKey,
-        ignoreDuplicates: false,
+      // Save through the shared helper: it verifies the assessment is ACTIVE and merges
+      // per-student rows for this exam only (different assessments never overwrite each other).
+      const saved = await saveResultRecords({
+        records,
+        examId: selectedExam || null,
+        classId: selectedClass,
+        subjectId: selectedSubject,
       });
-      if (insertError) {
-        // Fallback: try insert (handles cases where constraint doesn't exist yet)
-        const { error: insertError2 } = await supabaseUntyped.from('results').insert(records);
-        if (insertError2) throw new Error(insertError2.message);
-      }
+      if (!saved.success) throw new Error(saved.error || 'Failed to save results');
 
       // Recalculate class positions (only on final submit)
       if (!asDraft) {
         try {
-          const { data: allResults } = await supabaseUntyped
+          let positionQuery = supabaseUntyped
             .from('results')
             .select('id, student_id, marks, out_of, cbc_points')
             .eq('class_id', selectedClass)
             .eq('term_id', selectedTerm);
+          positionQuery = selectedExam ? positionQuery.eq('exam_id', selectedExam) : positionQuery.is('exam_id', null);
+          const { data: allResults } = await positionQuery;
           if (allResults && allResults.length > 0) {
             const requiredAreas = getRequiredLearningAreas(currentClassData) || 0;
             const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
@@ -470,12 +468,14 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               .map(([sid, v]) => ({ student_id: sid, avg: requiredAreas > 0 ? v.totalPct / requiredAreas : v.totalPct / v.count, totalPoints: v.totalPoints, totalPct: v.totalPct }))
               .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct));
             for (let i = 0; i < ranked.length; i++) {
-              await supabaseUntyped
+              let posUpdate = supabaseUntyped
                 .from('results')
                 .update({ class_position: i + 1 })
                 .eq('student_id', ranked[i].student_id)
                 .eq('class_id', selectedClass)
                 .eq('term_id', selectedTerm);
+              posUpdate = selectedExam ? posUpdate.eq('exam_id', selectedExam) : posUpdate.is('exam_id', null);
+              await posUpdate;
             }
           }
         } catch (posErr) {
@@ -708,7 +708,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               })}
             </select>
             {selectedClass && availableExams.length === 0 && (
-              <p className="text-xs text-amber-700">No assessment is currently targeted to this class or grade.</p>
+              <p className="text-xs text-amber-700">No active assessment. Ask the admin to activate one.</p>
             )}
           </div>
 

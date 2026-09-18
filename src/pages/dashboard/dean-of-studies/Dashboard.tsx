@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { deactivateSameScopeActives } from '@/lib/assessment-active';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link } from 'react-router';
@@ -185,7 +186,7 @@ export default function DeanOfStudiesDashboard() {
         start_date: examForm.start_date || null,
         end_date: examForm.end_date || null,
         weightage: examForm.weightage ? parseFloat(examForm.weightage) : null,
-        is_active: true,
+        is_active: editingExam ? editingExam.is_active : true,
         created_by: user?.id,
       };
 
@@ -197,6 +198,16 @@ export default function DeanOfStudiesDashboard() {
         }
         toast.success('Assessment updated');
       } else {
+        // Creating a new assessment auto-deactivates any other ACTIVE assessment in the same scope
+        const deactResult = await deactivateSameScopeActives({
+          schoolId,
+          termId: examForm.term_id || null,
+          targetType: 'school',
+          targetClassId: null,
+          targetGradeLevel: null,
+          actingUserId: user?.id,
+        });
+        if (deactResult.error) throw deactResult.error;
         const { data: newData, error } = await (supabase as any).from('school_exams').insert(payload).select('*, terms(name)');
         if (error) throw error;
         // Optimistic update — add to list immediately
