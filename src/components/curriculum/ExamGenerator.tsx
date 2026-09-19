@@ -568,7 +568,7 @@ export default function ExamGenerator({
             </label>
             <label className="block text-xs font-semibold text-slate-700">Duration
               <select value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
-                {[30, 45, 60, 75, 90, 120].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+                {[30, 45, 60, 75, 90, 120, 150].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
               </select>
             </label>
           </div>
