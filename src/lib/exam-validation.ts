@@ -62,6 +62,26 @@ export function validateGeneratedExam(
   if (actualMarks !== expectedMarks) {
     issues.push({ code: 'TOTAL_MARKS_MISMATCH', severity: 'critical', message: `The generated questions total ${actualMarks} marks instead of ${expectedMarks}.` });
   }
+  if (request.format === 'standard30') {
+    const objective = questions.slice(0, 10);
+    const structured = questions.slice(10);
+    if (objective.length === 10 && objective.some((question) => question.question_type !== 'multiple_choice')) {
+      issues.push({ code: 'STANDARD30_OBJECTIVE_LAYOUT', severity: 'critical', message: 'Standard 30 papers must begin with 10 multiple-choice questions.' });
+    }
+    if (structured.length === 4 && structured.some((question) => !['short_answer', 'case_study'].includes(question.question_type))) {
+      issues.push({ code: 'STANDARD30_STRUCTURED_LAYOUT', severity: 'critical', message: 'Standard 30 papers must end with 4 structured questions.' });
+    }
+  }
+  if (request.format === 'kjsea') {
+    const objective = questions.slice(0, 20);
+    const structured = questions.slice(20);
+    if (objective.length === 20 && objective.some((question) => question.question_type !== 'multiple_choice')) {
+      issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'KJSEA papers must begin with 20 multiple-choice questions.' });
+    }
+    if (structured.length === 8 && structured.some((question) => question.question_type !== 'case_study')) {
+      issues.push({ code: 'KJSEA_STRUCTURED_LAYOUT', severity: 'critical', message: 'KJSEA papers must end with 8 structured questions.' });
+    }
+  }
   if (request.includeImages && questions.length > 0 && !questions.some((question) => question.visual_spec)) {
     issues.push({ code: 'VISUAL_REQUIRED', severity: 'critical', message: 'Visual questions are enabled, but the paper contains no structured visual specification.' });
   }
@@ -125,9 +145,24 @@ export function validateGeneratedExam(
       if (!question.options || question.options.length < 2) {
         issues.push({ code: 'MISSING_OPTIONS', severity: 'critical', message: 'Multiple-choice questions need at least two options.', questionIndex: index });
       }
+      if (['standard30', 'kjsea'].includes(request.format) && question.options?.length !== 4) {
+        issues.push({ code: 'MCQ_OPTION_COUNT', severity: 'critical', message: 'This paper format requires exactly four multiple-choice options (A–D).', questionIndex: index });
+      }
       if (!question.correct_answer) {
         issues.push({ code: 'MISSING_CORRECT_ANSWER', severity: 'critical', message: 'Multiple-choice questions need an expected answer.', questionIndex: index });
       }
+    }
+    if (question.sub_parts?.length) {
+      const subPartMarks = question.sub_parts.reduce((sum, part) => sum + Number(part.marks || 0), 0);
+      if (subPartMarks !== question.marks) {
+        issues.push({ code: 'SUB_PART_MARKS_MISMATCH', severity: 'critical', message: `Structured sub-parts total ${subPartMarks} marks instead of the question's ${question.marks} marks.`, questionIndex: index });
+      }
+      if (question.sub_parts.some((part) => !part.prompt.trim() || part.marks < 1)) {
+        issues.push({ code: 'SUB_PART_CONTENT_MISSING', severity: 'critical', message: 'Every structured sub-part needs a prompt and positive mark allocation.', questionIndex: index });
+      }
+    }
+    if (request.format === 'kjsea' && index >= 20 && !question.sub_parts?.length) {
+      issues.push({ code: 'KJSEA_SUB_PARTS_MISSING', severity: 'critical', message: 'KJSEA structured questions must include lettered sub-parts with explicit marks.', questionIndex: index });
     }
     if (question.question_type === 'matching' && (!question.options || question.options.length < 2)) {
       issues.push({ code: 'MISSING_MATCHING_SET', severity: 'critical', message: 'Matching questions need a matching set.', questionIndex: index });

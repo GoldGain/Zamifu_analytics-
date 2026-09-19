@@ -126,7 +126,7 @@ function parseExamRequest(raw: unknown): ExamGenerationRequest | null {
   const durationMinutes = Number(body.durationMinutes);
   const difficulty = body.difficulty === 'easy' || body.difficulty === 'medium' || body.difficulty === 'hard' || body.difficulty === 'mixed'
     ? body.difficulty : 'mixed';
-  const format = body.format === 'cbe' || body.format === 'kpsea' || body.format === 'kjsea' || body.format === 'custom'
+  const format = body.format === 'standard30' || body.format === 'cbe' || body.format === 'kpsea' || body.format === 'kjsea' || body.format === 'custom'
     ? body.format : 'cbe';
   return {
     title: typeof body.title === 'string' ? body.title.trim().slice(0, 255) : undefined,
@@ -258,7 +258,8 @@ async function loadVettedContext(
     .select('content_summary, subject, grade_level, strand, sub_strand, source_name')
     .eq('is_approved', true)
     .eq('subject', request.subject)
-    .limit(24);
+    .eq('grade_level', request.gradeLevel)
+    .limit(100);
 
   const requestedGrade = normalizeContextKey(request.gradeLevel);
   const requestedStrands = new Set(request.strands.map(normalizeContextKey));
@@ -312,13 +313,13 @@ async function handleExamGeneration(
     jsonError(response, 400, 'Invalid exam-generation request.');
     return;
   }
-  const parsedRequest: ExamGenerationRequest = rawParsedRequest.blueprint
+  const parsedRequest: ExamGenerationRequest = ['standard30', 'kpsea', 'kjsea'].includes(rawParsedRequest.format)
+    ? { ...rawParsedRequest, blueprint: makeFormatBlueprint(rawParsedRequest.format, rawParsedRequest.totalMarks, rawParsedRequest.difficulty) }
+    : rawParsedRequest.blueprint
     ? rawParsedRequest
     : {
         ...rawParsedRequest,
-        blueprint: ['kpsea', 'kjsea'].includes(rawParsedRequest.format)
-          ? makeFormatBlueprint(rawParsedRequest.format, rawParsedRequest.totalMarks, rawParsedRequest.difficulty)
-          : makeBalancedBlueprint(rawParsedRequest.questionTypes, rawParsedRequest.totalMarks, rawParsedRequest.difficulty),
+        blueprint: makeBalancedBlueprint(rawParsedRequest.questionTypes, rawParsedRequest.totalMarks, rawParsedRequest.difficulty),
       };
   const accessError = assertGenerationAccess(profile);
   if (accessError) {
@@ -413,6 +414,7 @@ async function handleExamGeneration(
         metadata: {
           generated_at: paper.generated_at,
           format: paper.format,
+          sub_parts: question.sub_parts || [],
           visual_spec: question.visual_spec
             ? { ...question.visual_spec, rendered_data_url: question.image_url || null }
             : null,
@@ -438,7 +440,9 @@ async function handleExamGeneration(
         term: paper.term || null,
         year: paper.year,
         questions: questionIds,
-        marking_scheme: paper.questions.map((question, index) => `Q${index + 1}: ${question.marking_scheme}`).join('\n'),
+        marking_scheme: paper.questions.map((question, index) => `Q${index + 1}: ${question.sub_parts?.length
+          ? question.sub_parts.map((part) => `${part.label} ${part.marking_scheme || part.correct_answer || 'Award for a correct response.'} [${part.marks} mark${part.marks === 1 ? '' : 's'}]`).join(' | ')
+          : question.marking_scheme}`).join('\n'),
         instructions: paper.instructions.join('\n'),
         duration_minutes: paper.duration_minutes,
         total_marks: paper.total_marks,

@@ -4,6 +4,7 @@ import {
   type ExamGenerationRequest,
   type ExamPaper,
   type GeneratedExamQuestion,
+  type GeneratedExamSubPart,
   type QuestionType,
 } from './exam-schema.js';
 import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
@@ -57,6 +58,24 @@ function toSafeArray(value: unknown): string[] {
     : [];
 }
 
+function normalizeSubParts(value: unknown): GeneratedExamSubPart[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 8).flatMap((entry, index) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const item = entry as Record<string, unknown>;
+    const prompt = toSafeString(item.prompt).slice(0, 900);
+    const marksValue = Number(item.marks);
+    if (!prompt || !Number.isFinite(marksValue) || marksValue < 1 || marksValue > 30) return [];
+    return [{
+      label: toSafeString(item.label, `(${String.fromCharCode(97 + index)})`).slice(0, 12),
+      prompt,
+      marks: Math.round(marksValue),
+      correct_answer: toSafeString(item.correct_answer).slice(0, 700),
+      marking_scheme: toSafeString(item.marking_scheme, toSafeString(item.correct_answer)).slice(0, 900),
+    }];
+  });
+}
+
 function normalizeQuestionType(value: unknown, fallback: QuestionType): QuestionType {
   const allowed = new Set<QuestionType>([
     'multiple_choice', 'multiple_response', 'modified_true_false', 'completion',
@@ -83,6 +102,7 @@ export function normalizeQuestion(raw: unknown, fallbackType: QuestionType, fall
     correct_answer: toSafeString(item.correct_answer, 'Teacher to assess according to the marking guidance.').slice(0, 1200),
     marking_scheme: toSafeString(item.marking_scheme, toSafeString(item.correct_answer, 'Teacher to assess according to the marking guidance.')).slice(0, 1800),
     marks,
+    sub_parts: normalizeSubParts(item.sub_parts),
     difficulty: normalizeDifficulty(item.difficulty, fallbackDifficulty),
     strand: toSafeString(item.strand).slice(0, 180),
     sub_strand: toSafeString(item.sub_strand).slice(0, 180),
@@ -189,10 +209,12 @@ export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext
     : 'Do not require any images, but preserve a visual_spec only when the question stem explicitly requires a visual to answer the question. If a visual_spec is present, do not repeat its table or bracketed diagram placeholder in question_text.';
   const outcomes = request.learningOutcomes?.length ? request.learningOutcomes.join('; ') : 'Not separately constrained.';
   const competencies = request.competencies?.length ? request.competencies.join('; ') : 'Use suitable CBC core competencies.';
-  const formatDirection = request.format === 'kpsea'
+  const formatDirection = request.format === 'standard30'
+    ? 'STANDARD 30-MARK REQUIREMENTS: Produce exactly 10 Section A multiple-choice questions worth 1 mark each, followed by exactly 4 Section B structured questions worth 5 marks each. The structured questions may use lettered sub-parts when useful, and every main question must total its blueprint marks.'
+    : request.format === 'kpsea'
     ? 'KPSEA-STYLE REQUIREMENTS: Prefer a clean objective assessment structure. When the blueprint uses multiple_choice, each such item must have exactly four plausible options labelled A, B, C and D, one correct answer, and concise age-appropriate wording. Include answer-sheet guidance in the instructions. Use visual stimuli only when they are genuinely required by the question.'
     : request.format === 'kjsea'
-      ? 'KJSEA-STYLE REQUIREMENTS: Prefer structured, scenario-based tasks. Use large numbered questions with lettered sub-parts and roman-numbered sub-items where the blueprint allows. Integrate practical procedures, labelled diagrams, tables, data interpretation, calculations, and extended responses when they fit the selected curriculum. Give marks that add up exactly to each main question and use concise line breaks between sub-parts.'
+      ? 'KJSEA-STYLE REQUIREMENTS: Produce exactly 20 Section A multiple-choice questions worth 1 mark each and exactly 8 Section B structured questions worth 10 marks each. Use large numbered questions with lettered sub-parts (a), (b), (c) and roman-numbered sub-items where useful. Represent each structured sub-part in sub_parts with its label, prompt, marks, correct_answer, and marking_scheme; sub-part marks must add up exactly to 10 for that main question. Integrate practical procedures, labelled diagrams, tables, data interpretation, calculations, and extended responses when they fit the selected curriculum. Use concise line breaks between sub-parts.'
       : 'Use a clear school-based CBC assessment structure with labelled sections and marks.';
   const blueprintText = request.blueprint?.sections.length
     ? JSON.stringify(request.blueprint.sections.map((section) => ({ type: section.question_type, count: section.count, marks_per_question: section.marks_per_question, difficulty: section.difficulty, strand: section.strand, sub_strand: section.sub_strand, topic: section.topic, competency: section.competency })))

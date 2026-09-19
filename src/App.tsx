@@ -258,6 +258,7 @@ function AppRoutes() {
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClasses /></ProtectedRoute>} />
       <Route path="/school-admin/fees" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminFees /></ProtectedRoute>} />
       <Route path="/school-admin/results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminResults /></ProtectedRoute>} />
+      <Route path="/school-admin/exam-generator" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><ExamGeneratorPage /></ProtectedRoute>} />
       <Route path="/school-admin/upload-results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><TeacherResultsUpload privileged /></ProtectedRoute>} />
       <Route path="/school-admin/combine-exams" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><CombineExams /></ProtectedRoute>} />
       <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAnnouncements /></ProtectedRoute>} />

@@ -102,6 +102,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Results', icon: <FileText className="w-5 h-5" />, path: '/school-admin/results' },
     { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, path: '/school-admin/upload-results' },
     { label: 'Combine Exams', icon: <FilePlus2 className="w-5 h-5" />, path: '/school-admin/combine-exams' },
+    { label: 'Exam Generator', icon: <FileText className="w-5 h-5" />, path: '/school-admin/exam-generator' },
     { label: 'Assessments', icon: <BookOpen className="w-5 h-5" />, path: '/school-admin/assessments' },
     { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/school-admin/assessment-progress' },
     { label: 'Assign Roles', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/assign-roles' },

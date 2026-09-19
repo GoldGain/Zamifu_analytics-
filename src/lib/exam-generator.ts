@@ -52,6 +52,7 @@ export type ExamPdfMode = 'student' | 'marking_scheme' | 'answer_key' | 'combine
 type BrandedPaper = ExamPaper & { school_logo_url?: string | null };
 
 function formatLabel(format: ExamFormat): string {
+  if (format === 'standard30') return 'STANDARD CBE ASSESSMENT';
   if (format === 'kpsea') return 'KPSEA-STYLE SCHOOL PRACTICE PAPER';
   if (format === 'kjsea') return 'KJSEA-STYLE SCHOOL PRACTICE PAPER';
   if (format === 'cbe') return 'CBE SCHOOL-BASED ASSESSMENT';
@@ -72,7 +73,7 @@ function groupedQuestions(paper: BrandedPaper): Array<{ type: QuestionType; ques
 }
 
 function isFormalPracticeFormat(paper: BrandedPaper): boolean {
-  return paper.format === 'kpsea' || paper.format === 'kjsea';
+  return paper.format === 'standard30' || paper.format === 'kpsea' || paper.format === 'kjsea';
 }
 
 function isObjectiveKpseaPaper(paper: BrandedPaper): boolean {
@@ -110,6 +111,13 @@ function formatSpecificInstructions(paper: BrandedPaper): string[] {
       'Answer all questions in the spaces provided.',
       'Show all working for calculations and give clear labelled responses where required.',
       'Use the diagrams, tables, maps and other visual stimuli only as directed by each question.',
+    ];
+  }
+  if (paper.format === 'standard30') {
+    return [
+      'Answer all questions.',
+      'Choose one correct answer for each multiple-choice question.',
+      'Show your working and write clear responses for structured questions.',
     ];
   }
   return [];
@@ -380,6 +388,25 @@ async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: Gene
   return y;
 }
 
+function addStructuredSubParts(doc: jsPDF, paper: BrandedPaper, question: GeneratedExamQuestion, y: number, textWidth: number, subtitle: string): number {
+  if (!question.sub_parts?.length) return y;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(paper.format === 'kjsea' ? 8.2 : 8.8);
+  for (const part of question.sub_parts) {
+    const marks = `  [${part.marks} mark${part.marks === 1 ? '' : 's'}]`;
+    const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${paper.format === 'standard30' ? marks : ''}`, textWidth);
+    y = ensureRoom(doc, paper, y, lines.length * 4.2 + 4, subtitle);
+    doc.text(lines, 19, y);
+    y += lines.length * 4.2 + 2;
+  }
+  return y;
+}
+
+function markingGuidance(question: GeneratedExamQuestion): string {
+  if (!question.sub_parts?.length) return question.marking_scheme || question.correct_answer || 'Teacher to assess according to the stated learning outcome.';
+  return question.sub_parts.map((part) => `${part.label} ${part.marking_scheme || part.correct_answer || 'Award for a correct response.'} [${part.marks} mark${part.marks === 1 ? '' : 's'}]`).join('\n');
+}
+
 async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void> {
   addFormalCoverPage(doc, paper, 'STUDENT PAPER');
   doc.addPage();
@@ -416,6 +443,7 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
       doc.text(stem, 14, y);
       doc.setFont('helvetica', 'normal');
       y += stem.length * 4.6 + 2;
+      y = addStructuredSubParts(doc, paper, question, y, textWidth, 'STUDENT PAPER');
       const options = normalizeOptions(question);
       if (options.length) {
         options.forEach((option, optionIndex) => {
@@ -461,7 +489,7 @@ async function renderMarkingScheme(doc: jsPDF, paper: BrandedPaper): Promise<voi
         `Section ${String.fromCharCode(65 + groupIndex)}`,
         String(sequence),
         questionTypeLabel(question.question_type),
-        question.marking_scheme || question.correct_answer || 'Teacher to assess according to the stated learning outcome.',
+        markingGuidance(question),
         String(question.marks),
       ]);
       sequence += 1;

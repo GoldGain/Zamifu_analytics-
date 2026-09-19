@@ -12,7 +12,7 @@ export const CBC_QUESTION_TYPES = [
 
 export type QuestionType = (typeof CBC_QUESTION_TYPES)[number]['value'];
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'mixed';
-export type ExamFormat = 'cbe' | 'kpsea' | 'kjsea' | 'custom';
+export type ExamFormat = 'standard30' | 'cbe' | 'kpsea' | 'kjsea' | 'custom';
 export type AssessmentLevel = 'pre_primary' | 'lower_primary' | 'upper_primary' | 'junior_secondary' | 'senior_secondary';
 
 export interface ExamBlueprintSection {
@@ -34,6 +34,14 @@ export interface ExamBlueprint {
   estimated_minutes?: number;
 }
 
+export interface GeneratedExamSubPart {
+  label: string;
+  prompt: string;
+  marks: number;
+  correct_answer?: string;
+  marking_scheme?: string;
+}
+
 export interface GeneratedExamQuestion {
   id?: string;
   question_number?: number;
@@ -43,6 +51,7 @@ export interface GeneratedExamQuestion {
   correct_answer: string;
   marking_scheme: string;
   marks: number;
+  sub_parts?: GeneratedExamSubPart[];
   difficulty: Exclude<Difficulty, 'mixed'>;
   strand?: string;
   sub_strand?: string;
@@ -137,6 +146,8 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   if (!request.questionTypes.length) errors.push('Select at least one question type.');
   if (request.totalMarks < 5 || request.totalMarks > 200) errors.push('Total marks must be between 5 and 200.');
   if (request.durationMinutes < 10 || request.durationMinutes > 240) errors.push('Duration must be between 10 and 240 minutes.');
+  if (request.format === 'standard30' && request.totalMarks !== 30) errors.push('Standard Assessment papers must total exactly 30 marks.');
+  if (request.format === 'kjsea' && request.totalMarks !== 100) errors.push('KJSEA papers must total exactly 100 marks.');
   if (request.blueprint) {
     if (!request.blueprint.sections.length) errors.push('Add at least one blueprint section.');
     const blueprintTotal = request.blueprint.sections.reduce((sum, section) => sum + section.count * section.marks_per_question, 0);
@@ -148,6 +159,29 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
 
 export function makeFormatBlueprint(format: ExamFormat, totalMarks: number, difficulty: Difficulty = 'mixed'): ExamBlueprint | undefined {
   const safeTotal = Math.max(1, Math.round(totalMarks));
+  if (format === 'standard30') {
+    return {
+      sections: [
+        {
+          id: 'standard30-objective',
+          title: 'Section A: Multiple Choice Questions',
+          question_type: 'multiple_choice',
+          count: 10,
+          marks_per_question: 1,
+          difficulty,
+        },
+        {
+          id: 'standard30-structured',
+          title: 'Section B: Structured Questions',
+          question_type: 'short_answer',
+          count: 4,
+          marks_per_question: 5,
+          difficulty,
+        },
+      ],
+      total_marks: safeTotal,
+    };
+  }
   if (format === 'kpsea') {
     return {
       sections: [{
@@ -162,30 +196,27 @@ export function makeFormatBlueprint(format: ExamFormat, totalMarks: number, diff
     };
   }
   if (format === 'kjsea') {
-    const fullQuestions = Math.floor(safeTotal / 10);
-    const remainder = safeTotal % 10;
-    const sections: ExamBlueprintSection[] = [];
-    if (fullQuestions > 0) {
-      sections.push({
-        id: 'kjsea-structured-main',
-        title: 'Structured and practical questions',
-        question_type: 'case_study',
-        count: fullQuestions,
-        marks_per_question: 10,
-        difficulty,
-      });
-    }
-    if (remainder > 0) {
-      sections.push({
-        id: 'kjsea-structured-remainder',
-        title: 'Structured question',
-        question_type: 'case_study',
-        count: 1,
-        marks_per_question: remainder,
-        difficulty,
-      });
-    }
-    return { sections, total_marks: safeTotal };
+    return {
+      sections: [
+        {
+          id: 'kjsea-objective',
+          title: 'Section A: Multiple Choice Questions',
+          question_type: 'multiple_choice',
+          count: 20,
+          marks_per_question: 1,
+          difficulty,
+        },
+        {
+          id: 'kjsea-structured',
+          title: 'Section B: Structured Questions',
+          question_type: 'case_study',
+          count: 8,
+          marks_per_question: 10,
+          difficulty,
+        },
+      ],
+      total_marks: safeTotal,
+    };
   }
   return undefined;
 }

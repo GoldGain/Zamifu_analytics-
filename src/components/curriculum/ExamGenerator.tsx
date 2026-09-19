@@ -65,10 +65,11 @@ interface ExamGeneratorProps {
 }
 
 const formatOptions: Array<{ value: ExamFormat; label: string; description: string }> = [
-  { value: 'cbe', label: 'CBE Class Assessment', description: 'Competency-based classroom assessment' },
-  { value: 'kpsea', label: 'KPSEA Practice', description: 'Primary assessment practice format' },
-  { value: 'kjsea', label: 'KJSEA Practice', description: 'Junior School assessment practice format' },
-  { value: 'custom', label: 'Custom School Paper', description: 'Flexible internal assessment' },
+  { value: 'standard30', label: 'Standard Assessment · 30 marks', description: '10 MCQs (1 mark each) + 4 structured questions (5 marks each)' },
+  { value: 'kjsea', label: 'KJSEA-style · 100 marks', description: '20 MCQs (1 mark each) + 8 structured questions (10 marks each)' },
+  { value: 'cbe', label: 'Legacy CBE Assessment', description: 'Compatibility option for previously saved papers' },
+  { value: 'kpsea', label: 'Legacy KPSEA Practice', description: 'Compatibility option for previously saved papers' },
+  { value: 'custom', label: 'Legacy Custom Paper', description: 'Compatibility option for previously saved papers' },
 ];
 
 function toggleValue<T>(current: Set<T>, value: T): Set<T> {
@@ -101,15 +102,15 @@ export default function ExamGenerator({
 }: ExamGeneratorProps) {
   const [title, setTitle] = useState('');
   const [term, setTerm] = useState('Term 1');
-  const [format, setFormat] = useState<ExamFormat>('cbe');
-  const [totalMarks, setTotalMarks] = useState(50);
-  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [format, setFormat] = useState<ExamFormat>('standard30');
+  const [totalMarks, setTotalMarks] = useState(30);
+  const [durationMinutes, setDurationMinutes] = useState(45);
   const [difficulty, setDifficulty] = useState<Difficulty>('mixed');
   const [selectedStrands, setSelectedStrands] = useState<Set<string>>(new Set());
   const [selectedSubStrands, setSelectedSubStrands] = useState<Set<string>>(new Set());
   const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
   const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<Set<QuestionType>>(
-    new Set<QuestionType>(['multiple_choice', 'short_answer', 'essay']),
+    new Set<QuestionType>(['multiple_choice', 'short_answer']),
   );
   const [includeImages, setIncludeImages] = useState(true);
   const [includeMarkingScheme, setIncludeMarkingScheme] = useState(true);
@@ -163,11 +164,18 @@ export default function ExamGenerator({
 
   function handleFormatChange(nextFormat: ExamFormat) {
     setFormat(nextFormat);
-    if (nextFormat === 'kpsea') {
+    if (nextFormat === 'standard30') {
+      setTotalMarks(30);
+      setDurationMinutes(45);
+      setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice', 'short_answer']));
+      setIncludeImages(true);
+    } else if (nextFormat === 'kpsea') {
       setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice']));
       setIncludeImages(true);
     } else if (nextFormat === 'kjsea') {
-      setSelectedQuestionTypes(new Set<QuestionType>(['case_study']));
+      setTotalMarks(100);
+      setDurationMinutes(150);
+      setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice', 'case_study']));
       setIncludeImages(true);
     }
   }
@@ -231,7 +239,7 @@ export default function ExamGenerator({
         if (!row) throw new Error(`Question ${index + 1} could not be loaded from the saved paper.`);
         const metadata = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
         const visualSpec = metadata.visual_spec && typeof metadata.visual_spec === 'object' ? metadata.visual_spec : null;
-        const loadedQuestion = {
+          const loadedQuestion = {
           id: row.id,
           question_number: index + 1,
           question_type: row.question_type,
@@ -240,6 +248,7 @@ export default function ExamGenerator({
           correct_answer: row.correct_answer || '',
           marking_scheme: row.marking_scheme || '',
           marks: Number(row.marks || 1),
+          sub_parts: Array.isArray(metadata.sub_parts) ? metadata.sub_parts : undefined,
           difficulty: row.difficulty || 'medium',
           strand: row.strand || undefined,
           sub_strand: row.sub_strand || undefined,
@@ -331,7 +340,7 @@ export default function ExamGenerator({
         format,
         term,
         schoolName,
-        blueprint: ['kpsea', 'kjsea'].includes(format)
+        blueprint: ['standard30', 'kpsea', 'kjsea'].includes(format)
           ? makeFormatBlueprint(format, totalMarks, difficulty)
           : makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty),
       };
@@ -553,7 +562,7 @@ export default function ExamGenerator({
               </select>
             </label>
             <label className="block text-xs font-semibold text-slate-700">Total marks
-              <select value={totalMarks} onChange={(event) => setTotalMarks(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
+              <select value={totalMarks} disabled={['standard30', 'kjsea'].includes(format)} onChange={(event) => setTotalMarks(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-70">
                 {[10, 20, 30, 50, 60, 80, 100].map((marks) => <option key={marks} value={marks}>{marks} marks</option>)}
               </select>
             </label>
@@ -572,7 +581,7 @@ export default function ExamGenerator({
             <div className="grid gap-2 sm:grid-cols-2">
               {CBC_QUESTION_TYPES.map((type) => (
                 <label key={type.value} className="flex cursor-pointer items-center gap-2 rounded-lg border border-transparent bg-white px-2.5 py-2 text-xs text-slate-700 transition hover:border-red-100 hover:bg-red-50">
-                  <input type="checkbox" checked={selectedQuestionTypes.has(type.value)} onChange={() => setSelectedQuestionTypes((current) => toggleValue(current, type.value))} className="rounded border-slate-300 text-red-600 focus:ring-red-500" />
+                  <input type="checkbox" checked={selectedQuestionTypes.has(type.value)} disabled={['standard30', 'kjsea'].includes(format)} onChange={() => setSelectedQuestionTypes((current) => toggleValue(current, type.value))} className="rounded border-slate-300 text-red-600 focus:ring-red-500 disabled:cursor-not-allowed disabled:opacity-50" />
                   <span className="flex-1">{type.label}</span><span className="text-slate-400">{type.defaultMarks}m</span>
                 </label>
               ))}
@@ -671,9 +680,10 @@ function QuestionPreview({ question, index, includeImages, uploading, onAttach, 
       <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${questionBadgeClass(question.question_type)}`}>{question.marks}m</span>
     </div>
     {validationIssues.length > 0 && <div className="mt-2 space-y-1">{validationIssues.map((issue) => <p key={issue.code} className={`flex items-start gap-1 text-[11px] leading-4 ${issue.severity === 'critical' ? 'text-red-700' : issue.severity === 'warning' ? 'text-amber-700' : 'text-blue-700'}`}>{issue.severity === 'critical' ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" /> : <Eye className="mt-0.5 h-3 w-3 shrink-0" />}{issue.message}</p>)}</div>}
+    {question.sub_parts?.length ? <div className="mt-2 space-y-1.5 rounded-lg border border-violet-100 bg-violet-50/60 p-2.5">{question.sub_parts.map((part, partIndex) => <p key={`${part.label}-${partIndex}`} className="text-xs leading-5 text-slate-700"><span className="font-semibold">{part.label}</span> {part.prompt} <span className="font-semibold text-violet-700">[{part.marks}m]</span></p>)}</div> : null}
     {options.length > 0 && <div className="mt-2 grid gap-1 sm:grid-cols-2">{options.map((option, optionIndex) => <p key={`${option}-${optionIndex}`} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">{String.fromCharCode(65 + optionIndex)}. {option}</p>)}</div>}
     {question.image_url ? <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2"><img src={question.image_url} alt={visualCaption || `Automatically rendered visual for question ${index + 1}`} className="max-h-48 w-full rounded object-contain" />{visualCaption && <p className="mt-1 text-center text-[11px] italic text-slate-500">{visualCaption}</p>}</div> : includeImages ? <div className="mt-3 space-y-2"><div className="rounded-lg border border-dashed border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">Automatic visual pending or not required for this question.</div><label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:border-red-300 hover:bg-red-50"><input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(event) => onAttach(event.target.files?.[0])} />{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}{uploading ? 'Attaching image…' : 'Attach school-owned visual as a fallback'}</label></div> : null}
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5"><div className="flex flex-wrap items-center gap-1.5"><span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${questionBadgeClass(question.question_type)}`}>{questionTypeLabel(question.question_type)}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${question.review_status === 'approved' ? 'bg-emerald-100 text-emerald-700' : question.review_status === 'flagged' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{question.review_status || 'draft'}</span></div><div className="flex flex-wrap items-center gap-1.5"><button type="button" onClick={() => setShowMarking((current) => !current)} className="text-[11px] font-semibold text-red-600 hover:text-red-700">{showMarking ? 'Hide marking' : 'View marking'}</button>{editing ? <><button type="button" onClick={() => { onEdit(draftStem); setEditing(false); }} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white"><Save className="h-3 w-3" />Save</button><button type="button" onClick={() => { setDraftStem(question.question_text); setEditing(false); }} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600"><X className="h-3 w-3" />Cancel</button></> : <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600"><Edit3 className="h-3 w-3" />Edit</button>}<button type="button" onClick={() => void handleRegenerate()} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-violet-200 px-2 py-1 text-[11px] font-semibold text-violet-700 disabled:opacity-60"><RefreshCw className={`h-3 w-3 ${busy ? 'animate-spin' : ''}`} />Regenerate</button><button type="button" onClick={() => onReview('approved')} className="inline-flex items-center gap-1 rounded-md border border-emerald-200 px-2 py-1 text-[11px] font-semibold text-emerald-700"><Check className="h-3 w-3" />Approve</button><button type="button" onClick={() => onReview('flagged')} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700"><Flag className="h-3 w-3" />Flag</button></div></div>
-    {showMarking && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5 text-xs leading-5 text-emerald-900"><p className="font-semibold">Expected response</p><p>{question.marking_scheme || question.correct_answer}</p>{question.learning_outcome && <p className="mt-1"><strong>Learning outcome:</strong> {question.learning_outcome}</p>}{question.competency && <p><strong>Competency:</strong> {question.competency}</p>}</div>}
+    {showMarking && <div className="mt-2 rounded-lg bg-emerald-50 p-2.5 text-xs leading-5 text-emerald-900"><p className="font-semibold">Expected response</p>{question.sub_parts?.length ? question.sub_parts.map((part, partIndex) => <p key={`${part.label}-${partIndex}`}><strong>{part.label}</strong> {part.marking_scheme || part.correct_answer || 'Award for a correct response.'} <span className="font-semibold">[{part.marks}m]</span></p>) : <p>{question.marking_scheme || question.correct_answer}</p>}{question.learning_outcome && <p className="mt-1"><strong>Learning outcome:</strong> {question.learning_outcome}</p>}{question.competency && <p><strong>Competency:</strong> {question.competency}</p>}</div>}
   </article>;
 }
