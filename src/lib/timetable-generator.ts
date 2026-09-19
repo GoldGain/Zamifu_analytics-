@@ -157,8 +157,8 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 /**
  * Final subject placement gate from the timetable requirements.
  *
- * Mathematics, English, and Integrated Science may use Lessons 1–5.
- * Pre-Technical Studies may use Lessons 1–6, Kiswahili may use Lessons 1–7,
+ * Mathematics, English, and Integrated Science may use Lessons 1–6.
+ * Pre-Technical Studies may use Lessons 1–7, Kiswahili may use Lessons 1–8,
  * and other learning areas may use any lesson.
  */
 export function strictSubjectAllowsLesson(
@@ -166,9 +166,9 @@ export function strictSubjectAllowsLesson(
   lessonNumber: number,
 ): boolean {
   const fam = classifySubject(subjectName);
-  if (fam === 'math' || fam === 'english' || fam === 'science') return lessonNumber >= 1 && lessonNumber <= 5;
-  if (fam === 'pretech') return lessonNumber >= 1 && lessonNumber <= 6;
-  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
+  if (fam === 'math' || fam === 'english' || fam === 'science') return lessonNumber >= 1 && lessonNumber <= 6;
+  if (fam === 'pretech') return lessonNumber >= 1 && lessonNumber <= 7;
+  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 8;
   return lessonNumber >= 1;
 }
 
