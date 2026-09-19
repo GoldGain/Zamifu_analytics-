@@ -22,7 +22,7 @@ import {
   type ExamPdfMode,
 } from '@/lib/exam-generator';
 import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
-import { filterSubStrands, filterTopics, retainVisibleIds } from '@/lib/curriculum-selection';
+import { filterSubStrands } from '@/lib/curriculum-selection';
 
 export interface CurriculumTopicOption {
   id: string;
@@ -59,8 +59,6 @@ interface ExamGeneratorProps {
   schoolName?: string;
   schoolId?: string;
   strands: CurriculumStrandOption[];
-  topics: CurriculumTopicOption[];
-  initialTopic?: string;
   onGenerated?: (paper: ExamPaper) => void;
 }
 
@@ -96,8 +94,6 @@ export default function ExamGenerator({
   schoolName,
   schoolId,
   strands,
-  topics,
-  initialTopic,
   onGenerated,
 }: ExamGeneratorProps) {
   const [title, setTitle] = useState('');
@@ -108,7 +104,6 @@ export default function ExamGenerator({
   const [difficulty, setDifficulty] = useState<Difficulty>('mixed');
   const [selectedStrands, setSelectedStrands] = useState<Set<string>>(new Set());
   const [selectedSubStrands, setSelectedSubStrands] = useState<Set<string>>(new Set());
-  const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
   const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<Set<QuestionType>>(
     new Set<QuestionType>(['multiple_choice', 'short_answer']),
   );
@@ -124,12 +119,6 @@ export default function ExamGenerator({
   const [openingPaper, setOpeningPaper] = useState<string | null>(null);
 
   const availableSubStrands = useMemo(() => selectedStrands.size > 0 ? filterSubStrands(strands, selectedStrands) : [], [selectedStrands, strands]);
-  const availableTopics = useMemo(() => {
-    if (selectedSubStrands.size > 0) return filterTopics(topics, selectedStrands, selectedSubStrands);
-    if (selectedStrands.size > 0) return filterTopics(topics, selectedStrands, new Set());
-    return [];
-  }, [selectedStrands, selectedSubStrands, topics]);
-
   const curriculumScope = useMemo(() => {
     if (selectedStrands.size === 0) return [];
     return strands
@@ -138,26 +127,17 @@ export default function ExamGenerator({
         const visibleSubStrands = (strand.sub_strands || [])
           .filter((subStrand) => selectedSubStrands.size === 0 || selectedSubStrands.has(subStrand.id));
         const visibleSubStrandIds = new Set(visibleSubStrands.map((subStrand) => subStrand.id));
-        const visibleTopics = availableTopics.filter((topic) => (
-          topic.strand_id === strand.id
-          && (!selectedSubStrands.size || Boolean(topic.sub_strand_id && visibleSubStrandIds.has(topic.sub_strand_id)))
-          && (!selectedTopics.size || selectedTopics.has(topic.id))
-        ));
         return {
           strand: strand.strand_name,
           subStrands: visibleSubStrands.map((subStrand) => subStrand.sub_strand_name),
-          topics: visibleTopics.map((topic) => topic.topic_name),
+          topics: [],
         };
       });
-  }, [availableTopics, selectedStrands, selectedSubStrands, selectedTopics, strands]);
+  }, [selectedStrands, selectedSubStrands, strands]);
 
   useEffect(() => {
     setSelectedSubStrands((current) => retainVisibleIds(current, availableSubStrands.map((subStrand) => subStrand.id)));
   }, [availableSubStrands]);
-
-  useEffect(() => {
-    setSelectedTopics((current) => retainVisibleIds(current, availableTopics.map((topic) => topic.id)));
-  }, [availableTopics]);
 
   const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size);
   const selectedFormatDescription = formatOptions.find((option) => option.value === format)?.description || '';
@@ -184,18 +164,7 @@ export default function ExamGenerator({
     setPaper(null);
     setSelectedStrands(new Set());
     setSelectedSubStrands(new Set());
-    setSelectedTopics(new Set());
   }, [gradeLevel, subject]);
-
-  useEffect(() => {
-    if (!initialTopic || !topics.length) return;
-    const requested = initialTopic.toLowerCase().trim();
-    const match = topics.find((topic) => topic.topic_name.toLowerCase().trim() === requested);
-    if (!match) return;
-    if (match.strand_id) setSelectedStrands(new Set([match.strand_id]));
-    if (match.sub_strand_id) setSelectedSubStrands(new Set([match.sub_strand_id]));
-    setSelectedTopics(new Set([match.id]));
-  }, [initialTopic, topics]);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -329,7 +298,7 @@ export default function ExamGenerator({
         subject,
         strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
         subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
-        topics: availableTopics.filter((topic) => selectedTopics.has(topic.id)).map((topic) => topic.topic_name),
+        topics: [],
         curriculumScope,
         questionTypes: Array.from(selectedQuestionTypes),
         totalMarks,
@@ -425,7 +394,7 @@ export default function ExamGenerator({
         body: JSON.stringify({
           title: `${paper?.title || subject} — replacement question`, gradeLevel, subject,
           strands: question.strand ? [question.strand] : [], subStrands: question.sub_strand ? [question.sub_strand] : [],
-          topics: question.topic ? [question.topic] : [], curriculumScope: question.strand ? [{ strand: question.strand, subStrands: question.sub_strand ? [question.sub_strand] : [], topics: question.topic ? [question.topic] : [] }] : [], questionTypes: [question.question_type],
+          topics: [], curriculumScope: question.strand ? [{ strand: question.strand, subStrands: question.sub_strand ? [question.sub_strand] : [], topics: [] }] : [], questionTypes: [question.question_type],
           totalMarks: question.marks, durationMinutes: Math.max(10, Math.min(30, durationMinutes)), difficulty: question.difficulty,
           includeImages: Boolean(question.visual_spec), includeMarkingScheme: true, format, term, schoolName,
           blueprint: { total_marks: question.marks, sections: [{ id: `replacement-${Date.now()}`, question_type: question.question_type, count: 1, marks_per_question: question.marks, difficulty: question.difficulty, strand: question.strand, sub_strand: question.sub_strand, topic: question.topic }] },
@@ -588,15 +557,12 @@ export default function ExamGenerator({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
             <SelectionPanel title="1. Strands" count={selectedStrands.size} description="Choose one or more broad curriculum areas." onSelectAll={() => setSelectedStrands(new Set(strands.map((strand) => strand.id)))} onClear={() => setSelectedStrands(new Set())}>
               {strands.length ? strands.map((strand) => <SelectableRow key={strand.id} checked={selectedStrands.has(strand.id)} label={strand.strand_name} onChange={() => setSelectedStrands((current) => toggleValue(current, strand.id))} />) : <EmptySelection label="Select a grade and subject first." />}
             </SelectionPanel>
             <SelectionPanel title="2. Sub-strands" count={selectedSubStrands.size} description={selectedStrands.size ? 'Filtered by the selected strands.' : 'Select a strand first to unlock sub-strands.'} onSelectAll={() => setSelectedSubStrands(new Set(availableSubStrands.map((subStrand) => subStrand.id)))} onClear={() => setSelectedSubStrands(new Set())}>
               {availableSubStrands.length ? availableSubStrands.map((subStrand) => <SelectableRow key={subStrand.id} checked={selectedSubStrands.has(subStrand.id)} label={subStrand.sub_strand_name} onChange={() => setSelectedSubStrands((current) => toggleValue(current, subStrand.id))} />) : <EmptySelection label="Select one or more strands first." />}
-            </SelectionPanel>
-            <SelectionPanel title="3. Topics" count={selectedTopics.size} description={selectedSubStrands.size ? 'Filtered by the selected sub-strands.' : selectedStrands.size ? 'Filtered by the selected strands; choose sub-strands to narrow further.' : 'Select a strand first, or leave curriculum choices empty for an all-curriculum paper.'} onSelectAll={() => setSelectedTopics(new Set(availableTopics.map((topic) => topic.id)))} onClear={() => setSelectedTopics(new Set())}>
-              {availableTopics.length ? availableTopics.map((topic) => <SelectableRow key={topic.id} checked={selectedTopics.has(topic.id)} label={topic.topic_name} onChange={() => setSelectedTopics((current) => toggleValue(current, topic.id))} />) : <EmptySelection label={selectedSubStrands.size || selectedStrands.size ? 'No topics are available inside the selected curriculum scope.' : 'Select a strand first to unlock topics.'} />}
             </SelectionPanel>
           </div>
 

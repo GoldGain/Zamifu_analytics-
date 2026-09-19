@@ -52,7 +52,7 @@ export const JUNIOR_SCHOOL_SUBJECTS = [
   'Integrated Science',
   'Pre-Technical Studies',
   'Social Studies',
-  'Agriculture and Nutrition',
+  'Agriculture',
   'Creative Arts and Sports',
   'Religious Education',
 ] as const;
@@ -65,7 +65,7 @@ export const GRADE_NINE_SUBJECTS = [
   'Integrated Science',
   'Pre-Technical Studies',
   'Social Studies',
-  'Agriculture and Nutrition',
+  'Agriculture',
   'Creative Arts and Sports',
   'Religious Education',
   'Agriculture',
@@ -571,7 +571,6 @@ export function normalizeSubjectKey(subject: string): string {
   if (s.includes('kiswahili') || s.includes('swahili')) return 'Kiswahili';
   if (s.includes('integrated') || s.includes('science')) return 'Integrated Science';
   if (s.includes('social')) return 'Social Studies';
-  if (s.includes('agric') && s.includes('nutrition')) return 'Agriculture and Nutrition';
   if (s.includes('agric')) return 'Agriculture';
   if (s.includes('pre-tech') || s.includes('pre tech') || s.includes('technical')) return 'Pre-Technical Studies';
   if (s.includes('creative') || s.includes('sport') || s.includes('art')) return 'Creative Arts and Sports';
@@ -584,7 +583,7 @@ export function normalizeSubjectKey(subject: string): string {
 export function getStrandPacks(subject: string): KicdStrandPack[] {
   const key = normalizeSubjectKey(subject);
   const alias: Record<string, string> = {
-    'Agriculture and Nutrition': 'Agriculture and Nutrition',
+    'Agriculture and Nutrition': 'Agriculture',
     Agriculture: 'Agriculture',
     'Religious Education': 'Religious Education',
     'Christian Religious Education': 'Religious Education',
@@ -1034,8 +1033,8 @@ export function juniorExamSubjects(_grade?: string): string[] {
 
 /** Get strands/sub-strands for a junior subject, with Agriculture alias */
 export function getJuniorStrandPacks(subject: string): KicdStrandPack[] {
-  if (subject === 'Agriculture and Nutrition') {
-    return JUNIOR_STRAND_PACKS['Agriculture and Nutrition'] || JUNIOR_STRAND_PACKS.Agriculture || [];
+  if (subject === 'Agriculture' || subject === 'Agriculture and Nutrition') {
+    return JUNIOR_STRAND_PACKS.Agriculture || JUNIOR_STRAND_PACKS['Agriculture and Nutrition'] || [];
   }
   if (subject === 'Religious Education') {
     return JUNIOR_STRAND_PACKS['Religious Education'] || [];
