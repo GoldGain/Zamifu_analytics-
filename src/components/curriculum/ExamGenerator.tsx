@@ -22,7 +22,7 @@ import {
   type ExamPdfMode,
 } from '@/lib/exam-generator';
 import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
-import { filterSubStrands } from '@/lib/curriculum-selection';
+import { filterSubStrands, retainVisibleIds } from '@/lib/curriculum-selection';
 
 export interface CurriculumTopicOption {
   id: string;
