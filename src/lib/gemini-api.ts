@@ -133,6 +133,9 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
         ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
         : [];
       if (!candidateQuestions.length) throw new GeminiResponseError('Gemini did not provide any valid questions.');
+      if (request.format === 'kjsea' && candidateQuestions.some((question) => question.question_type === 'case_study' && (!question.sub_parts || question.sub_parts.length === 0))) {
+        throw new GeminiResponseError('Gemini omitted the required lettered sub-parts for one or more KJSEA structured questions.');
+      }
       if (candidateQuestions.some((question) => !hasCompleteTableVisual(question))) {
         throw new GeminiResponseError('Gemini returned an incomplete table visual. Retry with table_headers and every table_rows cell required by the question.');
       }
