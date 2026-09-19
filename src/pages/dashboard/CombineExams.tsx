@@ -121,8 +121,13 @@ export default function CombineExams() {
         if (updateError) throw updateError;
       }
       const payload = rows.map((row) => ({ school_id: user.schoolId, student_id: row.studentId, class_id: row.classId, subject_id: row.subjectId, teacher_id: row.teacherId || user.id, term_id: selectedTerm, academic_year: row.academicYear, curriculum: row.curriculum, marks: Number(row.marks.toFixed(2)), out_of: 100, percentage: Number(row.percentage.toFixed(2)), exam_id: examId, status: 'submitted' }));
-      const { error: resultError } = await supabaseUntyped.from('results').upsert(payload, { onConflict: 'student_id,subject_id,term_id,exam_id' });
-      if (resultError) throw resultError;
+      // Combined exams are rebuilt from the preview. Insert the rebuilt rows
+      // explicitly instead of using ON CONFLICT against partial unique indexes;
+      // PostgREST cannot reliably infer that conflict target across deployments.
+      for (let offset = 0; offset < payload.length; offset += 500) {
+        const { error: resultError } = await supabaseUntyped.from('results').insert(payload.slice(offset, offset + 500));
+        if (resultError) throw resultError;
+      }
       setSavedExamId(examId || null); toast.success(existing ? `Updated “${name}” with ${payload.length} rows.` : `Saved “${name}” with ${payload.length} rows.`);
     } catch (error: any) { toast.error(`Could not save combined exam: ${error.message || 'Unknown error'}`); } finally { setSaving(false); }
   };
