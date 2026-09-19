@@ -24,7 +24,7 @@ const request: ExamGenerationRequest = {
 };
 
 const validContent = JSON.stringify({
-  title: 'Grade 7 Mathematics Reliability Test',
+  title: 'AI Generated Replacement Title',
   instructions: ['Answer all questions.'],
   questions: [
     {
@@ -63,6 +63,7 @@ try {
   assert.equal(requestBodies[2]?.model, 'deepseek-v4-pro', 'the final recovery attempt should use the V4-Pro fallback');
   assert.deepEqual(requestBodies[0]?.response_format, { type: 'json_object' }, 'the first attempt should use DeepSeek JSON mode');
   assert.equal(paper.questions.length, 1, 'the recovered response should normalize one valid question');
+  assert.equal(paper.title, request.title, 'the requester-supplied title must override the provider title');
   assert.equal(paper.questions[0]?.question_text, 'Which integer is greatest: -3, 0, or 2?');
   assert.deepEqual(paper.questions[0]?.options, ['-3', '0', '2', '-5']);
   console.log('PASS: exam generation retries empty/malformed responses and extracts structured content.');

@@ -56,7 +56,9 @@ function buildPaper(request: ExamGenerationRequest, parsed: Record<string, unkno
   const questions = blueprintAlignedQuestions.slice(0, targetQuestionLimit).map((question, index) => ({ ...question, question_number: index + 1 }));
   const computedMarks = questions.reduce((sum, question) => sum + question.marks, 0);
   return {
-    title: toSafeString(parsed.title, makeExamTitle(request)).slice(0, 255),
+    // The title is an authoring choice made by the teacher/admin. The provider
+    // may suggest one only when the requester left the field blank.
+    title: makeExamTitle(request).slice(0, 255),
     school_name: request.schoolName || undefined,
     grade_level: request.gradeLevel,
     subject: request.subject,

@@ -329,6 +329,19 @@ async function handleExamGeneration(
     jsonError(response, 403, accessError);
     return;
   }
+  // Never trust a client-supplied school name for a persisted paper. Resolve it
+  // from the authenticated school so PDFs and saved papers cannot fall back to
+  // product branding or be renamed by a stale client bundle.
+  const { data: school, error: schoolError } = await supabase
+    .from('schools')
+    .select('name')
+    .eq('id', profile.school_id)
+    .maybeSingle();
+  if (schoolError || !school?.name?.trim()) {
+    jsonError(response, 503, 'Your school name could not be loaded. Refresh the page and try again.');
+    return;
+  }
+  parsedRequest = { ...parsedRequest, schoolName: school.name.trim().slice(0, 255) };
   const rateKey = `${user.id}:${request.socket?.remoteAddress || 'unknown'}`;
   if (!checkRateLimit(rateKey)) {
     jsonError(response, 429, 'Generation limit reached. Please wait a few minutes before trying again.');
@@ -369,15 +382,21 @@ async function handleExamGeneration(
         ? await generateExamWithGemini(generationRequest, vetted.context)
         : await generateExamWithDeepSeek(generationRequest, vetted.context);
     } catch (error) {
-      // Gemini is the preferred provider when configured, but a transient
-      // quota, model, or structured-output failure must not break the already
-      // verified DeepSeek route. Explicit Gemini configuration failures remain
-      // actionable instead of being silently masked.
-      if (!useGemini || error instanceof GeminiConfigurationError) throw error;
-      console.warn('[exam-gen] Gemini primary failed; using DeepSeek fallback:', error instanceof Error ? error.message.slice(0, 240) : 'unknown failure');
-      actualProvider = 'deepseek';
-      actualModel = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-      draftPaper = await generateExamWithDeepSeek(generationRequest, vetted.context);
+      // Either provider may fail transiently (quota, timeout, malformed JSON,
+      // or a provider-side model error). Try the other configured route before
+      // returning a failure to the author.
+      const canFallback = useGemini
+        ? Boolean(process.env.DEEPSEEK_API_KEY)
+        : Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+      if (!canFallback || error instanceof GeminiConfigurationError || error instanceof DeepSeekConfigurationError) throw error;
+      console.warn(`[exam-gen] ${primaryProvider} primary failed; using fallback provider:`, error instanceof Error ? error.message.slice(0, 240) : 'unknown failure');
+      actualProvider = useGemini ? 'deepseek' : 'gemini';
+      actualModel = useGemini
+        ? (process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || 'deepseek-chat')
+        : (process.env.GEMINI_MODEL || 'gemini-3.7-flash');
+      draftPaper = useGemini
+        ? await generateExamWithDeepSeek(generationRequest, vetted.context)
+        : await generateExamWithGemini(generationRequest, vetted.context);
       if (generationJobId) {
         await supabase.from('exam_generation_jobs').update({ provider: actualProvider, model: actualModel }).eq('id', generationJobId);
       }

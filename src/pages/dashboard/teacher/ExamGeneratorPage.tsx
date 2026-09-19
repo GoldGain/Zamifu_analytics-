@@ -20,7 +20,7 @@ interface SubStrand { id: string; sub_strand_name: string; sub_strand_order: num
 interface Topic { id: string; topic_name: string; topic_description: string; learning_objectives: string[]; topic_order: number; }
 
 export default function ExamGeneratorPage() {
-  const { user } = useAuth();
+  const { user, schoolData } = useAuth();
   const [searchParams] = useSearchParams();
   const requestedGrade = searchParams.get('grade') || '';
   const requestedSubject = searchParams.get('subject') || '';
@@ -37,7 +37,7 @@ export default function ExamGeneratorPage() {
 
   const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || '';
   const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
-  const schoolName = 'Zamifu Analytics School';
+  const schoolName = schoolData?.name?.trim() || '';
   const backPath = user?.role === 'school_admin' ? '/school-admin' : '/teacher/curriculum';
 
   // Load grades on mount
