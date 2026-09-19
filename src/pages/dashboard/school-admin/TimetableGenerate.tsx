@@ -3912,6 +3912,93 @@ export default function TimetableGenerate() {
           }
         }
 
+        // FINAL EXACT-COUNT SAFETY NET — the weighted solver can legitimately
+        // reject every strict-window permutation when shared teachers and
+        // subject anchors compete. Before failing generation, rebalance only
+        // ordinary single cells from an over-scheduled subject into a deficit
+        // subject. Double-lesson cells remain atomic and are never rewritten.
+        // This pass keeps the hard structural rules that make the timetable
+        // usable: one subject per class/day, teacher single-occupancy, and
+        // Mathematics/Science adjacency protection.
+        {
+          const countLessonEntries = () => {
+            const counts = new Map<string, number>();
+            allEntries
+              .filter((entry: any) => entry.level_group === levelKey && lessonSlots.some((slot: any) => String(slot.id) === String(entry.time_slot_id)))
+              .forEach((entry: any) => {
+                const key = `${entry.class_id}:${entry.subject_id}`;
+                counts.set(key, (counts.get(key) || 0) + 1);
+              });
+            return counts;
+          };
+          const canReassignSingleCell = (source: any, target: { context: AssignmentPlacementContext; subjectId: string }, strictWindow: boolean) => {
+            if (source.entry_type !== 'lesson') return false;
+            const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(source.time_slot_id));
+            if (!slot) return false;
+            const day = Number(source.day_of_week);
+            const classId = String(source.class_id);
+            if (strictWindow && !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(slot))) return false;
+            if (allEntries.some((entry: any) => entry !== source
+              && entry.level_group === levelKey
+              && String(entry.class_id) === classId
+              && Number(entry.day_of_week) === day
+              && String(entry.subject_id) === target.subjectId)) return false;
+            if (target.context.assignment.teacher_id && allEntries.some((entry: any) => entry !== source
+              && entry.level_group === levelKey
+              && String(entry.teacher_id || '') === String(target.context.assignment.teacher_id)
+              && Number(entry.day_of_week) === day
+              && String(entry.time_slot_id) === String(slot.id))) return false;
+            const ordered = lessonSlots.slice().sort((a: any, b: any) => Number(a.slot_order) - Number(b.slot_order));
+            const index = ordered.findIndex((candidate: any) => String(candidate.id) === String(slot.id));
+            const previous = index > 0 ? ordered[index - 1] : null;
+            const next = index >= 0 && index < ordered.length - 1 ? ordered[index + 1] : null;
+            const previousSubject = previous
+              ? allEntries.find((entry: any) => entry !== source
+                && String(entry.class_id) === classId
+                && Number(entry.day_of_week) === day
+                && String(entry.time_slot_id) === String(previous.id))
+              : null;
+            const nextSubject = next
+              ? allEntries.find((entry: any) => entry !== source
+                && String(entry.class_id) === classId
+                && Number(entry.day_of_week) === day
+                && String(entry.time_slot_id) === String(next.id))
+              : null;
+            if (violatesMathScienceSequence(target.context.subjectName, generatedSubjectNames.get(String(previousSubject?.subject_id)) || '')
+              || violatesMathScienceSequence(target.context.subjectName, generatedSubjectNames.get(String(nextSubject?.subject_id)) || '')) return false;
+            return true;
+          };
+
+          for (let pass = 0; pass < 240; pass += 1) {
+            const counts = countLessonEntries();
+            const deficit = [...targetBySubject.entries()].find(([key, target]) => (counts.get(key) || 0) < target.target);
+            if (!deficit) break;
+            const [targetKey, target] = deficit;
+            const classId = String(target.context.cls.id);
+            const sources = allEntries
+              .filter((entry: any) => entry.level_group === levelKey && String(entry.class_id) === classId && entry.entry_type === 'lesson')
+              .filter((entry: any) => {
+                const sourceKey = `${entry.class_id}:${entry.subject_id}`;
+                return String(entry.subject_id) !== String(target.context.assignment.subject_id)
+                  && (counts.get(sourceKey) || 0) > (targetBySubject.get(sourceKey)?.target ?? 0);
+              })
+              .sort((a: any, b: any) => Number(b.day_of_week) - Number(a.day_of_week) || Number(b.time_slot_id) - Number(a.time_slot_id));
+            let repaired = false;
+            for (const strictWindow of [true, false]) {
+              if (repaired) break;
+              for (const source of sources) {
+                if (!canReassignSingleCell(source, { context: target.context, subjectId: String(target.context.assignment.subject_id) }, strictWindow)) continue;
+                source.subject_id = target.context.assignment.subject_id;
+                source.teacher_id = target.context.assignment.teacher_id;
+                source.entry_type = 'lesson';
+                repaired = true;
+                break;
+              }
+            }
+            if (!repaired) break;
+          }
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
