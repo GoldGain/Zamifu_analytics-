@@ -3702,6 +3702,7 @@ export default function TimetableGenerate() {
                 classes: classesToProcess,
                 levelGroup: levelKey,
                 requireComplete: true,
+                allowLessonCountMismatch: true,
                 requiredLessonCounts: new Map(assignments
                   .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
                   .map((assignment: any) => [
@@ -3777,6 +3778,7 @@ export default function TimetableGenerate() {
                   classes: classesToProcess,
                   levelGroup: levelKey,
                   requireComplete: true,
+                  allowLessonCountMismatch: true,
                   requiredLessonCounts: new Map(assignments
                     .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
                     .map((assignment: any) => [
