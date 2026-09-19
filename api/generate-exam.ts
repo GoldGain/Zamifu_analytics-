@@ -313,7 +313,7 @@ async function handleExamGeneration(
     jsonError(response, 400, 'Invalid exam-generation request.');
     return;
   }
-  const parsedRequest: ExamGenerationRequest = ['standard30', 'kpsea', 'kjsea'].includes(rawParsedRequest.format)
+  let parsedRequest: ExamGenerationRequest = ['standard30', 'kpsea', 'kjsea'].includes(rawParsedRequest.format)
     ? { ...rawParsedRequest, blueprint: makeFormatBlueprint(rawParsedRequest.format, rawParsedRequest.totalMarks, rawParsedRequest.difficulty) }
     : rawParsedRequest.blueprint
     ? rawParsedRequest
@@ -321,6 +321,9 @@ async function handleExamGeneration(
         ...rawParsedRequest,
         blueprint: makeBalancedBlueprint(rawParsedRequest.questionTypes, rawParsedRequest.totalMarks, rawParsedRequest.difficulty),
       };
+  if (parsedRequest.format === 'standard30' || parsedRequest.format === 'kjsea') {
+    parsedRequest = { ...parsedRequest, durationMinutes: parsedRequest.format === 'kjsea' ? 150 : 45 };
+  }
   const accessError = assertGenerationAccess(profile);
   if (accessError) {
     jsonError(response, 403, accessError);
