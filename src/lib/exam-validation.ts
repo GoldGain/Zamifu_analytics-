@@ -1,5 +1,14 @@
 import type { ExamBlueprint, ExamGenerationRequest, GeneratedExamQuestion } from './exam-schema';
 import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
+import {
+  buildCoveragePlanFromRequest,
+  isMathsLikeSubject,
+  missingAnswerIndices,
+  normalizePaperVariant,
+  paperVariantLabel,
+  supportsTwoPapers,
+  uncoveredStrands,
+} from './exam-construction.js';
 
 export type ExamValidationSeverity = 'critical' | 'warning' | 'info';
 
@@ -80,6 +89,41 @@ export function validateGeneratedExam(
     }
     if (structured.length === 8 && structured.some((question) => question.question_type !== 'case_study')) {
       issues.push({ code: 'KJSEA_STRUCTURED_LAYOUT', severity: 'critical', message: 'KJSEA papers must end with 8 structured questions.' });
+    }
+  }
+  if (supportsTwoPapers(request.subject)) {
+    const variant = normalizePaperVariant(request.paperVariant);
+    if (variant !== 'single') {
+      issues.push({ code: 'PAPER_VARIANT', severity: 'info', message: `Generated as ${paperVariantLabel(variant)}.` });
+    }
+  }
+  missingAnswerIndices(questions).slice(0, 15).forEach((index) => {
+    issues.push({
+      code: 'ANSWER_MISSING',
+      severity: 'critical',
+      message: `Question ${index + 1} has no actual answer: its marking scheme only gives marking instructions. Provide the correct answer (and the expected points for structured questions).`,
+      questionIndex: index,
+    });
+  });
+  const coveragePlan = buildCoveragePlanFromRequest(request);
+  if (coveragePlan.filter((entry) => entry.questions > 0).length > 1) {
+    const uncovered = uncoveredStrands(coveragePlan, questions);
+    if (uncovered.length) {
+      issues.push({
+        code: 'STRAND_COVERAGE',
+        severity: 'warning',
+        message: `These selected strands received no question: ${uncovered.join(', ')}. Add questions from them or deselect them.`,
+      });
+    }
+  }
+  if (isMathsLikeSubject(request.subject)) {
+    const offenders = questions.filter((question) => /[\u00b7\u2022\u2219\u22c5*]/.test(question.question_text || '')).length;
+    if (offenders) {
+      issues.push({
+        code: 'MATH_NOTATION',
+        severity: 'warning',
+        message: `${offenders} question(s) still show a dot or asterisk instead of the multiplication sign \u00d7.`,
+      });
     }
   }
   if (request.includeImages && questions.length > 0 && !questions.some((question) => question.visual_spec)) {
