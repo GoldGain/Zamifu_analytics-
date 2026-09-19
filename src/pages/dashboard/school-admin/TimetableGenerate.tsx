@@ -3999,6 +3999,85 @@ export default function TimetableGenerate() {
           }
         }
 
+        // FINAL COUNT REPAIR — all earlier balancing passes are optimized for
+        // normal placement order. A shared-teacher graph can still leave a
+        // surplus ordinary cell and a deficit ordinary subject in the same
+        // class. Try every surplus cell as a candidate replacement, validating
+        // the complete structural timetable after each tentative mutation.
+        // This is deliberately the last repair before the hard assertion:
+        // invalid windows, teacher collisions, duplicate subject days, and
+        // Math/Science adjacency are never accepted.
+        {
+          const countFinalLessons = () => {
+            const counts = new Map<string, number>();
+            allEntries
+              .filter((entry: any) => entry.level_group === levelKey && lessonSlots.some((slot: any) => String(slot.id) === String(entry.time_slot_id)))
+              .forEach((entry: any) => {
+                const key = `${entry.class_id}:${entry.subject_id}`;
+                counts.set(key, (counts.get(key) || 0) + 1);
+              });
+            return counts;
+          };
+          const structuralIssuesAfterMutation = () => validateTimetableRules({
+            entries: allEntries,
+            slots: createdSlots,
+            subjectNames: generatedSubjectNames,
+            classes: classesToProcess,
+            levelGroup: levelKey,
+            requireComplete: true,
+            allowLessonCountMismatch: true,
+            requireReligiousPairing: true,
+            allowMathScienceAdjacency: !mathScienceRepairSucceeded,
+          }).filter((issue: any) => issue.rule !== 'exact-lesson-count');
+
+          for (let repairPass = 0; repairPass < 240; repairPass += 1) {
+            const counts = countFinalLessons();
+            const deficit = [...targetBySubject.entries()].find(([key, target]) => (counts.get(key) || 0) < target.target);
+            if (!deficit) break;
+            const [targetKey, target] = deficit;
+            const classId = String(target.context.cls.id);
+            const targetSubjectId = String(target.context.assignment.subject_id);
+            const surplus = allEntries
+              .filter((entry: any) => entry.level_group === levelKey && String(entry.class_id) === classId && entry.entry_type === 'lesson')
+              .filter((entry: any) => {
+                const sourceKey = `${entry.class_id}:${entry.subject_id}`;
+                return String(entry.subject_id) !== targetSubjectId
+                  && (counts.get(sourceKey) || 0) > (targetBySubject.get(sourceKey)?.target ?? 0);
+              });
+            let repaired = false;
+            for (const source of surplus) {
+              const slot = lessonSlots.find((candidate: any) => String(candidate.id) === String(source.time_slot_id));
+              if (!slot || !strictSubjectAllowsLesson(target.context.subjectName, lessonNumberOf(slot))) continue;
+              if (allEntries.some((entry: any) => entry !== source
+                && entry.level_group === levelKey
+                && String(entry.class_id) === classId
+                && Number(entry.day_of_week) === Number(source.day_of_week)
+                && String(entry.subject_id) === targetSubjectId)) continue;
+              if (target.context.assignment.teacher_id && allEntries.some((entry: any) => entry !== source
+                && entry.level_group === levelKey
+                && String(entry.teacher_id || '') === String(target.context.assignment.teacher_id)
+                && Number(entry.day_of_week) === Number(source.day_of_week)
+                && String(entry.time_slot_id) === String(source.time_slot_id))) continue;
+              const original = {
+                subject_id: source.subject_id,
+                teacher_id: source.teacher_id,
+                entry_type: source.entry_type,
+              };
+              source.subject_id = targetSubjectId;
+              source.teacher_id = target.context.assignment.teacher_id;
+              source.entry_type = 'lesson';
+              if (structuralIssuesAfterMutation().length === 0) {
+                repaired = true;
+                break;
+              }
+              source.subject_id = original.subject_id;
+              source.teacher_id = original.teacher_id;
+              source.entry_type = original.entry_type;
+            }
+            if (!repaired) break;
+          }
+        }
+
         assertTimetableRules({
           entries: allEntries,
           slots: createdSlots,
