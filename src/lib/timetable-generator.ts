@@ -157,20 +157,18 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 /**
  * Final subject placement gate from the timetable requirements.
  *
- * Mathematics and English prioritize Lessons 1–4 and may use Lessons 1–6,
- * Integrated Science and Pre-Technical Studies may use Lessons 1–7,
- * Kiswahili may use Lessons 1–8, and other learning areas may use any lesson.
- * The extra fallback column is intentional: it gives shared teachers enough
- * capacity across parallel streams to satisfy exact weekly lesson counts.
+ * Mathematics, English, and Integrated Science may use Lessons 1–5.
+ * Pre-Technical Studies may use Lessons 1–6, Kiswahili may use Lessons 1–7,
+ * and other learning areas may use any lesson.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
   lessonNumber: number,
 ): boolean {
   const fam = classifySubject(subjectName);
-  if (fam === 'math' || fam === 'english') return lessonNumber >= 1 && lessonNumber <= 6;
-  if (fam === 'science' || fam === 'pretech') return lessonNumber >= 1 && lessonNumber <= 7;
-  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 8;
+  if (fam === 'math' || fam === 'english' || fam === 'science') return lessonNumber >= 1 && lessonNumber <= 5;
+  if (fam === 'pretech') return lessonNumber >= 1 && lessonNumber <= 6;
+  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
   return lessonNumber >= 1;
 }
 

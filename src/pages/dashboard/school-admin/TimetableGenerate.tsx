@@ -258,9 +258,9 @@ function buildPerfectTimetableEntries(opts: {
 
   const allowsLesson = (name: string, ln: number): boolean => {
     const f = classifySubject(name);
-    if (f === 'math' || f === 'english') return ln >= 1 && ln <= 6;
-    if (f === 'science' || f === 'pretech') return ln >= 1 && ln <= 7;
-    if (f === 'kiswahili') return ln >= 1 && ln <= 8;
+    if (f === 'math' || f === 'english' || f === 'science') return ln >= 1 && ln <= 5;
+    if (f === 'pretech') return ln >= 1 && ln <= 6;
+    if (f === 'kiswahili') return ln >= 1 && ln <= 7;
     return ln >= 1;
   };
   const adjOk = (a: string, b: string): boolean => {
