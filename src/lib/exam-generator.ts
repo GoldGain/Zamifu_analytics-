@@ -135,10 +135,9 @@ function addPageHeader(doc: jsPDF, paper: BrandedPaper, continuation = false, su
   doc.text((paper.school_name || 'SCHOOL ASSESSMENT').toUpperCase(), 14, 9);
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.text('ZAMIFU ANALYTICS ASSESSMENT STUDIO', 196, 9, { align: 'right' });
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text(continuation ? `${paper.title.toUpperCase()} — CONTINUED` : paper.title.toUpperCase(), 105, 18, { align: 'center' });
+  doc.text(continuation ? `${paper.title} — CONTINUED` : paper.title, 105, 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.text(`${formatLabel(paper.format)}  |  ${paper.subject.toUpperCase()}  |  GRADE ${paper.grade_level}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, 25, { align: 'center' });
@@ -262,14 +261,13 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   doc.text((paper.school_name || 'SCHOOL ASSESSMENT').toUpperCase(), 105, 12, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.text('ZAMIFU ANALYTICS ASSESSMENT STUDIO', 105, 17, { align: 'center' });
   doc.setDrawColor(17, 24, 39);
   doc.setLineWidth(0.5);
   doc.line(14, 21, 196, 21);
   let y = addCandidateTable(doc, 27);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text(paper.title.toUpperCase(), 105, y, { align: 'center' });
+  doc.text(paper.title, 105, y, { align: 'center' });
   y += 6;
   doc.setFontSize(9);
   doc.text(formatLabel(paper.format), 105, y, { align: 'center' });
