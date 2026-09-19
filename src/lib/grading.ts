@@ -334,33 +334,31 @@ export function generateSubjectSpecificComment(
   return comment;
 }
 
-// ── Required Learning Areas (fixed ranking denominator) ────────────────────
-// Ranking must divide a learner's total score by the FIXED number of learning
-// areas required for their level — NOT by how many subjects they happen to
-// have marks in. This stops learners with only a couple of uploaded subjects
-// from ranking #1 on an inflated mean.
+// ── Required Learning Areas (configured denominator) ───────────────────────
+// Junior School is the one deliberate exception: IRE and CRE are optional
+// alternatives, so its reported denominator is always nine learning areas.
+// Every other level must use the school's configured area count. Callers should
+// pass the count they derive from the class/assessment configuration; returning
+// null when it is unavailable prevents this helper from inventing a national
+// default such as 500 marks.
 export function getRequiredLearningAreas(classData?: {
   curriculum?: Curriculum | string | null;
   grade_level?: number | string | null;
   level?: number | string | null;
   name?: string | null;
-}): number | null {
+}, configuredCount?: number | null): number | null {
   const rawLevel = classData?.grade_level ?? classData?.level;
   const grade = typeof rawLevel === 'number'
     ? rawLevel
     : parseInt(String(rawLevel ?? '').replace(/[^0-9-]/g, ''), 10);
 
-  if (Number.isFinite(grade)) {
-    if (grade >= 10 && grade <= 12) return 7; // Senior School
-    if (grade >= 7 && grade <= 9) return 9;   // Junior School
-    if (grade >= 4 && grade <= 6) return 7;   // Upper Primary
-    if (grade >= 1 && grade <= 3) return 5;   // Lower Primary
-  }
+  if (Number.isFinite(grade) && grade >= 7 && grade <= 9) return 9;
 
   const name = String(classData?.name || '').toLowerCase();
-  if (/senior|grade\s*1[012]/.test(name)) return 7;
   if (/junior|jss|grade\s*[789]/.test(name)) return 9;
-  return null; // playgroup / PP / unknown: keep old divide-by-count behaviour
+  if (Number.isFinite(configuredCount) && Number(configuredCount) > 0) return Math.floor(Number(configuredCount));
+  if (/senior|grade\s*1[012]/.test(name)) return null;
+  return null;
 }
 
 // ── Learning Area Performance status band ────────────────────────────────────

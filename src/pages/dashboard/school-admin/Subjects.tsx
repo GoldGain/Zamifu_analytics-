@@ -43,7 +43,8 @@ const PRIMARY_LEARNING_AREAS: { name: string; category: CategoryType }[] = [
   { name: 'Mathematics',                   category: 'Mathematics' },
   { name: 'Science and Technology',        category: 'Sciences'    },
   { name: 'Social Studies',                category: 'Humanities'  },
-  { name: 'Religious Education',           category: 'Humanities'  },
+  { name: 'CRE',                            category: 'Humanities'  },
+  { name: 'IRE',                            category: 'Humanities'  },
   { name: 'Creative Arts',                 category: 'Creative'    },
   { name: 'Physical and Health Education', category: 'Creative'    },
   { name: 'Indigenous Languages',          category: 'Languages'   },
@@ -61,7 +62,8 @@ const JUNIOR_LEARNING_AREAS: { name: string; category: CategoryType }[] = [
   { name: 'Agriculture',                   category: 'Sciences'    },
   { name: 'Creative Arts',                 category: 'Creative'    },
   { name: 'Physical Education',            category: 'Creative'    },
-  { name: 'Religious Education',           category: 'Humanities'  },
+  { name: 'CRE',                            category: 'Humanities'  },
+  { name: 'IRE',                            category: 'Humanities'  },
   { name: 'Community Service Learning',    category: 'Life Skills' },
 ];
 
@@ -80,7 +82,8 @@ const SENIOR_LEARNING_AREAS: { name: string; category: CategoryType }[] = [
   { name: 'Computer Studies',              category: 'Technical'   },
   { name: 'Home Science',                  category: 'Technical'   },
   { name: 'Physical Education',            category: 'Creative'    },
-  { name: 'Religious Education',           category: 'Humanities'  },
+  { name: 'CRE',                            category: 'Humanities'  },
+  { name: 'IRE',                            category: 'Humanities'  },
   { name: 'Community Service Learning',    category: 'Life Skills' },
 ];
 

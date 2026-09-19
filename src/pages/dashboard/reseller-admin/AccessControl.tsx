@@ -8,6 +8,7 @@ import { getResellerForUser } from '@/lib/reseller';
 export default function ResellerAccessControl() {
   const { user } = useAuth();
   const [schools, setSchools] = useState<any[]>([]);
+  const [expiredLockedSchools, setExpiredLockedSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -16,12 +17,17 @@ export default function ResellerAccessControl() {
     setLoading(true);
     const reseller = await getResellerForUser(user.id);
     if (reseller) {
-      const { data } = await supabase
+      const [{ data }, { data: expiredData, error: expiredError }] = await Promise.all([
+        supabase
         .from('schools')
         .select('id, name, code, admin_portal_locked, dos_portal_locked, lock_reason, locked_at, locked_by_role')
         .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
-        .order('name');
+        .order('name'),
+        supabase.rpc('get_reseller_expired_locked_schools'),
+      ]);
       setSchools(data || []);
+      if (expiredError) console.warn('Expired-school unlock list unavailable:', expiredError.message);
+      setExpiredLockedSchools(expiredData || []);
     }
     setLoading(false);
   };
@@ -59,16 +65,7 @@ export default function ResellerAccessControl() {
   const unlockAll = async (school: any) => {
     setBusyId(school.id);
     try {
-      const { error } = await (supabase as any)
-        .from('schools')
-        .update({
-          admin_portal_locked: false,
-          dos_portal_locked: false,
-          lock_reason: null,
-          locked_at: null,
-          locked_by_role: null,
-        })
-        .eq('id', school.id);
+      const { error } = await supabase.rpc('unlock_reseller_school', { p_school_id: school.id });
       if (error) throw error;
       toast.success('All portals unlocked');
       load();
@@ -98,6 +95,38 @@ export default function ResellerAccessControl() {
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-900">
         When locked, the affected user sees a clear lock screen with your reason. Teachers, students, and parents are not blocked by these controls.
       </div>
+
+      <section className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-4 bg-amber-50 border-b border-amber-100 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-amber-950 flex items-center gap-2"><Unlock className="w-4 h-4" /> Unlock School</h2>
+            <p className="text-xs text-amber-800 mt-1">Expired, currently locked schools visible to this reseller are listed here.</p>
+          </div>
+          <span className="text-xs font-semibold rounded-full bg-amber-100 text-amber-900 px-2.5 py-1">{expiredLockedSchools.length} locked</span>
+        </div>
+        {loading ? <div className="p-6 text-sm text-gray-500">Loading locked schools…</div> : expiredLockedSchools.length === 0 ? (
+          <div className="p-6 text-sm text-gray-500">No expired locked schools require unlocking.</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {expiredLockedSchools.map((school) => (
+              <div key={school.id} className="px-4 py-3 flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium text-gray-900">{school.name}</p>
+                  <p className="text-xs text-gray-500">{school.code || 'No code'} · Trial ended {school.trial_expires_at ? new Date(school.trial_expires_at).toLocaleDateString() : 'previously'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => unlockAll(school)}
+                  disabled={busyId === school.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  <Unlock className="w-3.5 h-3.5" /> {busyId === school.id ? 'Unlocking…' : 'Unlock School'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
