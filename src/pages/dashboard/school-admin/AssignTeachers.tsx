@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase/client';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Trash2, AlertCircle, CheckCircle, Users, BookOpen, Calendar, Save } from 'lucide-react';
+import { defaultLessonsPerWeek, fetchLessonDefaults, type LessonDefault } from '../../../lib/kicd-defaults';
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 type PriorityBand = 'auto' | 'none' | 'early_morning' | 'mid_morning' | 'late_morning' | 'afternoon';
 
@@ -116,9 +117,23 @@ export default function AssignTeachers() {
   const [savingDoubleLesson, setSavingDoubleLesson] = useState(false);
   const [levelConfigs, setLevelConfigs] = useState<Record<string, { after_lunch_lessons?: number; lessons_per_day?: number }>>({});
 
+  // KICD lesson-allocation defaults. These only pre-fill the weekly count for the
+  // selected grade and learning area so an admin does not have to type it; the
+  // field stays fully editable and no timetable logic changes.
+  const [lessonDefaults, setLessonDefaults] = useState<LessonDefault[]>([]);
+
   useEffect(() => {
     if (user?.schoolId) fetchData();
   }, [user?.schoolId]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const defaults = await fetchLessonDefaults(supabase);
+      if (alive) setLessonDefaults(defaults);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -213,6 +228,17 @@ export default function AssignTeachers() {
   const gradeByClassId = (classId: string): number | null => {
     const cls = classes.find((c) => c.id === classId);
     return cls ? Number(cls.level) : null;
+  };
+
+  /**
+   * Pre-fill the weekly lesson count from the KICD lesson allocation for the
+   * selected grade and learning area. Falls back to the current value when the
+   * learning area has no KICD allocation on record. Admin overrides always win.
+   */
+  const prefillLessonsPerWeek = (subjectId: string, classId: string, fallback: number): number => {
+    const subject = subjects.find((s) => s.id === subjectId);
+    const kicdDefault = defaultLessonsPerWeek(lessonDefaults, subject?.name, gradeByClassId(classId));
+    return kicdDefault ?? fallback;
   };
 
   const effectiveBand = (assignment: { priority_band: PriorityBand; subject_name: string }): PriorityBand | null => {
@@ -560,7 +586,14 @@ export default function AssignTeachers() {
                 <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Class</label>
                 <select
                   value={formData.class_id}
-                  onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
+                  onChange={(e) => {
+                    const classId = e.target.value;
+                    setFormData((prev) => ({
+                      ...prev,
+                      class_id: classId,
+                      lessons_per_week: prefillLessonsPerWeek(prev.subject_id, classId, prev.lessons_per_week),
+                    }));
+                  }}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
@@ -577,11 +610,12 @@ export default function AssignTeachers() {
                   value={formData.subject_id}
                   onChange={(e) => {
                     const subjectId = e.target.value;
-                    setFormData({
-                      ...formData,
+                    setFormData((prev) => ({
+                      ...prev,
                       subject_id: subjectId,
-                      priority_band: formData.priority_band,
-                    });
+                      // KICD pre-fill for this learning area at the chosen class's grade.
+                      lessons_per_week: prefillLessonsPerWeek(subjectId, prev.class_id, prev.lessons_per_week),
+                    }));
                   }}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -601,6 +635,9 @@ export default function AssignTeachers() {
                   onChange={(e) => setFormData({ ...formData, lessons_per_week: parseInt(e.target.value) })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Pre-filled from the KICD lesson allocation for this grade. You can change it.
+                </p>
               </div>
 
               
