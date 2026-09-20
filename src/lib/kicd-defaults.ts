@@ -68,9 +68,22 @@ const SUBJECT_ALIASES: Record<string, string> = {
   'hindu religious education': 'hindu religious education',
 };
 
+const CANONICAL_SUBJECT_NAMES = Array.from(new Set(Object.values(SUBJECT_ALIASES)));
+
+/**
+ * Resolve a school's spelling of a learning area to the canonical KICD name.
+ * Exact aliases win; otherwise fall back to a loose token match so partial
+ * spellings such as "Pre-Technical" or "Kiswahili/KSL" still resolve.
+ */
 export const canonicalSubjectName = (value: unknown): string => {
   const normalized = normalizeName(value);
-  return SUBJECT_ALIASES[normalized] ?? normalized;
+  if (!normalized) return '';
+  const aliased = SUBJECT_ALIASES[normalized];
+  if (aliased) return aliased;
+  const loose = CANONICAL_SUBJECT_NAMES.find(
+    (candidate) => candidate === normalized || candidate.startsWith(`${normalized} `) || normalized.startsWith(`${candidate} `),
+  );
+  return loose ?? normalized;
 };
 
 export const gradeNumberOf = (grade: unknown): number | null => {
