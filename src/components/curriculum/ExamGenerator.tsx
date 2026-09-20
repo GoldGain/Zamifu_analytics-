@@ -34,6 +34,7 @@ import {
   defaultExamMarks,
   fetchPaperDefaults,
   type PaperDefault,
+  defaultExamDurationStrict,
 } from '@/lib/kicd-defaults';
 
 type UiPaperVariant = 'single' | 'paper1' | 'paper2' | 'both';
@@ -115,6 +116,10 @@ export default function ExamGenerator({
   const [format, setFormat] = useState<ExamFormat>('standard30');
   const [totalMarks, setTotalMarks] = useState(30);
   const [durationMinutes, setDurationMinutes] = useState(45);
+  // Where the current Duration came from: 'kicd' when it is the published KNEC
+  // time for this subject and paper, 'standard' for the internal 30-mark
+  // default, and 'manual' once an admin chooses their own value.
+  const [durationSource, setDurationSource] = useState<'kicd' | 'standard' | 'manual'>('standard');
   const [difficulty, setDifficulty] = useState<Difficulty>('mixed');
   const [selectedStrands, setSelectedStrands] = useState<Set<string>>(new Set());
   const [selectedSubStrands, setSelectedSubStrands] = useState<Set<string>>(new Set());
@@ -203,13 +208,21 @@ export default function ExamGenerator({
     return () => { alive = false; };
   }, []);
 
-  // KJSEA papers have a fixed time set by KNEC, so pre-fill from the defaults.
-  // Internal 30-mark assessments are left on their existing default because
-  // neither the designs nor the KJSEA timetable publish a time for them.
+  // Published KNEC times pre-fill the paper time. For an internal 30-mark
+  // assessment only a time published for that exact grade is used, so a KJSEA
+  // full-paper time is never carried onto a shorter internal paper.
   useEffect(() => {
-    if (format !== 'kjsea') return;
-    const kicdMinutes = defaultExamDuration(paperDefaults, subject, gradeLevel, paperVariant);
-    if (kicdMinutes) setDurationMinutes(kicdMinutes);
+    const gradeExact = defaultExamDurationStrict(paperDefaults, subject, gradeLevel, paperVariant);
+    const fallbackMinutes = format === 'kjsea'
+      ? defaultExamDuration(paperDefaults, subject, gradeLevel, paperVariant)
+      : null;
+    const kicdMinutes = gradeExact ?? fallbackMinutes;
+    if (kicdMinutes) {
+      setDurationMinutes(kicdMinutes);
+      setDurationSource('kicd');
+    } else {
+      setDurationSource('standard');
+    }
     const kicdMarks = defaultExamMarks(paperDefaults, subject, gradeLevel, paperVariant);
     if (kicdMarks) setTotalMarks(kicdMarks);
   }, [paperDefaults, subject, gradeLevel, paperVariant, format]);
@@ -604,10 +617,16 @@ export default function ExamGenerator({
               </select>
             </label>
             <label className="block text-xs font-semibold text-slate-700">Duration
-              <select value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
-                {[30, 45, 60, 75, 90, 120, 150].map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
+              <select value={durationMinutes} onChange={(event) => { setDurationMinutes(Number(event.target.value)); setDurationSource('manual'); }} className={`mt-1.5 w-full rounded-lg border px-3 py-2 text-sm font-normal outline-none transition focus:ring-2 ${durationSource === 'kicd' ? 'border-green-400 bg-green-50 font-semibold text-green-800 focus:border-green-500 focus:ring-green-100' : 'border-slate-300 bg-white focus:border-red-500 focus:ring-red-100'}`}>
+                {Array.from(new Set([30, 45, 60, 75, 90, 100, 105, 120, 150, durationMinutes])).sort((a, b) => a - b).map((minutes) => <option key={minutes} value={minutes}>{minutes} minutes</option>)}
               </select>
             </label>
+            {durationSource === 'kicd' && (
+              <p className="mt-1 text-[11px] font-medium text-green-700">KICD/KNEC published time for {subject}{gradeLevel ? ` · Grade ${gradeLevel}` : ''}. You can change it.</p>
+            )}
+            {durationSource === 'manual' && (
+              <p className="mt-1 text-[11px] text-slate-500">Custom value — the published KICD/KNEC time is not applied.</p>
+            )}
           </div>
 
           {coveragePreview.length > 0 && (

@@ -101,7 +101,7 @@ export default function AssignTeachers() {
     teacher_id: '',
     class_id: '',
     subject_id: '',
-    lessons_per_week: 5,
+    lessons_per_week: 0,
     priority_band: 'auto' as PriorityBand,
     is_double_lesson: false,
     double_lesson_days: [...ALL_DAYS],
@@ -121,6 +121,15 @@ export default function AssignTeachers() {
   // selected grade and learning area so an admin does not have to type it; the
   // field stays fully editable and no timetable logic changes.
   const [lessonDefaults, setLessonDefaults] = useState<LessonDefault[]>([]);
+
+  // Where the current Lessons / Week value came from. The field is highlighted
+  // green only while it still holds the system's KICD figure; once the admin
+  // types a value the highlight is cleared for good and the KICD number is kept
+  // so the helper text can still show what the allocation was.
+  const [lessonPrefill, setLessonPrefill] = useState<{ status: 'none' | 'kicd' | 'manual'; kicdValue: number | null }>({
+    status: 'none',
+    kicdValue: null,
+  });
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -235,11 +244,19 @@ export default function AssignTeachers() {
    * selected grade and learning area. Falls back to the current value when the
    * learning area has no KICD allocation on record. Admin overrides always win.
    */
-  const prefillLessonsPerWeek = (subjectId: string, classId: string, fallback: number): number => {
+  const resolveLessonPrefill = (
+    subjectId: string,
+    classId: string,
+    current: number,
+  ): { value: number; status: 'none' | 'kicd'; kicdValue: number | null } => {
     const subject = subjects.find((s) => s.id === subjectId);
     const kicdDefault = defaultLessonsPerWeek(lessonDefaults, subject?.name, gradeByClassId(classId));
-    return kicdDefault ?? fallback;
+    if (kicdDefault === null) return { value: current, status: 'none', kicdValue: null };
+    return { value: kicdDefault, status: 'kicd', kicdValue: kicdDefault };
   };
+
+  const selectedGrade = gradeByClassId(formData.class_id);
+  const selectedSubjectName = subjects.find((s) => s.id === formData.subject_id)?.name ?? '';
 
   const effectiveBand = (assignment: { priority_band: PriorityBand; subject_name: string }): PriorityBand | null => {
     if (assignment.priority_band === 'none') return null;
@@ -588,11 +605,9 @@ export default function AssignTeachers() {
                   value={formData.class_id}
                   onChange={(e) => {
                     const classId = e.target.value;
-                    setFormData((prev) => ({
-                      ...prev,
-                      class_id: classId,
-                      lessons_per_week: prefillLessonsPerWeek(prev.subject_id, classId, prev.lessons_per_week),
-                    }));
+                    const resolved = resolveLessonPrefill(formData.subject_id, classId, formData.lessons_per_week);
+                    setFormData({ ...formData, class_id: classId, lessons_per_week: resolved.value });
+                    setLessonPrefill({ status: resolved.status, kicdValue: resolved.kicdValue });
                   }}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -610,12 +625,10 @@ export default function AssignTeachers() {
                   value={formData.subject_id}
                   onChange={(e) => {
                     const subjectId = e.target.value;
-                    setFormData((prev) => ({
-                      ...prev,
-                      subject_id: subjectId,
-                      // KICD pre-fill for this learning area at the chosen class's grade.
-                      lessons_per_week: prefillLessonsPerWeek(subjectId, prev.class_id, prev.lessons_per_week),
-                    }));
+                    // KICD pre-fill for this learning area at the chosen class's grade.
+                    const resolved = resolveLessonPrefill(subjectId, formData.class_id, formData.lessons_per_week);
+                    setFormData({ ...formData, subject_id: subjectId, lessons_per_week: resolved.value });
+                    setLessonPrefill({ status: resolved.status, kicdValue: resolved.kicdValue });
                   }}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -631,13 +644,37 @@ export default function AssignTeachers() {
                 <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wide">Lessons / Week</label>
                 <input
                   type="number" min="1" max="10"
-                  value={formData.lessons_per_week}
-                  onChange={(e) => setFormData({ ...formData, lessons_per_week: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={formData.lessons_per_week || ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setFormData({ ...formData, lessons_per_week: raw === '' ? 0 : parseInt(raw, 10) });
+                    // Once the admin types, the value is theirs: the green KICD
+                    // highlight is cleared and never returns for this entry.
+                    setLessonPrefill((prev) => ({ status: 'manual', kicdValue: prev.kicdValue }));
+                  }}
+                  className={`w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 ${
+                    lessonPrefill.status === 'kicd'
+                      ? 'border border-green-400 bg-green-50 font-semibold text-green-800 focus:ring-green-500'
+                      : 'border border-gray-300 focus:ring-blue-500'
+                  }`}
                 />
-                <p className="mt-1 text-xs text-gray-500">
-                  Pre-filled from the KICD lesson allocation for this grade. You can change it.
-                </p>
+                {lessonPrefill.status === 'kicd' && (
+                  <p className="mt-1 text-xs font-medium text-green-700">
+                    KICD default for {selectedGrade ? `Grade ${selectedGrade} ` : ''}{selectedSubjectName}. You can change it.
+                  </p>
+                )}
+                {lessonPrefill.status === 'manual' && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    {lessonPrefill.kicdValue !== null
+                      ? `Custom value — the KICD default for this grade was ${lessonPrefill.kicdValue}.`
+                      : 'Custom value entered manually.'}
+                  </p>
+                )}
+                {lessonPrefill.status === 'none' && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Select a class and a learning area to pre-fill the KICD weekly lesson allocation.
+                  </p>
+                )}
               </div>
 
               

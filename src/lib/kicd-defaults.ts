@@ -168,6 +168,29 @@ export const defaultExamDuration = (
   return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
 };
 
+/** Same lookup as defaultExamDuration but never falls back to another grade's row. */
+export const defaultExamDurationStrict = (
+  defaults: PaperDefault[],
+  subjectName: unknown,
+  grade: unknown,
+  paperType: unknown,
+): number | null => {
+  const wantedSubject = canonicalSubjectName(subjectName);
+  const gradeNumber = gradeNumberOf(grade);
+  if (!wantedSubject || gradeNumber === null) return null;
+  for (const candidate of paperTypeCandidates(paperType)) {
+    const row = defaults.find(
+      (r) =>
+        canonicalSubjectName(r.subject_name) === wantedSubject &&
+        String(r.paper_type ?? '').trim().toLowerCase() === candidate.toLowerCase() &&
+        Number(r.grade_number) === gradeNumber,
+    );
+    const minutes = Number(row?.duration_minutes);
+    if (Number.isFinite(minutes) && minutes > 0) return minutes;
+  }
+  return null;
+};
+
 export const defaultExamMarks = (
   defaults: PaperDefault[],
   subjectName: unknown,
