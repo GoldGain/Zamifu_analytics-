@@ -181,12 +181,12 @@ export async function repairGeneratedExam(
   options: ExamRepairOptions = {},
 ): Promise<ExamRepairReport> {
   const state = questions.slice();
-  const actions: ExamRepairAction[] = [];
+  const recorded: Array<{ index: number; action: ExamRepairAction }> = [];
   const originalCount = state.length;
 
-  const rewriteCounts = new Array<number>(state.length).fill(0);
-  const visualRepairCounts = new Array<number>(state.length).fill(0);
-  const visualDropCounts = new Array<number>(state.length).fill(0);
+  const rewritten = new Set<number>();
+  const visualRepaired = new Set<number>();
+  const visualDropped = new Set<number>();
 
   // ---- Phase A: rewrite questions whose tags, answers, or structure are wrong.
   for (let index = 0; index < state.length; index += 1) {
@@ -196,15 +196,21 @@ export async function repairGeneratedExam(
       // A visual-only problem is Phase B's job, not a reason to rewrite the question.
       if (isVisualOnly(issues)) break;
       const repaired = await adapter.rewriteQuestion({ request, question: state[index], issues, attempt });
-      rewriteCounts[index] = attempt;
-      if (!repaired) break;
+      // No usable answer this time: ask again, right up to the attempt limit.
+      if (!repaired) continue;
       state[index] = repaired;
-      actions.push({
-        kind: 'question_rewritten',
-        questionNumber: index + 1,
-        detail: `Rewrote question ${index + 1} to satisfy the selected curriculum scope.`,
-        codes: uniqueCodes(issues),
-      });
+      if (!rewritten.has(index)) {
+        rewritten.add(index);
+        recorded.push({
+          index,
+          action: {
+            kind: 'question_rewritten',
+            questionNumber: index + 1,
+            detail: `Rewrote question ${index + 1} to satisfy the selected curriculum scope.`,
+            codes: uniqueCodes(issues),
+          },
+        });
+      }
       if (!issuesForPosition(request, state, index, options).length) break;
     }
   }
@@ -215,52 +221,71 @@ export async function repairGeneratedExam(
       const issues = issuesForPosition(request, state, index, options);
       if (!issues.length || !isVisualOnly(issues)) break;
       const repaired = await adapter.rewriteVisual({ request, question: state[index], issues, attempt });
-      visualRepairCounts[index] = attempt;
-      if (!repaired) break;
+      if (!repaired) continue;
       state[index] = repaired;
-      actions.push({
-        kind: 'visual_repaired',
-        questionNumber: index + 1,
-        detail: `Completed the visual specification for question ${index + 1}.`,
-        codes: uniqueCodes(issues),
-      });
+      if (!visualRepaired.has(index)) {
+        visualRepaired.add(index);
+        recorded.push({
+          index,
+          action: {
+            kind: 'visual_repaired',
+            questionNumber: index + 1,
+            detail: `Completed the visual specification for question ${index + 1}.`,
+            codes: uniqueCodes(issues),
+          },
+        });
+      }
       if (!issuesForPosition(request, state, index, options).length) break;
     }
     const remaining = issuesForPosition(request, state, index, options);
     if (remaining.length && isVisualOnly(remaining)) {
+      // The question is sound; only its visual could not be salvaged.
       state[index] = dropQuestionVisual(state[index]);
-      visualDropCounts[index] = 1;
-      actions.push({
-        kind: 'visual_dropped',
-        questionNumber: index + 1,
-        detail: `Removed the unusable visual from question ${index + 1}; the question itself was kept.`,
-        codes: uniqueCodes(remaining),
+      visualDropped.add(index);
+      recorded.push({
+        index,
+        action: {
+          kind: 'visual_dropped',
+          questionNumber: index + 1,
+          detail: `Removed the unusable visual from question ${index + 1}; the question itself was kept.`,
+          codes: uniqueCodes(remaining),
+        },
       });
     }
   }
 
   // ---- Phase C: drop questions that are still broken after their retries.
   const survivors: GeneratedExamQuestion[] = [];
-  let droppedQuestions = 0;
+  const survivorIndices = new Set<number>();
   for (let index = 0; index < state.length; index += 1) {
     const issues = issuesForPosition(request, state, index, options);
     if (issues.length) {
-      droppedQuestions += 1;
-      actions.push({
-        kind: 'question_dropped',
-        questionNumber: index + 1,
-        detail: `Removed question ${index + 1} because it could not be repaired (${codesText(uniqueCodes(issues))}).`,
-        codes: uniqueCodes(issues),
+      recorded.push({
+        index,
+        action: {
+          kind: 'question_dropped',
+          questionNumber: index + 1,
+          detail: `Removed question ${index + 1} because it could not be repaired (${codesText(uniqueCodes(issues))}).`,
+          codes: uniqueCodes(issues),
+        },
       });
       continue;
     }
     survivors.push(state[index]);
+    survivorIndices.add(index);
   }
 
+  // Report only what survived: a repair to a question that was later dropped is
+  // not something the teacher needs to hear about.
+  const actions = recorded
+    .filter((entry) => entry.action.kind === 'question_dropped' || survivorIndices.has(entry.index))
+    .map((entry) => entry.action);
+  const droppedQuestions = originalCount - survivors.length;
+  const rewrittenQuestions = Array.from(rewritten).filter((index) => survivorIndices.has(index)).length;
+  const repairedVisuals = Array.from(visualRepaired).filter((index) => survivorIndices.has(index)).length;
+  const droppedVisuals = Array.from(visualDropped).filter((index) => survivorIndices.has(index)).length;
+
   const validation = validateGeneratedExam(request, survivors, { previousStems: options.previousStems });
-  const droppedVisuals = visualDropCounts.reduce((sum, value) => sum + value, 0);
-  const rewrittenQuestions = rewriteCounts.reduce((sum, value) => sum + value, 0);
-  const repairedVisuals = visualRepairCounts.reduce((sum, value) => sum + value, 0);
 
   // A paper whose count changed during repair cannot still match its blueprint.
   const toleratedCodes = new Set(COUNT_TOLERATED_CODES);
