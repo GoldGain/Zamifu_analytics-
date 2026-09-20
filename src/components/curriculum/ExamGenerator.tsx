@@ -355,6 +355,7 @@ export default function ExamGenerator({
 
       const variants: Array<'single' | 'paper1' | 'paper2'> = paperVariant === 'both' ? ['paper1', 'paper2'] : [paperVariant];
       const generatedPapers: ExamPaper[] = [];
+      const repairNotices: string[] = [];
       for (const variant of variants) {
       const request: ExamGenerationRequest = {
         title,
@@ -385,6 +386,10 @@ export default function ExamGenerator({
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(apiErrorMessage(payload));
+      // The paper may have been repaired on the way here. Tell the author what
+      // changed instead of failing the run.
+      const repairInfo = (payload as { repair?: { status?: string; message?: string } } | null)?.repair;
+      if (repairInfo?.status === 'repaired' && repairInfo.message) repairNotices.push(repairInfo.message);
       const generated = payload?.paper as ExamPaper | undefined;
       if (!generated?.questions?.length) throw new Error('The exam service returned no questions.');
       generatedPapers.push(generated);
@@ -395,7 +400,12 @@ export default function ExamGenerator({
       const summary = generatedPapers.length > 1
         ? `${generatedPapers.length} papers (${generatedPapers.map((entry) => entry.title).join(', ')}) generated and saved securely.`
         : `${generatedPapers[0].questions.length} questions generated and saved securely.`;
-      toast.success(summary);
+      if (repairNotices.length) {
+        // Non-blocking: the paper saved successfully, it just needed some repairs.
+        toast.info(repairNotices.join(' '));
+      } else {
+        toast.success(summary);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The exam could not be generated.');
     } finally {
