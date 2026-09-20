@@ -29,6 +29,13 @@ import {
   supportsTwoPapers,
 } from '@/lib/exam-construction';
 
+import {
+  defaultExamDuration,
+  defaultExamMarks,
+  fetchPaperDefaults,
+  type PaperDefault,
+} from '@/lib/kicd-defaults';
+
 type UiPaperVariant = 'single' | 'paper1' | 'paper2' | 'both';
 
 export interface CurriculumTopicOption {
@@ -126,6 +133,11 @@ export default function ExamGenerator({
   const [approvingPaper, setApprovingPaper] = useState(false);
   const [openingPaper, setOpeningPaper] = useState<string | null>(null);
 
+  // KICD/KNEC paper defaults. These pre-fill the paper time (and marks, where KNEC
+  // publishes them) for the selected learning area, grade and paper type. The
+  // controls stay editable and the generator's own logic is untouched.
+  const [paperDefaults, setPaperDefaults] = useState<PaperDefault[]>([]);
+
   const availableSubStrands = useMemo(() => selectedStrands.size > 0 ? filterSubStrands(strands, selectedStrands) : [], [selectedStrands, strands]);
   const curriculumScope = useMemo(() => {
     if (selectedStrands.size === 0) return [];
@@ -181,6 +193,26 @@ export default function ExamGenerator({
     setSelectedStrands(new Set());
     setSelectedSubStrands(new Set());
   }, [gradeLevel, subject]);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const defaults = await fetchPaperDefaults(supabaseUntyped);
+      if (alive) setPaperDefaults(defaults);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // KJSEA papers have a fixed time set by KNEC, so pre-fill from the defaults.
+  // Internal 30-mark assessments are left on their existing default because
+  // neither the designs nor the KJSEA timetable publish a time for them.
+  useEffect(() => {
+    if (format !== 'kjsea') return;
+    const kicdMinutes = defaultExamDuration(paperDefaults, subject, gradeLevel, paperVariant);
+    if (kicdMinutes) setDurationMinutes(kicdMinutes);
+    const kicdMarks = defaultExamMarks(paperDefaults, subject, gradeLevel, paperVariant);
+    if (kicdMarks) setTotalMarks(kicdMarks);
+  }, [paperDefaults, subject, gradeLevel, paperVariant, format]);
 
   useEffect(() => {
     if (!schoolId) return;
