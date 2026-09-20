@@ -1,4 +1,4 @@
-import { normalizePaperVariant, paperVariantLabel, supportsTwoPapers } from './exam-construction';
+import { normalizePaperVariant, paperVariantLabel, supportsTwoPapers } from './exam-construction.js';
 
 export const CBC_QUESTION_TYPES = [
   { value: 'multiple_choice', label: 'Multiple Choice', defaultMarks: 1 },

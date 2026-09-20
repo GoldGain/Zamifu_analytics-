@@ -4,8 +4,8 @@
  * stored on a question only as a key so a saved paper is always re-renderable.
  * These are teaching schematics, not survey-accurate maps or scale drawings.
  */
-import type { GeneratedExamQuestion } from './exam-schema';
-import { isSocialStudiesSubject, normalizeKey } from './exam-construction';
+import type { GeneratedExamQuestion } from './exam-schema.js';
+import { isSocialStudiesSubject, normalizeKey } from './exam-construction.js';
 
 export interface CuratedVisual {
   key: string;

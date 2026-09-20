@@ -18,6 +18,7 @@ import {
   makeBalancedBlueprint,
   makeFormatBlueprint,
   makePaperVariantBlueprint,
+  ExamBlueprintSection,
 } from '../src/lib/exam-schema.js';
 import { filterUnnecessaryExamVisual, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
@@ -104,18 +105,20 @@ function parseBlueprint(value: unknown): ExamBlueprint | undefined {
     const count = Number(section.count);
     const marks = Number(section.marks_per_question);
     if (!type || !Number.isFinite(count) || !Number.isFinite(marks) || count < 1 || marks < 1) return [];
-    return [{
+    const base: ExamBlueprintSection = {
       id: typeof section.id === 'string' ? section.id.slice(0, 80) : `section-${index + 1}`,
-      title: typeof section.title === 'string' ? section.title.slice(0, 160) : undefined,
       question_type: type,
       count: Math.min(60, Math.round(count)),
       marks_per_question: Math.min(30, Math.round(marks)),
-      difficulty: section.difficulty === 'easy' || section.difficulty === 'medium' || section.difficulty === 'hard' || section.difficulty === 'mixed' ? section.difficulty : 'mixed',
-      strand: typeof section.strand === 'string' ? section.strand.slice(0, 180) : undefined,
-      sub_strand: typeof section.sub_strand === 'string' ? section.sub_strand.slice(0, 180) : undefined,
-      topic: typeof section.topic === 'string' ? section.topic.slice(0, 180) : undefined,
-      competency: typeof section.competency === 'string' ? section.competency.slice(0, 180) : undefined,
-    }];
+      difficulty: (['easy','medium','hard','mixed'].includes(String(section.difficulty)) ? section.difficulty : 'mixed') as ExamBlueprintSection['difficulty'],
+    };
+    const optional: Partial<ExamBlueprintSection> = {};
+    if (typeof section.title === 'string') optional.title = section.title.slice(0, 160);
+    if (typeof section.strand === 'string') optional.strand = section.strand.slice(0, 180);
+    if (typeof section.sub_strand === 'string') optional.sub_strand = section.sub_strand.slice(0, 180);
+    if (typeof section.topic === 'string') optional.topic = section.topic.slice(0, 180);
+    if (typeof section.competency === 'string') optional.competency = section.competency.slice(0, 180);
+    return [{ ...base, ...optional }];
   });
   if (!sections.length) return undefined;
   const totalMarks = Number(raw.total_marks);

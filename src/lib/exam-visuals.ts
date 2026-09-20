@@ -1,5 +1,5 @@
-import type { GeneratedExamQuestion } from './exam-schema';
-import { curatedVisualDataUrl } from './exam-visual-library';
+import type { GeneratedExamQuestion } from './exam-schema.js';
+import { curatedVisualDataUrl } from './exam-visual-library.js';
 
 export interface ExamVisualSpec {
   asset_type?: string;

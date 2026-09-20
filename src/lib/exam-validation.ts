@@ -1,4 +1,4 @@
-import type { ExamBlueprint, ExamGenerationRequest, GeneratedExamQuestion } from './exam-schema';
+import type { ExamBlueprint, ExamGenerationRequest, GeneratedExamQuestion } from './exam-schema.js';
 import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 import {
   buildCoveragePlanFromRequest,

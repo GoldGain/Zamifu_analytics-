@@ -6,7 +6,7 @@
 import type {
   CurriculumScopeNode, ExamBlueprint, ExamGenerationRequest,
   GeneratedExamQuestion, GeneratedExamSubPart,
-} from './exam-schema';
+} from './exam-schema.js';
 
 export type PaperVariant = 'single' | 'paper1' | 'paper2';
 const TWO_PAPER_SUBJECTS = ['english', 'kiswahili', 'integratedscience'];
