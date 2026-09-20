@@ -44,6 +44,7 @@ export type {
   ExamGenerationResponse,
   ExamPaper,
   GeneratedExamQuestion,
+  PaperVariant,
   QuestionType,
 } from './exam-schema';
 

@@ -23,6 +23,13 @@ import {
 } from '@/lib/exam-generator';
 import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
 import { filterSubStrands, retainVisibleIds } from '@/lib/curriculum-selection';
+import {
+  buildCoveragePlanFromRequest,
+  coverageInstruction,
+  supportsTwoPapers,
+} from '@/lib/exam-construction';
+
+type UiPaperVariant = 'single' | 'paper1' | 'paper2' | 'both';
 
 export interface CurriculumTopicOption {
   id: string;
@@ -109,6 +116,7 @@ export default function ExamGenerator({
   );
   const [includeImages, setIncludeImages] = useState(true);
   const [includeMarkingScheme, setIncludeMarkingScheme] = useState(true);
+  const [paperVariant, setPaperVariant] = useState<UiPaperVariant>('single');
   const [generating, setGenerating] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [uploadingQuestionId, setUploadingQuestionId] = useState<string | null>(null);
@@ -140,6 +148,14 @@ export default function ExamGenerator({
   }, [availableSubStrands]);
 
   const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size);
+  const coveragePreview = useMemo(() => buildCoveragePlanFromRequest({
+    strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
+    subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
+    curriculumScope,
+    totalMarks,
+    blueprint: ['standard30', 'kpsea', 'kjsea'].includes(format) ? makeFormatBlueprint(format, totalMarks, difficulty) : undefined,
+  }), [strands, selectedStrands, availableSubStrands, selectedSubStrands, curriculumScope, totalMarks, format, difficulty]);
+  const coverageNote = useMemo(() => coverageInstruction(coveragePreview), [coveragePreview]);
   const selectedFormatDescription = formatOptions.find((option) => option.value === format)?.description || '';
 
   function handleFormatChange(nextFormat: ExamFormat) {
@@ -292,6 +308,9 @@ export default function ExamGenerator({
       const token = sessionData.session?.access_token;
       if (!token) throw new Error('Your session has expired. Please sign in again.');
 
+      const variants: Array<'single' | 'paper1' | 'paper2'> = paperVariant === 'both' ? ['paper1', 'paper2'] : [paperVariant];
+      const generatedPapers: ExamPaper[] = [];
+      for (const variant of variants) {
       const request: ExamGenerationRequest = {
         title,
         gradeLevel,
@@ -309,6 +328,7 @@ export default function ExamGenerator({
         format,
         term,
         schoolName,
+        paperVariant: variant === 'single' ? undefined : variant,
         blueprint: ['standard30', 'kpsea', 'kjsea'].includes(format)
           ? makeFormatBlueprint(format, totalMarks, difficulty)
           : makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty),
@@ -322,10 +342,15 @@ export default function ExamGenerator({
       if (!response.ok) throw new Error(apiErrorMessage(payload));
       const generated = payload?.paper as ExamPaper | undefined;
       if (!generated?.questions?.length) throw new Error('The exam service returned no questions.');
+      generatedPapers.push(generated);
       setPaper(generated);
       onGenerated?.(generated);
       await loadRecentPapers();
-      toast.success(`${generated.questions.length} questions generated and saved securely.`);
+      }
+      const summary = generatedPapers.length > 1
+        ? `${generatedPapers.length} papers (${generatedPapers.map((entry) => entry.title).join(', ')}) generated and saved securely.`
+        : `${generatedPapers[0].questions.length} questions generated and saved securely.`;
+      toast.success(summary);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The exam could not be generated.');
     } finally {
@@ -520,6 +545,17 @@ export default function ExamGenerator({
               </select>
               <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">{selectedFormatDescription}</span>
             </label>
+            {supportsTwoPapers(subject) && (
+              <label className="block text-xs font-semibold text-slate-700">Paper
+                <select value={paperVariant} onChange={(event) => setPaperVariant(event.target.value as UiPaperVariant)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <option value="single">Whole subject (one paper)</option>
+                  <option value="paper1">Paper 1 only</option>
+                  <option value="paper2">Paper 2 only</option>
+                  <option value="both">Paper 1 and Paper 2</option>
+                </select>
+                <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">Paper 1 and Paper 2 produces each paper separately, with its own questions and marking scheme.</span>
+              </label>
+            )}
             <label className="block text-xs font-semibold text-slate-700">Term
               <select value={term} onChange={(event) => setTerm(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
                 <option>Term 1</option><option>Term 2</option><option>Term 3</option><option>End of Year</option>
@@ -542,6 +578,17 @@ export default function ExamGenerator({
             </label>
           </div>
 
+          {coveragePreview.length > 0 && (
+            <div className="mt-5 rounded-xl border border-slate-200 bg-white p-3.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Strand coverage for this paper</p>
+              <ul className="mt-2 space-y-1 text-[11px] leading-5 text-slate-600">
+                {coveragePreview.map((entry) => (
+                  <li key={entry.strand} className="flex items-start justify-between gap-2"><span>{entry.strand}</span><span className="font-semibold text-slate-700">{entry.questions} question{entry.questions === 1 ? '' : 's'}</span></li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] leading-4 text-slate-500">{coverageNote}</p>
+            </div>
+          )}
           <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3.5">
             <div className="mb-2 flex items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Question types</p>

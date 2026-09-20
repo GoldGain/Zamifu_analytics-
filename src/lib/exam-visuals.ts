@@ -1,4 +1,5 @@
-import type { GeneratedExamQuestion } from './exam-schema';
+import type { GeneratedExamQuestion } from './exam-schema.js';
+import { curatedVisualDataUrl } from './exam-visual-library.js';
 
 export interface ExamVisualSpec {
   asset_type?: string;
@@ -448,6 +449,11 @@ export function filterUnnecessaryExamVisual(question: GeneratedExamQuestion): Ge
 }
 
 export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string | null {
+  const curatedKey = (question.visual_spec as Record<string, unknown> | null | undefined)?.curated_key;
+  if (typeof curatedKey === 'string' && curatedKey) {
+    const curated = curatedVisualDataUrl(curatedKey);
+    if (curated) return curated;
+  }
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   const assetType = String(spec.asset_type || '').toLowerCase();
   if (!assetType && !question.image_url) return null;
