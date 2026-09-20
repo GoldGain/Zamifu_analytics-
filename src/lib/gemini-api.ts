@@ -135,14 +135,17 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
         ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
         : [];
       if (!candidateQuestions.length) throw new GeminiResponseError('Gemini did not provide any valid questions.');
-      if (request.format === 'kjsea' && candidateQuestions.some((question) => question.question_type === 'case_study' && (!question.sub_parts || question.sub_parts.length === 0))) {
-        throw new GeminiResponseError('Gemini omitted the required lettered sub-parts for one or more KJSEA structured questions.');
-      }
-      if (candidateQuestions.some((question) => !hasCompleteTableVisual(question))) {
-        throw new GeminiResponseError('Gemini returned an incomplete table visual. Retry with table_headers and every table_rows cell required by the question.');
-      }
-      if (candidateQuestions.some((question) => question.visual_spec && !hasUsableVisualSpec(question))) {
-        throw new GeminiResponseError('Gemini returned an incomplete visual specification. Retry with readable labels or complete data for every required diagram, map, graph, chart, flowchart, table, or number line.');
+      // Per-question shortfalls are repaired or dropped afterwards, so they no
+      // longer throw away an otherwise usable paper.
+      const incompleteVisuals = candidateQuestions.filter(
+        (question) => !hasCompleteTableVisual(question)
+          || (question.visual_spec && !hasUsableVisualSpec(question)),
+      ).length;
+      const missingSubParts = request.format === 'kjsea'
+        ? candidateQuestions.filter((question) => question.question_type === 'case_study' && !question.sub_parts?.length).length
+        : 0;
+      if (incompleteVisuals || missingSubParts) {
+        console.warn(`[exam-gen] Gemini returned ${incompleteVisuals} incomplete visual(s) and ${missingSubParts} structured question(s) without sub-parts; the repair pass will handle them.`);
       }
       parsed = candidate;
     } catch (error) {
@@ -161,4 +164,50 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
     throw new GeminiResponseError(`Gemini did not return a usable exam response after three attempts. Please retry; your selected blueprint and curriculum choices were not lost.${detail}`);
   }
   return buildPaper(request, parsed);
+}
+
+/**
+ * Gemini counterpart of the single-question repair call. Returns null on any
+ * provider problem so a failed repair degrades to a drop, not a failed paper.
+ */
+export async function rewriteQuestionWithGemini(prompt: string): Promise<Record<string, unknown> | null> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) return null;
+  const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
+  const endpoint = `${(process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '')}/models/${encodeURIComponent(model)}:generateContent`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble.' }],
+        },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.25, maxOutputTokens: 1600, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'low' } },
+      }),
+      signal: controller.signal,
+    });
+    const rawText = await response.text().catch(() => '');
+    if (!rawText.trim()) return null;
+    let payload: GeminiResponse;
+    try {
+      payload = JSON.parse(rawText) as GeminiResponse;
+    } catch {
+      return null;
+    }
+    if (!response.ok) {
+      console.warn('[exam-repair] Gemini rejected the rewrite:', payload.error?.message || response.status);
+      return null;
+    }
+    const text = readGeminiText(payload);
+    return text ? extractJsonFromContent(text) : null;
+  } catch (error) {
+    console.warn('[exam-repair] Gemini rewrite failed:', error instanceof Error ? error.message.slice(0, 200) : 'unknown failure');
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

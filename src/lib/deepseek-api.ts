@@ -401,11 +401,14 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
         ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
         : [];
       if (!candidateQuestions.length) throw new DeepSeekResponseError('The AI service did not provide any valid questions.');
-      if (candidateQuestions.some((question) => !hasCompleteTableVisual(question))) {
-        throw new DeepSeekResponseError('The AI response included an incomplete table visual. Retry with table_headers and every table_rows cell required by the question.');
-      }
-      if (candidateQuestions.some((question) => question.visual_spec && !hasUsableVisualSpec(question))) {
-        throw new DeepSeekResponseError('The AI response included an incomplete visual specification. Retry with readable labels or complete data for every required diagram, map, graph, chart, flowchart, table, or number line.');
+      // An incomplete visual no longer discards the whole paper: the repair pass
+      // completes it or removes just that visual from that one question.
+      const incompleteVisuals = candidateQuestions.filter(
+        (question) => !hasCompleteTableVisual(question)
+          || (question.visual_spec && !hasUsableVisualSpec(question)),
+      ).length;
+      if (incompleteVisuals) {
+        console.warn(`[exam-gen] ${incompleteVisuals} question(s) returned an incomplete visual; the repair pass will handle them.`);
       }
       parsed = candidate;
     } catch (error) {
@@ -456,4 +459,76 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     format: request.format,
     generated_at: new Date().toISOString(),
   };
+}
+
+/** Shared so both providers read a single repaired question the same way. */
+export function parseRepairedQuestion(
+  request: ExamGenerationRequest,
+  payload: unknown,
+): GeneratedExamQuestion | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const record = payload as Record<string, unknown>;
+  const candidate = 'question' in record ? record.question : record;
+  return normalizeQuestion(candidate, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request));
+}
+
+function repairEndpoint(useDeepSeek: boolean, apiKey: string): string {
+  return useDeepSeek
+    ? `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`
+    : `${(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`;
+}
+
+function repairModel(useDeepSeek: boolean): string {
+  const configured = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || '';
+  return useDeepSeek ? (configured || 'deepseek-chat') : (configured || 'gpt-5-mini');
+}
+
+/**
+ * Ask the model to rewrite exactly one question (or one visual) from an explicit
+ * instruction. Returns null on any provider problem: a repair that cannot be
+ * attempted must degrade to a drop, never to a failed paper.
+ */
+export async function rewriteQuestionWithDeepSeek(prompt: string): Promise<Record<string, unknown> | null> {
+  const deepSeekKey = process.env.DEEPSEEK_API_KEY;
+  const apiKey = deepSeekKey || process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  const useDeepSeek = Boolean(deepSeekKey);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(repairEndpoint(useDeepSeek, apiKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: repairModel(useDeepSeek),
+        messages: [
+          { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 1600,
+        stream: false,
+        response_format: { type: 'json_object' },
+      }),
+      signal: controller.signal,
+    });
+    const rawText = await response.text().catch(() => '');
+    if (!rawText.trim()) return null;
+    let payload: DeepSeekResponse;
+    try {
+      payload = JSON.parse(rawText) as DeepSeekResponse;
+    } catch {
+      return null;
+    }
+    if (!response.ok) {
+      console.warn('[exam-repair] provider rejected the rewrite:', payload.error?.message || response.status);
+      return null;
+    }
+    return extractJsonFromContent(readMessageContent(payload));
+  } catch (error) {
+    console.warn('[exam-repair] rewrite request failed:', error instanceof Error ? error.message.slice(0, 200) : 'unknown failure');
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

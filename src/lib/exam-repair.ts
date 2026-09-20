@@ -335,3 +335,96 @@ export async function repairGeneratedExam(
     failureMessage,
   };
 }
+
+/** Human-readable description of what the teacher actually selected. */
+export function describeRequestScope(request: ExamGenerationRequest): string {
+  const lines: string[] = [
+    `Subject: ${request.subject}; Grade: ${request.gradeLevel}; Format: ${request.format}; Difficulty: ${request.difficulty}.`,
+  ];
+  if (request.strands.length) lines.push(`Selected strands: ${request.strands.join('; ')}.`);
+  if (request.subStrands.length) lines.push(`Selected sub-strands: ${request.subStrands.join('; ')}.`);
+  if (request.topics.length) lines.push(`Selected topics: ${request.topics.join('; ')}.`);
+  for (const node of request.curriculumScope || []) {
+    lines.push(`"${node.strand}" owns sub-strands [${node.subStrands.join(', ') || 'any'}] and topics [${node.topics.join(', ') || 'any'}].`);
+  }
+  return lines.join('\n');
+}
+
+function issueList(issues: ExamValidationIssue[]): string {
+  return issues.map((issue) => `- ${issue.code}: ${issue.message}`).join('\n');
+}
+
+/**
+ * Rewrite one question so it satisfies the teacher's selection. The expected
+ * reply is a single question object in the same shape the paper already uses.
+ */
+export function buildQuestionRewritePrompt(
+  request: ExamGenerationRequest,
+  question: GeneratedExamQuestion,
+  issues: ExamValidationIssue[],
+  attempt: number,
+): string {
+  return `You are repairing one question from a Kenyan CBC/CBE assessment paper. Rewrite ONLY this question. Do not add commentary.
+
+Why the current question was rejected (repair attempt ${attempt}):
+${issueList(issues)}
+
+Hard constraints for the replacement:
+- Its strand, sub-strand and topic must come from this selection, and the topic must belong to the stated sub-strand:
+${describeRequestScope(request)}
+- Never reuse a strand, sub-strand, or topic that is not listed above.
+- Keep the same question_type ("${question.question_type}") and exactly ${question.marks} mark(s).
+- Keep it age-appropriate for ${request.gradeLevel} ${request.subject}, original, and self-contained.
+- Provide a real correct_answer and marking_scheme; never write marking instructions instead of the actual answer.
+${question.question_type === 'multiple_choice' ? '- Provide exactly four options and name the correct one.' : ''}
+- Only include a visual_spec when the question genuinely requires one, and then give it complete labels or complete data.
+${question.visual_spec ? '- If you keep a visual, every label and value it needs must be present and readable.' : '- Set visual_spec to null.'}
+
+The rejected question was:
+${JSON.stringify({
+    question_type: question.question_type,
+    question_text: question.question_text,
+    options: question.options || [],
+    marks: question.marks,
+    strand: question.strand,
+    sub_strand: question.sub_strand,
+    topic: question.topic,
+    visual_spec: question.visual_spec || null,
+  })}
+
+Return json only, as {"question": { ...one question object... }} using these keys:
+question_type, question_text, options, correct_answer, marking_scheme, marks, difficulty, strand, sub_strand, topic, learning_outcome, competency, cognitive_level, sub_parts, visual_spec.`;
+}
+
+/**
+ * Rewrite only the visual specification of one question. The question text and
+ * marks are kept, so the reply's visual_spec is all that is used.
+ */
+export function buildVisualRewritePrompt(
+  request: ExamGenerationRequest,
+  question: GeneratedExamQuestion,
+  issues: ExamValidationIssue[],
+  attempt: number,
+): string {
+  return `You are repairing the visual specification of one question in a Kenyan CBC/CBE assessment paper (repair attempt ${attempt}).
+
+Why the current visual was rejected:
+${issueList(issues)}
+
+The question it belongs to:
+${question.question_text}
+
+Subject: ${request.subject}; Grade: ${request.gradeLevel}.
+
+Rules for the repaired visual:
+- Return a visually complete, printable specification that a learner can read and use to answer the question.
+- asset_type must be one of: diagram, map, chart, graph, shape, flowchart, illustration, table, number_line.
+- Give a clear title and caption.
+- tables: supply table_headers with at least two headers AND table_rows containing every learner-facing cell and numeric value. Never rely on x_labels alone.
+- graphs and charts: supply values (at least two numbers) AND matching x_labels (or labels) for every value.
+- diagrams, shapes, number lines, flowcharts and maps: supply at least two readable labels (or map_regions).
+- measurement diagrams must show real readings, graduations, units and objects, not a decorative placeholder.
+- If the question genuinely does not need a visual, return visual_spec as null.
+
+Return json only, as {"visual_spec": { ...the specification... }} or {"visual_spec": null}.`;
+}
