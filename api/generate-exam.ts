@@ -1,17 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   generateExamWithDeepSeek,
+  parseRepairedQuestion,
+  rewriteQuestionWithDeepSeek,
   DeepSeekConfigurationError,
   DeepSeekResponseError,
 } from '../src/lib/deepseek-api.js';
 import {
   generateExamWithGemini,
+  rewriteQuestionWithGemini,
   GeminiConfigurationError,
   GeminiResponseError,
 } from '../src/lib/gemini-api.js';
 import {
   validateExamRequest,
   type ExamGenerationRequest,
+  type GeneratedExamQuestion,
   type CurriculumScopeNode,
   type ExamBlueprint,
   type QuestionType,
@@ -21,7 +25,6 @@ import {
   ExamBlueprintSection,
 } from '../src/lib/exam-schema.js';
 import { filterUnnecessaryExamVisual, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
-import { validateGeneratedExam } from '../src/lib/exam-validation.js';
 import { getStrandPacks } from '../src/lib/kicd-knowledge.js';
 import {
   isMathsLikeSubject,
@@ -31,6 +34,11 @@ import {
   supportsTwoPapers,
 } from '../src/lib/exam-construction.js';
 import { applyCuratedVisualFallback } from '../src/lib/exam-visual-library.js';
+import {
+  buildQuestionRewritePrompt,
+  buildVisualRewritePrompt,
+  repairGeneratedExam,
+} from '../src/lib/exam-repair.js';
 
 const allowedQuestionTypes = new Set<QuestionType>([
   'multiple_choice', 'multiple_response', 'modified_true_false', 'completion',
@@ -425,15 +433,55 @@ async function handleExamGeneration(
       }
     }
     const mathsLike = isMathsLikeSubject(parsedRequest.subject);
-    const renderedQuestions = draftPaper.questions
-      .map(filterUnnecessaryExamVisual)
-      .map(withRenderedExamVisual)
-      .map((question) => normalizeQuestionNotation(question, { division: mathsLike }))
-      .map(repairQuestionAnswers)
-      .map((question) => applyCuratedVisualFallback(question, parsedRequest.subject));
-    const validation = validateGeneratedExam(generationRequest, renderedQuestions, { previousStems: recentQuestionStems });
-    if (!validation.passed) {
-      throw new DeepSeekResponseError(`The generated paper needs repair before it can be saved: ${validation.issues.filter((issue) => issue.severity === 'critical').map((issue) => issue.message).slice(0, 3).join(' ')}`);
+    const postProcess = (question: GeneratedExamQuestion): GeneratedExamQuestion => applyCuratedVisualFallback(
+      repairQuestionAnswers(
+        normalizeQuestionNotation(
+          withRenderedExamVisual(filterUnnecessaryExamVisual(question)),
+          { division: mathsLike },
+        ),
+      ),
+      parsedRequest.subject,
+    );
+    let renderedQuestions = draftPaper.questions.map(postProcess);
+
+    // A single bad question used to fail the entire paper here. Now each broken
+    // question gets its own retry budget and is asked to fix only what was wrong;
+    // only if that still cannot produce usable content is the question removed.
+    // A repair that cannot even be attempted degrades to a drop, never to a lost paper.
+    const repairWithProvider = async (prompt: string): Promise<Record<string, unknown> | null> => {
+      try {
+        return actualProvider === 'gemini'
+          ? await rewriteQuestionWithGemini(prompt)
+          : await rewriteQuestionWithDeepSeek(prompt);
+      } catch {
+        return null;
+      }
+    };
+    const repair = await repairGeneratedExam(generationRequest, renderedQuestions, {
+      rewriteQuestion: async ({ request: scopedRequest, question, issues, attempt }) => {
+        const payload = await repairWithProvider(
+          buildQuestionRewritePrompt(scopedRequest, question, issues, attempt),
+        );
+        const repaired = parseRepairedQuestion(scopedRequest, payload);
+        return repaired ? postProcess(repaired) : null;
+      },
+      rewriteVisual: async ({ request: scopedRequest, question, issues, attempt }) => {
+        const payload = await repairWithProvider(
+          buildVisualRewritePrompt(scopedRequest, question, issues, attempt),
+        );
+        const repaired = parseRepairedQuestion(scopedRequest, payload);
+        if (!repaired) return null;
+        // Adopt only the visual; the question the teacher already has is kept as is.
+        return postProcess({ ...question, visual_spec: repaired.visual_spec ?? null });
+      },
+    }, { previousStems: recentQuestionStems });
+    if (repair.status === 'failed') {
+      throw new DeepSeekResponseError(repair.failureMessage || 'The generated paper could not be repaired.');
+    }
+    renderedQuestions = repair.questions;
+    const validation = repair.validation;
+    if (repair.status === 'repaired') {
+      console.log('[exam-gen] repair pass:', repair.teacherMessage, JSON.stringify(repair.actions.map((action) => action.kind)));
     }
     const paper = { ...draftPaper, paper_variant: parsedRequest.paperVariant || 'single', questions: renderedQuestions, total_marks: renderedQuestions.reduce((sum, question) => sum + question.marks, 0) };
     const { data: storedQuestions, error: questionError } = await supabase
@@ -530,6 +578,17 @@ async function handleExamGeneration(
     response.status(200).json({
       paper: { ...paper, id: paperId, status: 'draft', version_number: 1, validation_results: validation.issues, questions: persistedQuestions },
       sourceSummary: vetted.sourceSummary,
+      // What the repair pass had to do, so the author can be told without a red error.
+      repair: {
+        status: repair.status,
+        message: repair.teacherMessage,
+        rewrittenQuestions: repair.rewrittenQuestions,
+        repairedVisuals: repair.repairedVisuals,
+        droppedVisuals: repair.droppedVisuals,
+        droppedQuestions: repair.droppedQuestions,
+        blueprintReconciled: repair.blueprintReconciled,
+        actions: repair.actions,
+      },
     });
   } catch (error) {
     if (generationJobId) {
