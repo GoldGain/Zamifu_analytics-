@@ -186,7 +186,7 @@ const classMatchesLevel = (cls: any, levelKey: string): boolean => {
 };
 
 // Display info for each level's lesson structure
-// Senior (Grade 10-12): 9 lessons/day, 3 after lunch
+// Senior (Grade 10-12): 8 lessons/day, 2 after lunch
 // Form 3 & 4 (8-4-4): 9 lessons/day, 3 after lunch
 type GenerationReport = {
   kind: 'success' | 'warning' | 'error';
@@ -201,7 +201,7 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
   'upper-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'combined-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'senior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'form-3-4': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
 };
 
@@ -257,22 +257,29 @@ function buildPerfectTimetableEntries(opts: {
     if (hasIre && hasCre) return null;
   }
 
-  type Unit = { cid: string; sid: string; name: string; teacher: string; size: 1 | 2 };
+  type Unit = { cid: string; sid: string; name: string; teacher: string; size: 1 | 2; groupKey: string; groupOrder: number };
   const units: Unit[] = [];
+  const groupOrders = new Map<string, number>();
+  const addUnit = (cid: string, r: { sid: string; name: string; teacher: string }, size: 1 | 2) => {
+    const groupKey = `${cid}|${r.sid}|${size}`;
+    const groupOrder = groupOrders.get(groupKey) || 0;
+    groupOrders.set(groupKey, groupOrder + 1);
+    units.push({ cid, sid: r.sid, name: r.name, teacher: r.teacher, size, groupKey, groupOrder });
+  };
   for (const cid of cids) {
     for (const r of recsByClass[cid]) {
       if (r.double && r.need >= 2) {
-        units.push({ cid, sid: r.sid, name: r.name, teacher: r.teacher, size: 2 });
-        for (let i = 0; i < r.need - 2; i++) units.push({ cid, sid: r.sid, name: r.name, teacher: r.teacher, size: 1 });
+        addUnit(cid, r, 2);
+        for (let i = 0; i < r.need - 2; i++) addUnit(cid, r, 1);
       } else {
-        for (let i = 0; i < r.need; i++) units.push({ cid, sid: r.sid, name: r.name, teacher: r.teacher, size: 1 });
+        for (let i = 0; i < r.need; i++) addUnit(cid, r, 1);
       }
     }
   }
 
   const maxAttempts = 10000;
-  const nodeCapPerAttempt = 300000;
-  const deadline = Date.now() + 15000;
+  const nodeCapPerAttempt = 500000;
+  const deadline = Date.now() + 30000;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (Date.now() > deadline) break;
@@ -281,15 +288,21 @@ function buildPerfectTimetableEntries(opts: {
     const dayUsed = new Map<string, Set<number>>();
     for (const cid of cids) for (const r of recsByClass[cid]) dayUsed.set(`${cid}|${r.sid}`, new Set());
     const placed = new Array(units.length).fill(false);
+    const placedAt = new Map<number, [number, number]>();
     let nodes = 0;
 
     const cands = (ui: number): Array<[number, number]> => {
       const u = units[ui];
+      const predecessor = u.groupOrder > 0 ? ui - 1 : -1;
+      const predecessorPosition = predecessor >= 0 && units[predecessor]?.groupKey === u.groupKey
+        ? placedAt.get(predecessor)
+        : undefined;
       const used = dayUsed.get(`${u.cid}|${u.sid}`)!;
       const res: Array<[number, number]> = [];
       for (let day = 0; day < 5; day++) {
         if (used.has(day)) continue;
         for (let ln = 0; ln <= K - u.size; ln++) {
+          if (predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
           if (grid.has(`${u.cid}|${day}|${ln}`)) continue;
           if (u.size === 2 && grid.has(`${u.cid}|${day}|${ln + 1}`)) continue;
           if (!strictSubjectAllowsLesson(u.name, ln + 1)) continue;
@@ -311,12 +324,14 @@ function buildPerfectTimetableEntries(opts: {
       const u = units[ui];
       for (let x = 0; x < u.size; x++) { grid.set(`${u.cid}|${day}|${ln + x}`, ui); teacherAt.set(`${u.teacher}|${day}|${ln + x}`, u.cid); }
       dayUsed.get(`${u.cid}|${u.sid}`)!.add(day);
+      placedAt.set(ui, [day, ln]);
       placed[ui] = true;
     };
     const unplace = (ui: number, day: number, ln: number) => {
       const u = units[ui];
       for (let x = 0; x < u.size; x++) { grid.delete(`${u.cid}|${day}|${ln + x}`); teacherAt.delete(`${u.teacher}|${day}|${ln + x}`); }
       dayUsed.get(`${u.cid}|${u.sid}`)!.delete(day);
+      placedAt.delete(ui);
       placed[ui] = false;
     };
 
@@ -327,6 +342,8 @@ function buildPerfectTimetableEntries(opts: {
       let bestC: Array<[number, number]> = [];
       for (let ui = 0; ui < units.length; ui++) {
         if (placed[ui]) continue;
+        const u = units[ui];
+        if (u.groupOrder > 0 && units[ui - 1]?.groupKey === u.groupKey && !placed[ui - 1]) continue;
         const c = cands(ui);
         if (c.length === 0) return false;
         if (best === -1 || c.length < bestC.length) {
@@ -335,7 +352,7 @@ function buildPerfectTimetableEntries(opts: {
           if (c.length === 1) break;
         }
       }
-      if (best === -1) return true;
+      if (best === -1) return placed.every(Boolean);
       for (let i = bestC.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = bestC[i]; bestC[i] = bestC[j]; bestC[j] = t; }
       for (const [day, ln] of bestC) {
         place(best, day, ln);
