@@ -12,7 +12,7 @@
  * | Lower Primary    | 6     | 0           |
  * | Primary 1-6      | 6     | 0           |
  * | Junior School    | 8     | 2           |
- * | Senior 10-12     | 7     | 1           |
+ * | Senior 10-12     | 8     | 2           |
  * | 8-4-4            | 7     | 1           |
  */
 
@@ -48,7 +48,7 @@ export interface LevelLessonConfig {
 }
 
 /** Built-in defaults — used only when DB does not supply counts.
- * Senior (Grade 10-12): 7 lessons/day, 1 after lunch.
+ * Senior (Grade 10-12): 8 lessons/day, 2 after lunch.
  * Form 3 & 4 (8-4-4): 7 lessons/day, 1 after lunch.
  */
 export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
@@ -57,13 +57,13 @@ export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
   'upper-primary': { totalLessons: 6, afterLunch: 0 },
   'combined-primary': { totalLessons: 6, afterLunch: 0 },
   junior: { totalLessons: 8, afterLunch: 2 },
-  senior: { totalLessons: 7, afterLunch: 1 },
+  senior: { totalLessons: 8, afterLunch: 2 },
   'form-3-4': { totalLessons: 7, afterLunch: 1 },
   // legacy aliases
   lower_primary: { totalLessons: 6, afterLunch: 0 },
   upper_primary: { totalLessons: 7, afterLunch: 1 },
   junior_school: { totalLessons: 8, afterLunch: 2 },
-  senior_school: { totalLessons: 7, afterLunch: 1 },
+  senior_school: { totalLessons: 8, afterLunch: 2 },
   '8-4-4': { totalLessons: 7, afterLunch: 1 },
 };
 
@@ -197,10 +197,10 @@ export function isValidDoubleLessonPair(
   if (!firstSlot || !secondSlot) return false;
   if (firstSlot.slot_type && firstSlot.slot_type !== 'lesson') return false;
   if (secondSlot.slot_type && secondSlot.slot_type !== 'lesson') return false;
-  if (secondSlot.slot_order !== firstSlot.slot_order + 1) return false;
   const firstLesson = Number(String(firstSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   const secondLesson = Number(String(secondSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   if (!Number.isFinite(firstLesson) || !Number.isFinite(secondLesson)) return false;
+  if (secondLesson !== firstLesson + 1) return false;
   return strictSubjectAllowsLesson(subjectName, firstLesson)
     && strictSubjectAllowsLesson(subjectName, secondLesson);
 }
