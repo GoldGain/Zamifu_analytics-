@@ -9,7 +9,7 @@ import type {
 } from './exam-schema.js';
 
 export type PaperVariant = 'single' | 'paper1' | 'paper2';
-const TWO_PAPER_SUBJECTS = ['english', 'kiswahili', 'integratedscience'];
+const TWO_PAPER_SUBJECTS = ['english', 'kiswahili', 'integratedscience', 'agriculture', 'pretechnical', 'creativearts', 'creativeartsandsports'];
 
 export function normalizeKey(value: unknown): string {
   return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -37,6 +37,21 @@ function paperFocus(subject: string, variant: PaperVariant): string {
     return variant === 'paper1'
       ? 'Karatasi 1 hupima lugha: sarufi, matumizi ya lugha, uakifishaji, msamiati, ufahamu na insha fupi.'
       : 'Karatasi 2 hupima fasihi na usomaji wa kina: ufahamu wa kifungu kirefu, ufupisho na insha ndefu.';
+  }
+  if (key === 'agriculture') {
+    return variant === 'paper1'
+      ? 'Agriculture Paper 1 is a 70-mark theory paper with 30 multiple-choice marks and 40 structured marks.'
+      : 'Agriculture Paper 2 is a 30-mark practical paper with practical tasks, observations and conclusions.';
+  }
+  if (key === 'pretechnical') {
+    return variant === 'paper1'
+      ? 'Pre-Technical Studies Paper 1 is an 80-mark theory paper with 30 multiple-choice marks and 50 structured marks.'
+      : 'Pre-Technical Studies Paper 2 is a 40-mark project assessed over one month.';
+  }
+  if (key === 'creativearts' || key === 'creativeartsandsports') {
+    return variant === 'paper1'
+      ? 'Creative Arts and Sports Paper 1 is a 100-mark project assessed over three months.'
+      : 'Creative Arts and Sports Paper 2 has 40 multiple-choice marks and 60 structured marks.';
   }
   return variant === 'paper1'
     ? 'Integrated Science Paper 1 tests theory: concepts, explanations, definitions and structured theory questions.'
@@ -85,7 +100,7 @@ export function mapWorkLaw(request: ExamGenerationRequest): string {
 export function kjseaFormatLaw(request: ExamGenerationRequest): string {
   if (request.format !== 'kjsea') return '';
   return [
-    'KJSEA format law: Section A has exactly 20 multiple-choice questions worth 1 mark each (four options A-D, one correct answer); Section B has exactly 8 structured questions worth 10 marks each.',
+    'KJSEA format law: follow the subject-specific blueprint and mark total exactly. Objective sections use four options A-D and one correct answer; structured sections use explicit lettered sub-parts whose marks sum to the parent question.',
     'Section B phrasing: open with an instruction, then use lettered sub-parts (a), (b), (c) and roman sub-items (i), (ii). Sub-part marks must total exactly 10 per main question. Use command words such as State, Name, Describe, Explain, Calculate, Give a reason, Outline, and use a table or labelled diagram when data must be recorded or interpreted.',
     'Illustration: "(a) Name two ... (2 marks) (b) Explain how ... (4 marks) (c) State two reasons ... (4 marks)". Keep the mark arithmetic visible in every sub-part.',
   ].join(' ');

@@ -1,219 +1,79 @@
 /**
  * Source-backed KJSEA paper metadata.
  *
- * This module intentionally stores only format metadata, mark allocations,
- * durations, and prompt-safe conventions. It does not reproduce any sample
- * paper question text or marking-scheme content.
+ * This module stores format metadata, mark allocations, durations, and
+ * prompt-safe conventions. It does not reproduce sample-paper question text.
  */
 import type { Difficulty, ExamBlueprint, ExamBlueprintSection, PaperVariant, QuestionType } from './exam-schema.js';
 
 const normalizeKey = (value: unknown): string => String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-
-export type KJSEASubjectKey = 'english' | 'kiswahili' | 'integratedscience';
+export type KJSEASubjectKey = 'english' | 'kiswahili' | 'mathematics' | 'integratedscience' | 'agriculture' | 'pretechnical' | 'socialstudies' | 'cre' | 'ire' | 'creativearts';
 export type KJSEACardVariant = PaperVariant | 'both';
-
-export interface KJSEAComponent {
-  label: string;
-  marks: number;
-  detail: string;
-}
-
-export interface KJSEAPaperSpec {
-  subjectKey: KJSEASubjectKey;
-  variant: KJSEACardVariant;
-  title: string;
-  code: string;
-  marks: number;
-  duration_minutes: number;
-  components: KJSEAComponent[];
-  format_notes: string[];
-  sources: string[];
-}
+export interface KJSEAComponent { label: string; marks: number; detail: string; }
+export interface KJSEAPaperSpec { subjectKey: KJSEASubjectKey; variant: 'paper1' | 'paper2' | 'single'; title: string; code: string; marks: number; duration_minutes: number; components: KJSEAComponent[]; format_notes: string[]; sources: string[]; }
 
 const KNEC_TIMETABLE = 'https://www.knec.ac.ke/wp-content/uploads/2025/06/2025-KJSEA-TIMETABLE-Revised-1.pdf';
 const KNEC_REGULATIONS = 'https://www.knec.ac.ke/wp-content/uploads/2026/02/KJSEA-REGULATIONS.pdf';
 const KNEC_SAMPLE_CIRCULAR = 'https://www.knec.ac.ke/wp-content/uploads/2025/06/CIRCULAR-ON-ACCESSING-KJSEA-SAMPLE-PAPER-8.pdf';
-
+const SOURCES = [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR];
 const SUBJECT_ALIASES: Record<KJSEASubjectKey, string[]> = {
-  english: ['english'],
-  kiswahili: ['kiswahili', 'ksl', 'kenya sign language'],
-  integratedscience: ['integrated science', 'integratedscience', 'science'],
+  english: ['english'], kiswahili: ['kiswahili'], mathematics: ['mathematics', 'maths', 'math'],
+  integratedscience: ['integrated science', 'integratedscience', 'science'], agriculture: ['agriculture'],
+  pretechnical: ['pre-technical studies', 'pre technical studies', 'pretechnical'], socialstudies: ['social studies', 'socialstudies'],
+  cre: ['cre', 'christian religious education'], ire: ['ire', 'islamic religious education'], creativearts: ['creative arts', 'creative arts and sports', 'creativearts'],
 };
-
 export function kjseaSubjectKey(subject: unknown): KJSEASubjectKey | null {
-  const key = normalizeKey(String(subject || ''));
-  return (Object.keys(SUBJECT_ALIASES) as KJSEASubjectKey[]).find((candidate) =>
-    SUBJECT_ALIASES[candidate].some((alias) => normalizeKey(alias) === key || key.includes(normalizeKey(alias))),
-  ) || null;
+  const key = normalizeKey(subject);
+  return (Object.keys(SUBJECT_ALIASES) as KJSEASubjectKey[]).find((candidate) => SUBJECT_ALIASES[candidate].some((alias) => normalizeKey(alias) === key || key.includes(normalizeKey(alias)))) || null;
 }
+export const TWO_PAPER_SUBJECTS: KJSEASubjectKey[] = ['english', 'kiswahili', 'integratedscience', 'agriculture', 'pretechnical', 'creativearts'];
+export function subjectHasTwoPapers(subject: unknown): boolean { const key = kjseaSubjectKey(subject); return Boolean(key && TWO_PAPER_SUBJECTS.includes(key)); }
+const notes = (extra: string[] = []) => [...extra, 'Use original questions and answers; do not reproduce any source-paper wording.'];
+const makeSpec = (subjectKey: KJSEASubjectKey, variant: 'paper1' | 'paper2' | 'single', title: string, code: string, marks: number, duration_minutes: number, components: KJSEAComponent[], extra: string[] = []): KJSEAPaperSpec => ({ subjectKey, variant, title, code, marks, duration_minutes, components, format_notes: notes(extra), sources: SOURCES });
 
-const PAPER_DATA: Record<KJSEASubjectKey, Record<'paper1' | 'paper2', KJSEAPaperSpec>> = {
-  english: {
-    paper1: {
-      subjectKey: 'english', variant: 'paper1', title: 'Paper 1 · English Language', code: '901/1', marks: 50, duration_minutes: 100,
-      components: [
-        { label: 'Listening & speaking', marks: 5, detail: 'Oral or interaction situations' },
-        { label: 'Cloze test', marks: 10, detail: 'Cloze and vocabulary/usage items' },
-        { label: 'Reading comprehension', marks: 20, detail: 'Four reading passages' },
-        { label: 'Grammar', marks: 15, detail: 'Grammar and sentence-completion items' },
-      ],
-      format_notes: ['50 compulsory multiple-choice questions with four options A–D and one selected response per item.', 'Use answer-sheet/OMR wording for administered papers; do not copy any sample-paper question text.'],
-      sources: [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR],
-    },
-    paper2: {
-      subjectKey: 'english', variant: 'paper2', title: 'Paper 2 · English Composition & Literary Analysis', code: '901/2', marks: 50, duration_minutes: 105,
-      components: [
-        { label: 'Composition', marks: 15, detail: 'One extended composition task' },
-        { label: 'Oral literature', marks: 10, detail: 'Literary-analysis task' },
-        { label: 'Novella / short story', marks: 10, detail: 'Excerpt-based literary analysis' },
-        { label: 'Play', marks: 10, detail: 'Excerpt-based literary analysis' },
-        { label: 'Poetry', marks: 5, detail: 'Poetry interpretation' },
-      ],
-      format_notes: ['Two sections: composition followed by structured literary-analysis tasks.', 'Use explicit printed marks and model answers; the composition and analysis content must be original.'],
-      sources: [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR],
-    },
-  },
-  kiswahili: {
-    paper1: {
-      subjectKey: 'kiswahili', variant: 'paper1', title: 'Paper 1 · Kiswahili Lugha', code: '902/1', marks: 50, duration_minutes: 100,
-      components: [
-        { label: 'Ufahamu wa kusoma', marks: 20, detail: 'Four reading-comprehension passages' },
-        { label: 'Kusikiliza na kuzungumza', marks: 5, detail: 'Listening and speaking situations' },
-        { label: 'Cloze test', marks: 10, detail: 'Cloze and vocabulary usage' },
-        { label: 'Sarufi / language', marks: 15, detail: 'Grammar and language items' },
-      ],
-      format_notes: ['50 compulsory multiple-choice questions with four options A–D.', 'Use Kiswahili task labels such as ufahamu, kusikiliza na kuzungumza, sarufi, nahau, methali and ngeli where relevant.'],
-      sources: [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR],
-    },
-    paper2: {
-      subjectKey: 'kiswahili', variant: 'paper2', title: 'Paper 2 · Kiswahili Insha na Utangulizi wa Fasihi', code: '902/2', marks: 50, duration_minutes: 105,
-      components: [
-        { label: 'Insha', marks: 15, detail: 'Composition task, typically 300–350 words' },
-        { label: 'Fasihi simulizi', marks: 10, detail: 'Oral literature' },
-        { label: 'Novela', marks: 10, detail: 'Novel / short-story analysis' },
-        { label: 'Tamthilia', marks: 10, detail: 'Play analysis' },
-        { label: 'Ushairi', marks: 5, detail: 'Poetry interpretation' },
-      ],
-      format_notes: ['Two sections, A and B; all questions are compulsory and answers are written in Kiswahili.', 'Print mark values beside sub-parts and provide actual model answers in the marking scheme.'],
-      sources: [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR],
-    },
-  },
-  integratedscience: {
-    paper1: {
-      subjectKey: 'integratedscience', variant: 'paper1', title: 'Paper 1 · Integrated Science (Theory)', code: '905/1', marks: 70, duration_minutes: 100,
-      components: [
-        { label: 'Section A · Multiple choice', marks: 30, detail: '30 objective items' },
-        { label: 'Section B · Structured and essay', marks: 40, detail: 'Short structured and essay work; original source-based tasks' },
-      ],
-      format_notes: ['30 multiple-choice questions worth 1 mark each, followed by 40 marks of structured/essay work.', 'Use Integrated Science (Theory), Section A, Section B, separate answer sheet, and spaces provided in this question paper as prompt-safe labels.'],
-      sources: [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR],
-    },
-    paper2: {
-      subjectKey: 'integratedscience', variant: 'paper2', title: 'Paper 2 · Integrated Science (Practical)', code: '905/2', marks: 30, duration_minutes: 60,
-      components: [
-        { label: 'Chemistry', marks: 10, detail: 'Practical skills and written observations' },
-        { label: 'Biology', marks: 10, detail: 'Practical skills, recording and interpretation' },
-        { label: 'Physics', marks: 10, detail: 'Measurement, apparatus and conclusions' },
-      ],
-      format_notes: ['Use the current KNEC timetable/regulations specification of 30 marks in 60 minutes.', 'The January 2025 familiarisation sample shows an earlier 90-minute presentation; retain the current 60-minute specification rather than merging the two versions.'],
-      sources: [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR],
-    },
-  },
+const PAPER_DATA: Record<KJSEASubjectKey, { paper1: KJSEAPaperSpec; paper2: KJSEAPaperSpec }> = {
+  english: { paper1: makeSpec('english', 'paper1', 'Paper 1 · English Language', '901/1', 50, 100, [{ label: 'Listening & speaking', marks: 5, detail: 'Oral or interaction situations' }, { label: 'Cloze test', marks: 10, detail: 'Cloze and vocabulary/usage items' }, { label: 'Reading comprehension', marks: 20, detail: 'Four reading passages' }, { label: 'Grammar', marks: 15, detail: 'Grammar and sentence-completion items' }], ['Fifty compulsory objective items with four options A–D and one selected response per item.']), paper2: makeSpec('english', 'paper2', 'Paper 2 · English Composition & Literary Analysis', '901/2', 50, 105, [{ label: 'Imaginative composition', marks: 15, detail: 'One extended composition task' }, { label: 'Oral narrative', marks: 10, detail: 'Oral-literature task' }, { label: 'Novella / short story', marks: 10, detail: 'Excerpt-based literary analysis' }, { label: 'Play', marks: 10, detail: 'Excerpt-based literary analysis' }, { label: 'Poetry', marks: 5, detail: 'Poetry interpretation' }]) },
+  kiswahili: { paper1: makeSpec('kiswahili', 'paper1', 'Karatasi ya Kwanza · Lugha', '902/1', 50, 100, [{ label: 'Ufahamu wa kusoma', marks: 20, detail: 'Vifungu vinne vya ufahamu' }, { label: 'Kusikiliza na kuzungumza', marks: 5, detail: 'Hali za kusikiliza na kuzungumza' }, { label: 'Cloze test', marks: 10, detail: 'Cloze na matumizi ya msamiati' }, { label: 'Sarufi', marks: 15, detail: 'Sarufi na matumizi ya lugha' }], ['Maswali ya kuchagua majibu yenye chaguo A–D.']), paper2: makeSpec('kiswahili', 'paper2', 'Karatasi ya Pili · Insha na Fasihi', '902/2', 50, 105, [{ label: 'Insha', marks: 15, detail: 'Kazi ya utungaji' }, { label: 'Fasihi simulizi', marks: 10, detail: 'Fasihi simulizi' }, { label: 'Novela', marks: 10, detail: 'Uchanganuzi wa novela' }, { label: 'Tamthilia', marks: 10, detail: 'Uchanganuzi wa tamthilia' }, { label: 'Ushairi', marks: 5, detail: 'Ufafanuzi wa ushairi' }]) },
+  mathematics: { paper1: makeSpec('mathematics', 'single', 'Mathematics', '903', 100, 120, [{ label: 'Section A · Multiple choice', marks: 20, detail: 'Twenty MCQs' }, { label: 'Numbers', marks: 40, detail: 'Questions 21–28' }, { label: 'Algebra and inequalities', marks: 15, detail: 'Questions 29–31' }, { label: 'Measurement', marks: 30, detail: 'Questions 32–37' }, { label: 'Geometry and construction', marks: 10, detail: 'Questions 38–39' }, { label: 'Data handling and probability', marks: 5, detail: 'Question 40' }], ['One paper. Section A has 20 MCQs; Section B has questions 21–40, with no question exceeding 5 marks.']), paper2: makeSpec('mathematics', 'paper2', 'Not applicable', '903/2', 0, 0, []) },
+  integratedscience: { paper1: makeSpec('integratedscience', 'paper1', 'Paper 1 · Integrated Science Theory', '905/1', 70, 100, [{ label: 'Section A · Multiple choice', marks: 30, detail: 'Thirty objective items' }, { label: 'Section B · Structured', marks: 40, detail: 'Structured theory questions' }]), paper2: makeSpec('integratedscience', 'paper2', 'Paper 2 · Integrated Science Practical', '905/2', 30, 60, [{ label: 'Chemistry practical', marks: 10, detail: 'Practical skills and observations' }, { label: 'Biology practical', marks: 10, detail: 'Recording and interpretation' }, { label: 'Physics practical', marks: 10, detail: 'Measurement and conclusions' }]) },
+  agriculture: { paper1: makeSpec('agriculture', 'paper1', 'Paper 1 · Agriculture Theory', '906/1', 70, 100, [{ label: 'Section A · Multiple choice', marks: 30, detail: 'Thirty MCQs' }, { label: 'Section B · Structured', marks: 40, detail: 'Structured questions' }]), paper2: makeSpec('agriculture', 'paper2', 'Paper 2 · Agriculture Practical', '906/2', 30, 150, [{ label: 'Practical paper', marks: 30, detail: 'Practical tasks and observations' }]) },
+  pretechnical: { paper1: makeSpec('pretechnical', 'paper1', 'Paper 1 · Pre-Technical Studies', '912/1', 80, 100, [{ label: 'Section A · Multiple choice', marks: 30, detail: 'Thirty MCQs' }, { label: 'Section B · Structured', marks: 50, detail: 'Structured questions' }]), paper2: makeSpec('pretechnical', 'paper2', 'Paper 2 · Pre-Technical Project', '912/2', 40, 43200, [{ label: 'Project', marks: 40, detail: 'One-month project' }], ['Project duration is one month; represented in minutes for the application model.']) },
+  creativearts: { paper1: makeSpec('creativearts', 'paper1', 'Paper 1 · Creative Arts & Sports Project', '910/1', 100, 129600, [{ label: 'Project', marks: 100, detail: 'Three-month project' }], ['Project duration is three months; represented in minutes for the application model.']), paper2: makeSpec('creativearts', 'paper2', 'Paper 2 · Creative Arts & Sports', '910/2', 100, 100, [{ label: 'Section A · Multiple choice', marks: 40, detail: 'Forty MCQs' }, { label: 'Section B · Structured', marks: 60, detail: 'Structured questions' }]) },
+  socialstudies: { paper1: makeSpec('socialstudies', 'single', 'Social Studies', '907', 100, 90, [{ label: 'Section A · Multiple choice', marks: 20, detail: 'Twenty MCQs' }, { label: 'Section B · Structured', marks: 80, detail: 'Structured questions; questions 21–23 require actual maps' }], ['Questions 21–23 must contain a Kenya, Africa, or topographical map visual where mapwork is requested.']), paper2: makeSpec('socialstudies', 'paper2', 'Not applicable', '907/2', 0, 0, []) },
+  cre: { paper1: makeSpec('cre', 'single', 'Christian Religious Education', '908', 100, 90, [{ label: 'Section A · Multiple choice', marks: 20, detail: 'Twenty MCQs' }, { label: 'Section B · Structured', marks: 80, detail: 'Structured questions' }]), paper2: makeSpec('cre', 'paper2', 'Not applicable', '908/2', 0, 0, []) },
+  ire: { paper1: makeSpec('ire', 'single', 'Islamic Religious Education', '909', 100, 90, [{ label: 'Section A · Multiple choice', marks: 20, detail: 'Twenty MCQs' }, { label: 'Section B · Structured', marks: 80, detail: 'Structured questions' }]), paper2: makeSpec('ire', 'paper2', 'Not applicable', '909/2', 0, 0, []) },
 };
 
-export function getKjseaPaperSpec(subject: unknown, variant: KJSEACardVariant = 'single'): KJSEAPaperSpec | null {
-  const subjectKey = kjseaSubjectKey(subject);
-  if (!subjectKey) return null;
-  if (variant === 'paper1' || variant === 'paper2') return PAPER_DATA[subjectKey][variant];
-  const paper1 = PAPER_DATA[subjectKey].paper1;
-  const paper2 = PAPER_DATA[subjectKey].paper2;
-  const combined = {
-    subjectKey,
-    variant,
-    title: 'Whole subject · Paper 1 + Paper 2',
-    code: `${paper1.code} + ${paper2.code}`,
-    marks: paper1.marks + paper2.marks,
-    duration_minutes: paper1.duration_minutes + paper2.duration_minutes,
-    components: [
-      { label: paper1.title, marks: paper1.marks, detail: `${paper1.duration_minutes} minutes` },
-      { label: paper2.title, marks: paper2.marks, detail: `${paper2.duration_minutes} minutes` },
-    ],
-    format_notes: ['Whole-subject mode combines the two official papers; generating both separately is available for schools that need separate answer books.', ...paper1.format_notes, ...paper2.format_notes],
-    sources: Array.from(new Set([...paper1.sources, ...paper2.sources])),
-  } satisfies KJSEAPaperSpec;
-  return combined;
-}
-
-function section(
-  id: string,
-  title: string,
-  question_type: QuestionType,
-  count: number,
-  marks_per_question: number,
-  difficulty: Difficulty,
-): ExamBlueprintSection {
-  return { id, title, question_type, count, marks_per_question, difficulty };
-}
-
+function section(id: string, title: string, question_type: QuestionType, count: number, marks_per_question: number, difficulty: Difficulty): ExamBlueprintSection { return { id, title, question_type, count, marks_per_question, difficulty }; }
 function paperSections(subjectKey: KJSEASubjectKey, variant: 'paper1' | 'paper2', difficulty: Difficulty): ExamBlueprintSection[] {
-  if (subjectKey === 'integratedscience' && variant === 'paper1') {
-    return [
-      section('kjsea-is-p1-mcq', 'Section A: Multiple Choice Questions', 'multiple_choice', 30, 1, difficulty),
-      section('kjsea-is-p1-structured-1', 'Section B: Structured task 1', 'case_study', 1, 3, difficulty),
-      section('kjsea-is-p1-structured-2', 'Section B: Structured task 2', 'case_study', 1, 13, difficulty),
-      section('kjsea-is-p1-structured-3', 'Section B: Structured task 3', 'case_study', 1, 16, difficulty),
-      section('kjsea-is-p1-structured-4', 'Section B: Structured task 4', 'case_study', 1, 8, difficulty),
-    ];
-  }
-  if (subjectKey === 'integratedscience' && variant === 'paper2') {
-    return [
-      section('kjsea-is-p2-chemistry', 'Practical skills: Chemistry', 'case_study', 1, 10, difficulty),
-      section('kjsea-is-p2-biology', 'Practical skills: Biology', 'case_study', 1, 10, difficulty),
-      section('kjsea-is-p2-physics', 'Practical skills: Physics', 'case_study', 1, 10, difficulty),
-    ];
-  }
-  if (variant === 'paper1') {
-    return [section(`kjsea-${subjectKey}-p1-mcq`, 'Paper 1: Multiple Choice Questions', 'multiple_choice', 50, 1, difficulty)];
-  }
-  return [
-    section(`kjsea-${subjectKey}-p2-composition`, subjectKey === 'kiswahili' ? 'Sehemu A: Insha' : 'Section A: Composition', 'essay', 1, 15, difficulty),
-    section(`kjsea-${subjectKey}-p2-oral`, subjectKey === 'kiswahili' ? 'Sehemu B: Fasihi Simulizi' : 'Section B: Oral Literature', 'case_study', 1, 10, difficulty),
-    section(`kjsea-${subjectKey}-p2-novella`, subjectKey === 'kiswahili' ? 'Sehemu B: Novela' : 'Section B: Novella / Short Story', 'case_study', 1, 10, difficulty),
-    section(`kjsea-${subjectKey}-p2-play`, subjectKey === 'kiswahili' ? 'Sehemu B: Tamthilia' : 'Section B: Play', 'case_study', 1, 10, difficulty),
-    section(`kjsea-${subjectKey}-p2-poetry`, subjectKey === 'kiswahili' ? 'Sehemu B: Ushairi' : 'Section B: Poetry', 'case_study', 1, 5, difficulty),
-  ];
+  if (subjectKey === 'mathematics') return variant === 'paper2' ? [] : [section('kjsea-mathematics-mcq', 'Section A: Multiple Choice Questions', 'multiple_choice', 20, 1, difficulty), section('kjsea-mathematics-numbers', 'Section B: Numbers · Questions 21–28', 'numeric_response', 8, 5, difficulty), section('kjsea-mathematics-algebra', 'Section B: Algebra and inequalities · Questions 29–31', 'numeric_response', 3, 5, difficulty), section('kjsea-mathematics-measurement', 'Section B: Measurement · Questions 32–37', 'numeric_response', 6, 5, difficulty), section('kjsea-mathematics-geometry', 'Section B: Geometry and construction · Questions 38–39', 'numeric_response', 2, 5, difficulty), section('kjsea-mathematics-data', 'Section B: Data handling and probability · Question 40', 'numeric_response', 1, 5, difficulty)];
+  if (subjectKey === 'socialstudies' || subjectKey === 'cre' || subjectKey === 'ire') return variant === 'paper2' ? [] : [section(`kjsea-${subjectKey}-mcq`, 'Section A: Multiple Choice Questions', 'multiple_choice', 20, 1, difficulty), section(`kjsea-${subjectKey}-structured`, 'Section B: Structured questions', 'case_study', 16, 5, difficulty)];
+  if (subjectKey === 'integratedscience' && variant === 'paper1') return [section('kjsea-is-p1-mcq', 'Section A: Multiple Choice Questions', 'multiple_choice', 30, 1, difficulty), section('kjsea-is-p1-structured', 'Section B: Structured', 'case_study', 4, 10, difficulty)];
+  if (subjectKey === 'integratedscience' && variant === 'paper2') return [section('kjsea-is-p2-chemistry', 'Practical skills: Chemistry', 'case_study', 1, 10, difficulty), section('kjsea-is-p2-biology', 'Practical skills: Biology', 'case_study', 1, 10, difficulty), section('kjsea-is-p2-physics', 'Practical skills: Physics', 'case_study', 1, 10, difficulty)];
+  if ((subjectKey === 'agriculture' || subjectKey === 'pretechnical') && variant === 'paper1') return [section(`kjsea-${subjectKey}-p1-mcq`, 'Section A: Multiple Choice Questions', 'multiple_choice', 30, 1, difficulty), section(`kjsea-${subjectKey}-p1-structured`, 'Section B: Structured', 'case_study', subjectKey === 'agriculture' ? 8 : 10, 5, difficulty)];
+  if (subjectKey === 'agriculture' && variant === 'paper2') return [section('kjsea-agriculture-p2-practical', 'Practical paper', 'case_study', 3, 10, difficulty)];
+  if (subjectKey === 'pretechnical' && variant === 'paper2') return [section('kjsea-pretechnical-p2-project', 'Project', 'case_study', 1, 40, difficulty)];
+  if (subjectKey === 'creativearts' && variant === 'paper1') return [section('kjsea-creativearts-p1-project', 'Project', 'case_study', 1, 100, difficulty)];
+  if (subjectKey === 'creativearts' && variant === 'paper2') return [section('kjsea-creativearts-p2-mcq', 'Section A: Multiple Choice Questions', 'multiple_choice', 40, 1, difficulty), section('kjsea-creativearts-p2-structured', 'Section B: Structured', 'case_study', 12, 5, difficulty)];
+  if (variant === 'paper1') return [section(`kjsea-${subjectKey}-p1-mcq`, 'Paper 1: Multiple Choice Questions', 'multiple_choice', 50, 1, difficulty)];
+  return [section(`kjsea-${subjectKey}-p2-composition`, subjectKey === 'kiswahili' ? 'Sehemu A: Insha' : 'Section A: Composition', 'essay', 1, 15, difficulty), section(`kjsea-${subjectKey}-p2-oral`, subjectKey === 'kiswahili' ? 'Sehemu B: Fasihi Simulizi' : 'Section B: Oral narrative', 'case_study', 1, 10, difficulty), section(`kjsea-${subjectKey}-p2-novella`, subjectKey === 'kiswahili' ? 'Sehemu C: Novela' : 'Section C: Novella / Short story', 'case_study', 1, 10, difficulty), section(`kjsea-${subjectKey}-p2-play`, subjectKey === 'kiswahili' ? 'Sehemu D: Tamthilia' : 'Section D: Play', 'case_study', 1, 10, difficulty), section(`kjsea-${subjectKey}-p2-poetry`, subjectKey === 'kiswahili' ? 'Sehemu E: Ushairi' : 'Section E: Poetry', 'case_study', 1, 5, difficulty)];
 }
-
+export function getKjseaPaperSpec(subject: unknown, variant: KJSEACardVariant = 'single'): KJSEAPaperSpec | null {
+  const subjectKey = kjseaSubjectKey(subject); if (!subjectKey) return null;
+  if (!subjectHasTwoPapers(subjectKey)) return variant === 'single' ? { ...PAPER_DATA[subjectKey].paper1, variant: 'single' } : null;
+  if (variant === 'paper1' || variant === 'paper2') return PAPER_DATA[subjectKey][variant];
+  const p1 = PAPER_DATA[subjectKey].paper1; const p2 = PAPER_DATA[subjectKey].paper2;
+  return { subjectKey, variant: 'single', title: 'Whole subject · Paper 1 + Paper 2', code: `${p1.code} + ${p2.code}`, marks: p1.marks + p2.marks, duration_minutes: p1.duration_minutes + p2.duration_minutes, components: [{ label: p1.title, marks: p1.marks, detail: `${p1.duration_minutes} minutes` }, { label: p2.title, marks: p2.marks, detail: `${p2.duration_minutes} minutes` }], format_notes: [...p1.format_notes, ...p2.format_notes], sources: SOURCES };
+}
 export function makeKjseaBlueprint(subject: unknown, variant: PaperVariant = 'single', difficulty: Difficulty = 'mixed'): ExamBlueprint | undefined {
-  const subjectKey = kjseaSubjectKey(subject);
-  if (!subjectKey) return undefined;
-  const sections = variant === 'single'
-    ? [...paperSections(subjectKey, 'paper1', difficulty), ...paperSections(subjectKey, 'paper2', difficulty)]
-    : paperSections(subjectKey, variant, difficulty);
-  const total_marks = sections.reduce((sum, item) => sum + item.count * item.marks_per_question, 0);
-  const spec = getKjseaPaperSpec(subject, variant);
-  return { sections, total_marks, estimated_minutes: spec?.duration_minutes, paper_variant: variant };
+  const subjectKey = kjseaSubjectKey(subject); if (!subjectKey) return undefined;
+  const sections = variant === 'single' && subjectHasTwoPapers(subjectKey) ? [...paperSections(subjectKey, 'paper1', difficulty), ...paperSections(subjectKey, 'paper2', difficulty)] : paperSections(subjectKey, variant === 'single' ? 'paper1' : variant, difficulty);
+  return { sections, total_marks: sections.reduce((sum, item) => sum + item.count * item.marks_per_question, 0), estimated_minutes: getKjseaPaperSpec(subject, variant)?.duration_minutes, paper_variant: variant };
 }
-
 export function kjseaFormatInstruction(subject: unknown, variant: PaperVariant = 'single'): string {
-  const spec = getKjseaPaperSpec(subject, variant);
-  if (!spec) return '';
-  const componentText = spec.components.map((component) => `${component.label} (${component.marks} marks): ${component.detail}`).join('; ');
-  const formatSkeleton = [
-    'Format-only skeleton (not source content): header with school, grade, subject, paper code, date, duration and total marks; short candidate instructions; labelled sections; numbered questions; lettered sub-parts such as (a), (b), (c); printed mark values beside each item; answer space or answer-sheet direction where appropriate.',
-    variant === 'paper1'
-      ? 'Paper 1 skeleton: candidate instructions -> Section A/objective items -> option labels A-D -> final answer-sheet reminder.'
-      : variant === 'paper2'
-      ? 'Paper 2 skeleton: candidate instructions -> Section A composition or first structured task -> Section B literary/practical tasks -> lettered sub-parts with marks -> marking-scheme headings.'
-      : 'Whole-subject skeleton: common header and instructions -> Paper 1 section -> Paper 2 section, each retaining its own title, marks and duration.',
-  ];
-  return [
-    `KJSEA paper format: ${spec.title}, ${spec.marks} marks, ${spec.duration_minutes} minutes.`,
-    `Required components: ${componentText}.`,
-    ...spec.format_notes,
-    ...formatSkeleton,
-    'Use these as format metadata only. Generate original questions; do not reproduce any source paper question, answer, or marking scheme text.',
-  ].join(' ');
+  const resolved = getKjseaPaperSpec(subject, variant); if (!resolved) return '';
+  const componentText = resolved.components.map((component) => `${component.label} (${component.marks} marks): ${component.detail}`).join('; ');
+  const skeleton = variant === 'paper1' ? 'Paper 1 skeleton: candidate instructions -> Section A/objective items -> option labels A-D -> answer-sheet reminder.' : variant === 'paper2' ? 'Paper 2 skeleton: candidate instructions -> project/practical/structured tasks -> lettered sub-parts with marks -> marking-scheme headings.' : 'Whole-paper skeleton: formal header -> labelled sections -> numbered questions -> lettered sub-parts -> separate marking scheme.';
+  return [`KJSEA paper format: ${resolved.title}, ${resolved.marks} marks, ${resolved.duration_minutes} minutes.`, `Required components: ${componentText}.`, 'Format-only skeleton (not source content): header, candidate instructions, labelled sections, numbered questions, lettered sub-parts, printed marks, and marking-scheme headings.', ...resolved.format_notes, 'Header must include school, grade, subject, paper code, date, duration and total marks.', skeleton, 'Generate original questions; do not reproduce any source paper question, answer, or marking-scheme text.'].join(' ');
 }
-
-export const KJSEA_FORMAT_SOURCES = [KNEC_TIMETABLE, KNEC_REGULATIONS, KNEC_SAMPLE_CIRCULAR];
+export const KJSEA_FORMAT_SOURCES = SOURCES;

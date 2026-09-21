@@ -162,7 +162,7 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   }
   const variant = normalizePaperVariant(request.paperVariant);
   if (variant !== 'single' && !supportsTwoPapers(request.subject)) {
-    errors.push('Paper 1 and Paper 2 apply only to English, Kiswahili and Integrated Science.');
+    errors.push('Paper 1 and Paper 2 are available only for subjects with an official two-paper KJSEA structure.');
   }
   if (request.blueprint) {
     if (!request.blueprint.sections.length) errors.push('Add at least one blueprint section.');
@@ -212,6 +212,19 @@ export function makeFormatBlueprint(format: ExamFormat, totalMarks: number, diff
     };
   }
   if (format === 'kjsea') {
+    if (safeTotal < 20) {
+      return {
+        sections: [{
+          id: 'kjsea-structured-fallback',
+          title: 'Structured question',
+          question_type: 'case_study',
+          count: 1,
+          marks_per_question: safeTotal,
+          difficulty,
+        }],
+        total_marks: safeTotal,
+      };
+    }
     return {
       sections: [
         {
