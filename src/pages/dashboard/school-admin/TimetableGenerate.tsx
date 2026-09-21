@@ -290,23 +290,20 @@ function buildPerfectTimetableEntries(opts: {
       // Units with the same class, subject, and size are interchangeable. In
       // an MRV search, treating them as distinct creates factorial duplicate
       // branches (and can hit the node cap before finding the valid grid).
-      // Canonicalize them by requiring each next unit in the group to be after
-      // the latest already-placed unit from that group.
-      let groupFloor: [number, number] | undefined;
-      if (enforceSymmetry) {
-        for (const [placedIndex, position] of placedAt) {
-          if (units[placedIndex]?.groupKey !== u.groupKey) continue;
-          if (!groupFloor || position[0] > groupFloor[0] || (position[0] === groupFloor[0] && position[1] > groupFloor[1])) {
-            groupFloor = position;
-          }
-        }
-      }
+      // Require the canonical predecessor to be placed first, then place this
+      // unit strictly after it. This removes duplicate permutations while
+      // preserving every distinct timetable.
+      const predecessor = enforceSymmetry && u.groupOrder > 0
+        ? units.findIndex((candidate) => candidate.groupKey === u.groupKey && candidate.groupOrder === u.groupOrder - 1)
+        : -1;
+      if (predecessor >= 0 && !placedAt.has(predecessor)) return [];
+      const predecessorPosition = predecessor >= 0 ? placedAt.get(predecessor) : undefined;
       const used = dayUsed.get(`${u.cid}|${u.sid}`)!;
       const res: Array<[number, number]> = [];
       for (let day = 0; day < 5; day++) {
         if (used.has(day)) continue;
         for (let ln = 0; ln <= K - u.size; ln++) {
-          if (enforceSymmetry && groupFloor && (day < groupFloor[0] || (day === groupFloor[0] && ln <= groupFloor[1]))) continue;
+          if (enforceSymmetry && predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
           if (grid.has(`${u.cid}|${day}|${ln}`)) continue;
           if (u.size === 2 && grid.has(`${u.cid}|${day}|${ln + 1}`)) continue;
           if (!strictSubjectAllowsLesson(u.name, ln + 1)) continue;
@@ -346,6 +343,10 @@ function buildPerfectTimetableEntries(opts: {
     let best = -1;
     let bestC: Array<[number, number]> = [];
     for (const ui of remaining) {
+      const predecessor = units[ui].groupOrder > 0
+        ? units.findIndex((candidate) => candidate.groupKey === units[ui].groupKey && candidate.groupOrder === units[ui].groupOrder - 1)
+        : -1;
+      if (predecessor >= 0 && !placedAt.has(predecessor)) continue;
       const candidates = cands(ui, true);
       if (candidates.length === 0) return false;
       if (best === -1 || candidates.length < bestC.length
