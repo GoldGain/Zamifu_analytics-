@@ -277,8 +277,7 @@ function buildPerfectTimetableEntries(opts: {
     }
   }
 
-  const maxAttempts = 10000;
-  const nodeCapPerAttempt = 500000;
+  const maxAttempts = 20000;
   const deadline = Date.now() + 30000;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -289,11 +288,10 @@ function buildPerfectTimetableEntries(opts: {
     for (const cid of cids) for (const r of recsByClass[cid]) dayUsed.set(`${cid}|${r.sid}`, new Set());
     const placed = new Array(units.length).fill(false);
     const placedAt = new Map<number, [number, number]>();
-    let nodes = 0;
 
-    const cands = (ui: number): Array<[number, number]> => {
+    const cands = (ui: number, enforceSymmetry = true): Array<[number, number]> => {
       const u = units[ui];
-      const predecessor = u.groupOrder > 0 ? ui - 1 : -1;
+      const predecessor = enforceSymmetry && u.groupOrder > 0 ? ui - 1 : -1;
       const predecessorPosition = predecessor >= 0 && units[predecessor]?.groupKey === u.groupKey
         ? placedAt.get(predecessor)
         : undefined;
@@ -302,7 +300,7 @@ function buildPerfectTimetableEntries(opts: {
       for (let day = 0; day < 5; day++) {
         if (used.has(day)) continue;
         for (let ln = 0; ln <= K - u.size; ln++) {
-          if (predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
+          if (enforceSymmetry && predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
           if (grid.has(`${u.cid}|${day}|${ln}`)) continue;
           if (u.size === 2 && grid.has(`${u.cid}|${day}|${ln + 1}`)) continue;
           if (!strictSubjectAllowsLesson(u.name, ln + 1)) continue;
@@ -335,34 +333,34 @@ function buildPerfectTimetableEntries(opts: {
       placed[ui] = false;
     };
 
-    const search = (): boolean => {
-      nodes++;
-      if (nodes > nodeCapPerAttempt) return false;
+    const remaining = new Set(units.map((_, index) => index));
+    while (remaining.size > 0) {
       let best = -1;
       let bestC: Array<[number, number]> = [];
-      for (let ui = 0; ui < units.length; ui++) {
-        if (placed[ui]) continue;
-        const u = units[ui];
-        if (u.groupOrder > 0 && units[ui - 1]?.groupKey === u.groupKey && !placed[ui - 1]) continue;
-        const c = cands(ui);
-        if (c.length === 0) return false;
+      for (const ui of remaining) {
+        const c = cands(ui, false);
+        if (c.length === 0) {
+          best = -1;
+          bestC = [];
+          break;
+        }
         if (best === -1 || c.length < bestC.length) {
           best = ui;
           bestC = c;
-          if (c.length === 1) break;
         }
       }
-      if (best === -1) return placed.every(Boolean);
-      for (let i = bestC.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = bestC[i]; bestC[i] = bestC[j]; bestC[j] = t; }
-      for (const [day, ln] of bestC) {
-        place(best, day, ln);
-        if (search()) return true;
-        unplace(best, day, ln);
+      if (best === -1 || bestC.length === 0) break;
+      for (let i = bestC.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = bestC[i];
+        bestC[i] = bestC[j];
+        bestC[j] = t;
       }
-      return false;
-    };
-
-    if (!search()) continue;
+      const [day, ln] = bestC[0];
+      place(best, day, ln);
+      remaining.delete(best);
+    }
+    if (remaining.size > 0) continue;
 
     const entries: any[] = [];
     for (let day = 0; day < 5; day++) {
