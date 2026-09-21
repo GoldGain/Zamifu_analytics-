@@ -627,10 +627,11 @@ export default function ExamGenerator({
                     const spec = getKjseaPaperSpec(subject, variant);
                     if (!spec) return null;
                     const selected = paperVariant === variant;
+                    const cardTitle = variant === 'both' ? 'Generate Paper 1 + Paper 2 separately' : spec.title;
                     return (
                       <button key={variant} type="button" aria-pressed={selected} onClick={() => setPaperVariant(variant as UiPaperVariant)} className={`rounded-xl border p-3 text-left transition ${selected ? 'border-red-500 bg-white shadow-sm ring-2 ring-red-100' : 'border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/50'}`}>
-                        <div className="flex items-start justify-between gap-2"><span className="text-xs font-bold text-slate-800">{spec.title}</span><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-red-600 bg-red-600 text-white' : 'border-slate-300 text-transparent'}`}><Check className="h-3 w-3" /></span></div>
-                        <p className="mt-2 text-[11px] font-semibold text-red-700">{spec.marks} marks · {spec.duration_minutes} min</p>
+                        <div className="flex items-start justify-between gap-2"><span className="text-xs font-bold text-slate-800">{cardTitle}</span><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-red-600 bg-red-600 text-white' : 'border-slate-300 text-transparent'}`}><Check className="h-3 w-3" /></span></div>
+                        <p className="mt-2 text-[11px] font-semibold text-red-700">{variant === 'both' ? `${spec.marks} marks total · ${spec.duration_minutes} min total` : `${spec.marks} marks · ${spec.duration_minutes} min`}</p>
                         <div className="mt-2 space-y-1 text-[10px] leading-4 text-slate-600">{spec.components.map((component) => <p key={`${variant}-${component.label}`}><span className="font-semibold text-slate-700">{component.label}:</span> {component.marks}m</p>)}</div>
                         <p className="mt-2 text-[10px] leading-4 text-slate-500">{spec.code}</p>
                       </button>
