@@ -93,6 +93,16 @@ export function validateGeneratedExam(
     if (spec?.variant === 'paper2' && questions.some((question) => question.question_type === 'multiple_choice')) {
       issues.push({ code: 'KJSEA_PAPER2_OBJECTIVE_LAYOUT', severity: 'critical', message: 'KJSEA Paper 2 must not contain multiple-choice questions.' });
     }
+    if (!spec) {
+      const genericObjective = questions.slice(0, 20);
+      const genericStructured = questions.slice(20);
+      if (genericObjective.length === 20 && genericObjective.some((question) => question.question_type !== 'multiple_choice')) {
+        issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'Generic KJSEA papers must begin with 20 multiple-choice questions.' });
+      }
+      if (genericStructured.length === 8 && genericStructured.some((question) => question.question_type !== 'case_study')) {
+        issues.push({ code: 'KJSEA_STRUCTURED_LAYOUT', severity: 'critical', message: 'Generic KJSEA papers must end with 8 structured questions.' });
+      }
+    }
   }
   if (supportsTwoPapers(request.subject)) {
     const variant = normalizePaperVariant(request.paperVariant);

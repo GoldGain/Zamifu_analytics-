@@ -199,10 +199,19 @@ export function kjseaFormatInstruction(subject: unknown, variant: PaperVariant =
   const spec = getKjseaPaperSpec(subject, variant);
   if (!spec) return '';
   const componentText = spec.components.map((component) => `${component.label} (${component.marks} marks): ${component.detail}`).join('; ');
+  const formatSkeleton = [
+    'Format-only skeleton (not source content): header with school, grade, subject, paper code, date, duration and total marks; short candidate instructions; labelled sections; numbered questions; lettered sub-parts such as (a), (b), (c); printed mark values beside each item; answer space or answer-sheet direction where appropriate.',
+    variant === 'paper1'
+      ? 'Paper 1 skeleton: candidate instructions -> Section A/objective items -> option labels A-D -> final answer-sheet reminder.'
+      : variant === 'paper2'
+      ? 'Paper 2 skeleton: candidate instructions -> Section A composition or first structured task -> Section B literary/practical tasks -> lettered sub-parts with marks -> marking-scheme headings.'
+      : 'Whole-subject skeleton: common header and instructions -> Paper 1 section -> Paper 2 section, each retaining its own title, marks and duration.',
+  ];
   return [
     `KJSEA paper format: ${spec.title}, ${spec.marks} marks, ${spec.duration_minutes} minutes.`,
     `Required components: ${componentText}.`,
     ...spec.format_notes,
+    ...formatSkeleton,
     'Use these as format metadata only. Generate original questions; do not reproduce any source paper question, answer, or marking scheme text.',
   ].join(' ');
 }
