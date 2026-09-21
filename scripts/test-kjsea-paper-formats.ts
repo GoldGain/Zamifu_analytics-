@@ -7,7 +7,7 @@ const expected = [
   ['Kiswahili', 'paper1', 50, 100],
   ['Kiswahili', 'paper2', 50, 105],
   ['Integrated Science', 'paper1', 70, 100],
-  ['Integrated Science', 'paper2', 30, 60],
+  ['Integrated Science', 'paper2', 30, 90],
 ] as const;
 
 for (const [subject, variant, marks, duration] of expected) {
