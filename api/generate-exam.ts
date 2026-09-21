@@ -33,6 +33,7 @@ import {
   repairQuestionAnswers,
   supportsTwoPapers,
 } from '../src/lib/exam-construction.js';
+import { getKjseaPaperSpec, makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.js';
 import { applyCuratedVisualFallback } from '../src/lib/exam-visual-library.js';
 import {
   buildQuestionRewritePrompt,
@@ -334,7 +335,21 @@ async function handleExamGeneration(
     jsonError(response, 400, 'Invalid exam-generation request.');
     return;
   }
-  let parsedRequest: ExamGenerationRequest = ['standard30', 'kpsea', 'kjsea'].includes(rawParsedRequest.format)
+  const paperVariant = supportsTwoPapers(rawParsedRequest.subject)
+    ? normalizePaperVariant(rawParsedRequest.paperVariant)
+    : 'single';
+  const kjseaSpec = rawParsedRequest.format === 'kjsea'
+    ? getKjseaPaperSpec(rawParsedRequest.subject, paperVariant)
+    : null;
+  let parsedRequest: ExamGenerationRequest = rawParsedRequest.format === 'kjsea'
+    ? {
+        ...rawParsedRequest,
+        totalMarks: kjseaSpec?.marks ?? rawParsedRequest.totalMarks,
+        durationMinutes: kjseaSpec?.duration_minutes ?? rawParsedRequest.durationMinutes,
+        blueprint: makeKjseaBlueprint(rawParsedRequest.subject, paperVariant, rawParsedRequest.difficulty)
+          || makeFormatBlueprint(rawParsedRequest.format, rawParsedRequest.totalMarks, rawParsedRequest.difficulty),
+      }
+    : ['standard30', 'kpsea'].includes(rawParsedRequest.format)
     ? { ...rawParsedRequest, blueprint: makeFormatBlueprint(rawParsedRequest.format, rawParsedRequest.totalMarks, rawParsedRequest.difficulty) }
     : rawParsedRequest.blueprint
     ? rawParsedRequest
@@ -342,13 +357,10 @@ async function handleExamGeneration(
         ...rawParsedRequest,
         blueprint: makeBalancedBlueprint(rawParsedRequest.questionTypes, rawParsedRequest.totalMarks, rawParsedRequest.difficulty),
       };
-  if (parsedRequest.format === 'standard30' || parsedRequest.format === 'kjsea') {
-    parsedRequest = { ...parsedRequest, durationMinutes: parsedRequest.format === 'kjsea' ? 150 : 45 };
+  if (parsedRequest.format === 'standard30') {
+    parsedRequest = { ...parsedRequest, durationMinutes: 45 };
   }
-  const paperVariant = supportsTwoPapers(parsedRequest.subject)
-    ? normalizePaperVariant(parsedRequest.paperVariant)
-    : 'single';
-  if (paperVariant !== 'single') {
+  if (paperVariant !== 'single' && parsedRequest.format !== 'kjsea') {
     parsedRequest = {
       ...parsedRequest,
       paperVariant,

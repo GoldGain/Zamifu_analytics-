@@ -76,7 +76,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'senior': {
     start_time: '08:00', end_time: '16:00', period_duration: 40,
-    lessons_per_day: 9, after_lunch_lessons: 2,
+    lessons_per_day: 8, after_lunch_lessons: 2,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -99,7 +99,7 @@ const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; not
   'upper-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'combined-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
   'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { total: 9, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'form-3-4': { total: 8, afterLunch: 3, note: '3 lessons after lunch' },
 };
 
@@ -458,7 +458,7 @@ export default function TimetableSetup() {
             Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7+] → <strong>ACTIVITIES</strong>
           </p>
           <p className="mt-1 text-xs text-blue-700">
-            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower Primary: <strong>6 lessons (ends at lunch)</strong> | Upper Primary: <strong>7 lessons</strong> | Junior/8-4-4: <strong>8 lessons</strong> | Senior: <strong>9 lessons</strong>
+            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower Primary: <strong>6 lessons (ends at lunch)</strong> | Upper Primary: <strong>7 lessons</strong> | Junior/8-4-4: <strong>8 lessons</strong> | Senior: <strong>8 lessons</strong>
           </p>
         </div>
       </div>
@@ -539,8 +539,8 @@ export default function TimetableSetup() {
             >
               <option value={0}>0 — ends at lunch (Pre-Primary / Lower Primary)</option>
               <option value={1}>1 — Lower / Upper Primary</option>
-              <option value={2}>2 — Junior / 8-4-4</option>
-              <option value={3}>3 — Senior School</option>
+              <option value={2}>2 — Junior / Senior / 8-4-4</option>
+              <option value={3}>3 — Form 3-4 extended day</option>
             </select>
             <p className="text-xs text-gray-500 mt-1">
               Total lessons/day = 6 before lunch + {currentConfig.after_lunch_lessons ?? 0} after = <strong>{6 + (currentConfig.after_lunch_lessons ?? 0)}</strong>

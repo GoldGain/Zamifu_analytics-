@@ -9,6 +9,7 @@ import {
   supportsTwoPapers,
   uncoveredStrands,
 } from './exam-construction.js';
+import { getKjseaPaperSpec } from './kjsea-paper-formats.js';
 
 export type ExamValidationSeverity = 'critical' | 'warning' | 'info';
 
@@ -82,13 +83,25 @@ export function validateGeneratedExam(
     }
   }
   if (request.format === 'kjsea') {
-    const objective = questions.slice(0, 20);
-    const structured = questions.slice(20);
-    if (objective.length === 20 && objective.some((question) => question.question_type !== 'multiple_choice')) {
-      issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'KJSEA papers must begin with 20 multiple-choice questions.' });
+    const spec = getKjseaPaperSpec(request.subject, normalizePaperVariant(request.paperVariant));
+    const objective = questions.filter((question) => question.question_type === 'multiple_choice');
+    if (spec?.subjectKey === 'integratedscience' && spec.variant === 'paper1') {
+      if (objective.length !== 30) issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'Integrated Science Paper 1 requires exactly 30 multiple-choice questions.' });
+    } else if (spec?.subjectKey !== 'integratedscience' && (spec?.variant === 'paper1' || spec?.variant === 'single')) {
+      if (objective.length < 50) issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'English and Kiswahili Paper 1 require 50 multiple-choice questions.' });
     }
-    if (structured.length === 8 && structured.some((question) => question.question_type !== 'case_study')) {
-      issues.push({ code: 'KJSEA_STRUCTURED_LAYOUT', severity: 'critical', message: 'KJSEA papers must end with 8 structured questions.' });
+    if (spec?.variant === 'paper2' && questions.some((question) => question.question_type === 'multiple_choice')) {
+      issues.push({ code: 'KJSEA_PAPER2_OBJECTIVE_LAYOUT', severity: 'critical', message: 'KJSEA Paper 2 must not contain multiple-choice questions.' });
+    }
+    if (!spec) {
+      const genericObjective = questions.slice(0, 20);
+      const genericStructured = questions.slice(20);
+      if (genericObjective.length === 20 && genericObjective.some((question) => question.question_type !== 'multiple_choice')) {
+        issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'Generic KJSEA papers must begin with 20 multiple-choice questions.' });
+      }
+      if (genericStructured.length === 8 && genericStructured.some((question) => question.question_type !== 'case_study')) {
+        issues.push({ code: 'KJSEA_STRUCTURED_LAYOUT', severity: 'critical', message: 'Generic KJSEA papers must end with 8 structured questions.' });
+      }
     }
   }
   if (supportsTwoPapers(request.subject)) {
@@ -205,7 +218,7 @@ export function validateGeneratedExam(
         issues.push({ code: 'SUB_PART_CONTENT_MISSING', severity: 'critical', message: 'Every structured sub-part needs a prompt and positive mark allocation.', questionIndex: index });
       }
     }
-    if (request.format === 'kjsea' && index >= 20 && !question.sub_parts?.length) {
+    if (request.format === 'kjsea' && question.question_type === 'case_study' && !question.sub_parts?.length) {
       issues.push({ code: 'KJSEA_SUB_PARTS_MISSING', severity: 'critical', message: 'KJSEA structured questions must include lettered sub-parts with explicit marks.', questionIndex: index });
     }
     if (question.question_type === 'matching' && (!question.options || question.options.length < 2)) {

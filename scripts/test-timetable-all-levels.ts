@@ -6,7 +6,7 @@ const fixtures: Record<string, { lessons: number; afterLunch: number; duration: 
   'upper-primary': { lessons: 6, afterLunch: 0, duration: 35, start: '08:20', lunch: '12:50', lunchEnd: '14:00' },
   'combined-primary': { lessons: 6, afterLunch: 0, duration: 35, start: '08:20', lunch: '12:50', lunchEnd: '14:00' },
   junior: { lessons: 8, afterLunch: 2, duration: 40, start: '08:20', lunch: '12:55', lunchEnd: '14:00' },
-  senior: { lessons: 7, afterLunch: 1, duration: 40, start: '08:20', lunch: '12:55', lunchEnd: '14:00' },
+  senior: { lessons: 8, afterLunch: 2, duration: 40, start: '08:20', lunch: '12:55', lunchEnd: '14:00' },
   'form-3-4': { lessons: 7, afterLunch: 1, duration: 40, start: '08:20', lunch: '12:55', lunchEnd: '14:00' },
 };
 

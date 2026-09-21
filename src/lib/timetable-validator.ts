@@ -181,10 +181,12 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
       .map((entry) => slotById.get(String(entry.time_slot_id)))
       .filter((slot): slot is TimetableValidationSlot => Boolean(slot))
       .sort((a, b) => a.slot_order - b.slot_order);
+    const firstLessonIndex = ordered.length === 2 ? lessonSlots.findIndex((slot) => String(slot.id) === String(ordered[0].id)) : -1;
+    const secondLessonIndex = ordered.length === 2 ? lessonSlots.findIndex((slot) => String(slot.id) === String(ordered[1].id)) : -1;
     const isLegalDouble = entries.length === 2
       && entries.every((entry) => entry.entry_type === 'lesson_double')
-      && ordered.length === 2
-      && ordered[1].slot_order === ordered[0].slot_order + 1;
+      && firstLessonIndex >= 0
+      && secondLessonIndex === firstLessonIndex + 1;
     if (!isLegalDouble) {
       issues.push({
         rule: 'once-per-day',
