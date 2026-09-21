@@ -1,4 +1,5 @@
 import { normalizePaperVariant, paperVariantLabel, supportsTwoPapers } from './exam-construction.js';
+import { getKjseaPaperSpec } from './kjsea-paper-formats.js';
 
 export const CBC_QUESTION_TYPES = [
   { value: 'multiple_choice', label: 'Multiple Choice', defaultMarks: 1 },
@@ -155,7 +156,10 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   if (request.totalMarks < 5 || request.totalMarks > 200) errors.push('Total marks must be between 5 and 200.');
   if (request.durationMinutes < 10 || request.durationMinutes > 240) errors.push('Duration must be between 10 and 240 minutes.');
   if (request.format === 'standard30' && request.totalMarks !== 30) errors.push('Standard Assessment papers must total exactly 30 marks.');
-  if (request.format === 'kjsea' && request.totalMarks !== 100) errors.push('KJSEA papers must total exactly 100 marks.');
+  if (request.format === 'kjsea') {
+    const expectedMarks = getKjseaPaperSpec(request.subject, normalizePaperVariant(request.paperVariant))?.marks ?? 100;
+    if (request.totalMarks !== expectedMarks) errors.push(`This KJSEA paper must total exactly ${expectedMarks} marks.`);
+  }
   const variant = normalizePaperVariant(request.paperVariant);
   if (variant !== 'single' && !supportsTwoPapers(request.subject)) {
     errors.push('Paper 1 and Paper 2 apply only to English, Kiswahili and Integrated Science.');

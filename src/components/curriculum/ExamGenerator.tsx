@@ -28,6 +28,11 @@ import {
   coverageInstruction,
   supportsTwoPapers,
 } from '@/lib/exam-construction';
+import {
+  getKjseaPaperSpec,
+  makeKjseaBlueprint,
+  type KJSEACardVariant,
+} from '@/lib/kjsea-paper-formats';
 
 import {
   defaultExamDuration,
@@ -79,7 +84,7 @@ interface ExamGeneratorProps {
 
 const formatOptions: Array<{ value: ExamFormat; label: string; description: string }> = [
   { value: 'standard30', label: 'Standard Assessment · 30 marks', description: '10 MCQs (1 mark each) + 4 structured questions (5 marks each)' },
-  { value: 'kjsea', label: 'KJSEA-style · 100 marks', description: '20 MCQs (1 mark each) + 8 structured questions (10 marks each)' },
+  { value: 'kjsea', label: 'KJSEA format', description: 'Official subject paper structure, marks, duration, and section conventions' },
   { value: 'cbe', label: 'Legacy CBE Assessment', description: 'Compatibility option for previously saved papers' },
   { value: 'kpsea', label: 'Legacy KPSEA Practice', description: 'Compatibility option for previously saved papers' },
   { value: 'custom', label: 'Legacy Custom Paper', description: 'Compatibility option for previously saved papers' },
@@ -186,8 +191,9 @@ export default function ExamGenerator({
       setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice']));
       setIncludeImages(true);
     } else if (nextFormat === 'kjsea') {
-      setTotalMarks(100);
-      setDurationMinutes(150);
+      const kjseaSpec = getKjseaPaperSpec(subject, paperVariant);
+      setTotalMarks(kjseaSpec?.marks ?? 100);
+      setDurationMinutes(kjseaSpec?.duration_minutes ?? 150);
       setSelectedQuestionTypes(new Set<QuestionType>(['multiple_choice', 'case_study']));
       setIncludeImages(true);
     }
@@ -216,7 +222,10 @@ export default function ExamGenerator({
     const fallbackMinutes = format === 'kjsea'
       ? defaultExamDuration(paperDefaults, subject, gradeLevel, paperVariant)
       : null;
-    const kicdMinutes = gradeExact ?? fallbackMinutes;
+    const kjseaSpec = format === 'kjsea' && supportsTwoPapers(subject)
+      ? getKjseaPaperSpec(subject, paperVariant)
+      : null;
+    const kicdMinutes = kjseaSpec?.duration_minutes ?? gradeExact ?? fallbackMinutes;
     if (kicdMinutes) {
       setDurationMinutes(kicdMinutes);
       setDurationSource('kicd');
@@ -224,7 +233,8 @@ export default function ExamGenerator({
       setDurationSource('standard');
     }
     const kicdMarks = defaultExamMarks(paperDefaults, subject, gradeLevel, paperVariant);
-    if (kicdMarks) setTotalMarks(kicdMarks);
+    if (kjseaSpec) setTotalMarks(kjseaSpec.marks);
+    else if (kicdMarks) setTotalMarks(kicdMarks);
   }, [paperDefaults, subject, gradeLevel, paperVariant, format]);
 
   useEffect(() => {
@@ -357,6 +367,7 @@ export default function ExamGenerator({
       const generatedPapers: ExamPaper[] = [];
       const repairNotices: string[] = [];
       for (const variant of variants) {
+      const kjseaSpec = format === 'kjsea' ? getKjseaPaperSpec(subject, variant) : null;
       const request: ExamGenerationRequest = {
         title,
         gradeLevel,
@@ -366,8 +377,8 @@ export default function ExamGenerator({
         topics: [],
         curriculumScope,
         questionTypes: Array.from(selectedQuestionTypes),
-        totalMarks,
-        durationMinutes,
+        totalMarks: kjseaSpec?.marks ?? totalMarks,
+        durationMinutes: kjseaSpec?.duration_minutes ?? durationMinutes,
         difficulty,
         includeImages,
         includeMarkingScheme,
@@ -375,7 +386,9 @@ export default function ExamGenerator({
         term,
         schoolName,
         paperVariant: variant === 'single' ? undefined : variant,
-        blueprint: ['standard30', 'kpsea', 'kjsea'].includes(format)
+        blueprint: format === 'kjsea' && kjseaSpec
+          ? makeKjseaBlueprint(subject, variant, difficulty)
+          : ['standard30', 'kpsea'].includes(format)
           ? makeFormatBlueprint(format, totalMarks, difficulty)
           : makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty),
       };
@@ -601,15 +614,30 @@ export default function ExamGenerator({
               <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">{selectedFormatDescription}</span>
             </label>
             {supportsTwoPapers(subject) && (
-              <label className="block text-xs font-semibold text-slate-700">Paper
-                <select value={paperVariant} onChange={(event) => setPaperVariant(event.target.value as UiPaperVariant)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                  <option value="single">Whole subject (one paper)</option>
-                  <option value="paper1">Paper 1 only</option>
-                  <option value="paper2">Paper 2 only</option>
-                  <option value="both">Paper 1 and Paper 2</option>
-                </select>
-                <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">Paper 1 and Paper 2 produces each paper separately, with its own questions and marking scheme.</span>
-              </label>
+              <div className="sm:col-span-2 rounded-xl border border-red-100 bg-red-50/40 p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">KJSEA paper selection</p>
+                    <p className="mt-1 text-[11px] leading-4 text-slate-500">Choose a source-backed paper structure. The cards show KNEC format metadata; generated questions remain original and are saved separately.</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-red-700">{paperVariant === 'both' ? '2 papers' : paperVariant === 'single' ? 'combined' : paperVariant.toUpperCase()}</span>
+                </div>
+                <div className="mt-3 grid gap-2 lg:grid-cols-4">
+                  {(['single', 'paper1', 'paper2', 'both'] as KJSEACardVariant[]).map((variant) => {
+                    const spec = getKjseaPaperSpec(subject, variant);
+                    if (!spec) return null;
+                    const selected = paperVariant === variant;
+                    return (
+                      <button key={variant} type="button" aria-pressed={selected} onClick={() => setPaperVariant(variant as UiPaperVariant)} className={`rounded-xl border p-3 text-left transition ${selected ? 'border-red-500 bg-white shadow-sm ring-2 ring-red-100' : 'border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/50'}`}>
+                        <div className="flex items-start justify-between gap-2"><span className="text-xs font-bold text-slate-800">{spec.title}</span><span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-red-600 bg-red-600 text-white' : 'border-slate-300 text-transparent'}`}><Check className="h-3 w-3" /></span></div>
+                        <p className="mt-2 text-[11px] font-semibold text-red-700">{spec.marks} marks · {spec.duration_minutes} min</p>
+                        <div className="mt-2 space-y-1 text-[10px] leading-4 text-slate-600">{spec.components.map((component) => <p key={`${variant}-${component.label}`}><span className="font-semibold text-slate-700">{component.label}:</span> {component.marks}m</p>)}</div>
+                        <p className="mt-2 text-[10px] leading-4 text-slate-500">{spec.code}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
             <label className="block text-xs font-semibold text-slate-700">Term
               <select value={term} onChange={(event) => setTerm(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
