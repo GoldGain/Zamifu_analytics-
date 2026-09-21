@@ -134,8 +134,11 @@ export function fallbackDifficulty(request: ExamGenerationRequest): 'easy' | 'me
 }
 
 export function outputTokenBudget(request: ExamGenerationRequest, compact = false): number {
+  const largeKjseaPaper = request.format === 'kjsea' && request.totalMarks >= 50;
   const scaled = request.totalMarks * (compact ? 110 : 160);
-  return Math.min(compact ? 10000 : 14000, Math.max(compact ? 5500 : 7000, scaled));
+  const maximum = compact ? (largeKjseaPaper ? 16000 : 10000) : (largeKjseaPaper ? 20000 : 14000);
+  const minimum = compact ? (largeKjseaPaper ? 10000 : 5500) : (largeKjseaPaper ? 12000 : 7000);
+  return Math.min(maximum, Math.max(minimum, scaled));
 }
 
 export function alignQuestionsToBlueprint(request: ExamGenerationRequest, questions: GeneratedExamQuestion[]): GeneratedExamQuestion[] {

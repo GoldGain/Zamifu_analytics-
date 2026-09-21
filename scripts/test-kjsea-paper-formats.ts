@@ -1,4 +1,5 @@
 import { getKjseaPaperSpec, kjseaFormatInstruction, makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.ts';
+import { outputTokenBudget } from '../src/lib/deepseek-api.ts';
 import { readFileSync } from 'node:fs';
 
 const expected = [
@@ -25,6 +26,16 @@ for (const [subject, variant, marks, duration] of expected) {
     throw new Error(`${subject} ${variant} prompt guidance is missing sanitized format-only instructions.`);
   }
   console.log(`${subject} ${variant}: ${marks} marks, ${duration} minutes, ${blueprint.sections.length} blueprint sections`);
+}
+
+const largePaperRequest = {
+  gradeLevel: 'Grade 7', subject: 'English', strands: [], subStrands: [], topics: [],
+  questionTypes: ['multiple_choice'], totalMarks: 50, durationMinutes: 100,
+  difficulty: 'mixed', includeImages: true, includeMarkingScheme: true,
+  format: 'kjsea', paperVariant: 'paper1',
+} as const;
+if (outputTokenBudget(largePaperRequest, false) < 12000 || outputTokenBudget(largePaperRequest, true) < 10000) {
+  throw new Error('Large KJSEA papers need expanded provider token budgets to avoid truncated JSON.');
 }
 
 const validationSource = readFileSync(new URL('../src/lib/exam-validation.ts', import.meta.url), 'utf8');
