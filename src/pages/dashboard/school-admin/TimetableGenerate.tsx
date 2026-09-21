@@ -221,7 +221,8 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
  *  - a teacher never appears twice in the same day+lesson across parallel
  *    classes
  * Returns timetable_entries rows, or null when the level is not perfectly
- * solvable (the caller then falls back to the legacy generator).
+ * solvable. Full-grid levels must surface that state rather than silently
+ * falling back to a legacy allocator that can save wrong weekly counts.
  */
 function buildPerfectTimetableEntries(opts: {
   schoolId: string;
@@ -286,16 +287,26 @@ function buildPerfectTimetableEntries(opts: {
 
     const cands = (ui: number, enforceSymmetry = true): Array<[number, number]> => {
       const u = units[ui];
-      const predecessor = enforceSymmetry && u.groupOrder > 0 ? ui - 1 : -1;
-      const predecessorPosition = predecessor >= 0 && units[predecessor]?.groupKey === u.groupKey
-        ? placedAt.get(predecessor)
-        : undefined;
+      // Units with the same class, subject, and size are interchangeable. In
+      // an MRV search, treating them as distinct creates factorial duplicate
+      // branches (and can hit the node cap before finding the valid grid).
+      // Canonicalize them by requiring each next unit in the group to be after
+      // the latest already-placed unit from that group.
+      let groupFloor: [number, number] | undefined;
+      if (enforceSymmetry) {
+        for (const [placedIndex, position] of placedAt) {
+          if (units[placedIndex]?.groupKey !== u.groupKey) continue;
+          if (!groupFloor || position[0] > groupFloor[0] || (position[0] === groupFloor[0] && position[1] > groupFloor[1])) {
+            groupFloor = position;
+          }
+        }
+      }
       const used = dayUsed.get(`${u.cid}|${u.sid}`)!;
       const res: Array<[number, number]> = [];
       for (let day = 0; day < 5; day++) {
         if (used.has(day)) continue;
         for (let ln = 0; ln <= K - u.size; ln++) {
-          if (enforceSymmetry && predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
+          if (enforceSymmetry && groupFloor && (day < groupFloor[0] || (day === groupFloor[0] && ln <= groupFloor[1]))) continue;
           if (grid.has(`${u.cid}|${day}|${ln}`)) continue;
           if (u.size === 2 && grid.has(`${u.cid}|${day}|${ln + 1}`)) continue;
           if (!strictSubjectAllowsLesson(u.name, ln + 1)) continue;
@@ -330,12 +341,12 @@ function buildPerfectTimetableEntries(opts: {
   let searchNodes = 0;
   const search = (): boolean => {
     if (remaining.size === 0) return true;
-    if (Date.now() > deadline || searchNodes++ > 250000) return false;
+    if (Date.now() > deadline || searchNodes++ > 2000000) return false;
 
     let best = -1;
     let bestC: Array<[number, number]> = [];
     for (const ui of remaining) {
-      const candidates = cands(ui, false);
+      const candidates = cands(ui, true);
       if (candidates.length === 0) return false;
       if (best === -1 || candidates.length < bestC.length
         || (candidates.length === bestC.length && units[ui].size > units[best].size)) {
@@ -1048,6 +1059,9 @@ export default function TimetableGenerate() {
               continue;
             }
           }
+          throw new Error(
+            `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: exact-grid solver could not find a valid timetable within its bounded search. No timetable was saved; review teacher conflicts, double-lesson requirements, or configured constraints.`,
+          );
         }
 
         // Allocate lessons. Priority assignments are processed first, so they
