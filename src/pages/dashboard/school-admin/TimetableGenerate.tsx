@@ -277,17 +277,12 @@ function buildPerfectTimetableEntries(opts: {
     }
   }
 
-  const maxAttempts = 20000;
   const deadline = Date.now() + 30000;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (Date.now() > deadline) break;
-    const grid = new Map<string, number>();
-    const teacherAt = new Map<string, string>();
-    const dayUsed = new Map<string, Set<number>>();
-    for (const cid of cids) for (const r of recsByClass[cid]) dayUsed.set(`${cid}|${r.sid}`, new Set());
-    const placed = new Array(units.length).fill(false);
-    const placedAt = new Map<number, [number, number]>();
+  const grid = new Map<string, number>();
+  const teacherAt = new Map<string, string>();
+  const dayUsed = new Map<string, Set<number>>();
+  for (const cid of cids) for (const r of recsByClass[cid]) dayUsed.set(`${cid}|${r.sid}`, new Set());
+  const placedAt = new Map<number, [number, number]>();
 
     const cands = (ui: number, enforceSymmetry = true): Array<[number, number]> => {
       const u = units[ui];
@@ -323,71 +318,68 @@ function buildPerfectTimetableEntries(opts: {
       for (let x = 0; x < u.size; x++) { grid.set(`${u.cid}|${day}|${ln + x}`, ui); teacherAt.set(`${u.teacher}|${day}|${ln + x}`, u.cid); }
       dayUsed.get(`${u.cid}|${u.sid}`)!.add(day);
       placedAt.set(ui, [day, ln]);
-      placed[ui] = true;
     };
     const unplace = (ui: number, day: number, ln: number) => {
       const u = units[ui];
       for (let x = 0; x < u.size; x++) { grid.delete(`${u.cid}|${day}|${ln + x}`); teacherAt.delete(`${u.teacher}|${day}|${ln + x}`); }
       dayUsed.get(`${u.cid}|${u.sid}`)!.delete(day);
       placedAt.delete(ui);
-      placed[ui] = false;
     };
 
-    const remaining = new Set(units.map((_, index) => index));
-    while (remaining.size > 0) {
-      let best = -1;
-      let bestC: Array<[number, number]> = [];
-      for (const ui of remaining) {
-        const c = cands(ui, false);
-        if (c.length === 0) {
-          best = -1;
-          bestC = [];
-          break;
-        }
-        if (best === -1 || c.length < bestC.length) {
-          best = ui;
-          bestC = c;
-        }
+  const remaining = new Set(units.map((_, index) => index));
+  let searchNodes = 0;
+  const search = (): boolean => {
+    if (remaining.size === 0) return true;
+    if (Date.now() > deadline || searchNodes++ > 250000) return false;
+
+    let best = -1;
+    let bestC: Array<[number, number]> = [];
+    for (const ui of remaining) {
+      const candidates = cands(ui, false);
+      if (candidates.length === 0) return false;
+      if (best === -1 || candidates.length < bestC.length
+        || (candidates.length === bestC.length && units[ui].size > units[best].size)) {
+        best = ui;
+        bestC = candidates;
       }
-      if (best === -1 || bestC.length === 0) break;
-      for (let i = bestC.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        const t = bestC[i];
-        bestC[i] = bestC[j];
-        bestC[j] = t;
-      }
-      const [day, ln] = bestC[0];
+    }
+    if (best < 0 || bestC.length === 0) return false;
+
+    remaining.delete(best);
+    for (const [day, ln] of bestC) {
       place(best, day, ln);
-      remaining.delete(best);
+      if (search()) return true;
+      unplace(best, day, ln);
     }
-    if (remaining.size > 0) continue;
+    remaining.add(best);
+    return false;
+  };
 
-    const entries: any[] = [];
-    for (let day = 0; day < 5; day++) {
-      for (const cid of cids) {
-        for (let ln = 0; ln < K; ln++) {
-          const ui = grid.get(`${cid}|${day}|${ln}`);
-          if (ui === undefined) return null;
-          const slot = lessonSlots[ln];
-          entries.push({
-            school_id: schoolId,
-            class_id: cid,
-            day_of_week: day + 1,
-            time_slot_id: slot.id,
-            subject_id: units[ui].sid,
-            teacher_id: units[ui].teacher,
-            entry_type: units[ui].size === 2 ? 'lesson_double' : 'lesson',
-            level_group: levelKey,
-            effective_start_time: slot.start_time,
-            effective_end_time: slot.end_time,
-          });
-        }
+  if (!search()) return null;
+
+  const entries: any[] = [];
+  for (let day = 0; day < 5; day++) {
+    for (const cid of cids) {
+      for (let ln = 0; ln < K; ln++) {
+        const ui = grid.get(`${cid}|${day}|${ln}`);
+        if (ui === undefined) return null;
+        const slot = lessonSlots[ln];
+        entries.push({
+          school_id: schoolId,
+          class_id: cid,
+          day_of_week: day + 1,
+          time_slot_id: slot.id,
+          subject_id: units[ui].sid,
+          teacher_id: units[ui].teacher,
+          entry_type: units[ui].size === 2 ? 'lesson_double' : 'lesson',
+          level_group: levelKey,
+          effective_start_time: slot.start_time,
+          effective_end_time: slot.end_time,
+        });
       }
     }
-    return entries;
   }
-
-  return null;
+  return entries;
 }
 
 export default function TimetableGenerate() {
