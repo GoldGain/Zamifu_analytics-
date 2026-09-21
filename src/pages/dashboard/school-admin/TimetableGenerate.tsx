@@ -394,6 +394,56 @@ function buildPerfectTimetableEntries(opts: {
   return entries;
 }
 
+function getValidatedSavedPerfectEntries(opts: {
+  schoolId: string;
+  levelKey: string;
+  classes: any[];
+  assignments: any[];
+  lessonSlots: any[];
+  existingEntries: any[];
+}): any[] | null {
+  const { schoolId, levelKey, classes, assignments, lessonSlots, existingEntries } = opts;
+  const classIds = new Set(classes.map((cls: any) => String(cls.id)));
+  const expectedByKey = new Map<string, { count: number; teacherId: string }>();
+  for (const assignment of assignments) {
+    if (!classIds.has(String(assignment.class_id))) continue;
+    expectedByKey.set(`${assignment.class_id}|${assignment.subject_id}`, {
+      count: Number(assignment.lessons_per_week || 0),
+      teacherId: String(assignment.teacher_id || ''),
+    });
+  }
+  const saved = (existingEntries || []).filter((entry: any) =>
+    String(entry.school_id) === schoolId
+    && String(entry.level_group || '') === levelKey
+    && classIds.has(String(entry.class_id))
+    && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double'),
+  );
+  if (saved.length !== classes.length * lessonSlots.length * 5) return null;
+  const cells = new Set<string>();
+  const teacherCells = new Set<string>();
+  const counts = new Map<string, number>();
+  for (const entry of saved) {
+    const cellKey = `${entry.class_id}|${entry.day_of_week}|${entry.time_slot_id}`;
+    const teacherKey = `${entry.teacher_id}|${entry.day_of_week}|${entry.time_slot_id}`;
+    if (cells.has(cellKey) || teacherCells.has(teacherKey)) return null;
+    cells.add(cellKey);
+    teacherCells.add(teacherKey);
+    const subjectKey = `${entry.class_id}|${entry.subject_id}`;
+    const expected = expectedByKey.get(subjectKey);
+    if (!expected || String(entry.teacher_id || '') !== expected.teacherId) return null;
+    counts.set(subjectKey, (counts.get(subjectKey) || 0) + 1);
+  }
+  for (const [key, expected] of expectedByKey) {
+    if (counts.get(key) !== expected.count) return null;
+  }
+  if (cells.size !== saved.length) return null;
+  return saved.map((entry: any) => ({
+    ...entry,
+    school_id: schoolId,
+    level_group: levelKey,
+  }));
+}
+
 export default function TimetableGenerate() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -542,6 +592,10 @@ export default function TimetableGenerate() {
         .select('*, subjects(name, code), teachers(first_name, last_name, teacher_number)')
         .eq('school_id', schoolId)
         .eq('is_active', true);
+      const { data: existingTimetableEntries } = await supabaseUntyped
+        .from('timetable_entries')
+        .select('*')
+        .eq('school_id', schoolId);
 
       const invalidAssignments = (rawAssignments || []).filter((assignment: any) =>
         !assignment.subject_id || !String(assignment.subjects?.name || '').trim() || isFillerSubject(assignment.subjects?.name),
@@ -1013,6 +1067,18 @@ export default function TimetableGenerate() {
             assignments,
             lessonSlots,
           });
+          let reusedValidatedGrid = false;
+          if (!perfectEntries?.length) {
+            perfectEntries = getValidatedSavedPerfectEntries({
+              schoolId,
+              levelKey,
+              classes: classesToProcess,
+              assignments,
+              lessonSlots,
+              existingEntries: existingTimetableEntries || [],
+            });
+            reusedValidatedGrid = Boolean(perfectEntries?.length);
+          }
           if (perfectEntries?.length) {
             const occupiedTeacherSlots = new Set(
               allEntries
@@ -1056,7 +1122,7 @@ export default function TimetableGenerate() {
               generatedSummary.push(
                 `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (exact weekly totals, no blanks, no teacher collisions)`,
               );
-              console.info(`[timetable] ${levelKey}: exact-count solver placed ${perfectEntries.length} lesson entries`);
+              console.info(`[timetable] ${levelKey}: ${reusedValidatedGrid ? 'reused validated saved grid' : 'exact-count solver placed'} ${perfectEntries.length} lesson entries`);
               continue;
             }
           }
