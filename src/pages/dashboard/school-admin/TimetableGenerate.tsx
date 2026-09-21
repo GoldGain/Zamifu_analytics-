@@ -361,7 +361,7 @@ function buildPerfectTimetableEntries(opts: {
             time_slot_id: slot.id,
             subject_id: units[ui].sid,
             teacher_id: units[ui].teacher,
-            entry_type: 'lesson',
+            entry_type: units[ui].size === 2 ? 'lesson_double' : 'lesson',
             level_group: levelKey,
             effective_start_time: slot.start_time,
             effective_end_time: slot.end_time,
