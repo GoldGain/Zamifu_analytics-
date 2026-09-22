@@ -10,10 +10,13 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 type LearningAreaLevel = 'pre_school' | 'lower_primary' | 'upper_primary' | 'junior' | 'senior';
+const CATEGORIES = ['Languages', 'Mathematics', 'Sciences', 'Humanities', 'Technical', 'Creative', 'Life Skills'] as const;
+type CategoryType = typeof CATEGORIES[number];
 
 type CatalogArea = {
   id: number;
@@ -117,6 +120,9 @@ export default function SchoolAdminSubjects() {
   const [activeLevel, setActiveLevel] = useState<LearningAreaLevel>('pre_school');
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [showManualAdd, setShowManualAdd] = useState(false);
+  const [manualAdding, setManualAdding] = useState(false);
+  const [manualForm, setManualForm] = useState({ name: '', code: '', category: '' as CategoryType | '' });
 
   const fetchLearningAreas = useCallback(async () => {
     if (!schoolId) return;
@@ -249,6 +255,34 @@ export default function SchoolAdminSubjects() {
     setBusyKey(null);
   };
 
+  const addManualLearningArea = async () => {
+    if (!schoolId) return;
+    const name = manualForm.name.trim();
+    if (!name) {
+      toast.error('Learning area name is required.');
+      return;
+    }
+
+    setManualAdding(true);
+    const { error } = await supabaseUntyped.from('subjects').insert([{
+      school_id: schoolId,
+      name,
+      code: manualForm.code.trim() || null,
+      curriculum: 'CBE',
+      category: manualForm.category || null,
+      class_levels: [],
+    }]);
+
+    if (error) {
+      toast.error(`Could not add ${name}: ${error.message}`);
+    } else {
+      toast.success(`Learning area "${name}" added successfully.`);
+      setManualForm({ name: '', code: '', category: '' });
+      setShowManualAdd(false);
+    }
+    setManualAdding(false);
+  };
+
   const activeLevelConfig = LEVELS.find((level) => level.key === activeLevel) || LEVELS[0];
   const activeLevelAreas = areasByLevel.get(activeLevel) || [];
   const activeCount = activeLevelAreas.filter((area) => activeAreaIds.has(area.id)).length;
@@ -312,15 +346,26 @@ export default function SchoolAdminSubjects() {
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void fetchLearningAreas()}
-          disabled={loading || busyKey !== null}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowManualAdd(true)}
+            disabled={loading || busyKey !== null || manualAdding}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Add Manually
+          </button>
+          <button
+            type="button"
+            onClick={() => void fetchLearningAreas()}
+            disabled={loading || busyKey !== null || manualAdding}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -425,6 +470,84 @@ export default function SchoolAdminSubjects() {
           </div>
         )}
       </section>
+
+      {showManualAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" role="dialog" aria-modal="true" aria-labelledby="manual-add-title">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void addManualLearningArea();
+            }}
+            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="manual-add-title" className="text-lg font-semibold text-slate-950">Add Learning Area Manually</h2>
+                <p className="mt-1 text-sm text-slate-500">Add a custom learning area for this school without changing the official catalogue.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManualAdd(false)}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close manual add form"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <label className="block text-sm font-medium text-slate-700">
+                Learning area name
+                <input
+                  autoFocus
+                  value={manualForm.name}
+                  onChange={(event) => setManualForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="e.g. Debate and Public Speaking"
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-700">
+                  Code <span className="font-normal text-slate-400">(optional)</span>
+                  <input
+                    value={manualForm.code}
+                    onChange={(event) => setManualForm((current) => ({ ...current, code: event.target.value }))}
+                    placeholder="e.g. DPS"
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Category <span className="font-normal text-slate-400">(optional)</span>
+                  <select
+                    value={manualForm.category}
+                    onChange={(event) => setManualForm((current) => ({ ...current, category: event.target.value as CategoryType | '' }))}
+                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Select category</option>
+                    {CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowManualAdd(false)}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={manualAdding}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {manualAdding && <Loader2 className="h-4 w-4 animate-spin" />}
+                Add Learning Area
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
