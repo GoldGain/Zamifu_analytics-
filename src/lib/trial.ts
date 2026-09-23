@@ -58,6 +58,10 @@ export interface ServerBillingRecord {
   subscription_expires_at?: string | null;
   trial_started_at?: string | null;
   trial_expires_at?: string | null;
+  reseller_unlock_at?: string | null;
+  reseller_unlock_subscription_status?: string | null;
+  reseller_unlock_subscription_expires_at?: string | null;
+  reseller_unlock_trial_expires_at?: string | null;
   created_at?: string | null;
 }
 
@@ -91,6 +95,16 @@ export const buildTrialStatus = (school: ServerBillingRecord): TrialStatus => {
   const isPaid = subscriptionStatus === 'active' && Number.isFinite(subscriptionEndMs) && subscriptionEndMs > now;
   const trialEndMs = new Date(trialEnd).getTime();
   const trialStartMs = new Date(trialStart).getTime();
+  const resellerUnlockAtMs = school.reseller_unlock_at ? new Date(school.reseller_unlock_at).getTime() : NaN;
+  const resellerUnlockIsCurrent = Number.isFinite(resellerUnlockAtMs)
+    && resellerUnlockAtMs <= now
+    && String(school.reseller_unlock_subscription_status || '').toLowerCase() === subscriptionStatus
+    && (school.reseller_unlock_subscription_expires_at || null) === (school.subscription_expires_at || null)
+    && (school.reseller_unlock_trial_expires_at || null) === (school.trial_expires_at || null)
+    && resellerUnlockAtMs > Math.min(
+      Number.isFinite(subscriptionEndMs) ? subscriptionEndMs : Infinity,
+      Number.isFinite(trialEndMs) ? trialEndMs : Infinity,
+    );
   const effectiveEndMs = isPaid ? subscriptionEndMs : trialEndMs;
   const daysRemaining = isPaid
     ? 0
@@ -102,9 +116,9 @@ export const buildTrialStatus = (school: ServerBillingRecord): TrialStatus => {
     : Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
 
   return {
-    isActive: isPaid || daysRemaining > 0,
+    isActive: isPaid || daysRemaining > 0 || resellerUnlockIsCurrent,
     daysRemaining,
-    isExpired: !isPaid && daysRemaining <= 0,
+    isExpired: !isPaid && daysRemaining <= 0 && !resellerUnlockIsCurrent,
     isPaid,
     trialData: {
       trialStartDate: trialStart,

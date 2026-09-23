@@ -76,8 +76,18 @@ export default function ResellerAccessControl() {
   const unlockAll = async (school: any) => {
     setBusyId(school.id);
     try {
-      const { error } = await supabase.rpc('unlock_reseller_school', { p_school_id: school.id });
+      const { data, error } = await supabase.rpc('unlock_reseller_school', { p_school_id: school.id });
       if (error) throw error;
+      if (data !== true) throw new Error('Could not unlock this school. Please try again or contact support.');
+      const { data: persisted, error: verifyError } = await supabase
+        .from('schools')
+        .select('admin_portal_locked, dos_portal_locked, reseller_unlock_at')
+        .eq('id', school.id)
+        .maybeSingle();
+      if (verifyError) throw verifyError;
+      if (!persisted || persisted.admin_portal_locked || persisted.dos_portal_locked || !persisted.reseller_unlock_at) {
+        throw new Error('Could not unlock this school. Please try again or contact support.');
+      }
       toast.success('All portals unlocked');
       load();
     } catch (e: any) {
