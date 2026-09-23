@@ -54,7 +54,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await (supabase as any)
         .from('schools')
-        .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, created_at, fee_per_learner_per_term, fee_per_learner_per_year')
+        .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, reseller_unlock_at, reseller_unlock_subscription_status, reseller_unlock_subscription_expires_at, reseller_unlock_trial_expires_at, created_at, fee_per_learner_per_term, fee_per_learner_per_year')
         .eq('id', schoolId)
         .maybeSingle();
 
