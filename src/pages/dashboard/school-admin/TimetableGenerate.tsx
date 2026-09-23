@@ -471,6 +471,12 @@ function getValidatedSavedPerfectEntries(opts: {
     && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double'),
   );
   if (saved.length !== classes.length * lessonSlots.length * 5) return null;
+  // Generated slots receive fresh IDs on each safe, in-memory generation.
+  // Never reuse rows that point at an older slot set: doing so makes the final
+  // hard-rule validator report unknown-slot errors after an otherwise valid
+  // saved-grid match by count.
+  const currentLessonSlotIds = new Set(lessonSlots.map((slot: any) => String(slot.id)));
+  if (saved.some((entry: any) => !currentLessonSlotIds.has(String(entry.time_slot_id)))) return null;
   const cells = new Set<string>();
   const teacherCells = new Set<string>();
   const counts = new Map<string, number>();
