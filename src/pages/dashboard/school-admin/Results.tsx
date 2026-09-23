@@ -56,6 +56,11 @@ function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
   return { subLevel: g.subLevel, grade: g.grade, points: g.points, descriptor: g.descriptor };
 }
 
+function hasRecordedMarks(result: any) {
+  return [result.marks, result.percentage, result.converted_marks, result.grade_844, result.cbc_grade, result.cbc_sublevel]
+    .some((value) => value !== null && value !== undefined && String(value).trim() !== '');
+}
+
 function mergedLearningAreas(canonical: string[], dynamic: string[]) {
   const aliasGroups: string[][] = [
     ['Agriculture', 'Agriculture and Nutrition'],
@@ -632,8 +637,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const band = getSchoolLevelBand(classObj);
       const isPrimary = band === 'primary';
       const summaries = buildStudentSummary(rawResults, classObj);
-      const allSubjectsRaw = Array.from(new Set(rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
-      const allSubjects = sortSubjects(mergedLearningAreas(getCanonicalLearningAreas(classObj), normalizeLearningAreas(allSubjectsRaw)));
+      const allSubjectsRaw = Array.from(new Set(rawResults.filter(hasRecordedMarks).map((r: any) => r.subjects?.name).filter(Boolean))) as string[];
+      const allSubjects = sortSubjects(normalizeLearningAreas(allSubjectsRaw));
       const totalStudents = summaries.length;
       
       const subjectStats = allSubjects.map(sub => {
@@ -1310,7 +1315,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     // incorrect class means when streams have different result coverage.
     const summaryClasses = classes.filter((classObj: any) => opts.rawResults.some((result: any) => result.class_id === classObj.id));
     const summaries = buildSummariesForClasses(opts.rawResults, summaryClasses.length ? summaryClasses : [opts.classObj]);
-    const allSubjects = sortSubjects(mergedLearningAreas(getCanonicalLearningAreas(opts.classObj), normalizeLearningAreas(Array.from(new Set(opts.rawResults.map((r: any) => r.subjects?.name).filter(Boolean))) as string[])));
+    const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.filter(hasRecordedMarks).map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
     const totalStudents = summaries.length;
     // Class Mean Marks = sum of every learner's total percentage marks ÷ number of learners.
     // Each learner's totalPct sums their subject percentages (each out of 100). For Junior School
