@@ -5,6 +5,7 @@ import { Plus, Download, Save, RefreshCw, Clock, Calendar, BookOpen, GraduationC
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatClassStream } from '@/lib/class-label';
 
 interface TimeSlot {
   id: string;
@@ -108,7 +109,7 @@ export default function TeacherTimetable() {
       // Show only active class-and-subject assignments belonging to this teacher.
       const { data: assignments } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('class_id, subject_id, classes(name), subjects(name)')
+        .select('class_id, subject_id, classes(name, stream, stream_name), subjects(name)')
         .eq('teacher_id', teacherData.id)
         .eq('is_active', true);
 
@@ -118,7 +119,7 @@ export default function TeacherTimetable() {
       // slots ensures that this page contains only lessons assigned to this teacher.
       const { data: timetableEntries, error: timetableError } = await supabaseUntyped
         .from('timetable_entries')
-        .select('id, day_of_week, teacher_id, entry_type, effective_start_time, effective_end_time, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
+        .select('id, day_of_week, teacher_id, entry_type, effective_start_time, effective_end_time, timetable_time_slots(start_time, end_time), subjects(name), classes(name, stream, stream_name)')
         .eq('teacher_id', teacherData.id)
         .in('entry_type', ['lesson', 'lesson_double', 'class', 'activity', 'activities'])
         .order('day_of_week');
@@ -133,7 +134,7 @@ export default function TeacherTimetable() {
         start_time: (entry.effective_start_time || entry.timetable_time_slots?.start_time)?.toString().substring(0, 5) || '',
         end_time: (entry.effective_end_time || entry.timetable_time_slots?.end_time)?.toString().substring(0, 5) || '',
         subject_name: entry.subjects?.name || 'Learning Area',
-        class_name: entry.classes?.name || 'Class',
+        class_name: formatClassStream(entry.classes),
       })).sort((a, b) => a.day.localeCompare(b.day) || a.start_time.localeCompare(b.start_time));
 
       setTeacherSlots(mappedSlots);
@@ -160,7 +161,7 @@ export default function TeacherTimetable() {
       }
       const { data, error } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('classes(id, name, grade_level)')
+        .select('classes(id, name, stream, stream_name, grade_level)')
         .eq('teacher_id', teacherRow.id)
         .eq('is_active', true);
       if (error) throw error;
@@ -483,7 +484,7 @@ export default function TeacherTimetable() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">{a.subjects?.name}</p>
-                    <p className="text-xs text-gray-500">{a.classes?.name}</p>
+                    <p className="text-xs text-gray-500">{formatClassStream(a.classes)}</p>
                   </div>
                 </div>
               ))}

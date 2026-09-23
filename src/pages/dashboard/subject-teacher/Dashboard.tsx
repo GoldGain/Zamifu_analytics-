@@ -5,11 +5,12 @@ import { BookOpen, Users, Upload, Loader2, BarChart3, TrendingUp, ChevronDown, C
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { getSchoolLevelBand } from '@/lib/grading';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Assignment {
   id: string;
   subjects: { id: string; name: string } | null;
-  classes: { id: string; name: string; curriculum: string; grade_level: number | null; level: number | null } | null;
+  classes: { id: string; name: string; stream?: string | null; stream_name?: string | null; curriculum: string; grade_level: number | null; level: number | null } | null;
   class_id: string;
   subject_id: string;
 }
@@ -75,7 +76,7 @@ export default function SubjectTeacherDashboard() {
       // Fetch assignments using teacher_subject_assignments table
       const { data, error } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('*, subjects(id, name), classes(id, name, curriculum, grade_level, level)')
+        .select('*, subjects(id, name), classes(id, name, stream, stream_name, curriculum, grade_level, level)')
         .eq('teacher_id', teacher.id)
         .eq('is_active', true);
 
@@ -245,7 +246,7 @@ export default function SubjectTeacherDashboard() {
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-gray-900">{assignment.subjects?.name}</h3>
-                      <p className="text-sm text-gray-500">{assignment.classes?.name} · {assignment.classes?.curriculum}</p>
+                      <p className="text-sm text-gray-500">{formatClassStream(assignment.classes)} · {assignment.classes?.curriculum}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">

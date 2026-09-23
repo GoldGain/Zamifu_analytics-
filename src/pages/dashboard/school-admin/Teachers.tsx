@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { GenderType } from '@/types/database';
+import { formatClassStream } from '@/lib/class-label';
 
 const DEFAULT_TEACHER_PASSWORD = 'Teacher@2025';
 const TEACHER_TIMETABLE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -22,7 +23,7 @@ type AdminTeacherTimetableEntry = {
   activity_name?: string | null;
   timetable_time_slots?: { start_time?: string; end_time?: string } | null;
   subjects?: { name?: string } | null;
-  classes?: { name?: string } | null;
+  classes?: { name?: string; stream?: string | null; stream_name?: string | null } | null;
 };
 
 const shortTime = (value?: string | null) => value ? value.toString().slice(0, 5) : '';
@@ -31,7 +32,7 @@ const teacherDisplayName = (teacher: any) => `${teacher.first_name || ''} ${teac
 
 const teacherSlotLabel = (entry: AdminTeacherTimetableEntry) => {
   const subject = entry.subjects?.name || entry.activity_name || (entry.entry_type === 'activity' ? 'Activity' : 'Learning Area');
-  const className = entry.classes?.name || '';
+  const className = entry.classes ? formatClassStream(entry.classes) : '';
   return className ? `${subject}\n${className}` : subject;
 };
 
@@ -85,7 +86,7 @@ export default function SchoolAdminTeachers() {
     try {
       const { data: entries, error } = await supabaseUntyped
         .from('timetable_entries')
-        .select('teacher_id, day_of_week, entry_type, activity_name, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
+        .select('teacher_id, day_of_week, entry_type, activity_name, timetable_time_slots(start_time, end_time), subjects(name), classes(name, stream, stream_name)')
         .eq('school_id', user.schoolId)
         .not('teacher_id', 'is', null)
         .in('entry_type', ['lesson', 'class', 'activity']);

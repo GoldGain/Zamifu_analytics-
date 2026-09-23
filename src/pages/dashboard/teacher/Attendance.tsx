@@ -3,6 +3,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { ClipboardList, Check, X, Loader2, Save, Printer, FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 export default function TeacherAttendance() {
   const { user } = useAuth();
@@ -37,7 +38,7 @@ export default function TeacherAttendance() {
 
     const { data: schoolClasses } = await supabaseUntyped
       .from('classes')
-      .select('id, name, stream, class_teacher_id, is_active')
+      .select('id, name, stream, stream_name, class_teacher_id, is_active')
       .eq('school_id', schoolId)
       .eq('is_active', true)
       .order('name');
@@ -217,7 +218,7 @@ export default function TeacherAttendance() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <select value={selectedClass} onChange={e => handleClassChange(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white">
             <option value="">Select Your Class</option>
-            {classes.map(c => <option key={c.id} value={c.id}>{c.name} {c.stream && `(${c.stream})`}</option>)}
+            {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
           </select>
           <input type="date" value={selectedDate} onChange={e => { setSelectedDate(e.target.value); setSaved(false); }} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
         </div>

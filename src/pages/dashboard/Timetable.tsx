@@ -4,6 +4,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { Calendar, Download, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface TimeSlot {
   id: string;
@@ -21,7 +22,7 @@ interface TimetableEntry {
   is_lunch: boolean;
   is_activity: boolean;
   activity_name: string | null;
-  classes?: { name: string };
+  classes?: { name: string; stream?: string | null; stream_name?: string | null };
   subjects?: { name: string };
 }
 
@@ -85,7 +86,7 @@ export default function Timetable() {
         .from('timetable_entries')
         .select(`
           *,
-          classes(name),
+          classes(name, stream, stream_name),
           subjects(name)
         `)
         .eq('school_id', profile.school_id);
@@ -126,7 +127,7 @@ export default function Timetable() {
       // Title
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Timetable - ${selectedClass?.name || 'Class'}`, 148, 15, { align: 'center' });
+      doc.text(`Timetable - ${formatClassStream(selectedClass)}`, 148, 15, { align: 'center' });
 
       // Create table data
       const tableData: string[][] = [];
@@ -163,7 +164,7 @@ export default function Timetable() {
       doc.setTextColor(150, 150, 150);
       doc.text('Zamifu Analytics School Management System', 148, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
 
-      doc.save(`timetable_${selectedClass?.name || 'class'}.pdf`);
+      doc.save(`timetable_${formatClassStream(selectedClass)}.pdf`);
       toast.success('Timetable exported successfully');
     } catch (err) {
       console.error(err);
@@ -191,7 +192,7 @@ export default function Timetable() {
             className="w-full md:w-64 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
           >
             {classes.map(cls => (
-              <option key={cls.id} value={cls.id}>{cls.name}</option>
+              <option key={cls.id} value={cls.id}>{formatClassStream(cls)}</option>
             ))}
           </select>
         </div>
@@ -202,7 +203,7 @@ export default function Timetable() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            {classes.find(c => c.id === viewingClassId)?.name || 'Timetable'}
+            {classes.find(c => c.id === viewingClassId) ? formatClassStream(classes.find(c => c.id === viewingClassId)) : 'Timetable'}
           </h2>
           <button
             onClick={exportPDF}

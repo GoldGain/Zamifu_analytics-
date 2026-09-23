@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Search, Users, BookOpen } from 'lucide-react';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Learner {
   id: string;
@@ -12,7 +13,7 @@ interface Learner {
   parent_name: string | null;
   parent_phone: string | null;
   class_id: string;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
 }
 
 interface ClassGroup {
@@ -49,7 +50,7 @@ export default function TeacherLearners() {
       // Get teacher's class and subject assignments
       const { data: assignments } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('class_id, subject_id, classes(name), subjects(name)')
+        .select('class_id, subject_id, classes(name, stream, stream_name), subjects(name)')
         .eq('teacher_id', teacherData.id);
 
       setTeacherAssignments(assignments || []);
@@ -61,7 +62,7 @@ export default function TeacherLearners() {
         // If no assignments, fetch all learners in school as fallback
         const { data } = await supabaseUntyped
           .from('students')
-          .select('*, classes(name)')
+          .select('*, classes(name, stream, stream_name)')
           .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('first_name');
@@ -70,7 +71,7 @@ export default function TeacherLearners() {
         // Only fetch learners from assigned classes
         const { data } = await supabaseUntyped
           .from('students')
-          .select('*, classes(name)')
+          .select('*, classes(name, stream, stream_name)')
           .in('class_id', assignedClassIds)
           .eq('is_active', true)
           .order('first_name');
@@ -81,7 +82,7 @@ export default function TeacherLearners() {
       // Fallback: fetch all learners
       const { data } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name)')
+        .select('*, classes(name, stream, stream_name)')
         .eq('school_id', user?.schoolId)
         .eq('is_active', true)
         .order('first_name');
@@ -103,7 +104,7 @@ export default function TeacherLearners() {
       if (!acc[cid]) {
         acc[cid] = {
           classId: cid,
-          className: learner.classes?.name || 'Unassigned',
+          className: learner.classes ? formatClassStream(learner.classes) : 'Unassigned',
           learners: [],
         };
       }

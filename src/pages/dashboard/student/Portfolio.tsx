@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Award, BookOpen, TrendingUp, Star, FileText, ChevronDown, ChevronUp, Loader2, Target, Lightbulb, GraduationCap, Calendar } from 'lucide-react';
+import { formatClassStream } from '@/lib/class-label';
 
 interface PortfolioData {
   student: any;
@@ -106,7 +107,7 @@ export default function StudentPortfolio() {
     try {
       const { data: student } = await supabaseUntyped
         .from('students')
-        .select('*, status, graduation_year, classes(name)')
+        .select('*, status, graduation_year, classes(name, stream, stream_name)')
         .eq('profile_id', user?.id)
         .maybeSingle();
 
@@ -199,7 +200,7 @@ export default function StudentPortfolio() {
           </div>
           <div className="flex-1">
             <h2 className="text-xl font-bold">{student.first_name} {student.last_name}</h2>
-            <p className="text-blue-100 text-sm">{student.classes?.name} · Adm: {student.admission_number}</p>
+            <p className="text-blue-100 text-sm">{formatClassStream(student.classes)} · Adm: {student.admission_number}</p>
           </div>
           {validResults.length > 0 && (
             <div className="text-right">

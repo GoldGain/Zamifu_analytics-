@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { Upload, ClipboardList, BookOpen, Users, Clock, Trophy, School } from 'lucide-react';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
+import { formatClassStream } from '@/lib/class-label';
 
 interface TimetableEntry {
   id: string;
@@ -58,14 +59,14 @@ export default function TeacherDashboard() {
           .eq('is_active', true),
         supabaseUntyped
           .from('classes')
-          .select('id, name, stream')
+          .select('id, name, stream, stream_name')
           .eq('school_id', schoolId)
           .or(`class_teacher_id.eq.${teacherData.profile_id},id.eq.${teacherData.assigned_class_id || '00000000-0000-0000-0000-000000000000'}`)
           .maybeSingle(),
       ]);
       const classRole = Boolean(teacherData.is_class_teacher || classTeacherRecord);
       setIsClassTeacher(classRole);
-      setClassTeacherName(classTeacherRecord ? `${classTeacherRecord.name}${classTeacherRecord.stream ? ` (${classTeacherRecord.stream})` : ''}` : 'your assigned class');
+      setClassTeacherName(classTeacherRecord ? formatClassStream(classTeacherRecord) : 'your assigned class');
       setSubjectAssignmentCount(assignmentCount || 0);
       setHasSubjectAssignments((assignmentCount || 0) > 0);
       // day_of_week in timetable_entries is an integer: 1=Monday ... 5=Friday
@@ -76,7 +77,7 @@ export default function TeacherDashboard() {
         // Fetch timetable_entries for this teacher today, joined with time slots
         const { data: entries } = await supabaseUntyped
           .from('timetable_entries')
-          .select('id, day_of_week, time_slot_id, subject_id, class_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name)')
+          .select('id, day_of_week, time_slot_id, subject_id, class_id, timetable_time_slots(start_time, end_time), subjects(name), classes(name, stream, stream_name)')
           .eq('teacher_id', tId)
           .eq('day_of_week', todayInt)
           .in('entry_type', ['lesson', 'class', 'activity']);
@@ -87,7 +88,7 @@ export default function TeacherDashboard() {
           end_time: e.timetable_time_slots?.end_time?.toString().substring(0, 5) || '',
           room: null,
           subject_name: e.subjects?.name || null,
-          class_name: e.classes?.name || null,
+          class_name: e.classes ? formatClassStream(e.classes) : null,
         }));
         mapped.sort((a, b) => a.start_time.localeCompare(b.start_time));
         setTodayClasses(mapped);
@@ -118,7 +119,7 @@ export default function TeacherDashboard() {
       // Get all subject-class assignments for this teacher
       const { data: assignments } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('*, subjects(name), classes(id, name, level, grade_level, curriculum)')
+        .select('*, subjects(name), classes(id, name, stream, stream_name, level, grade_level, curriculum)')
         .eq('teacher_id', teacherId);
 
       if (!assignments || assignments.length === 0) {
@@ -159,7 +160,7 @@ export default function TeacherDashboard() {
         const computed = computeBestPerSubject(results, classData);
         if (computed.length > 0) {
           bests.push({
-            className: classData?.name || 'Class',
+            className: classData ? formatClassStream(classData) : 'Class',
             classId,
             classData,
             subjectName: assignment.subjects?.name || 'Subject',

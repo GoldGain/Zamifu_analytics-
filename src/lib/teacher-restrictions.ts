@@ -1,10 +1,12 @@
 import { supabaseUntyped } from '@/lib/supabase/client';
+import { formatClassStream } from '@/lib/class-label';
 
 export interface TeacherAssignment {
   id?: string;
   class_id: string;
   subject_id: string;
   class_name?: string;
+  class_stream?: string;
   subject_name?: string;
   lessons_per_week?: number;
   is_priority?: boolean;
@@ -61,7 +63,7 @@ export async function fetchTeacherAssignments(profileId?: string | null): Promis
         subject_id,
         lessons_per_week,
         is_priority,
-        classes(name),
+        classes(name, stream, stream_name),
         subjects(name)
       `)
       .eq('teacher_id', tid)
@@ -84,7 +86,7 @@ export async function fetchTeacherAssignments(profileId?: string | null): Promis
           subject_id,
           lessons_per_week,
           is_priority,
-          classes(name),
+        classes(name, stream, stream_name),
           subjects(name)
         `)
         .eq('teacher_id', tid);
@@ -103,6 +105,7 @@ export async function fetchTeacherAssignments(profileId?: string | null): Promis
     lessons_per_week: a.lessons_per_week,
     is_priority: a.is_priority,
     class_name: a.classes?.name,
+    class_stream: a.classes?.stream_name || a.classes?.stream,
     subject_name: a.subjects?.name,
   }));
 
@@ -153,11 +156,11 @@ export async function verifyTeacherSubjectAssignment(
 }
 
 export function uniqueAssignedClasses(assignments: TeacherAssignment[]): { id: string; name: string }[] {
-  const map = new Map<string, string>();
+  const map = new Map<string, { name: string; stream?: string }>();
   assignments.forEach((a) => {
-    if (a.class_id) map.set(a.class_id, a.class_name || 'Class');
+    if (a.class_id) map.set(a.class_id, { name: a.class_name || 'Class', stream: a.class_stream });
   });
-  return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  return Array.from(map.entries()).map(([id, data]) => ({ id, name: formatClassStream(data) }));
 }
 
 export function subjectsForClass(assignments: TeacherAssignment[], classId: string): TeacherAssignment[] {

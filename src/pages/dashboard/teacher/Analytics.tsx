@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { BarChart3, TrendingUp, Award, Users, BookOpen, School, Shield, Eye, Lock } from 'lucide-react';
+import { formatClassStream } from '@/lib/class-label';
 
 type TeacherRole = 'subject_teacher' | 'class_teacher' | 'dean_of_studies' | 'admin' | null;
 
@@ -64,12 +65,12 @@ export default function TeacherAnalytics() {
       // Get teacher's subject/class assignments
       const { data: assignments } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('class_id, subject_id, classes(name), subjects(name)')
+        .select('class_id, subject_id, classes(name, stream, stream_name), subjects(name)')
         .eq('teacher_id', teacherData?.id);
 
       const mappedAssignments: TeacherAssignment[] = (assignments || []).map((a: any) => ({
         class_id: a.class_id,
-        class_name: a.classes?.name || '',
+        class_name: formatClassStream(a.classes),
         subject_id: a.subject_id,
         subject_name: a.subjects?.name || '',
       }));
@@ -87,7 +88,7 @@ export default function TeacherAnalytics() {
       // Build query based on role
       let resultsQuery = supabaseUntyped
         .from('results')
-        .select('*, subjects(name), classes(id, name, level, grade_level, curriculum), students(id, first_name, last_name)')
+        .select('*, subjects(name), classes(id, name, stream, stream_name, level, grade_level, curriculum), students(id, first_name, last_name)')
         .eq('school_id', schoolId);
 
       if (role === 'subject_teacher') {
@@ -122,7 +123,7 @@ export default function TeacherAnalytics() {
       ] = await Promise.all([
         resultsQuery,
         supabaseUntyped.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
-        supabaseUntyped.from('classes').select('id, name, level').eq('school_id', schoolId).order('level'),
+        supabaseUntyped.from('classes').select('id, name, stream, stream_name, level').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('subjects').select('id, name').eq('school_id', schoolId).order('name'),
       ]);
 
@@ -148,7 +149,7 @@ export default function TeacherAnalytics() {
         const bySubject: Record<string, { name: string; total: number; count: number; classBreakdown: Record<string, { total: number; count: number }> }> = {};
         results.forEach((r: any) => {
           const name = r.subjects?.name || 'Unknown';
-          const className = r.classes?.name || 'Unknown';
+          const className = formatClassStream(r.classes);
           if (!bySubject[name]) bySubject[name] = { name, total: 0, count: 0, classBreakdown: {} };
           bySubject[name].total += getPct(r);
           bySubject[name].count++;
@@ -169,7 +170,7 @@ export default function TeacherAnalytics() {
         // Group by class
         const byClass: Record<string, { name: string; total: number; count: number; subjectBreakdown: Record<string, { total: number; count: number }> }> = {};
         results.forEach((r: any) => {
-          const className = r.classes?.name || 'Unknown';
+          const className = formatClassStream(r.classes);
           const subjectName = r.subjects?.name || 'Unknown';
           if (!byClass[className]) byClass[className] = { name: className, total: 0, count: 0, subjectBreakdown: {} };
           byClass[className].total += getPct(r);

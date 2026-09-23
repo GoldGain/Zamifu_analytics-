@@ -5,10 +5,11 @@ import { Send, Loader2, Users, UserCheck, Bell, CheckCircle, Search, CheckSquare
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { sendBulkSMS } from '@/lib/sms';
+import { formatClassStream } from '@/lib/class-label';
 
 type RecipientType = 'class' | 'teachers' | 'parents';
 type Teacher = { id: string; first_name: string; last_name: string; phone?: string | null };
-type SchoolClass = { id: string; name: string };
+type SchoolClass = { id: string; name: string; stream?: string | null; stream_name?: string | null };
 type StudentParentRow = {
   key: string;
   studentId: string;
@@ -42,16 +43,16 @@ export default function Communicate() {
     const schoolId = user?.schoolId;
     if (!schoolId) return;
     const [{ data: classRows }, { data: teacherRows }, { data: studentRows }, { data: wallet }] = await Promise.all([
-      supabaseUntyped.from('classes').select('id, name').eq('school_id', schoolId).eq('is_active', true).order('name'),
+      supabaseUntyped.from('classes').select('id, name, stream, stream_name').eq('school_id', schoolId).eq('is_active', true).order('name'),
       supabaseUntyped.from('teachers').select('id, first_name, last_name, phone').eq('school_id', schoolId).eq('is_active', true).order('first_name'),
-      supabaseUntyped.from('students').select('id, first_name, last_name, class_id, parent_name, parent_phone, parent2_name, parent2_phone, classes(name)').eq('school_id', schoolId).eq('is_active', true).order('admission_number'),
+      supabaseUntyped.from('students').select('id, first_name, last_name, class_id, parent_name, parent_phone, parent2_name, parent2_phone, classes(name, stream, stream_name)').eq('school_id', schoolId).eq('is_active', true).order('admission_number'),
       supabaseUntyped.from('school_sms_wallets').select('sms_balance').eq('school_id', schoolId).maybeSingle(),
     ]);
-    const classMap = new Map((classRows || []).map((item: SchoolClass) => [item.id, item.name]));
+    const classMap = new Map((classRows || []).map((item: SchoolClass) => [item.id, formatClassStream(item)]));
     const rows: StudentParentRow[] = [];
     (studentRows || []).forEach((student: any) => {
       const studentName = `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Unnamed student';
-      const className = classMap.get(student.class_id) || student.classes?.name || 'No class';
+      const className = classMap.get(student.class_id) || formatClassStream(student.classes);
       [[student.parent_phone, student.parent_name], [student.parent2_phone, student.parent2_name]].forEach(([phone, name], index) => {
         const normalizedPhone = String(phone || '').trim();
         if (normalizedPhone.length < 9) return;
@@ -170,7 +171,7 @@ export default function Communicate() {
         </div>
       </div>
 
-      {recipientType === 'class' && <div className="bg-white rounded-2xl p-5 border border-gray-100"><label className="block text-sm font-medium text-gray-700 mb-2">Choose class first</label><select value={selectedClass} onChange={(e) => { setSelectedClass(e.target.value); setSelectedParentKeys([]); }} className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm"><option value="">Select a class</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>}
+      {recipientType === 'class' && <div className="bg-white rounded-2xl p-5 border border-gray-100"><label className="block text-sm font-medium text-gray-700 mb-2">Choose class first</label><select value={selectedClass} onChange={(e) => { setSelectedClass(e.target.value); setSelectedParentKeys([]); }} className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm"><option value="">Select a class</option>{classes.map((item) => <option key={item.id} value={item.id}>{formatClassStream(item)}</option>)}</select></div>}
 
       {recipientType === 'teachers' && <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden"><div className="p-5 border-b"><div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between"><div><h2 className="font-semibold">Choose teachers</h2><p className="text-xs text-gray-500">Tick as many teachers as you need.</p></div><button type="button" onClick={selectAllTeachers} className="inline-flex items-center gap-2 text-sm text-blue-700 font-medium"><CheckSquare className="w-4 h-4" /> {selectedTeacherIds.length === visibleTeachers.filter((t) => t.phone).length ? 'Unmark all' : 'Mark all'}</button></div><div className="relative mt-3"><Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" /><input value={teacherSearch} onChange={(e) => setTeacherSearch(e.target.value)} placeholder="Search teacher name or phone" className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm" /></div></div><div className="max-h-72 overflow-y-auto divide-y">{visibleTeachers.map((teacher) => <label key={teacher.id} className="flex items-center gap-3 px-5 py-3 hover:bg-blue-50 cursor-pointer"><input type="checkbox" checked={selectedTeacherIds.includes(teacher.id)} disabled={!teacher.phone} onChange={() => toggleTeacher(teacher.id)} className="h-4 w-4 accent-blue-600" /><UserRound className="w-4 h-4 text-gray-400" /><span className="text-sm">{teacher.first_name} {teacher.last_name}<small className="block text-xs text-gray-500">{teacher.phone || 'No phone number'}</small></span></label>)}</div></div>}
 

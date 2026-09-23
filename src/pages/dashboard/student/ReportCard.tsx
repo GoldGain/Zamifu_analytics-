@@ -33,6 +33,7 @@ import {
 import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
+import { formatClassStream } from '@/lib/class-label';
 
 export default function StudentReportCard() {
   const { user } = useAuth();
@@ -59,7 +60,7 @@ export default function StudentReportCard() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
         .eq('profile_id', user?.id)
         .single();
       setStudent(studentData);
@@ -304,7 +305,7 @@ export default function StudentReportCard() {
         doc,
         studentFullName,
         student.admission_number || 'N/A',
-        classDataForGrading.name || 'N/A',
+        formatClassStream(classDataForGrading),
         term?.name || '',
         term?.academic_year || '',
         positionStr,
@@ -362,7 +363,7 @@ export default function StudentReportCard() {
             <div>
               <h2 className="text-lg font-bold text-[#111111]">{student.first_name} {student.last_name}</h2>
               <p className="text-sm text-[#666666]">Assessment #: {student.admission_number}</p>
-              <p className="text-sm text-[#666666]">Class: {student.classes?.name}</p>
+              <p className="text-sm text-[#666666]">Class: {formatClassStream(student.classes)}</p>
               {results[0]?.school_exams?.name && (
                 <p className="text-sm font-semibold text-[#6A1B9A] mt-1">Assessment: {results[0].school_exams.name}</p>
               )}

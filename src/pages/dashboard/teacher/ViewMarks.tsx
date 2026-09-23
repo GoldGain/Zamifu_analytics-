@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Search, Loader2, Pencil, Save, X, Eye, BookOpen, Filter, Send, Users, ChevronDown, ChevronUp, CheckCircle, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
+import { formatClassStream } from '@/lib/class-label';
 
 interface MarkEntry {
   id: string;
@@ -22,7 +23,7 @@ interface MarkEntry {
   submitted_at: string;
   students: { first_name: string; last_name: string; admission_number: string } | null;
   subjects: { name: string } | null;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
   terms: { name: string; academic_year: string } | null;
 }
 
@@ -42,6 +43,20 @@ interface GroupedMarks {
     missing: MissingStudent[];
   }[];
 }
+
+const markScopeKey = (mark: Pick<MarkEntry, 'student_id' | 'class_id' | 'subject_id' | 'term_id' | 'exam_id'>): string =>
+  [mark.student_id, mark.class_id, mark.subject_id, mark.term_id, mark.exam_id || '__no_exam__'].map(String).join('|');
+
+/** Keep the newest row for one exact assessment scope so one entry is never
+ * counted as both submitted and draft. Different exams and terms remain distinct. */
+const canonicalizeMarks = (rows: MarkEntry[]): MarkEntry[] => {
+  const unique = new Map<string, MarkEntry>();
+  rows.forEach((row) => {
+    const key = markScopeKey(row);
+    if (!unique.has(key)) unique.set(key, row);
+  });
+  return [...unique.values()];
+};
 
 export default function ViewMarks() {
   const { user } = useAuth();
@@ -100,12 +115,17 @@ export default function ViewMarks() {
 
   const fetchMarks = async () => {
     setLoading(true);
+    if (!user?.id || !user?.schoolId) {
+      setLoading(false);
+      return;
+    }
     try {
       // Get teacher record
       const { data: teacherData } = await supabaseUntyped
         .from('teachers')
         .select('id')
         .eq('profile_id', user?.id)
+        .eq('school_id', user?.schoolId)
         .single();
 
       const teacherId = teacherData?.id;
@@ -121,16 +141,17 @@ export default function ViewMarks() {
           *,
           students(first_name, last_name, admission_number),
           subjects(name),
-          classes(name),
+          classes(name, stream, stream_name),
           terms(name, academic_year)
         `)
         .eq('teacher_id', teacherId)
+        .eq('school_id', user?.schoolId)
         .order('submitted_at', { ascending: false });
 
       if (error) throw error;
 
       // Ensure all marks have valid data - no blank spaces
-      const loadedMarks = (marksData || []).map((m: MarkEntry) => ({
+      const loadedMarks = canonicalizeMarks((marksData || []) as MarkEntry[]).map((m: MarkEntry) => ({
         ...m,
         marks: m.marks ?? 0,
         out_of: m.out_of ?? 0,
@@ -146,8 +167,9 @@ export default function ViewMarks() {
       // a "Missing" status instead of being omitted entirely.
       const { data: assignmentsData } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('class_id, subject_id, subjects(name), classes(name)')
+        .select('class_id, subject_id, subjects(name), classes(name, stream, stream_name)')
         .eq('teacher_id', teacherId)
+        .eq('school_id', user?.schoolId)
         .eq('is_active', true);
       setTeacherAssignments(assignmentsData || []);
 
@@ -157,6 +179,7 @@ export default function ViewMarks() {
           .from('students')
           .select('id, class_id, first_name, last_name, admission_number')
           .in('class_id', classIds)
+          .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('admission_number');
         const roster: Record<string, any[]> = {};
@@ -200,7 +223,8 @@ export default function ViewMarks() {
           status: 'draft',
           submitted_at: new Date().toISOString(),
         })
-        .eq('id', mark.id);
+        .eq('id', mark.id)
+        .eq('school_id', user.schoolId);
 
       if (error) throw error;
       toast.success('Marks updated successfully');
@@ -221,7 +245,8 @@ export default function ViewMarks() {
       const { error } = await supabaseUntyped
         .from('results')
         .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .eq('id', mark.id);
+        .eq('id', mark.id)
+        .eq('school_id', user?.schoolId);
 
       if (error) throw error;
       toast.success('Marks submitted successfully');
@@ -255,7 +280,8 @@ export default function ViewMarks() {
       const { error } = await supabaseUntyped
         .from('results')
         .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .in('id', editableMarks.map(m => m.id));
+        .in('id', editableMarks.map(m => m.id))
+        .eq('school_id', user?.schoolId);
 
       if (error) throw error;
       toast.success(`Submitted ${editableMarks.length} mark(s) successfully`);
@@ -279,7 +305,11 @@ export default function ViewMarks() {
     }
     if (!confirm('Delete this mark? This cannot be undone.')) return;
     try {
-      const { error } = await supabaseUntyped.from('results').delete().eq('id', mark.id);
+      const { error } = await supabaseUntyped
+        .from('results')
+        .delete()
+        .eq('id', mark.id)
+        .eq('school_id', user?.schoolId);
       if (error) throw error;
       toast.success('Mark deleted');
       fetchMarks();
@@ -312,11 +342,17 @@ export default function ViewMarks() {
     const matchesSubject = filterSubject ? m.subject_id === filterSubject : true;
     const matchesStatus = filterStatus === 'all' ? true : m.status === filterStatus;
     const matchesExam = filterExam ? m.exam_id === filterExam : true;
-    return matchesSearch && matchesClass && matchesSubject && matchesStatus && matchesExam;
+    const matchesTerm = filterTerm ? m.term_id === filterTerm : true;
+    return matchesSearch && matchesClass && matchesSubject && matchesStatus && matchesExam && matchesTerm;
   });
 
-  // Scope missing-learner detection to the selected term (if any)
-  const marksForTerm = filterTerm ? marks.filter((m) => m.term_id === filterTerm) : marks;
+  // Scope missing-learner detection to the selected term and assessment.
+  // Either draft or submitted counts as entered; status is intentionally not
+  // part of this set.
+  const marksForScope = marks.filter((m) =>
+    (!filterTerm || m.term_id === filterTerm) &&
+    (!filterExam || m.exam_id === filterExam),
+  );
 
   // Group marks by class and subject
   const groupedMarks: GroupedMarks[] = [];
@@ -329,13 +365,13 @@ export default function ViewMarks() {
       ? teacherAssignments.map((a: any) => ({
           class_id: a.class_id,
           subject_id: a.subject_id,
-          className: a.classes?.name || 'Unknown Class',
+          className: formatClassStream(a.classes),
           subjectName: a.subjects?.name || 'Unknown Subject',
         }))
       : marks.map((m) => ({
           class_id: m.class_id,
           subject_id: m.subject_id,
-          className: m.classes?.name || 'Unknown Class',
+          className: formatClassStream(m.classes),
           subjectName: m.subjects?.name || 'Unknown Subject',
         }));
 
@@ -358,7 +394,7 @@ export default function ViewMarks() {
   classMap.forEach((classData, classId) => {
     const roster = classRoster[classId] || [];
     const enteredBySubject = new Map<string, Set<string>>();
-    marksForTerm.forEach((m) => {
+    marksForScope.forEach((m) => {
       if (m.class_id !== classId || !m.student_id) return;
       if (!enteredBySubject.has(m.subject_id)) enteredBySubject.set(m.subject_id, new Set());
       enteredBySubject.get(m.subject_id)!.add(String(m.student_id));
@@ -383,8 +419,14 @@ export default function ViewMarks() {
   });
 
   // Get unique classes and subjects for filters
-  const uniqueClasses = [...new Map(marks.map((m: MarkEntry) => [m.class_id, m.classes]).filter(Boolean)).values()];
-  const uniqueSubjects = [...new Map(marks.map((m: MarkEntry) => [m.subject_id, m.subjects]).filter(Boolean)).values()];
+  const uniqueClasses = [...new Map([
+    ...teacherAssignments.map((a: any) => [a.class_id, { id: a.class_id, name: formatClassStream(a.classes) }] as const),
+    ...marks.map((m: MarkEntry) => [m.class_id, { id: m.class_id, name: formatClassStream(m.classes) }] as const),
+  ]).values()];
+  const uniqueSubjects = [...new Map([
+    ...teacherAssignments.map((a: any) => [a.subject_id, { id: a.subject_id, name: a.subjects?.name || 'Unknown Subject' }] as const),
+    ...marks.map((m: MarkEntry) => [m.subject_id, { id: m.subject_id, name: m.subjects?.name || 'Unknown Subject' }] as const),
+  ]).values()];
 
   const gradeColor = (grade: string) => {
     if (!grade) return 'bg-gray-100 text-gray-600';
@@ -440,7 +482,7 @@ export default function ViewMarks() {
         >
           <option value="">All Classes</option>
           {uniqueClasses.map((c: any) => (
-            <option key={c.name} value={c.name === 'Unknown Class' ? '' : c.name}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
         <select
@@ -450,7 +492,7 @@ export default function ViewMarks() {
         >
           <option value="">All Subjects</option>
           {uniqueSubjects.map((s: any) => (
-            <option key={s.name} value={s.name}>{s.name}</option>
+            <option key={s.id} value={s.id}>{s.name}</option>
           ))}
         </select>
         <select

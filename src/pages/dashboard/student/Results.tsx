@@ -23,7 +23,7 @@ export default function StudentResults() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('id, class_id, school_id, status, graduation_year, classes(name)')
+        .select('id, class_id, school_id, status, graduation_year, classes(name, stream, stream_name)')
         .eq('profile_id', user?.id)
         .maybeSingle();
       if (studentData) {
