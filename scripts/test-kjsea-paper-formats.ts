@@ -8,7 +8,7 @@ const expected = [
   ['Kiswahili', 'paper1', 50, 100],
   ['Kiswahili', 'paper2', 50, 105],
   ['Integrated Science', 'paper1', 70, 100],
-  ['Integrated Science', 'paper2', 30, 90],
+  ['Integrated Science', 'paper2', 30, 60],
 ] as const;
 
 for (const [subject, variant, marks, duration] of expected) {
@@ -26,6 +26,19 @@ for (const [subject, variant, marks, duration] of expected) {
     throw new Error(`${subject} ${variant} prompt guidance is missing sanitized format-only instructions.`);
   }
   console.log(`${subject} ${variant}: ${marks} marks, ${duration} minutes, ${blueprint.sections.length} blueprint sections`);
+}
+
+const mathematics = getKjseaPaperSpec('Mathematics', 'single');
+if (!mathematics || mathematics.code !== '903' || mathematics.marks !== 100 || mathematics.duration_minutes !== 120 || getKjseaPaperSpec('Mathematics', 'paper2') !== null) {
+  throw new Error(`Mathematics must be one 903 paper with no Paper 2: ${JSON.stringify(mathematics)}`);
+}
+const creativeProject = getKjseaPaperSpec('Creative Arts and Sports', 'paper1');
+if (!creativeProject || creativeProject.code !== '911/1' || creativeProject.duration_minutes !== 0) {
+  throw new Error(`Creative Arts and Sports Paper 1 must be the 911/1 project window: ${JSON.stringify(creativeProject)}`);
+}
+const sciencePaper2 = makeKjseaBlueprint('Integrated Science', 'paper2', 'mixed');
+if (!sciencePaper2 || sciencePaper2.sections.length !== 3 || sciencePaper2.total_marks !== 30 || sciencePaper2.estimated_minutes !== 60) {
+  throw new Error(`Integrated Science Paper 2 must have three current practical-skills questions: ${JSON.stringify(sciencePaper2)}`);
 }
 
 const largePaperRequest = {

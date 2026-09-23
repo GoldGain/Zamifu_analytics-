@@ -30,13 +30,13 @@ function paperFocus(subject: string, variant: PaperVariant): string {
   if (variant === 'single') return '';
   if (key === 'english') {
     return variant === 'paper1'
-      ? 'Paper 1 tests functional language: grammar and language use, punctuation, vocabulary, comprehension of a prose passage, and short functional writing.'
-      : 'Paper 2 tests literary and extended reading skills: comprehension and interpretation of longer passages, summary writing, and extended composition.';
+      ? 'Paper 1 is the 50-mark objective Language paper: reading comprehension, listening and speaking, cloze, grammar and language use.'
+      : 'Paper 2 is the 50-mark constructed-response paper: composition, oral literature, novella, play and poetry.';
   }
   if (key === 'kiswahili') {
     return variant === 'paper1'
-      ? 'Karatasi 1 hupima lugha: sarufi, matumizi ya lugha, uakifishaji, msamiati, ufahamu na insha fupi.'
-      : 'Karatasi 2 hupima fasihi na usomaji wa kina: ufahamu wa kifungu kirefu, ufupisho na insha ndefu.';
+      ? 'Karatasi ya Kwanza ni ya alama 50 na ya chaguo: ufahamu wa kusoma, kusikiliza na kuzungumza, cloze, sarufi na matumizi ya lugha.'
+      : 'Karatasi ya Pili ni ya alama 50 na ya majibu yaliyoundwa: insha, fasihi simulizi, novela, tamthilia na ushairi.';
   }
   if (key === 'agriculture') {
     return variant === 'paper1'
@@ -53,9 +53,9 @@ function paperFocus(subject: string, variant: PaperVariant): string {
       ? 'Creative Arts and Sports Paper 1 is a 100-mark project assessed over three months.'
       : 'Creative Arts and Sports Paper 2 has 40 multiple-choice marks and 60 structured marks.';
   }
-  return variant === 'paper1'
-    ? 'Integrated Science Paper 1 tests theory: concepts, explanations, definitions and structured theory questions.'
-    : 'Integrated Science Paper 2 tests practical work: procedure, apparatus, observation tables, measurements and conclusions.';
+    return variant === 'paper1'
+      ? 'Integrated Science Paper 1 is a 70-mark theory paper: 30 objective marks plus 40 structured/essay marks.'
+      : 'Integrated Science Paper 2 is a current 30-mark, 60-minute written practical-skills paper with three science tasks.';
 }
 export function paperVariantLaw(request: ExamGenerationRequest): string {
   const variant = normalizePaperVariant(request.paperVariant);
@@ -101,8 +101,8 @@ export function kjseaFormatLaw(request: ExamGenerationRequest): string {
   if (request.format !== 'kjsea') return '';
   return [
     'KJSEA format law: follow the subject-specific blueprint and mark total exactly. Objective sections use four options A-D and one correct answer; structured sections use explicit lettered sub-parts whose marks sum to the parent question.',
-    'Section B phrasing: open with an instruction, then use lettered sub-parts (a), (b), (c) and roman sub-items (i), (ii). Sub-part marks must total exactly 10 per main question. Use command words such as State, Name, Describe, Explain, Calculate, Give a reason, Outline, and use a table or labelled diagram when data must be recorded or interpreted.',
-    'Illustration: "(a) Name two ... (2 marks) (b) Explain how ... (4 marks) (c) State two reasons ... (4 marks)". Keep the mark arithmetic visible in every sub-part.',
+    'Structured and essay sections must use explicit lettered sub-parts (a), (b), (c) and roman sub-items (i), (ii) where appropriate. Sub-part marks must add up to the parent question and to the official subject total; do not assume every parent question is worth 10 marks.',
+    'Use command words such as State, Name, Describe, Explain, Calculate, Give a reason and Outline. Keep the mark arithmetic visible in every sub-part and use a table or labelled diagram when data must be recorded or interpreted.',
   ].join(' ');
 }
 
