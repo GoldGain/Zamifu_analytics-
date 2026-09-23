@@ -1126,27 +1126,29 @@ export default function TimetableGenerate() {
             }
           }
 
-          let perfectEntries = buildPerfectTimetableEntries({
+          // Try the bounded class-first solver first. The legacy MRV search can
+          // spend up to a minute exploring equivalent cross-class permutations;
+          // running it before the fast solver blocks the browser thread and can
+          // make the live generator appear to unload before anything is saved.
+          let perfectEntries = buildFastTimetableEntries({
             schoolId,
             levelKey,
             classes: classesToProcess,
             assignments,
             lessonSlots,
+            deadlineMs: 12000,
           });
           let reusedValidatedGrid = false;
           if (!perfectEntries?.length) {
-            // The legacy MRV search is correct but can spend its entire bounded
-            // budget exploring equivalent cross-class permutations. Use the
-            // class-first solver before reusing an old grid: it keeps the same
-            // exact counts, double-day, teacher, window, and adjacency rules
-            // while retrying class layouts cheaply when teachers are shared.
-            perfectEntries = buildFastTimetableEntries({
+            // Fall back to the original exhaustive solver for configurations
+            // that need its additional search space, then reuse only a grid
+            // that passes the same validation checks.
+            perfectEntries = buildPerfectTimetableEntries({
               schoolId,
               levelKey,
               classes: classesToProcess,
               assignments,
               lessonSlots,
-              deadlineMs: 12000,
             });
           }
           if (!perfectEntries?.length) {
