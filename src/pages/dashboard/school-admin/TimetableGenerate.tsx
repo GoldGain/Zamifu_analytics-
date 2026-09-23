@@ -1140,18 +1140,9 @@ export default function TimetableGenerate() {
           });
           let reusedValidatedGrid = false;
           if (!perfectEntries?.length) {
-            // Fall back to the original exhaustive solver for configurations
-            // that need its additional search space, then reuse only a grid
-            // that passes the same validation checks.
-            perfectEntries = buildPerfectTimetableEntries({
-              schoolId,
-              levelKey,
-              classes: classesToProcess,
-              assignments,
-              lessonSlots,
-            });
-          }
-          if (!perfectEntries?.length) {
+            // Reuse an existing grid before entering the long exhaustive
+            // search. This is safe because the helper validates exact counts,
+            // teacher collisions, availability, and the configured rules.
             perfectEntries = getValidatedSavedPerfectEntries({
               schoolId,
               levelKey,
@@ -1161,6 +1152,17 @@ export default function TimetableGenerate() {
               existingEntries: existingTimetableEntries || [],
             });
             reusedValidatedGrid = Boolean(perfectEntries?.length);
+          }
+          if (!perfectEntries?.length) {
+            // Last resort for configurations that need the legacy solver's
+            // additional search space.
+            perfectEntries = buildPerfectTimetableEntries({
+              schoolId,
+              levelKey,
+              classes: classesToProcess,
+              assignments,
+              lessonSlots,
+            });
           }
           if (perfectEntries?.length) {
             const occupiedTeacherSlots = new Set(
