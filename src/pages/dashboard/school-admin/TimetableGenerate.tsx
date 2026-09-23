@@ -14,6 +14,7 @@ import {
 } from '@/lib/timetable-activity';
 import { assertTimetableRules, validateTimetableRules } from '@/lib/timetable-validator';
 import { formatClassStream } from '@/lib/class-label';
+import { buildFastTimetableEntries } from '@/lib/timetable-fast-solver';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -225,7 +226,7 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
  * solvable. Full-grid levels must surface that state rather than silently
  * falling back to a legacy allocator that can save wrong weekly counts.
  */
-function buildPerfectTimetableEntries(opts: {
+export function buildPerfectTimetableEntries(opts: {
   schoolId: string;
   levelKey: string;
   classes: any[];
@@ -1133,6 +1134,21 @@ export default function TimetableGenerate() {
             lessonSlots,
           });
           let reusedValidatedGrid = false;
+          if (!perfectEntries?.length) {
+            // The legacy MRV search is correct but can spend its entire bounded
+            // budget exploring equivalent cross-class permutations. Use the
+            // class-first solver before reusing an old grid: it keeps the same
+            // exact counts, double-day, teacher, window, and adjacency rules
+            // while retrying class layouts cheaply when teachers are shared.
+            perfectEntries = buildFastTimetableEntries({
+              schoolId,
+              levelKey,
+              classes: classesToProcess,
+              assignments,
+              lessonSlots,
+              deadlineMs: 12000,
+            });
+          }
           if (!perfectEntries?.length) {
             perfectEntries = getValidatedSavedPerfectEntries({
               schoolId,
