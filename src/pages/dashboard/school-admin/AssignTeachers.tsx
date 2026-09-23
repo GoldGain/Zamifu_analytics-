@@ -3,6 +3,8 @@ import { supabase } from '../../../lib/supabase/client';
 import { useAuth } from '../../../contexts/AuthContext';
 import { Plus, Trash2, AlertCircle, CheckCircle, Users, BookOpen, Calendar, Save } from 'lucide-react';
 import { defaultLessonsPerWeek, fetchLessonDefaults, type LessonDefault } from '../../../lib/kicd-defaults';
+import { getLessonCountForLevel } from '../../../lib/timetable-generator';
+import { formatClassStream } from '../../../lib/class-label';
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 type PriorityBand = 'auto' | 'none' | 'early_morning' | 'mid_morning' | 'late_morning' | 'afternoon';
 
@@ -18,17 +20,6 @@ const normalizePriorityBand = (value: unknown, isPriority = false): PriorityBand
   return 'auto';
 };
 
-// Subject-default priority mapping (mirrors timetable-generator getDefaultPriorityBand).
-const subjectDefaultBand = (name: string): PriorityBand => {
-  const n = (name || '').toLowerCase();
-  if (/mathemat/.test(n) || /\benglish\b/.test(n)) return 'early_morning';
-  if (/integrated\s*science|\bscience\b/.test(n)) return 'mid_morning';
-  if (/agricultur|pre[\s-]*technical/.test(n)) return 'mid_morning';
-  if (/kiswahili|\blanguages?\b|french|german|arabic/.test(n)) return 'late_morning';
-  if (/social\s*stud|religious|\bcre\b|christian|islamic|creative\s*arts?/.test(n)) return 'afternoon';
-  return 'none';
-};
-
 type LevelGroup = 'pre-primary' | 'lower-primary' | 'upper-primary' | 'combined-primary' | 'junior' | 'senior' | 'form-3-4';
 const resolveLevelGroup = (grade: number | null | undefined): LevelGroup | null => {
   const g = Number(grade);
@@ -39,18 +30,6 @@ const resolveLevelGroup = (grade: number | null | undefined): LevelGroup | null 
   if (g <= 9) return 'junior';
   return 'senior';
 };
-const LEVEL_AFTER_LUNCH_DEFAULTS: Record<LevelGroup, number> = {
-  'pre-primary': 0,
-  'lower-primary': 0,
-  'upper-primary': 1,
-  'combined-primary': 1,
-  junior: 2,
-  senior: 3,
-  'form-3-4': 3,
-};
-// Lessons 1-2, 3-4 and 5-6 always exist (fixed morning structure).
-const FIXED_BAND_LESSONS = 2;
-
 interface TeacherAssignment {
   id: string;
   teacher_id: string;
@@ -78,6 +57,8 @@ interface Teacher {
 interface Class {
   id: string;
   name: string;
+  stream?: string | null;
+  stream_name?: string | null;
   level: number;
 }
 
@@ -160,7 +141,7 @@ export default function AssignTeachers() {
 
       const { data: classesData, error: ce } = await supabase
         .from('classes')
-        .select('id, name, level')
+        .select('id, name, stream, stream_name, level')
         .eq('school_id', user?.schoolId)
         .order('level');
       if (ce) throw ce;
@@ -198,7 +179,7 @@ export default function AssignTeachers() {
       .select(`
         id, teacher_id, class_id, subject_id, lessons_per_week, is_priority, priority_band, is_double_lesson, double_lesson_days, available_days,
         teachers(first_name, last_name, teacher_number),
-        classes(name),
+        classes(name, stream, stream_name),
         subjects(name)
       `)
       .eq('school_id', user?.schoolId)
@@ -212,7 +193,7 @@ export default function AssignTeachers() {
       teacher_name: `${a.teachers?.first_name} ${a.teachers?.last_name}`,
       teacher_number: a.teachers?.teacher_number || 0,
       class_id: a.class_id,
-      class_name: a.classes?.name || '',
+      class_name: formatClassStream(a.classes),
       subject_id: a.subject_id,
       subject_name: a.subjects?.name || '',
       lessons_per_week: a.lessons_per_week || 5,
@@ -230,10 +211,6 @@ export default function AssignTeachers() {
     setAssignments(mapped.sort((a, b) => a.teacher_number - b.teacher_number));
   };
 
-  // Feasibility guard: a shared teacher can only be in one class per period, so a
-  // teacher's weekly lessons inside a priority window cannot exceed that window's
-  // total teaching slots. This blocks impossible assignments at entry time instead
-  // of letting them fail silently when the timetable is generated.
   const gradeByClassId = (classId: string): number | null => {
     const cls = classes.find((c) => c.id === classId);
     return cls ? Number(cls.level) : null;
@@ -258,60 +235,24 @@ export default function AssignTeachers() {
   const selectedGrade = gradeByClassId(formData.class_id);
   const selectedSubjectName = subjects.find((s) => s.id === formData.subject_id)?.name ?? '';
 
-  const effectiveBand = (assignment: { priority_band: PriorityBand; subject_name: string }): PriorityBand | null => {
-    if (assignment.priority_band === 'none') return null;
-    if (assignment.priority_band === 'auto') {
-      const resolved = subjectDefaultBand(assignment.subject_name);
-      return resolved === 'none' ? null : resolved;
-    }
-    return assignment.priority_band;
-  };
-
-  const bandSlotCount = (band: PriorityBand, grade: number | null | undefined): number => {
-    if (band === 'early_morning' || band === 'mid_morning' || band === 'late_morning') {
-      return FIXED_BAND_LESSONS;
-    }
-    if (band === 'afternoon') {
-      const grp = resolveLevelGroup(grade);
-      const total = grp && typeof levelConfigs[grp]?.after_lunch_lessons === 'number'
-        ? levelConfigs[grp].after_lunch_lessons as number
-        : (grp ? LEVEL_AFTER_LUNCH_DEFAULTS[grp] : 2);
-      return Math.max(0, total);
-    }
-    return 0;
-  };
-
-  const computeConflicts = (
-    candidateAssignments: Array<{
-      id?: string;
-      teacher_id: string;
-      teacher_name: string;
-      class_id: string;
-      subject_name: string;
-      priority_band: PriorityBand;
-      lessons_per_week: number;
-    }>,
-  ): Array<{ teacherName: string; band: PriorityBand; levelGroup: string; demand: number; capacity: number }> => {
-    const byKey = new Map<string, { teacherName: string; band: PriorityBand; levelGroup: string; demand: number; capacity: number }>();
-    for (const a of candidateAssignments) {
-      const band = effectiveBand(a);
-      if (!band) continue;
-      const grade = gradeByClassId(a.class_id);
-      const grp = resolveLevelGroup(grade);
-      if (!grp) continue;
-      const capacity = bandSlotCount(band, grade) * ALL_DAYS.length;
-      const key = `${a.teacher_id}|${grp}|${band}`;
-      const existing = byKey.get(key);
-      if (existing) {
-        existing.demand += Math.max(0, Number(a.lessons_per_week) || 0);
-      } else {
-        byKey.set(key, { teacherName: a.teacher_name, band, levelGroup: grp, demand: Math.max(0, Number(a.lessons_per_week) || 0), capacity });
-      }
-    }
-    return Array.from(byKey.values())
-      .filter((e) => e.demand > e.capacity)
-      .sort((a, b) => (b.demand - b.capacity) - (a.demand - a.capacity));
-  };
+  const classTotalRows = classes.map((cls) => {
+    const levelGroup = resolveLevelGroup(Number(cls.level));
+    const lessonsPerDay = levelGroup ? getLessonCountForLevel(levelGroup) : 8;
+    const required = lessonsPerDay * ALL_DAYS.length;
+    const configured = assignments
+      .filter((assignment) => assignment.class_id === cls.id)
+      .reduce((sum, assignment) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
+    const delta = configured - required;
+    return {
+      ...cls,
+      levelGroup: levelGroup || 'Unknown level',
+      lessonsPerDay,
+      required,
+      configured,
+      delta,
+      status: delta === 0 ? 'OK' : delta < 0 ? 'Under' : 'Over',
+    };
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,14 +262,30 @@ export default function AssignTeachers() {
     }
     const teacher = teachers.find((t) => t.id === formData.teacher_id);
     const subject = subjects.find((sub) => sub.id === formData.subject_id);
-    const pending = {
-      teacher_id: formData.teacher_id,
-      teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : 'This teacher',
-      class_id: formData.class_id,
-      subject_name: subject?.name || 'this learning area',
-      priority_band: formData.priority_band,
-      lessons_per_week: Math.max(0, Number(formData.lessons_per_week) || 0),
-    };
+    const lessonsPerWeek = Number(formData.lessons_per_week);
+    if (!Number.isInteger(lessonsPerWeek) || lessonsPerWeek < 1 || lessonsPerWeek > 10) {
+      setError('Lessons / Week must be a whole number from 1 to 10.');
+      return;
+    }
+    const selectedClass = classes.find((cls) => cls.id === formData.class_id);
+    const levelGroup = selectedClass ? resolveLevelGroup(Number(selectedClass.level)) : null;
+    const required = (levelGroup ? getLessonCountForLevel(levelGroup) : 8) * ALL_DAYS.length;
+    const replacing = assignments.filter((assignment) =>
+      assignment.class_id === formData.class_id && assignment.subject_id === formData.subject_id,
+    );
+    const duplicateWithAnotherTeacher = replacing.some((assignment) => assignment.teacher_id !== formData.teacher_id);
+    if (duplicateWithAnotherTeacher) {
+      setError(`${selectedClass?.name || 'This class'} already has ${subject?.name || 'this learning area'} assigned to another teacher. Edit or remove the existing assignment first.`);
+      return;
+    }
+    const currentTotal = assignments
+      .filter((assignment) => assignment.class_id === formData.class_id && !replacing.some((row) => row.id === assignment.id))
+      .reduce((sum, assignment) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
+    const candidateTotal = currentTotal + lessonsPerWeek;
+    if (candidateTotal > required) {
+      setError(`${selectedClass?.name || 'This class'} (${levelGroup || 'level'}): ${candidateTotal} configured; exactly ${required} required (${required / ALL_DAYS.length}/day × ${ALL_DAYS.length}). Over by ${candidateTotal - required}. Reduce this allocation before saving.`);
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
@@ -340,7 +297,7 @@ export default function AssignTeachers() {
           teacher_id: formData.teacher_id,
           class_id: formData.class_id,
           subject_id: formData.subject_id,
-          lessons_per_week: formData.lessons_per_week,
+          lessons_per_week: lessonsPerWeek,
           is_double_lesson: formData.is_double_lesson,
           double_lesson_days: [],
           available_days: formData.available_days,
@@ -351,7 +308,9 @@ export default function AssignTeachers() {
 
       if (insertError) throw insertError;
 
-      setSuccess('Assignment saved successfully!');
+      setSuccess(candidateTotal < required
+        ? `Assignment saved. ${selectedClass?.name || 'This class'} is Under by ${required - candidateTotal}; add ${required - candidateTotal} more lesson period(s) before generating.`
+        : 'Assignment saved successfully!');
       setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'auto', is_double_lesson: false, double_lesson_days: [...ALL_DAYS], available_days: [...ALL_DAYS] });
       await fetchAssignments();
       setTimeout(() => setSuccess(null), 3000);
@@ -383,7 +342,11 @@ export default function AssignTeachers() {
   const handleDelete = async (id: string) => {
     if (!confirm('Remove this assignment?')) return;
     try {
-      const { error } = await supabase.from('teacher_subject_assignments').delete().eq('id', id);
+      const { error } = await supabase
+        .from('teacher_subject_assignments')
+        .delete()
+        .eq('id', id)
+        .eq('school_id', user?.schoolId);
       if (error) throw error;
       setAssignments((prev) => prev.filter((a) => a.id !== id));
       setSuccess('Assignment removed.');
@@ -410,7 +373,8 @@ export default function AssignTeachers() {
       const { error } = await supabase
         .from('teacher_subject_assignments')
         .update({ available_days: editingDays })
-        .eq('id', assignmentId);
+        .eq('id', assignmentId)
+        .eq('school_id', user?.schoolId);
       if (error) throw error;
       setAssignments(prev => prev.map(a =>
         a.id === assignmentId ? { ...a, available_days: editingDays } : a
@@ -489,7 +453,8 @@ export default function AssignTeachers() {
       const { error } = await (supabase as any)
         .from('teacher_subject_assignments')
         .update({ is_double_lesson: false, double_lesson_days: [] })
-        .eq('id', assignment.id);
+        .eq('id', assignment.id)
+        .eq('school_id', user?.schoolId);
       if (error) throw error;
       setAssignments(prev => prev.map(a => a.id === assignment.id
         ? { ...a, is_double_lesson: false, double_lesson_days: [] }
@@ -614,7 +579,7 @@ export default function AssignTeachers() {
                 >
                   <option value="">Select class...</option>
                   {classes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
                   ))}
                 </select>
               </div>
@@ -768,6 +733,30 @@ export default function AssignTeachers() {
               <span className="text-xs text-gray-500 font-semibold bg-gray-100 px-2 py-1 rounded-full">
                 {assignments.length} total
               </span>
+            </div>
+            <div className="grid gap-2 border-b border-gray-100 bg-gray-50/70 p-4 sm:grid-cols-2">
+              {classTotalRows.map((row) => (
+                <div key={row.id} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-black text-gray-800">{row.name}</p>
+                      <p className="text-[10px] text-gray-500">{row.levelGroup} · {row.lessonsPerDay}/day × 5 = {row.required} required</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                      row.status === 'OK'
+                        ? 'bg-green-100 text-green-700'
+                        : row.status === 'Under'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-red-100 text-red-700'
+                    }`}>
+                      {row.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-600">
+                    {row.configured} configured · {row.delta === 0 ? 'exact total' : `${Math.abs(row.delta)} ${row.delta < 0 ? 'under' : 'over'}`}
+                  </p>
+                </div>
+              ))}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

@@ -34,7 +34,7 @@ export function useStudents(schoolId?: string) {
       setLoading(true);
       let query = supabase
         .from('students')
-        .select('*, classes(name)')
+        .select('*, classes(name, stream, stream_name)')
         .or('is_active.eq.true,is_active.is.null')
         .order('created_at', { ascending: false });
       if (schoolId) query = query.eq('school_id', schoolId);

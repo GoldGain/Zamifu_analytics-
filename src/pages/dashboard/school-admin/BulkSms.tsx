@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Send, Loader2, MessageSquare, Users, CheckCircle, AlertCircle, Bell, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { sendBulkSMS, generateAnnouncementSMS } from '@/lib/sms';
+import { formatClassStream } from '@/lib/class-label';
 
 type SMSType = 'announcement' | 'custom';
 
@@ -15,7 +16,7 @@ interface Student {
   parent_phone: string;
   parent_name: string;
   class_id: string;
-  classes?: { name: string } | null;
+  classes?: { name: string; stream?: string | null; stream_name?: string | null } | null;
 }
 
 export default function BulkSms() {
@@ -48,7 +49,7 @@ export default function BulkSms() {
   const fetchClasses = async () => {
     const { data } = await supabaseUntyped
       .from('classes')
-      .select('id, name')
+      .select('id, name, stream, stream_name')
       .eq('school_id', user?.schoolId)
       .eq('is_active', true)
       .order('name');
@@ -60,7 +61,7 @@ export default function BulkSms() {
     setLoading(true);
     let query = supabaseUntyped
       .from('students')
-      .select('id, first_name, last_name, admission_number, parent_phone, parent_name, class_id, classes(name)')
+      .select('id, first_name, last_name, admission_number, parent_phone, parent_name, class_id, classes(name, stream, stream_name)')
       .eq('school_id', user?.schoolId)
       .eq('is_active', true);
 
@@ -114,7 +115,7 @@ export default function BulkSms() {
         .replace(/{learner_name}/g, `${student.first_name} ${student.last_name}`)
         .replace(/{parent_name}/g, student.parent_name || 'Parent')
         .replace(/{assessment_number}/g, student.admission_number || '')
-        .replace(/{class}/g, student.classes?.name || '')
+        .replace(/{class}/g, formatClassStream(student.classes))
         .replace(/{school}/g, schoolData?.name || user?.schoolName || 'School');
 
       const result = await sendBulkSMS([student.parent_phone], personalizedMessage, undefined, user?.schoolId || undefined);
@@ -198,7 +199,7 @@ export default function BulkSms() {
             <option value="">-- Select Class --</option>
             <option value="all">All Classes</option>
             {classes.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+              <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
             ))}
           </select>
           <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 rounded-xl">

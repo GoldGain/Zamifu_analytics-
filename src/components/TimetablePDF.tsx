@@ -1,11 +1,13 @@
 import React from 'react';
 import { formatTimeDisplay } from '@/lib/timetable-generator';
+import { formatClassStream } from '@/lib/class-label';
 
 interface SchoolClass {
   id: string;
   name: string;
   level: number;
   stream?: string | null;
+  stream_name?: string | null;
 }
 
 interface TimetableEntry {
@@ -89,8 +91,7 @@ const getSubjectCode = (name: string, code: string): string => {
 };
 
 const displayClassName = (cls: SchoolClass): string => {
-  const name = cls.name?.replace(/^grade\s*/i, '').trim() || String(cls.level);
-  return name.toUpperCase();
+  return formatClassStream(cls).toUpperCase();
 };
 
 /**

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { sortByAdmissionNumber } from '@/lib/student-order';
+import { formatClassStream } from '@/lib/class-label';
 
 export default function SchoolAdminFees() {
   const { user, schoolData } = useAuth();
@@ -73,11 +74,11 @@ export default function SchoolAdminFees() {
         .select('id, first_name, last_name, admission_number, assessment_number, class_id, parent_name, parent_phone, parent2_name, parent2_phone')
         .eq('school_id', schoolId).eq('is_active', true),
       supabaseUntyped.from('classes')
-        .select('id, name, level').eq('school_id', schoolId).order('level'),
+        .select('id, name, stream, stream_name, level').eq('school_id', schoolId).order('level'),
       supabaseUntyped.from('terms')
         .select('id, name, academic_year').eq('school_id', schoolId).order('academic_year', { ascending: false }),
       supabaseUntyped.from('fee_structures')
-        .select('*, classes(name), terms(name, academic_year)')
+        .select('*, classes(name, stream, stream_name), terms(name, academic_year)')
         .eq('school_id', schoolId).order('created_at', { ascending: false }),
     ]);
 
@@ -596,7 +597,7 @@ export default function SchoolAdminFees() {
   const groupedStructures = feeStructures.reduce((acc: any, fs: any) => {
     const key = `${fs.class_id}_${fs.term_id}`;
     if (!acc[key]) {
-      acc[key] = { class_id: fs.class_id, term_id: fs.term_id, class: fs.classes?.name, term: `${fs.terms?.name} ${fs.terms?.academic_year}`, fees: [], total: 0 };
+      acc[key] = { class_id: fs.class_id, term_id: fs.term_id, class: formatClassStream(fs.classes), term: `${fs.terms?.name} ${fs.terms?.academic_year}`, fees: [], total: 0 };
     }
     acc[key].fees.push({ id: fs.id, type: fs.fee_type, amount: fs.amount, description: fs.description });
     acc[key].total += parseFloat(fs.amount) || 0;
@@ -630,7 +631,7 @@ export default function SchoolAdminFees() {
           <form onSubmit={handleAddStructure} className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <select value={structureData.class_id} onChange={e => setStructureData({...structureData, class_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Class *</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
             </select>
             <select value={structureData.term_id} onChange={e => setStructureData({...structureData, term_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Term *</option>
@@ -656,14 +657,14 @@ export default function SchoolAdminFees() {
           <form onSubmit={handleGenerateInvoice} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <select value={invoiceClassFilter} onChange={e => { setInvoiceClassFilter(e.target.value); setInvoiceData({ ...invoiceData, student_id: '' }); }} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">All classes</option>
-              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
             </select>
             <div className="relative">
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
               <input value={invoiceStudentSearch} onChange={e => { setInvoiceStudentSearch(e.target.value); setInvoiceData({ ...invoiceData, student_id: '' }); }} placeholder="Search by admission no. or student name" className="w-full pl-9 pr-3 py-2.5 border rounded-xl text-sm" />
             </div>
             <div className="md:col-span-2 flex items-center justify-between text-xs text-gray-500 -mt-2">
-              <span>{invoiceStudents.length} student(s) shown{invoiceClassFilter ? ` in ${classes.find((item: any) => item.id === invoiceClassFilter)?.name || 'selected class'}` : ''}</span>
+              <span>{invoiceStudents.length} student(s) shown{invoiceClassFilter ? ` in ${formatClassStream(classes.find((item: any) => item.id === invoiceClassFilter))}` : ''}</span>
               <span>Sorted by admission number ascending</span>
             </div>
             <select value={invoiceData.student_id} onChange={e => setInvoiceData({...invoiceData, student_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white md:col-span-2" required>
@@ -775,7 +776,7 @@ export default function SchoolAdminFees() {
             </div>
             <select value={selectedInvoiceClass} onChange={e => setSelectedInvoiceClass(e.target.value)} className="md:w-56 px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">All classes</option>
-              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
             </select>
           </div>
           <div className="overflow-x-auto">
@@ -833,7 +834,7 @@ export default function SchoolAdminFees() {
             </div>
             <select value={selectedInvoiceClass} onChange={e => setSelectedInvoiceClass(e.target.value)} className="md:w-56 px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">All classes</option>
-              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
             </select>
           </div>
           <div className="overflow-x-auto">
@@ -863,7 +864,7 @@ export default function SchoolAdminFees() {
           <div className="bg-white rounded-2xl p-5 shadow-sm border flex flex-col md:flex-row md:items-center gap-3">
             <select value={selectedFeeClass} onChange={e => { setSelectedFeeClass(e.target.value); setSelectedFeeBalanceStudents([]); }} className="flex-1 px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">Select a class</option>
-              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{classItem.name}</option>)}
+              {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
             </select>
             <button type="button" onClick={() => selectedFeeClass && downloadClassFeeBalances(selectedFeeClass)} disabled={!selectedFeeClass} className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#2563EB] text-white text-sm font-medium disabled:opacity-50">
               <Download className="w-4 h-4" /> Download PDF

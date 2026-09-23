@@ -3,6 +3,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Users, Loader2, ChevronDown, ChevronUp, Search, Download, Filter } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Student {
   id: string;
@@ -20,6 +21,7 @@ interface ClassGroup {
   className: string;
   level: number | null;
   stream: string | null;
+  stream_name?: string | null;
   students: Student[];
   totalBoys: number;
   totalGirls: number;
@@ -45,7 +47,7 @@ export default function ViewLearners() {
       
       const { data: classesData } = await supabaseUntyped
         .from('classes')
-        .select('id, name, level, stream')
+        .select('id, name, level, stream, stream_name')
         .eq('school_id', schoolId)
         .eq('is_active', true)
         .order('level');
@@ -66,7 +68,7 @@ export default function ViewLearners() {
         
         groups.push({
           classId: cls.id,
-          className: cls.name,
+          className: formatClassStream(cls),
           level: cls.level,
           stream: cls.stream,
           students: classStudents,
@@ -196,7 +198,7 @@ export default function ViewLearners() {
                       <Users className="w-5 h-5 text-blue-600" />
                     </div>
                     <div className="text-left">
-                      <h3 className="font-semibold text-gray-900">{group.className} {group.stream && `(${group.stream})`}</h3>
+                      <h3 className="font-semibold text-gray-900">{group.className}</h3>
                       <p className="text-xs text-gray-500">
                         {group.level ? `Grade ${group.level}` : 'Level -'} • {group.students.length} learners
                         {group.totalBoys > 0 && ` • ${group.totalBoys} boys`}

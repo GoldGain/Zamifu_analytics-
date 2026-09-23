@@ -11,6 +11,7 @@ import {
   resultBelongsToAssessment,
   resultHasMarks,
 } from '@/lib/assessment-progress';
+import { formatClassStream } from '@/lib/class-label';
 
 const RESULTS_PAGE_SIZE = 1000;
 
@@ -259,8 +260,7 @@ export default function SchoolAdminAssessmentProgress() {
           const totalLearnerCells = subjectProgress.reduce((sum, subject) => sum + subject.expectedCount, 0);
           const level = getEffectiveGradeLevel(cls);
           const levelKey = level === null ? 'unknown' : String(level);
-          const streamPart = String(cls.stream || cls.stream_name || '').trim();
-          const className = `${cls.name || 'Unknown'}${streamPart ? ` ${streamPart}` : ''}`;
+          const className = formatClassStream(cls);
 
           progressData.push({
             assessmentId: exam.id,

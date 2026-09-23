@@ -19,6 +19,7 @@ import {
 } from '@/lib/timetable-activity';
 import { getReligiousCode, getSubjectCode } from '@/lib/timetable-subject-code';
 import { buildWeeklyLessonSummary, type TimetableSummaryRequirement } from '@/lib/timetable-summary';
+import { formatClassStream } from '@/lib/class-label';
 
 interface SchoolClass {
   id: string;
@@ -26,6 +27,7 @@ interface SchoolClass {
   level: number;
   grade_level?: number | null;
   stream?: string | null;
+  stream_name?: string | null;
 }
 
 interface TimetableEntry {
@@ -222,9 +224,7 @@ const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
 
 
 const displayClassName = (cls: SchoolClass): string => {
-  // Keep the full stored name (e.g. "Grade 7", "Class 3", "Form 1", "PP1")
-  const name = cls.name?.trim() || String(cls.level);
-  return name.toUpperCase();
+  return formatClassStream(cls).toUpperCase();
 };
 
 const fmt = (t: string): string => {
@@ -569,7 +569,7 @@ export default function TimetableView() {
   const fetchClasses = async () => {
     const { data, error: err } = await supabase
       .from('classes')
-      .select('id, name, level, grade_level, stream')
+      .select('id, name, level, grade_level, stream, stream_name')
       .eq('school_id', user?.schoolId)
       .eq('is_active', true)
       .order('level')

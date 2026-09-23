@@ -32,6 +32,7 @@ import {
 import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
+import { formatClassStream } from '@/lib/class-label';
 
 declare global {
   interface Window {
@@ -92,7 +93,7 @@ export default function ParentChildReportCard() {
       const ids = links.map((l: any) => l.student_id);
       const { data: students } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
         .in('id', ids);
       setChildren(students || []);
       if (students && students.length > 0) {
@@ -362,7 +363,7 @@ export default function ParentChildReportCard() {
         name: studentFullName,
         photoUrl: selectedChild.photo_url || null,
       });
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', classDataForGrading.name || 'N/A', term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined);
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined);
       let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
@@ -498,7 +499,7 @@ export default function ParentChildReportCard() {
             <h2 className="text-lg font-bold text-[#111111]">{selectedChild?.first_name} {selectedChild?.last_name}</h2>
             <p className="text-sm text-[#666666] mb-4">{selectedChild?.admission_number || 'No Admission No.'}</p>
             <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium">
-              <Users className="w-3.5 h-3.5" /> {selectedChild?.classes?.name || 'No Class'}
+              <Users className="w-3.5 h-3.5" /> {formatClassStream(selectedChild?.classes)}
             </div>
           </div>
 

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { RefreshCw, Users } from 'lucide-react';
 import { getResellerForUser } from '@/lib/reseller';
+import { formatClassStream } from '@/lib/class-label';
 
 export default function ResellerStudents() {
   const { user } = useAuth();
@@ -28,7 +29,7 @@ export default function ResellerStudents() {
       if (ids.length) {
         const { data: st } = await (supabase as any)
           .from('students')
-          .select('id, first_name, last_name, admission_number, school_id, status, is_active, class_id, classes(name)')
+          .select('id, first_name, last_name, admission_number, school_id, status, is_active, class_id, classes(name, stream, stream_name)')
           .in('school_id', ids)
           .eq('is_active', true)
           .order('created_at', { ascending: false })
@@ -113,7 +114,7 @@ export default function ResellerStudents() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.admission_number || '—'}</td>
                   <td className="px-4 py-3">{schoolName(s.school_id)}</td>
-                  <td className="px-4 py-3">{s.classes?.name || '—'}</td>
+                  <td className="px-4 py-3">{formatClassStream(s.classes)}</td>
                   <td className="px-4 py-3 capitalize">{s.status || 'active'}</td>
                 </tr>
               ))}

@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { BookOpen, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Subject {
   id: string;
@@ -62,7 +63,7 @@ export default function TeacherMySubjects() {
           .from('teacher_subject_assignments')
           .select(`
             *,
-            classes(name),
+            classes(name, stream, stream_name),
             subjects(name)
           `)
           .eq('teacher_id', teacherRec.id);
@@ -74,7 +75,7 @@ export default function TeacherMySubjects() {
           .from('teacher_subject_assignments')
           .select(`
             *,
-            classes(name),
+            classes(name, stream, stream_name),
             subjects(name)
           `)
           .eq('teacher_id', user?.id);
@@ -83,7 +84,7 @@ export default function TeacherMySubjects() {
 
       const enrichedAssignments = (assignmentsData || []).map((a: any) => ({
         ...a,
-        class_name: a.classes?.name,
+        class_name: formatClassStream(a.classes),
         subject_name: a.subjects?.name,
       }));
 

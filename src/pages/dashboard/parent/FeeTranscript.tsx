@@ -5,6 +5,7 @@ import { Download, FileText, Filter, TrendingDown, TrendingUp, DollarSign, Calen
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Child {
   id: string;
@@ -12,7 +13,7 @@ interface Child {
   last_name: string;
   admission_number: string;
   photo_url?: string;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
 }
 
 interface FeeRecord {
@@ -62,7 +63,7 @@ export default function ParentFeeTranscript() {
     try {
       const { data: linked } = await supabaseUntyped
         .from('parent_student_links')
-        .select('*, students(id, first_name, last_name, admission_number, photo_url, classes(name))')
+        .select('*, students(id, first_name, last_name, admission_number, photo_url, classes(name, stream, stream_name))')
         .eq('parent_id', user.id);
 
       if (linked) {
@@ -166,7 +167,7 @@ export default function ParentFeeTranscript() {
       doc.setFont('helvetica', 'normal');
       doc.text(`Name: ${selectedChild.first_name} ${selectedChild.last_name}`, 14, 60);
       doc.text(`Admission No: ${selectedChild.admission_number}`, 14, 67);
-      doc.text(`Class: ${selectedChild.classes?.name || 'N/A'}`, 14, 74);
+      doc.text(`Class: ${formatClassStream(selectedChild.classes)}`, 14, 74);
 
       // Summary Box
       doc.setFillColor(240, 248, 255);

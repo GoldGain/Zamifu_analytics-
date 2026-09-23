@@ -14,6 +14,7 @@ import PhotoUpload from '@/components/PhotoUpload';
 import { useTrial } from '@/contexts/TrialContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatClassStream } from '@/lib/class-label';
 
 type SortField = 'name' | 'admission_number' | 'assessment_number' | 'class' | 'gender';
 type SortDir = 'asc' | 'desc';
@@ -107,7 +108,7 @@ export default function SchoolAdminStudents() {
       if (!user?.schoolId) return;
       const { data } = await supabase
         .from('classes')
-        .select('id, name, stream')
+        .select('id, name, stream, stream_name')
         .eq('school_id', user.schoolId)
         .order('name', { ascending: true });
       setClasses(data || []);
@@ -390,7 +391,7 @@ export default function SchoolAdminStudents() {
       let aVal = '', bVal = '';
       if (sortField === 'name') { aVal = `${a.first_name} ${a.last_name}`; bVal = `${b.first_name} ${b.last_name}`; }
       if (sortField === 'assessment_number') { aVal = a.assessment_number || ''; bVal = b.assessment_number || ''; }
-      if (sortField === 'class') { aVal = a.classes?.name || ''; bVal = b.classes?.name || ''; }
+      if (sortField === 'class') { aVal = formatClassStream(a.classes); bVal = formatClassStream(b.classes); }
       if (sortField === 'gender') { aVal = a.gender || ''; bVal = b.gender || ''; }
       const comparison = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
       return sortDir === 'asc' ? comparison : -comparison;
@@ -413,7 +414,7 @@ export default function SchoolAdminStudents() {
     const totalGirls = classStudents.filter((s: any) => s.gender?.toLowerCase() === 'female').length;
     return {
       classId: cls.id,
-      className: cls.name,
+      className: formatClassStream(cls),
       level: cls.level ?? cls.grade_level,
       stream: cls.stream,
       students: classStudents,
@@ -512,7 +513,7 @@ export default function SchoolAdminStudents() {
           <select value={filterClassId} onChange={e => setFilterClassId(e.target.value)} className="w-full pl-11 pr-10 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB] appearance-none">
             <option value="">All Classes</option>
             {classes.map((cls) => (
-              <option key={cls.id} value={cls.id}>{cls.name}{cls.stream ? ` (${cls.stream})` : ''}</option>
+              <option key={cls.id} value={cls.id}>{formatClassStream(cls)}</option>
             ))}
           </select>
         </div>
@@ -550,7 +551,7 @@ export default function SchoolAdminStudents() {
               <select value={formData.class_id} onChange={e => setFormData({...formData, class_id: e.target.value})} className={inputCls + " bg-white"} required>
                 <option value="">Select Class *</option>
                 {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>{cls.name}{cls.stream ? ` (${cls.stream})` : ''}</option>
+                  <option key={cls.id} value={cls.id}>{formatClassStream(cls)}</option>
                 ))}
               </select>
               <select value={formData.boarding_status} onChange={e => setFormData({...formData, boarding_status: e.target.value})} className={inputCls + " bg-white"}>
@@ -635,7 +636,7 @@ export default function SchoolAdminStudents() {
                 ) : (
                   (() => {
                     const grouped = filteredStudents.reduce((acc: Record<string, any[]>, s: any) => {
-                      const className = s.classes?.name || 'No Class';
+      const className = formatClassStream(s.classes);
                       if (!acc[className]) acc[className] = [];
                       acc[className].push(s);
                       return acc;
@@ -670,7 +671,7 @@ export default function SchoolAdminStudents() {
                                 <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">{s.boarding_status === 'boarding' ? 'Boarder' : 'Day & Boarding'}</span>
                               )}
                             </td>
-                            <td className="px-4 py-4 text-sm text-gray-600">{s.classes?.name || '-'}</td>
+                            <td className="px-4 py-4 text-sm text-gray-600">{formatClassStream(s.classes)}</td>
                             <td className="px-4 py-4 text-sm text-gray-600 capitalize">{s.gender || '-'}</td>
                             <td className="px-4 py-4">
                               <div className="text-sm">{s.parent_name || '-'}</div>
@@ -781,7 +782,7 @@ export default function SchoolAdminStudents() {
                           <Users className="w-5 h-5 text-blue-600" />
                         </div>
                         <div className="text-left">
-                          <h3 className="font-semibold text-gray-900">{group.className} {group.stream && `(${group.stream})`}</h3>
+                          <h3 className="font-semibold text-gray-900">{group.className}</h3>
                           <p className="text-xs text-gray-500">
                             {group.level !== null ? `Grade ${group.level}` : 'Level -'} • {group.students.length} learners
                             {group.totalBoys > 0 && ` • ${group.totalBoys} boys`}
@@ -919,7 +920,7 @@ export default function SchoolAdminStudents() {
                 <div><label className={labelCls}>Class</label>
                   <select value={editForm.class_id} onChange={e => setEditForm({...editForm, class_id: e.target.value})} className={inputCls + " bg-white"}>
                     <option value="">No Class</option>
-                    {classes.map((cls) => (<option key={cls.id} value={cls.id}>{cls.name} {cls.stream}</option>))}
+                    {classes.map((cls) => (<option key={cls.id} value={cls.id}>{formatClassStream(cls)}</option>))}
                   </select>
                 </div>
                 <div><label className={labelCls}>Boarding Status</label>

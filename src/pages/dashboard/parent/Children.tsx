@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { Award, ClipboardList, Lock, CreditCard, CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 declare global {
   interface Window {
@@ -19,7 +20,7 @@ interface ChildRecord {
   last_name: string;
   admission_number: string;
   school_id: string;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
   curriculum: string;
   gender: string | null;
   photo_url?: string | null;
@@ -84,7 +85,7 @@ export default function ParentChildren() {
     // Load children linked via parent_student_links
     const { data: linked } = await supabaseUntyped
       .from('parent_student_links')
-      .select('*, students(id, first_name, last_name, admission_number, school_id, class_id, classes(name), photo_url, curriculum, gender))')
+      .select('*, students(id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name), photo_url, curriculum, gender))')
       .eq('parent_id', user?.id);
     if (linked) {
       const kids = linked.map((l: any) => l.students as unknown as ChildRecord).filter(Boolean);
@@ -304,7 +305,7 @@ export default function ParentChildren() {
               )}
               <div>
                 <h3 className="text-lg font-semibold">{selectedChild.first_name} {selectedChild.last_name}</h3>
-                <p className="text-sm text-[#666666]">{selectedChild.classes?.name} | {selectedChild.admission_number} | {selectedChild.curriculum}</p>
+                <p className="text-sm text-[#666666]">{formatClassStream(selectedChild.classes)} | {selectedChild.admission_number} | {selectedChild.curriculum}</p>
               </div>
             </div>
           </div>

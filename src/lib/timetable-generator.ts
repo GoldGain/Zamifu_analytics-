@@ -315,6 +315,108 @@ export function canUseAssignmentDay(
   return true;
 }
 
+export interface ExactGridAssignmentIssue {
+  classId: string;
+  className: string;
+  subjectName: string;
+  message: string;
+}
+
+/**
+ * Find assignment settings that make an exact weekly timetable impossible
+ * before the backtracking solver starts. A configured double consumes one
+ * weekday; remaining lessons still need another distinct weekday because a
+ * subject may occur only once per day.
+ */
+export function getExactGridAssignmentIssues(options: {
+  classes: Array<{ id: string; name?: string | null }>;
+  assignments: Array<{
+    class_id: string;
+    lessons_per_week?: number | null;
+    is_double_lesson?: boolean | null;
+    double_lesson_days?: unknown;
+    available_days?: unknown;
+    subjects?: { name?: string | null } | null;
+    subject_name?: string | null;
+  }>;
+  totalLessons: number;
+  days?: readonly string[];
+}): ExactGridAssignmentIssue[] {
+  const days = options.days?.length
+    ? [...options.days]
+    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const normalizeDays = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.map(String).map((day) => day.trim()).filter((day) => days.includes(day));
+    }
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed.map(String).map((day) => day.trim()).filter((day) => days.includes(day));
+        }
+      } catch {
+        // Legacy rows may store a comma-separated weekday list.
+      }
+      return value.split(',').map((day) => day.trim()).filter((day) => days.includes(day));
+    }
+    return [];
+  };
+  const classIds = new Set(options.classes.map((item) => String(item.id)));
+  const issues: ExactGridAssignmentIssue[] = [];
+  const byClass = new Map<string, typeof options.assignments>();
+  options.assignments.forEach((assignment) => {
+    const classId = String(assignment.class_id);
+    if (!classIds.has(classId)) return;
+    byClass.set(classId, [...(byClass.get(classId) || []), assignment]);
+  });
+
+  for (const cls of options.classes) {
+    const classId = String(cls.id);
+    const classAssignments = byClass.get(classId) || [];
+    const configuredTotal = classAssignments.reduce(
+      (total, assignment) => total + Math.max(0, Number(assignment.lessons_per_week) || 0),
+      0,
+    );
+    if (configuredTotal !== options.totalLessons * days.length) {
+      issues.push({
+        classId,
+        className: String(cls.name || `Class ${classId}`),
+        subjectName: 'Weekly total',
+        message: `${String(cls.name || `Class ${classId}`)} has ${configuredTotal} configured lesson periods but requires exactly ${options.totalLessons * days.length}.`,
+      });
+    }
+
+    for (const assignment of classAssignments) {
+      const lessons = Math.max(0, Number(assignment.lessons_per_week) || 0);
+      if (lessons === 0) continue;
+      const subjectName = String(assignment.subjects?.name || assignment.subject_name || 'Learning area');
+      const availableDays = normalizeDays(assignment.available_days);
+      const allowedDays = availableDays.length ? availableDays : days;
+      const requiredDistinctDays = assignment.is_double_lesson && lessons >= 2 ? lessons - 1 : lessons;
+      if (allowedDays.length < requiredDistinctDays) {
+        issues.push({
+          classId,
+          className: String(cls.name || `Class ${classId}`),
+          subjectName,
+          message: `${String(cls.name || `Class ${classId}`)} — ${subjectName}: ${lessons} weekly lessons require at least ${requiredDistinctDays} available weekdays, but only ${allowedDays.length} are allowed (${allowedDays.join(', ') || 'none'}).`,
+        });
+      }
+
+      const configuredDoubleDays = normalizeDays(assignment.double_lesson_days);
+      if (assignment.is_double_lesson && configuredDoubleDays.length > 0 && !configuredDoubleDays.some((day) => allowedDays.includes(day))) {
+        issues.push({
+          classId,
+          className: String(cls.name || `Class ${classId}`),
+          subjectName,
+          message: `${String(cls.name || `Class ${classId}`)} — ${subjectName}: the configured double-lesson weekday (${configuredDoubleDays.join(', ')}) is not in the assignment's available weekdays (${allowedDays.join(', ') || 'none'}).`,
+        });
+      }
+    }
+  }
+  return issues;
+}
+
 export function getAfterLunchCount(level: string, override?: number | null): number {
   if (typeof override === 'number' && override >= 0 && override <= 3) return override;
   const config = getLevelConfig(level);

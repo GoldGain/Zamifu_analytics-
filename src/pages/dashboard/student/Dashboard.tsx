@@ -4,6 +4,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { Link } from 'react-router';
 import { Award, CreditCard, ClipboardList, BookOpen, Bell } from 'lucide-react';
 import PhotoZoomModal from '@/components/PhotoZoomModal';
+import { formatClassStream } from '@/lib/class-label';
 
 interface StudentRecord {
   id: string;
@@ -11,7 +12,7 @@ interface StudentRecord {
   first_name: string;
   last_name: string;
   photo_url?: string | null;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
 }
 
 interface ResultRecord {
@@ -48,7 +49,7 @@ export default function StudentDashboard() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const { data: student } = await supabaseUntyped.from('students').select('*, classes(name)').eq('profile_id', user?.id).single();
+    const { data: student } = await supabaseUntyped.from('students').select('*, classes(name, stream, stream_name)').eq('profile_id', user?.id).single();
     if (student) {
       setStudentData(student as unknown as StudentRecord);
       
@@ -93,7 +94,7 @@ export default function StudentDashboard() {
           )}
           <div>
             <h1 className="text-2xl font-bold">Welcome, {user?.firstName}!</h1>
-            <p className="text-white/80 mt-1">{studentData?.classes?.name} | {studentData?.admission_number}</p>
+            <p className="text-white/80 mt-1">{formatClassStream(studentData?.classes)} | {studentData?.admission_number}</p>
           </div>
         </div>
       </div>

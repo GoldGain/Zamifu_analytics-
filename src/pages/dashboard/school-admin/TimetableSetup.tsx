@@ -52,7 +52,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'upper-primary': {
     start_time: '08:00', end_time: '15:30', period_duration: 40,
-    lessons_per_day: 7, after_lunch_lessons: 1,
+    lessons_per_day: 6, after_lunch_lessons: 0,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -60,7 +60,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'combined-primary': {
     start_time: '08:20', end_time: '15:00', period_duration: 40,
-    lessons_per_day: 7, after_lunch_lessons: 1,
+    lessons_per_day: 6, after_lunch_lessons: 0,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -84,7 +84,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'form-3-4': {
     start_time: '08:00', end_time: '17:00', period_duration: 40,
-    lessons_per_day: 8, after_lunch_lessons: 3,
+    lessons_per_day: 7, after_lunch_lessons: 1,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -96,11 +96,11 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
 const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; note: string }> = {
   'pre-primary': { total: 6, afterLunch: 0, note: 'School ends at lunch' },
   'lower-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
-  'upper-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
-  'combined-primary': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'upper-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
+  'combined-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'senior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'form-3-4': { total: 8, afterLunch: 3, note: '3 lessons after lunch' },
+  'form-3-4': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -195,8 +195,8 @@ export default function TimetableSetup() {
             start_time: dbConfig.start_time?.slice(0, 5) || DEFAULT_CONFIGS[key].start_time,
             end_time: dbConfig.end_time?.slice(0, 5) || DEFAULT_CONFIGS[key].end_time,
             period_duration: dbConfig.period_duration || DEFAULT_CONFIGS[key].period_duration,
-            lessons_per_day: dbConfig.lessons_per_day ?? DEFAULT_CONFIGS[key].lessons_per_day ?? LEVEL_LESSON_INFO[key]?.total ?? 7,
-            after_lunch_lessons: dbConfig.after_lunch_lessons ?? DEFAULT_CONFIGS[key].after_lunch_lessons ?? LEVEL_LESSON_INFO[key]?.afterLunch ?? 1,
+            lessons_per_day: getLevelConfig(key)?.totalLessons ?? DEFAULT_CONFIGS[key].lessons_per_day,
+            after_lunch_lessons: getLevelConfig(key)?.afterLunch ?? DEFAULT_CONFIGS[key].after_lunch_lessons,
             first_break_start: dbConfig.first_break_start?.slice(0, 5) || DEFAULT_CONFIGS[key].first_break_start,
             first_break_end: dbConfig.first_break_end?.slice(0, 5) || DEFAULT_CONFIGS[key].first_break_end,
             second_break_start: dbConfig.second_break_start?.slice(0, 5) || DEFAULT_CONFIGS[key].second_break_start,
@@ -245,9 +245,11 @@ export default function TimetableSetup() {
 
   const currentConfig = configs[selectedLevel] || DEFAULT_CONFIGS[selectedLevel] || DEFAULT_CONFIGS['lower-primary'];
   const lessonInfo = LEVEL_LESSON_INFO[selectedLevel];
+  const canonicalLevel = getLevelConfig(selectedLevel) || { totalLessons: 8, afterLunch: 2 };
   const isPrePrimary = selectedLevel === 'pre-primary';
 
   const handleConfigChange = (field: keyof LevelConfig, value: any) => {
+    if (field === 'lessons_per_day' || field === 'after_lunch_lessons') return;
     let v = value;
     const timeFields = [
       'start_time','end_time','first_break_start','first_break_end',
@@ -281,10 +283,10 @@ export default function TimetableSetup() {
           throw new Error(`Invalid time for ${String(key).replace(/_/g, ' ')}. Use HH:MM format.`);
         }
       }
-      const afterLunch = Math.max(0, Math.min(3, Number(cfg.after_lunch_lessons ?? 0)));
-      const lessonsPerDay = Math.max(6, Math.min(9, Number(cfg.lessons_per_day ?? (6 + afterLunch))));
-      // Keep invariant: total = 6 before lunch + after lunch
-      const normalizedLessons = 6 + afterLunch;
+      // LEVEL_CONFIG is the single source of truth. Setup edits clock/activity
+      // fields only; generation and assignment validation use these same totals.
+      const afterLunch = canonicalLevel.afterLunch;
+      const normalizedLessons = canonicalLevel.totalLessons;
       // end_time is no longer edited in UI — use Activities End (or Lunch End for pre-primary)
       const derivedEnd =
         normalizeTime(cfg.activities_end) ||
@@ -529,12 +531,8 @@ export default function TimetableSetup() {
           <div>
             <label className="block text-sm font-medium text-[#111111] mb-2">Lessons after lunch</label>
             <select
-              value={currentConfig.after_lunch_lessons ?? 1}
-              onChange={e => {
-                const after = parseInt(e.target.value) || 0;
-                handleConfigChange('after_lunch_lessons', after);
-                handleConfigChange('lessons_per_day', 6 + after);
-              }}
+              value={canonicalLevel.afterLunch}
+              disabled
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
             >
               <option value={0}>0 — ends at lunch (Pre-Primary / Lower Primary)</option>
@@ -543,7 +541,7 @@ export default function TimetableSetup() {
               <option value={3}>3 — Form 3-4 extended day</option>
             </select>
             <p className="text-xs text-gray-500 mt-1">
-              Total lessons/day = 6 before lunch + {currentConfig.after_lunch_lessons ?? 0} after = <strong>{6 + (currentConfig.after_lunch_lessons ?? 0)}</strong>
+              Canonical total = <strong>{canonicalLevel.totalLessons} lessons/day × 5 days = {canonicalLevel.totalLessons * 5} required periods per class/week</strong>. Counts are managed by the timetable level contract.
             </p>
           </div>
           <TimeInput label="School starts" value={currentConfig.start_time} onChange={v => handleConfigChange('start_time', v)} />

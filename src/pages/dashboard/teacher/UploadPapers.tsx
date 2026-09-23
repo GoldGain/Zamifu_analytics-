@@ -3,6 +3,7 @@ import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Upload, FileText, Trash2, Download, Loader2, Plus, X, BookOpen, Calendar, Filter } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Paper {
   id: string;
@@ -14,7 +15,7 @@ interface Paper {
   subject_id: string;
   term_id: string | null;
   created_at: string;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
   subjects: { name: string } | null;
   terms: { name: string } | null;
 }
@@ -49,7 +50,7 @@ export default function UploadPapers() {
     const schoolId = user?.schoolId;
     
     const [{ data: p }, { data: c }, { data: s }, { data: t }] = await Promise.all([
-      supabaseUntyped.from('papers').select('*, classes(name), subjects(name), terms(name)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+      supabaseUntyped.from('papers').select('*, classes(name, stream, stream_name), subjects(name), terms(name)').eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabase.from('classes').select('*').eq('school_id', schoolId).eq('is_active', true),
       supabase.from('subjects').select('*').eq('school_id', schoolId),
       supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
@@ -185,7 +186,7 @@ export default function UploadPapers() {
                 required
               >
                 <option value="">Select Class *</option>
-                {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {classes.map((c: any) => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
               </select>
               <select
                 value={formData.subject_id}
@@ -241,7 +242,7 @@ export default function UploadPapers() {
           className="px-4 py-3 bg-white rounded-2xl text-sm border focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
         >
           <option value="">All Classes</option>
-          {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {classes.map((c: any) => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
         </select>
         <select
           value={filterSubject}
@@ -273,7 +274,7 @@ export default function UploadPapers() {
                   <h3 className="font-semibold text-gray-900 truncate">{paper.title}</h3>
                   {paper.description && <p className="text-sm text-gray-500 line-clamp-1">{paper.description}</p>}
                   <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
-                    <span>{paper.classes?.name}</span>
+                    <span>{formatClassStream(paper.classes)}</span>
                     <span>{paper.subjects?.name}</span>
                     {paper.terms?.name && <span>{paper.terms.name}</span>}
                     <span className="uppercase">{paper.file_type}</span>

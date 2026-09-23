@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Zap, CheckCircle, Loader2, Clock, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getLessonCountForLevel, getLevelConfig, isFillerSubject, isValidDoubleLessonPair, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
+import { canUseAssignmentDay, classifySubject, generateSlots, getDefaultPriorityBand, getDefaultPriorityLesson, getExactGridAssignmentIssues, getLessonCountForLevel, getLevelConfig, isFillerSubject, isValidDoubleLessonPair, orderAssignmentDays, resolveLessonTargets, shouldSkipPreferredSlot, strictSubjectAllowsLesson, violatesMathScienceSequence } from '@/lib/timetable-generator';
 import { LEVEL_GROUPS } from './TimetableSetup';
 import {
   activityBlocksLessons,
@@ -13,6 +13,8 @@ import {
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
 import { assertTimetableRules, validateTimetableRules } from '@/lib/timetable-validator';
+import { formatClassStream } from '@/lib/class-label';
+import { buildFastTimetableEntries } from '@/lib/timetable-fast-solver';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -224,7 +226,7 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
  * solvable. Full-grid levels must surface that state rather than silently
  * falling back to a legacy allocator that can save wrong weekly counts.
  */
-function buildPerfectTimetableEntries(opts: {
+export function buildPerfectTimetableEntries(opts: {
   schoolId: string;
   levelKey: string;
   classes: any[];
@@ -236,7 +238,33 @@ function buildPerfectTimetableEntries(opts: {
   const K = lessonSlots.length;
   if (K < 2 || K > 9 || cids.length === 0) return null;
 
-  const recsByClass: Record<string, { sid: string; name: string; teacher: string; need: number; double: boolean }[]> = {};
+  const dayIndex = (value: unknown): number | null => {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    const index = TIMETABLE_DAYS.findIndex((day) => day.toLowerCase() === normalized);
+    return index >= 0 ? index : null;
+  };
+  const parseDays = (value: unknown): number[] => {
+    let values: unknown[] = [];
+    if (Array.isArray(value)) values = value;
+    else if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        values = Array.isArray(parsed) ? parsed : value.split(',');
+      } catch {
+        values = value.split(',');
+      }
+    }
+    return [...new Set(values.map(dayIndex).filter((day): day is number => day !== null))];
+  };
+  const recsByClass: Record<string, {
+    sid: string;
+    name: string;
+    teacher: string;
+    need: number;
+    double: boolean;
+    availableDays: number[];
+    doubleDays: number[];
+  }[]> = {};
   for (const cid of cids) {
     recsByClass[cid] = assignments
       .filter((a: any) => String(a.class_id) === cid)
@@ -246,6 +274,8 @@ function buildPerfectTimetableEntries(opts: {
         teacher: String(a.teacher_id || ''),
         need: Math.max(0, Number(a.lessons_per_week) || 0),
         double: Boolean(a.is_double_lesson),
+        availableDays: parseDays(a.available_days),
+        doubleDays: parseDays(a.double_lesson_days),
       }))
       .filter((r: any) => r.name && r.need > 0);
     const total = recsByClass[cid].reduce((s: number, r: any) => s + r.need, 0);
@@ -258,14 +288,34 @@ function buildPerfectTimetableEntries(opts: {
     if (hasIre && hasCre) return null;
   }
 
-  type Unit = { cid: string; sid: string; name: string; teacher: string; size: 1 | 2; groupKey: string; groupOrder: number };
+  type Unit = {
+    cid: string;
+    sid: string;
+    name: string;
+    teacher: string;
+    size: 1 | 2;
+    groupKey: string;
+    groupOrder: number;
+    availableDays: number[];
+    doubleDays: number[];
+  };
   const units: Unit[] = [];
   const groupOrders = new Map<string, number>();
-  const addUnit = (cid: string, r: { sid: string; name: string; teacher: string }, size: 1 | 2) => {
+  const addUnit = (cid: string, r: (typeof recsByClass[string])[number], size: 1 | 2) => {
     const groupKey = `${cid}|${r.sid}|${size}`;
     const groupOrder = groupOrders.get(groupKey) || 0;
     groupOrders.set(groupKey, groupOrder + 1);
-    units.push({ cid, sid: r.sid, name: r.name, teacher: r.teacher, size, groupKey, groupOrder });
+    units.push({
+      cid,
+      sid: r.sid,
+      name: r.name,
+      teacher: r.teacher,
+      size,
+      groupKey,
+      groupOrder,
+      availableDays: r.availableDays.length ? r.availableDays : [0, 1, 2, 3, 4],
+      doubleDays: size === 2 ? r.doubleDays : [],
+    });
   };
   for (const cid of cids) {
     for (const r of recsByClass[cid]) {
@@ -278,7 +328,7 @@ function buildPerfectTimetableEntries(opts: {
     }
   }
 
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 60000;
   const grid = new Map<string, number>();
   const teacherAt = new Map<string, string>();
   const dayUsed = new Map<string, Set<number>>();
@@ -301,6 +351,8 @@ function buildPerfectTimetableEntries(opts: {
       const used = dayUsed.get(`${u.cid}|${u.sid}`)!;
       const res: Array<[number, number]> = [];
       for (let day = 0; day < 5; day++) {
+        if (!u.availableDays.includes(day)) continue;
+        if (u.size === 2 && u.doubleDays.length > 0 && !u.doubleDays.includes(day)) continue;
         if (used.has(day)) continue;
         for (let ln = 0; ln <= K - u.size; ln++) {
           if (enforceSymmetry && predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
@@ -524,7 +576,7 @@ export default function TimetableGenerate() {
       // This prevents a new school from defaulting to Lower Primary when its
       // configured classes are, for example, Grade 7–9 Junior School.
       const { data: readinessClasses } = await supabase
-        .from('classes').select('id, name, level, grade_level').eq('school_id', schoolId).eq('is_active', true);
+        .from('classes').select('id, name, level, grade_level, stream, stream_name').eq('school_id', schoolId).eq('is_active', true);
       const { data: readinessAssignments } = await supabase
         .from('teacher_subject_assignments').select('class_id').eq('school_id', schoolId).eq('is_active', true);
       const assignedClassIds = new Set((readinessAssignments || []).map((row: any) => String(row.class_id)));
@@ -586,7 +638,7 @@ export default function TimetableGenerate() {
       setLevelConfigs(freshLcMap);
 
       // Fetch all active classes
-      const { data: allClasses } = await supabase.from('classes').select('id, name, level, grade_level, stream, school_id, is_active').eq('school_id', schoolId).eq('is_active', true);
+      const { data: allClasses } = await supabase.from('classes').select('id, name, level, grade_level, stream, stream_name, school_id, is_active').eq('school_id', schoolId).eq('is_active', true);
       const { data: rawAssignments } = await supabase
         .from('teacher_subject_assignments')
         .select('*, subjects(name, code), teachers(first_name, last_name, teacher_number)')
@@ -832,6 +884,20 @@ export default function TimetableGenerate() {
         const orderedSlots = (createdSlots || []).slice().sort((a: any, b: any) => a.slot_order - b.slot_order);
         const fixedSlots = orderedSlots.filter((s: any) => ['break', 'lunch', 'activity', 'activities'].includes(s.slot_type));
         const lessonSlots = orderedSlots.filter((s: any) => s.slot_type === 'lesson');
+        const exactGridIssues = getExactGridAssignmentIssues({
+          classes: classesToProcess,
+          assignments,
+          totalLessons: lessonSlots.length,
+        });
+        if (exactGridIssues.length > 0) {
+          const levelLabel = LEVEL_GROUPS.find((level) => level.key === levelKey)?.label || levelKey;
+          const details = exactGridIssues
+            .slice(0, 8)
+            .map((issue) => `• ${issue.message}`)
+            .join('\n');
+          const more = exactGridIssues.length > 8 ? `\n• And ${exactGridIssues.length - 8} more assignment constraint issue(s).` : '';
+          throw new Error(`${levelLabel} cannot generate an exact timetable with the current Teacher Assignments:\n${details}${more}\nUpdate the listed available weekdays or weekly lesson counts, then generate again.`);
+        }
         const nextLessonById = new Map<string, any>();
         for (let index = 0; index < orderedSlots.length - 1; index++) {
           const current = orderedSlots[index];
@@ -1068,6 +1134,21 @@ export default function TimetableGenerate() {
             lessonSlots,
           });
           let reusedValidatedGrid = false;
+          if (!perfectEntries?.length) {
+            // The legacy MRV search is correct but can spend its entire bounded
+            // budget exploring equivalent cross-class permutations. Use the
+            // class-first solver before reusing an old grid: it keeps the same
+            // exact counts, double-day, teacher, window, and adjacency rules
+            // while retrying class layouts cheaply when teachers are shared.
+            perfectEntries = buildFastTimetableEntries({
+              schoolId,
+              levelKey,
+              classes: classesToProcess,
+              assignments,
+              lessonSlots,
+              deadlineMs: 12000,
+            });
+          }
           if (!perfectEntries?.length) {
             perfectEntries = getValidatedSavedPerfectEntries({
               schoolId,
@@ -1427,7 +1508,7 @@ export default function TimetableGenerate() {
               const teacher = assignment.teachers;
               const teacherName = [teacher?.first_name, teacher?.last_name].filter(Boolean).join(' ') || `Teacher ${assignment.teacher_id}`;
               underScheduled.push({
-                className: `${cls.name || 'Class'}${cls.stream ? ` (${cls.stream})` : ''}`,
+                className: formatClassStream(cls),
                 subjectName: String(assignment.subjects?.name || 'Learning area'),
                 teacherName,
                 priorityBand,

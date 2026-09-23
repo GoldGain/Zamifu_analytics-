@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { FileText, Download, Loader2, BookOpen, Filter } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Paper {
   id: string;
@@ -11,7 +12,7 @@ interface Paper {
   file_url: string;
   file_type: string | null;
   created_at: string;
-  classes?: { name: string } | null;
+  classes?: { name: string; stream?: string | null; stream_name?: string | null } | null;
   subjects?: { name: string } | null;
   terms?: { name: string } | null;
 }
@@ -44,7 +45,7 @@ export default function StudentPapers() {
         // Prefer class-scoped papers; fall back to school papers if class filter yields none
         let query = supabaseUntyped
           .from('papers')
-          .select('*, classes(name), subjects(name), terms(name)')
+          .select('*, classes(name, stream, stream_name), subjects(name), terms(name)')
           .eq('school_id', student.school_id)
           .order('created_at', { ascending: false });
 
@@ -59,7 +60,7 @@ export default function StudentPapers() {
         if (rows.length === 0 && student.class_id) {
           const { data: schoolPapers } = await supabaseUntyped
             .from('papers')
-            .select('*, classes(name), subjects(name), terms(name)')
+            .select('*, classes(name, stream, stream_name), subjects(name), terms(name)')
             .eq('school_id', student.school_id)
             .order('created_at', { ascending: false });
           rows = schoolPapers || [];
@@ -150,7 +151,7 @@ export default function StudentPapers() {
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-[#111111] truncate">{paper.title}</h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {[paper.subjects?.name, paper.classes?.name, paper.terms?.name]
+                    {[paper.subjects?.name, formatClassStream(paper.classes), paper.terms?.name]
                       .filter(Boolean)
                       .join(' · ') || 'General'}
                   </p>

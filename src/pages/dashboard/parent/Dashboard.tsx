@@ -4,6 +4,7 @@ import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { Link } from 'react-router';
 import { Users, CreditCard, Award, Bell, BookOpen } from 'lucide-react';
 import PhotoZoomModal from '@/components/PhotoZoomModal';
+import { formatClassStream } from '@/lib/class-label';
 
 interface ChildRecord {
   id: string;
@@ -11,7 +12,7 @@ interface ChildRecord {
   last_name: string;
   admission_number: string;
   photo_url?: string | null;
-  classes: { name: string } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
 }
 
 interface ResultRecord {
@@ -40,7 +41,7 @@ export default function ParentDashboard() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const { data: linked } = await supabaseUntyped.from('parent_student_links').select('*, students(*, classes(name))').eq('parent_id', user?.id);
+    const { data: linked } = await supabaseUntyped.from('parent_student_links').select('*, students(*, classes(name, stream, stream_name))').eq('parent_id', user?.id);
     if (linked) {
       const kids = linked.map(l => l.students as unknown as ChildRecord);
       setChildren(kids);
@@ -108,7 +109,7 @@ export default function ParentDashboard() {
               )}
               <div>
                 <h2 className="text-lg font-semibold">{selectedChild.first_name} {selectedChild.last_name}</h2>
-                <p className="text-white/80 text-sm">{selectedChild.classes?.name} | {selectedChild.admission_number}</p>
+                <p className="text-white/80 text-sm">{formatClassStream(selectedChild.classes)} | {selectedChild.admission_number}</p>
               </div>
             </div>
           </div>

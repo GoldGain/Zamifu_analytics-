@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { isValidDoubleLessonPair, shouldSkipPreferredSlot } from '../src/lib/timetable-generator.ts';
+import { getExactGridAssignmentIssues, isValidDoubleLessonPair, shouldSkipPreferredSlot } from '../src/lib/timetable-generator.ts';
 
 const allJuniorSlots = new Set(['lesson-1', 'lesson-2', 'lesson-3', 'lesson-4', 'lesson-5', 'lesson-6', 'lesson-7', 'lesson-8']);
 const morningSlots = new Set(['lesson-1', 'lesson-2', 'lesson-3']);
@@ -28,5 +28,19 @@ assert.equal(isValidDoubleLessonPair('Pre-Technical Studies', lesson3, lesson4),
 assert.equal(isValidDoubleLessonPair('Integrated Science', lesson4, lesson5), true);
 assert.equal(isValidDoubleLessonPair('Integrated Science', lesson3, breakSlot), false);
 assert.equal(isValidDoubleLessonPair('Integrated Science', lesson3, null), false);
+
+const exactGridIssues = getExactGridAssignmentIssues({
+  classes: [{ id: 'class-1', name: 'Grade 7 (A)' }],
+  assignments: [{ class_id: 'class-1', lessons_per_week: 8, available_days: ['Monday', 'Tuesday'], subjects: { name: 'English' } }],
+  totalLessons: 8,
+});
+assert.equal(exactGridIssues.some((issue) => issue.subjectName === 'English' && issue.message.includes('at least 8 available weekdays')), true);
+
+const totalIssues = getExactGridAssignmentIssues({
+  classes: [{ id: 'class-2', name: 'Grade 8' }],
+  assignments: [{ class_id: 'class-2', lessons_per_week: 5, subjects: { name: 'Mathematics' } }],
+  totalLessons: 8,
+});
+assert.equal(totalIssues.some((issue) => issue.subjectName === 'Weekly total'), true);
 
 console.log('TIMETABLE ALLOCATION FALLBACK REGRESSION PASS');
