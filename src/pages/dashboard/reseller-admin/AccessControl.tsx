@@ -23,6 +23,8 @@ export default function ResellerAccessControl() {
     setLoading(true);
     const reseller = await getResellerForUser(user.id);
     if (reseller) {
+      const { error: lockError } = await supabase.rpc('lock_expired_school_portals_for_reseller');
+      if (lockError) console.warn('Expired-school lock materialization unavailable:', lockError.message);
       const [{ data }, { data: expiredData, error: expiredError }] = await Promise.all([
         supabase
         .from('schools')
