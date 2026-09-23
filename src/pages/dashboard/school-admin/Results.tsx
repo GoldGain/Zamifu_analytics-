@@ -198,6 +198,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatingBulk, setGeneratingBulk] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [notifyingParents, setNotifyingParents] = useState(false);
   const [scopedClassId, setScopedClassId] = useState('');
   const [showAllStreams, setShowAllStreams] = useState(false);
 
@@ -341,95 +342,111 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       if (selectedExam) publishQuery = publishQuery.eq('exam_id', selectedExam);
       const { error: updateError } = await publishQuery;
       if (updateError) throw updateError;
-      const { data: classStudents } = await supabaseUntyped.from('students').select('id, profile_id, first_name, last_name, parent_phone, parent_name').eq('class_id', selectedClass).eq('is_active', true);
+      toast.success('Results published. Use Notify Parents when you are ready to share them.');
+      fetchAll();
+    } catch (err: any) { toast.error('Failed to publish results: ' + err.message); console.error(err); }
+    setPublishing(false);
+  };
+
+  const notifyParents = async () => {
+    if (!selectedClass || !selectedTerm) { toast.error('Please select a class and term first'); return; }
+    setNotifyingParents(true);
+    try {
+      const { data: classStudents } = await supabaseUntyped
+        .from('students')
+        .select('id, first_name, last_name, parent_phone')
+        .eq('school_id', user?.schoolId)
+        .eq('class_id', selectedClass)
+        .eq('is_active', true);
       if (!classStudents) throw new Error('Failed to fetch learners');
-      const studentIds = classStudents.map(s => s.id);
-      const { data: parentRelations } = await supabaseUntyped.from('parent_student_links').select('parent_id').in('student_id', studentIds);
-      const parentIds = parentRelations?.map((r: any) => r.parent_id) || [];
-      const allUserIds = [...classStudents.map((s: any) => s.profile_id).filter(Boolean), ...parentIds];
-      const termData = terms.find(t => t.id === selectedTerm);
-      const classData = classes.find(c => c.id === selectedClass);
-      const examData = exams.find(e => e.id === selectedExam);
-      const assessmentLabel = examData ? `(${examData.name})` : '';
-      const notifTitle = 'Results Published';
-      const notifMessage = `Results for ${streamLabel(classData)} - ${termData?.name} ${termData?.academic_year} ${assessmentLabel} have been published. Check your report card now!`;
-      const notifications = allUserIds.map(userId => ({ user_id: userId, school_id: user?.schoolId, title: notifTitle, message: notifMessage, type: 'results_published', is_read: false, action_url: '/student/results', created_at: new Date().toISOString() }));
+
+      const studentIds = classStudents.map((student) => student.id);
+      const { data: parentRelations } = await supabaseUntyped
+        .from('parent_student_links')
+        .select('parent_id')
+        .in('student_id', studentIds);
+      const parentIds = Array.from(new Set((parentRelations || []).map((relation: any) => relation.parent_id).filter(Boolean)));
+      const termData = terms.find((term) => term.id === selectedTerm);
+      const classData = classes.find((schoolClass) => schoolClass.id === selectedClass);
+      const examData = exams.find((exam) => exam.id === selectedExam);
+      const assessmentLabel = examData ? ` (${examData.name})` : '';
+      const notifTitle = 'Results Available';
+      const notifMessage = `Results for ${streamLabel(classData)} - ${termData?.name} ${termData?.academic_year}${assessmentLabel} are now available. Check your child's report card.`;
+      const notifications = parentIds.map((userId) => ({
+        user_id: userId,
+        school_id: user?.schoolId,
+        title: notifTitle,
+        message: notifMessage,
+        type: 'results_published',
+        is_read: false,
+        action_url: '/parent/report-card',
+        created_at: new Date().toISOString(),
+      }));
       if (notifications.length > 0) {
-        const { error: notifError } = await supabaseUntyped.from('notifications').insert(notifications);
-        if (notifError) console.warn('Notification insert warning:', notifError);
+        const { error: notificationError } = await supabaseUntyped.from('notifications').insert(notifications);
+        if (notificationError) console.warn('Parent notification insert warning:', notificationError);
       }
       try {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://naihzzlszvrkxrxogsuz.supabase.co';
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': supabaseAnonKey }, body: JSON.stringify({ userIds: allUserIds, title: notifTitle, message: notifMessage }) });
-      } catch (pushErr) { console.warn('Push notification delivery warning:', pushErr); }
+        if (parentIds.length > 0) {
+          await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', apikey: supabaseAnonKey },
+            body: JSON.stringify({ userIds: parentIds, title: notifTitle, message: notifMessage }),
+          });
+        }
+      } catch (pushError) { console.warn('Parent push notification warning:', pushError); }
+
+      let smsSentCount = 0;
       try {
         const { sendSMS, SMS_TEMPLATES } = await import('@/lib/sms');
-        let smsSentCount = 0;
+        const classObj = classes.find((schoolClass: any) => schoolClass.id === selectedClass);
+        const band = getSchoolLevelBand(classObj);
+        const classResults = results.filter((result: any) => result.class_id === selectedClass && result.term_id === selectedTerm && (!selectedExam || result.exam_id === selectedExam));
+        const allStudentSummaries = buildStudentSummary(classResults, classObj);
         for (const student of classStudents) {
-          if (student.parent_phone) {
-            const { data: studentResults } = await supabaseUntyped
-              .from('results')
-              .select('marks, out_of, percentage, subjects(name), cbc_grade')
-              .eq('student_id', student.id)
-              .eq('term_id', selectedTerm);
-            if (studentResults && studentResults.length > 0) {
-              const classObj = classes.find((c: any) => c.id === selectedClass);
-              const band = getSchoolLevelBand(classObj);
-              // Build per-subject list with name, marks%, and grade
-              const subjectList = studentResults.map((r: any) => {
-                const pct = r.percentage !== undefined && r.percentage !== null
-                  ? Math.round(Number(r.percentage))
-                  : r.out_of > 0 ? Math.round((r.marks / r.out_of) * 100) : 0;
-                const gradeInfo = calculateCompetencyGrade(pct, band);
-                return {
-                  name: r.subjects?.name || 'Unknown',
-                  marks: pct,
-                  grade: gradeInfo.subLevel || gradeInfo.grade || '',
-                };
-              });
-              // Compute totals and rank
-              // totalPct: sum of percentage marks (used for Average Marks across all levels)
-              // totalPoints/totalPointsPossible: for Junior/Senior — actual points out of subjects × 8
-              const isPrimaryBand = band === 'primary';
-              const totalPct = subjectList.reduce((s: number, r: any) => s + r.marks, 0);
-              const gradePoints = subjectList.reduce((sum: number, r: any) => {
-                const pct = typeof r.marks === 'number' ? r.marks : 0;
-                const g = calculateCompetencyGrade(pct, band);
-                return sum + (g.points || 0);
-              }, 0);
-              // For Primary use percentage-sum semantics (as before); for Junior/Senior use points out of subjects × 8
-              const smsTotalPoints = isPrimaryBand ? totalPct : gradePoints;
-              const smsTotalPossible = isPrimaryBand ? subjectList.length * 100 : subjectList.length * 8;
-              const allStudentSummaries = buildStudentSummary(
-                results.filter((r: any) => r.class_id === selectedClass && r.term_id === selectedTerm),
-                classObj
-              );
-              const studentSummary = allStudentSummaries.find((s: any) => s.studentId === student.id);
-              const rank = studentSummary?.position ?? 0;
-              const totalStudentsInClass = allStudentSummaries.length;
-              const smsMsg = SMS_TEMPLATES.resultsToParent(
-                `${student.first_name} ${student.last_name}`,
-                streamLabel(classData),
-                subjectList,
-                smsTotalPoints,
-                smsTotalPossible,
-                rank,
-                totalStudentsInClass,
-                '',
-                classObj
-              );
-              const smsResult = await sendSMS(student.parent_phone, smsMsg, undefined, user?.schoolId || undefined);
-              if (smsResult.success) smsSentCount++;
-            }
-          }
+          if (!student.parent_phone) continue;
+          const studentResults = classResults.filter((result: any) => result.student_id === student.id);
+          if (studentResults.length === 0) continue;
+          const subjectList = studentResults.map((result: any) => {
+            const percentage = result.percentage !== undefined && result.percentage !== null
+              ? Math.round(Number(result.percentage))
+              : result.out_of > 0 ? Math.round((result.marks / result.out_of) * 100) : 0;
+            const gradeInfo = calculateCompetencyGrade(percentage, band);
+            return { name: result.subjects?.name || 'Unknown', marks: percentage, grade: gradeInfo.subLevel || gradeInfo.grade || '' };
+          });
+          const isPrimaryBand = band === 'primary';
+          const totalPercentage = subjectList.reduce((sum: number, result: any) => sum + result.marks, 0);
+          const totalPoints = subjectList.reduce((sum: number, result: any) => sum + (calculateCompetencyGrade(result.marks, band).points || 0), 0);
+          const studentSummary = allStudentSummaries.find((summary: any) => summary.studentId === student.id);
+          const smsResult = await sendSMS(
+            student.parent_phone,
+            SMS_TEMPLATES.resultsToParent(
+              `${student.first_name} ${student.last_name}`,
+              streamLabel(classData),
+              subjectList,
+              isPrimaryBand ? totalPercentage : totalPoints,
+              isPrimaryBand ? subjectList.length * 100 : subjectList.length * 8,
+              studentSummary?.position ?? 0,
+              allStudentSummaries.length,
+              '',
+              classObj,
+            ),
+            undefined,
+            user?.schoolId || undefined,
+          );
+          if (smsResult.success) smsSentCount++;
         }
-        if (smsSentCount > 0) toast.success(`SMS sent to ${smsSentCount} parent(s)!`);
-      } catch (smsErr) { console.warn('SMS notification warning:', smsErr); }
-      toast.success(`Results published! ${allUserIds.length} users notified.`);
-      fetchAll();
-    } catch (err: any) { toast.error('Failed to publish results: ' + err.message); console.error(err); }
-    setPublishing(false);
+      } catch (smsError) { console.warn('Parent SMS notification warning:', smsError); }
+
+      toast.success(`Parent notification sent. ${parentIds.length} in-app recipient(s), ${smsSentCount} SMS sent.`);
+    } catch (err: any) {
+      toast.error('Failed to notify parents: ' + err.message);
+      console.error(err);
+    } finally {
+      setNotifyingParents(false);
+    }
   };
 
   useEffect(() => {
@@ -1940,11 +1957,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             </>
           )}
           {scope === 'school' && (
-            <button onClick={publishResults} disabled={publishing || !selectedClass || !selectedTerm}
-              className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-purple-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
-              {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {publishing ? 'Publishing...' : 'Publish & Notify'}
-            </button>
+            <>
+              <button onClick={publishResults} disabled={publishing || notifyingParents || !selectedClass || !selectedTerm}
+                className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-purple-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
+                {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {publishing ? 'Publishing...' : 'Publish Results'}
+              </button>
+              <button onClick={notifyParents} disabled={publishing || notifyingParents || !selectedClass || !selectedTerm}
+                className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-amber-500 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
+                {notifyingParents ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+                {notifyingParents ? 'Notifying Parents...' : 'Notify Parents'}
+              </button>
+            </>
           )}
           <button onClick={handleDeleteClassResults} disabled={deletingClassResults || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-red-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50 transition-colors shadow-sm">
