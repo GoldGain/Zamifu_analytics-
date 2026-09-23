@@ -45,6 +45,7 @@ import {
   Shield,
   WalletCards,
   Trash2,
+  Activity,
 } from 'lucide-react';
 
 interface NavItem {
@@ -93,6 +94,8 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Learning Areas', icon: <Library className="w-5 h-5" />, path: '/school-admin/subjects' },
     { label: 'Communicate', icon: <MessageSquare className="w-5 h-5" />, path: '/school-admin/communicate' },
     { label: 'SMS Wallet', icon: <WalletCards className="w-5 h-5" />, path: '/school-admin/sms-wallet' },
+    { label: 'Subscription & Receipts', icon: <CreditCard className="w-5 h-5" />, path: '/school-admin/subscription-receipts' },
+    { label: 'Activity History', icon: <Activity className="w-5 h-5" />, path: '/school-admin/activity' },
     { label: 'SMS Settings', icon: <Settings className="w-5 h-5" />, path: '/school-admin/sms-settings' },
     { label: 'Teacher Assignments', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teacher-assignments' },
     { label: 'Timetable Setup', icon: <Settings className="w-5 h-5" />, path: '/school-admin/timetable/setup' },

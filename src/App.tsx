@@ -67,6 +67,8 @@ import SchoolAdminClassList from '@/pages/dashboard/school-admin/ClassList';
 import SchoolAdminSMSSettings from '@/pages/dashboard/school-admin/SMSSettings';
 import SchoolAdminSMSWallet from '@/pages/dashboard/school-admin/SMSWallet';
 import SchoolAdminSchoolSettings from '@/pages/dashboard/school-admin/SchoolSettings';
+import SchoolAdminSubscriptionReceipts from '@/pages/dashboard/school-admin/SubscriptionReceipts';
+import SchoolAdminActivityHistory from '@/pages/dashboard/school-admin/ActivityHistory';
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 import TeacherResultsUpload from '@/pages/dashboard/teacher/ResultsUpload';
@@ -279,6 +281,8 @@ function AppRoutes() {
       <Route path="/school-admin/communicate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminCommunicate /></ProtectedRoute>} />
       <Route path="/school-admin/sms-settings" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSMSSettings /></ProtectedRoute>} />
       <Route path="/school-admin/sms-wallet" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSMSWallet /></ProtectedRoute>} />
+      <Route path="/school-admin/subscription-receipts" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubscriptionReceipts /></ProtectedRoute>} />
+      <Route path="/school-admin/activity" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminActivityHistory /></ProtectedRoute>} />
       <Route path="/school-admin/settings" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSchoolSettings /></ProtectedRoute>} />
       <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
       <Route path="/school-admin/class-list" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClassList /></ProtectedRoute>} />
