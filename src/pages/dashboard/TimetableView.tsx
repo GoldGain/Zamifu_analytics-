@@ -981,8 +981,8 @@ export default function TimetableView() {
       overflow-wrap: anywhere;
     }
     .tt-header {
-      background-color: #222;
-      color: #4da6ff;
+      background-color: #166534;
+      color: #ffffff;
       font-weight: bold;
       font-size: 0.62rem;
       white-space: normal;
@@ -993,16 +993,16 @@ export default function TimetableView() {
       text-orientation: mixed;
       font-weight: 900;
       font-size: 1rem;
-      background-color: #1e1e1e;
-      color: #e0e0e0;
+      background-color: #14532d;
+      color: #ffffff;
       width: 28px;
       min-width: 28px;
       text-align: center;
     }
     .tt-class {
       font-weight: bold;
-      background-color: #252525;
-      color: #e0e0e0;
+      background-color: #166534;
+      color: #ffffff;
       width: 42px;
       min-width: 42px;
       font-size: 0.7rem;
@@ -1011,8 +1011,8 @@ export default function TimetableView() {
       writing-mode: horizontal-tb;
       font-weight: 900;
       font-size: 0.58rem;
-      background-color: #1a1a1a;
-      color: #4da6ff;
+      background-color: #15803d;
+      color: #ffffff;
       width: 52px;
       min-width: 52px;
       padding: 4px 3px;
@@ -1151,8 +1151,8 @@ export default function TimetableView() {
       letter-spacing: 0.04em;
     }
     .tt-day-week {
-      background: #1f2937;
-      color: #bfdbfe;
+      background: #14532d;
+      color: #ffffff;
       text-align: center;
       font-size: 0.72rem;
     }
@@ -1200,8 +1200,8 @@ export default function TimetableView() {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #1f2937;
-      color: #bfdbfe;
+      background: #14532d;
+      color: #ffffff;
       font-weight: 900;
       font-size: 0.68rem;
       letter-spacing: 0.04em;
@@ -1286,8 +1286,8 @@ export default function TimetableView() {
       line-height: 1.05;
     }
     .tt-break-header {
-      background-color: #222;
-      color: #4da6ff;
+      background-color: #166534;
+      color: #ffffff;
       font-weight: bold;
       font-size: 0.58rem;
       white-space: pre-line;
@@ -1346,19 +1346,33 @@ export default function TimetableView() {
     .pdf-class-export .tt-class,
     .pdf-class-export .tt-break,
     .pdf-class-export .tt-lunch,
+    .pdf-class-export .tt-activity,
     .pdf-class-export .tt-break-header,
     .pdf-class-export .tt-header,
     .pdf-full-export .tt-day,
     .pdf-full-export .tt-class,
     .pdf-full-export .tt-break,
     .pdf-full-export .tt-lunch,
+    .pdf-full-export .tt-activity,
     .pdf-full-export .tt-break-header,
     .pdf-full-export .tt-header {
-      background: #000 !important;
+      background: #166534 !important;
       color: #fff !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       font-weight: 900 !important;
+    }
+    .pdf-class-export .tt-day,
+    .pdf-full-export .tt-day {
+      background: #14532d !important;
+    }
+    .pdf-class-export .tt-break,
+    .pdf-class-export .tt-lunch,
+    .pdf-class-export .tt-activity,
+    .pdf-full-export .tt-break,
+    .pdf-full-export .tt-lunch,
+    .pdf-full-export .tt-activity {
+      background: #15803d !important;
     }
     .pdf-class-export .tt-day *,
     .pdf-class-export .tt-class *,
@@ -1425,12 +1439,14 @@ export default function TimetableView() {
       .bb-wrap { border: none; box-shadow: none; background: white; color: black; }
       .tt-table th, .tt-table td { border: 1px solid black !important; }
       .tt-day, .tt-class, .tt-break, .tt-lunch, .tt-activity, .tt-header, .tt-break-header {
-        background: #000 !important;
+        background: #166534 !important;
         color: #fff !important;
         font-weight: 900 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
+      .tt-day { background: #14532d !important; }
+      .tt-break, .tt-lunch, .tt-activity { background: #15803d !important; }
       .tt-day *, .tt-class *, .tt-break *, .tt-lunch *, .tt-activity *, .tt-header *, .tt-break-header * {
         color: #fff !important;
         font-weight: 900 !important;
