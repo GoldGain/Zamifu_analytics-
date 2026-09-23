@@ -118,7 +118,15 @@ export function buildFastTimetableEntries(options: FastTimetableSolverOptions): 
       }
       return scheduleDay(day + 1);
     };
-    if (!scheduleDay(0)) return null;
+    if (!scheduleDay(0)) {
+      // A later day can fail after earlier days have already reserved teacher
+      // cells. Remove those reservations before retrying this class; otherwise
+      // every retry inherits a polluted cross-class occupancy set.
+      for (const row of scheduled) {
+        teacherBusy.delete(`${row.teacher_id}|${row.day_of_week}|${row.time_slot_id}`);
+      }
+      return null;
+    }
     return scheduled;
   };
 
