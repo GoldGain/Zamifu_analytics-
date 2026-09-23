@@ -167,7 +167,8 @@ export default function AssignTeachers() {
 
       await fetchAssignments();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load data');
+      console.error('[teacher-assignments] failed to load page data', err);
+      setError(err instanceof Error ? err.message : 'Failed to load teachers, classes, or learning areas');
     } finally {
       setLoading(false);
     }
@@ -571,7 +572,7 @@ export default function AssignTeachers() {
                   onChange={(e) => {
                     const classId = e.target.value;
                     const resolved = resolveLessonPrefill(formData.subject_id, classId, formData.lessons_per_week);
-                    setFormData({ ...formData, class_id: classId, lessons_per_week: resolved.value });
+                    setFormData((prev) => ({ ...prev, class_id: classId, lessons_per_week: resolved.value }));
                     setLessonPrefill({ status: resolved.status, kicdValue: resolved.kicdValue });
                   }}
                   required
@@ -592,7 +593,7 @@ export default function AssignTeachers() {
                     const subjectId = e.target.value;
                     // KICD pre-fill for this learning area at the chosen class's grade.
                     const resolved = resolveLessonPrefill(subjectId, formData.class_id, formData.lessons_per_week);
-                    setFormData({ ...formData, subject_id: subjectId, lessons_per_week: resolved.value });
+                    setFormData((prev) => ({ ...prev, subject_id: subjectId, lessons_per_week: resolved.value }));
                     setLessonPrefill({ status: resolved.status, kicdValue: resolved.kicdValue });
                   }}
                   required
