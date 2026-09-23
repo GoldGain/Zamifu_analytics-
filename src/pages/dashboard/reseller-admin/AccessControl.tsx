@@ -11,6 +11,12 @@ export default function ResellerAccessControl() {
   const [expiredLockedSchools, setExpiredLockedSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const isExpiredLocked = (school: any) => {
+    if (!school?.admin_portal_locked && !school?.dos_portal_locked) return false;
+    if (String(school.subscription_status || '').toLowerCase() === 'active' && school.subscription_expires_at && new Date(school.subscription_expires_at).getTime() > Date.now()) return false;
+    const expiry = school.subscription_expires_at || school.trial_expires_at;
+    return expiry ? new Date(expiry).getTime() <= Date.now() : true;
+  };
 
   const load = async () => {
     if (!user) return;
@@ -20,14 +26,17 @@ export default function ResellerAccessControl() {
       const [{ data }, { data: expiredData, error: expiredError }] = await Promise.all([
         supabase
         .from('schools')
-        .select('id, name, code, admin_portal_locked, dos_portal_locked, lock_reason, locked_at, locked_by_role')
+        .select('id, name, code, admin_portal_locked, dos_portal_locked, lock_reason, locked_at, locked_by_role, trial_expires_at, subscription_expires_at, subscription_status')
         .or(`reseller_id.eq.${reseller.id},reseller_id.is.null`)
         .order('name'),
         supabase.rpc('get_reseller_expired_locked_schools'),
       ]);
       setSchools(data || []);
       if (expiredError) console.warn('Expired-school unlock list unavailable:', expiredError.message);
-      setExpiredLockedSchools(expiredData || []);
+      const rpcRows = (expiredData || []) as any[];
+      const fallbackRows = (data || []).filter(isExpiredLocked);
+      const merged = [...rpcRows, ...fallbackRows].filter((school, index, list) => list.findIndex((candidate) => candidate.id === school.id) === index);
+      setExpiredLockedSchools(merged);
     }
     setLoading(false);
   };
