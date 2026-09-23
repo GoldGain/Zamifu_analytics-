@@ -75,6 +75,9 @@ interface SubjectDayGroup {
 const isLessonEntry = (entry: TimetableValidationEntry): boolean =>
   entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double';
 
+const isCasSubject = (subjectName: string): boolean =>
+  /\bcas\b|creative\s+arts?.*sports|arts?.*sports|creative\s+arts?/i.test(subjectName);
+
 /**
  * Validate the generated lesson grid after every repair/reconciliation pass.
  * This is deliberately independent of the placement algorithm so no later
@@ -191,6 +194,11 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
       issues.push({
         rule: 'once-per-day',
         message: `${subjectName || `Subject ${subjectId}`} appears more than once on day ${day} for class ${classId}; only one consecutive configured double is allowed.`,
+      });
+    } else if (isCasSubject(subjectName) && firstLessonIndex < 2) {
+      issues.push({
+        rule: 'cas-double-window',
+        message: `${subjectName} double for class ${classId} starts at Lesson ${firstLessonIndex + 1} on day ${day}; CAS doubles may start only at Lesson 3 or later.`,
       });
     }
   }

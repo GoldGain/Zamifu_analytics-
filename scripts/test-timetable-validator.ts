@@ -67,7 +67,7 @@ const strictWindowIssues = validateTimetableRules({
   subjectNames,
   levelGroup: 'junior',
 });
-assert.equal(strictWindowIssues.filter((issue) => issue.rule === 'subject-window').length, 3);
+assert.equal(strictWindowIssues.filter((issue) => issue.rule === 'subject-window').length, 4);
 
 const adjacencyIssues = validateTimetableRules({
   entries: [entry('math', 'lesson-1'), entry('science', 'lesson-2')],

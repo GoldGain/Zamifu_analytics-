@@ -14,7 +14,7 @@ import {
 } from '@/lib/timetable-activity';
 import { assertTimetableRules, validateTimetableRules } from '@/lib/timetable-validator';
 import { formatClassStream } from '@/lib/class-label';
-import { buildFastTimetableEntries } from '@/lib/timetable-fast-solver';
+import { formatCspSolverIssues, solveTimetableCsp } from '@/lib/timetable-csp-solver';
 
 function fmtTime(t?: string | null): string {
   if (!t) return '—';
@@ -206,301 +206,6 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
   'senior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'form-3-4': { lessons: 7, afterLunch: 1, note: '1 lesson after lunch' },
 };
-
-/**
- * Perfect-grid timetable solver.
- *
- * Replaces the legacy greedy+repair lesson allocation when a level is fully
- * schedulable (weekly subject needs exactly fill every lesson cell). It
- * guarantees:
- *  - every lesson cell filled (no blank spaces)
- *  - every subject's weekly lessons match its assignment exactly (no OVER /
- *    UNDER status)
- *  - a subject never repeats on the same day
- *  - Mathematics/English never beyond Lesson 5, Integrated Science / Pre-Technical
- *    Studies never beyond Lesson 6, Kiswahili never in Lesson 8
- *  - Mathematics is never immediately followed by Integrated Science
- *  - a teacher never appears twice in the same day+lesson across parallel
- *    classes
- * Returns timetable_entries rows, or null when the level is not perfectly
- * solvable. Full-grid levels must surface that state rather than silently
- * falling back to a legacy allocator that can save wrong weekly counts.
- */
-export function buildPerfectTimetableEntries(opts: {
-  schoolId: string;
-  levelKey: string;
-  classes: any[];
-  assignments: any[];
-  lessonSlots: any[];
-}): any[] | null {
-  const { schoolId, levelKey, classes, assignments, lessonSlots } = opts;
-  const cids = classes.map((c: any) => String(c.id));
-  const K = lessonSlots.length;
-  if (K < 2 || K > 9 || cids.length === 0) return null;
-
-  const dayIndex = (value: unknown): number | null => {
-    const normalized = String(value ?? '').trim().toLowerCase();
-    const index = TIMETABLE_DAYS.findIndex((day) => day.toLowerCase() === normalized);
-    return index >= 0 ? index : null;
-  };
-  const parseDays = (value: unknown): number[] => {
-    let values: unknown[] = [];
-    if (Array.isArray(value)) values = value;
-    else if (typeof value === 'string') {
-      try {
-        const parsed = JSON.parse(value);
-        values = Array.isArray(parsed) ? parsed : value.split(',');
-      } catch {
-        values = value.split(',');
-      }
-    }
-    return [...new Set(values.map(dayIndex).filter((day): day is number => day !== null))];
-  };
-  const recsByClass: Record<string, {
-    sid: string;
-    name: string;
-    teacher: string;
-    need: number;
-    double: boolean;
-    availableDays: number[];
-    doubleDays: number[];
-  }[]> = {};
-  for (const cid of cids) {
-    recsByClass[cid] = assignments
-      .filter((a: any) => String(a.class_id) === cid)
-      .map((a: any) => ({
-        sid: String(a.subject_id),
-        name: String(a.subjects?.name || a.subject_name || ''),
-        teacher: String(a.teacher_id || ''),
-        need: Math.max(0, Number(a.lessons_per_week) || 0),
-        double: Boolean(a.is_double_lesson),
-        availableDays: parseDays(a.available_days),
-        doubleDays: parseDays(a.double_lesson_days),
-      }))
-      .filter((r: any) => r.name && r.need > 0);
-    const total = recsByClass[cid].reduce((s: number, r: any) => s + r.need, 0);
-    if (total !== K * 5) return null;
-  }
-
-  for (const cid of cids) {
-    const hasIre = recsByClass[cid].some((r: any) => /\bire\b|islamic|muslim/i.test(r.name));
-    const hasCre = recsByClass[cid].some((r: any) => /\bcre\b|christian/i.test(r.name));
-    if (hasIre && hasCre) return null;
-  }
-
-  type Unit = {
-    cid: string;
-    sid: string;
-    name: string;
-    teacher: string;
-    size: 1 | 2;
-    groupKey: string;
-    groupOrder: number;
-    availableDays: number[];
-    doubleDays: number[];
-  };
-  const units: Unit[] = [];
-  const groupOrders = new Map<string, number>();
-  const addUnit = (cid: string, r: (typeof recsByClass[string])[number], size: 1 | 2) => {
-    const groupKey = `${cid}|${r.sid}|${size}`;
-    const groupOrder = groupOrders.get(groupKey) || 0;
-    groupOrders.set(groupKey, groupOrder + 1);
-    units.push({
-      cid,
-      sid: r.sid,
-      name: r.name,
-      teacher: r.teacher,
-      size,
-      groupKey,
-      groupOrder,
-      availableDays: r.availableDays.length ? r.availableDays : [0, 1, 2, 3, 4],
-      doubleDays: size === 2 ? r.doubleDays : [],
-    });
-  };
-  for (const cid of cids) {
-    for (const r of recsByClass[cid]) {
-      if (r.double && r.need >= 2) {
-        addUnit(cid, r, 2);
-        for (let i = 0; i < r.need - 2; i++) addUnit(cid, r, 1);
-      } else {
-        for (let i = 0; i < r.need; i++) addUnit(cid, r, 1);
-      }
-    }
-  }
-
-  const deadline = Date.now() + 60000;
-  const grid = new Map<string, number>();
-  const teacherAt = new Map<string, string>();
-  const dayUsed = new Map<string, Set<number>>();
-  for (const cid of cids) for (const r of recsByClass[cid]) dayUsed.set(`${cid}|${r.sid}`, new Set());
-  const placedAt = new Map<number, [number, number]>();
-
-    const cands = (ui: number, enforceSymmetry = true): Array<[number, number]> => {
-      const u = units[ui];
-      // Units with the same class, subject, and size are interchangeable. In
-      // an MRV search, treating them as distinct creates factorial duplicate
-      // branches (and can hit the node cap before finding the valid grid).
-      // Require the canonical predecessor to be placed first, then place this
-      // unit strictly after it. This removes duplicate permutations while
-      // preserving every distinct timetable.
-      const predecessor = enforceSymmetry && u.groupOrder > 0
-        ? units.findIndex((candidate) => candidate.groupKey === u.groupKey && candidate.groupOrder === u.groupOrder - 1)
-        : -1;
-      if (predecessor >= 0 && !placedAt.has(predecessor)) return [];
-      const predecessorPosition = predecessor >= 0 ? placedAt.get(predecessor) : undefined;
-      const used = dayUsed.get(`${u.cid}|${u.sid}`)!;
-      const res: Array<[number, number]> = [];
-      for (let day = 0; day < 5; day++) {
-        if (!u.availableDays.includes(day)) continue;
-        if (u.size === 2 && u.doubleDays.length > 0 && !u.doubleDays.includes(day)) continue;
-        if (used.has(day)) continue;
-        for (let ln = 0; ln <= K - u.size; ln++) {
-          if (enforceSymmetry && predecessorPosition && (day < predecessorPosition[0] || (day === predecessorPosition[0] && ln <= predecessorPosition[1]))) continue;
-          if (grid.has(`${u.cid}|${day}|${ln}`)) continue;
-          if (u.size === 2 && grid.has(`${u.cid}|${day}|${ln + 1}`)) continue;
-          if (!strictSubjectAllowsLesson(u.name, ln + 1)) continue;
-          if (u.size === 2 && !strictSubjectAllowsLesson(u.name, ln + 2)) continue;
-          if (teacherAt.has(`${u.teacher}|${day}|${ln}`)) continue;
-          if (u.size === 2 && teacherAt.has(`${u.teacher}|${day}|${ln + 1}`)) continue;
-          const left = ln >= 1 ? grid.get(`${u.cid}|${day}|${ln - 1}`) : undefined;
-          if (left !== undefined && violatesMathScienceSequence(units[left].name, u.name)) continue;
-          const lastLn = ln + u.size - 1;
-          const right = lastLn + 1 < K ? grid.get(`${u.cid}|${day}|${lastLn + 1}`) : undefined;
-          if (right !== undefined && violatesMathScienceSequence(u.name, units[right].name)) continue;
-          res.push([day, ln]);
-        }
-      }
-      return res;
-    };
-
-    const place = (ui: number, day: number, ln: number) => {
-      const u = units[ui];
-      for (let x = 0; x < u.size; x++) { grid.set(`${u.cid}|${day}|${ln + x}`, ui); teacherAt.set(`${u.teacher}|${day}|${ln + x}`, u.cid); }
-      dayUsed.get(`${u.cid}|${u.sid}`)!.add(day);
-      placedAt.set(ui, [day, ln]);
-    };
-    const unplace = (ui: number, day: number, ln: number) => {
-      const u = units[ui];
-      for (let x = 0; x < u.size; x++) { grid.delete(`${u.cid}|${day}|${ln + x}`); teacherAt.delete(`${u.teacher}|${day}|${ln + x}`); }
-      dayUsed.get(`${u.cid}|${u.sid}`)!.delete(day);
-      placedAt.delete(ui);
-    };
-
-  const remaining = new Set(units.map((_, index) => index));
-  let searchNodes = 0;
-  const search = (): boolean => {
-    if (remaining.size === 0) return true;
-    if (Date.now() > deadline || searchNodes++ > 2000000) return false;
-
-    let best = -1;
-    let bestC: Array<[number, number]> = [];
-    for (const ui of remaining) {
-      const predecessor = units[ui].groupOrder > 0
-        ? units.findIndex((candidate) => candidate.groupKey === units[ui].groupKey && candidate.groupOrder === units[ui].groupOrder - 1)
-        : -1;
-      if (predecessor >= 0 && !placedAt.has(predecessor)) continue;
-      const candidates = cands(ui, true);
-      if (candidates.length === 0) return false;
-      if (best === -1 || candidates.length < bestC.length
-        || (candidates.length === bestC.length && units[ui].size > units[best].size)) {
-        best = ui;
-        bestC = candidates;
-      }
-    }
-    if (best < 0 || bestC.length === 0) return false;
-
-    remaining.delete(best);
-    for (const [day, ln] of bestC) {
-      place(best, day, ln);
-      if (search()) return true;
-      unplace(best, day, ln);
-    }
-    remaining.add(best);
-    return false;
-  };
-
-  if (!search()) return null;
-
-  const entries: any[] = [];
-  for (let day = 0; day < 5; day++) {
-    for (const cid of cids) {
-      for (let ln = 0; ln < K; ln++) {
-        const ui = grid.get(`${cid}|${day}|${ln}`);
-        if (ui === undefined) return null;
-        const slot = lessonSlots[ln];
-        entries.push({
-          school_id: schoolId,
-          class_id: cid,
-          day_of_week: day + 1,
-          time_slot_id: slot.id,
-          subject_id: units[ui].sid,
-          teacher_id: units[ui].teacher,
-          entry_type: units[ui].size === 2 ? 'lesson_double' : 'lesson',
-          level_group: levelKey,
-          effective_start_time: slot.start_time,
-          effective_end_time: slot.end_time,
-        });
-      }
-    }
-  }
-  return entries;
-}
-
-function getValidatedSavedPerfectEntries(opts: {
-  schoolId: string;
-  levelKey: string;
-  classes: any[];
-  assignments: any[];
-  lessonSlots: any[];
-  existingEntries: any[];
-}): any[] | null {
-  const { schoolId, levelKey, classes, assignments, lessonSlots, existingEntries } = opts;
-  const classIds = new Set(classes.map((cls: any) => String(cls.id)));
-  const expectedByKey = new Map<string, { count: number; teacherId: string }>();
-  for (const assignment of assignments) {
-    if (!classIds.has(String(assignment.class_id))) continue;
-    expectedByKey.set(`${assignment.class_id}|${assignment.subject_id}`, {
-      count: Number(assignment.lessons_per_week || 0),
-      teacherId: String(assignment.teacher_id || ''),
-    });
-  }
-  const saved = (existingEntries || []).filter((entry: any) =>
-    String(entry.school_id) === schoolId
-    && String(entry.level_group || '') === levelKey
-    && classIds.has(String(entry.class_id))
-    && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double'),
-  );
-  if (saved.length !== classes.length * lessonSlots.length * 5) return null;
-  // Generated slots receive fresh IDs on each safe, in-memory generation.
-  // Never reuse rows that point at an older slot set: doing so makes the final
-  // hard-rule validator report unknown-slot errors after an otherwise valid
-  // saved-grid match by count.
-  const currentLessonSlotIds = new Set(lessonSlots.map((slot: any) => String(slot.id)));
-  if (saved.some((entry: any) => !currentLessonSlotIds.has(String(entry.time_slot_id)))) return null;
-  const cells = new Set<string>();
-  const teacherCells = new Set<string>();
-  const counts = new Map<string, number>();
-  for (const entry of saved) {
-    const cellKey = `${entry.class_id}|${entry.day_of_week}|${entry.time_slot_id}`;
-    const teacherKey = `${entry.teacher_id}|${entry.day_of_week}|${entry.time_slot_id}`;
-    if (cells.has(cellKey) || teacherCells.has(teacherKey)) return null;
-    cells.add(cellKey);
-    teacherCells.add(teacherKey);
-    const subjectKey = `${entry.class_id}|${entry.subject_id}`;
-    const expected = expectedByKey.get(subjectKey);
-    if (!expected || String(entry.teacher_id || '') !== expected.teacherId) return null;
-    counts.set(subjectKey, (counts.get(subjectKey) || 0) + 1);
-  }
-  for (const [key, expected] of expectedByKey) {
-    if (counts.get(key) !== expected.count) return null;
-  }
-  if (cells.size !== saved.length) return null;
-  return saved.map((entry: any) => ({
-    ...entry,
-    school_id: schoolId,
-    level_group: levelKey,
-  }));
-}
 
 export default function TimetableGenerate() {
   const { user } = useAuth();
@@ -721,6 +426,7 @@ export default function TimetableGenerate() {
       }
 
       const teacherBusy = new Set<string>();
+      const cspReservedTeacherCells = new Set<string>();
       const classBusy = new Set<string>();
       const allEntries: any[] = [];
       type AssignmentPlacementContext = {
@@ -1116,110 +822,62 @@ export default function TimetableGenerate() {
           }
         }
 
-        // === Exact-count solver: full-grid MRV backtracking that enforces every
-        // teacher assignment's lessons_per_week exactly, supports configured double
-        // lessons, never over/under-assigns, and never saves a broken timetable.
+        // === Exact CSP solver. Every class in this level is solved as one
+        // constraint system. Doubles and IRE/CRE sharing are atomic units, so
+        // no repair pass can split them or silently change weekly counts.
         {
-          for (const cls of classesToProcess) {
-            const periods = assignments
-              .filter((assignment: any) => String(assignment.class_id) === String(cls.id))
-              .reduce((sum: number, assignment: any) => sum + (Number(assignment.lessons_per_week) || 0), 0);
-            const expected = lessonSlots.length * 5;
-            if (periods !== expected) {
-              throw new Error(
-                `Class ${cls.name || String(cls.id)} has ${periods} lesson periods configured, but ${expected} are required per week for a complete timetable. Adjust Teacher Assignments so weekly totals sum exactly to the number of teaching slots.`,
-              );
-            }
-          }
+          const levelLabel = LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey;
+          const subjectNames = new Map<string, string>();
+          assignments
+            .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+            .forEach((assignment: any) => subjectNames.set(String(assignment.subject_id), String(assignment.subjects?.name || assignment.subject_name || '')));
+          const requiredLessonCounts = new Map<string, number>();
+          assignments
+            .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
+            .forEach((assignment: any) => requiredLessonCounts.set(
+              `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
+              Number(assignment.lessons_per_week || 0),
+            ));
 
-          // Try the bounded class-first solver first. The legacy MRV search can
-          // spend up to a minute exploring equivalent cross-class permutations;
-          // running it before the fast solver blocks the browser thread and can
-          // make the live generator appear to unload before anything is saved.
-          let perfectEntries = buildFastTimetableEntries({
+          const solverResult = solveTimetableCsp({
             schoolId,
             levelKey,
             classes: classesToProcess,
             assignments,
             lessonSlots,
-            deadlineMs: 12000,
+            reservedTeacherCells: cspReservedTeacherCells,
+            onProgress: (message) => console.info(`[timetable] ${message}`),
           });
-          let reusedValidatedGrid = false;
-          if (!perfectEntries?.length) {
-            // Reuse an existing grid before entering the long exhaustive
-            // search. This is safe because the helper validates exact counts,
-            // teacher collisions, availability, and the configured rules.
-            perfectEntries = getValidatedSavedPerfectEntries({
-              schoolId,
-              levelKey,
-              classes: classesToProcess,
-              assignments,
-              lessonSlots,
-              existingEntries: existingTimetableEntries || [],
-            });
-            reusedValidatedGrid = Boolean(perfectEntries?.length);
+          if (solverResult.issues.length > 0 || solverResult.entries.length === 0) {
+            const detail = formatCspSolverIssues(solverResult.issues) || 'The CSP solver returned no complete grid.';
+            throw new Error(`${levelLabel} generation stopped safely before saving:\n${detail}`);
           }
-          if (!perfectEntries?.length) {
-            // Last resort for configurations that need the legacy solver's
-            // additional search space.
-            perfectEntries = buildPerfectTimetableEntries({
-              schoolId,
-              levelKey,
-              classes: classesToProcess,
-              assignments,
-              lessonSlots,
-            });
-          }
-          if (perfectEntries?.length) {
-            const occupiedTeacherSlots = new Set(
-              allEntries
-                .filter((entry: any) => entry.teacher_id && entry.entry_type !== 'break' && entry.entry_type !== 'lunch' && entry.entry_type !== 'activity')
-                .map((entry: any) => `${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`),
-            );
-            let perfectHasTeacherCollision = false;
-            const newTeacherSlots = new Set<string>();
-            for (const entry of perfectEntries) {
-              const key = `${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`;
-              if (occupiedTeacherSlots.has(key) || newTeacherSlots.has(key)) { perfectHasTeacherCollision = true; break; }
-              newTeacherSlots.add(key);
+
+          assertTimetableRules({
+            entries: [...allEntries, ...solverResult.entries],
+            slots: createdSlots,
+            subjectNames,
+            classes: classesToProcess,
+            levelGroup: levelKey,
+            requireComplete: true,
+            requiredLessonCounts,
+            requireReligiousPairing: true,
+          });
+
+          allEntries.push(...solverResult.entries);
+          solverResult.entries.forEach((entry: any) => {
+            if (entry.teacher_id) teacherBusy.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+            if (entry.teacher_id) {
+              const lessonIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id));
+              if (lessonIndex >= 0) cspReservedTeacherCells.add(`${entry.teacher_id}|${Number(entry.day_of_week) - 1}|${lessonIndex}`);
             }
-            if (!perfectHasTeacherCollision) {
-              const perfectSubjectNames = new Map<string, string>();
-              assignments
-                .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
-                .forEach((assignment: any) => perfectSubjectNames.set(String(assignment.subject_id), String(assignment.subjects?.name || '')));
-              assertTimetableRules({
-                entries: [...allEntries, ...perfectEntries],
-                slots: createdSlots,
-                subjectNames: perfectSubjectNames,
-                classes: classesToProcess,
-                levelGroup: levelKey,
-                requireComplete: true,
-                requiredLessonCounts: new Map(
-                  assignments
-                    .filter((assignment: any) => classesInLevel.has(String(assignment.class_id)))
-                    .map((assignment: any) => [
-                      `${String(assignment.class_id)}-${String(assignment.subject_id)}`,
-                      Number(assignment.lessons_per_week || 0),
-                    ]),
-                ),
-                requireReligiousPairing: true,
-              });
-              allEntries.push(...perfectEntries);
-              perfectEntries.forEach((entry: any) => {
-                if (entry.teacher_id) teacherBusy.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
-                classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
-              });
-              generatedSummary.push(
-                `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: ${perfectEntries.length} lessons across 5 days - complete grid (exact weekly totals, no blanks, no teacher collisions)`,
-              );
-              console.info(`[timetable] ${levelKey}: ${reusedValidatedGrid ? 'reused validated saved grid' : 'exact-count solver placed'} ${perfectEntries.length} lesson entries`);
-              continue;
-            }
-          }
-          throw new Error(
-            `${LEVEL_GROUPS.find((l) => l.key === levelKey)?.label || levelKey}: exact-grid solver could not find a valid timetable within its bounded search. No timetable was saved; review teacher conflicts, double-lesson requirements, or configured constraints.`,
+            classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
+          });
+          generatedSummary.push(
+            `${levelLabel}: ${solverResult.entries.length} entries across 5 days - complete CSP grid (exact weekly totals, ${solverResult.searchNodes.toLocaleString()} search nodes)`,
           );
+          console.info(`[timetable] ${levelKey}: CSP solver placed ${solverResult.entries.length} entries in ${solverResult.durationMs}ms`);
+          continue;
         }
 
         // Allocate lessons. Priority assignments are processed first, so they
