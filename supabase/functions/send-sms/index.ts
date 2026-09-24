@@ -363,11 +363,11 @@ Deno.serve(async (req) => {
     const smsSegments = countSmsSegments(cleanMessage);
     if (!smsSegments) return json({ error: "Message is empty." }, 400);
 
-    // Reseller messages are sent on behalf of the selected school and must use
-    // that school's prepaid wallet, exactly like a school-admin message. The
-    // selected school has already been ownership-checked above, so this remains
-    // tenant-scoped while avoiding any reseller wallet requirement.
-    const resellerSponsored = false;
+    // Reseller messages are a platform-sponsored service. They must never
+    // consume the selected school's wallet or require the reseller to buy a
+    // second in-app balance. The selected school is still ownership-checked
+    // above so the recipient scope remains tenant-safe.
+    const resellerSponsored = callerRole === "reseller_super_admin";
     let reservation: any = null;
     if (!resellerSponsored) {
       const { data: schoolReservation, error: reservationError } = await adminClient.rpc("reserve_school_sms_credits", {
@@ -387,14 +387,22 @@ Deno.serve(async (req) => {
       reservation = schoolReservation;
     }
 
-    const { data: schoolSettings } = await adminClient.from("school_settings").select("sms_provider, sms_sender_id, sms_api_key, sms_username").eq("school_id", resolvedSchoolId).maybeSingle();
-    const provider = schoolSettings?.sms_provider || "olympus";
-    const sms = provider === "africastalking" && schoolSettings?.sms_api_key && schoolSettings?.sms_username
-      ? await sendViaAfricasTalking(phone, cleanMessage, schoolSettings.sms_sender_id || "", schoolSettings.sms_api_key, schoolSettings.sms_username)
-      : await sendViaOlympus(phone, cleanMessage);
+    // Resellers use the platform's Olympus credential purchased by the
+    // reseller/platform owner. School-originated messages may use the school's
+    // configured provider, but reseller messages must not depend on it.
+    let sms: SmsResult;
+    if (resellerSponsored) {
+      sms = await sendViaOlympus(phone, cleanMessage);
+    } else {
+      const { data: schoolSettings } = await adminClient.from("school_settings").select("sms_provider, sms_sender_id, sms_api_key, sms_username").eq("school_id", resolvedSchoolId).maybeSingle();
+      const provider = schoolSettings?.sms_provider || "olympus";
+      sms = provider === "africastalking" && schoolSettings?.sms_api_key && schoolSettings?.sms_username
+        ? await sendViaAfricasTalking(phone, cleanMessage, schoolSettings.sms_sender_id || "", schoolSettings.sms_api_key, schoolSettings.sms_username)
+        : await sendViaOlympus(phone, cleanMessage);
+    }
 
     if (resellerSponsored) {
-      // Retained for legacy deployments; the active reseller path is wallet-backed.
+      // Record sponsored usage for audit/accounting, but do not debit a school wallet.
       const { error: auditError } = await adminClient.from("school_sms_transactions").insert({
         school_id: resolvedSchoolId,
         transaction_type: "debit",
