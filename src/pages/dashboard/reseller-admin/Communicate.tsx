@@ -90,8 +90,12 @@ export default function ResellerCommunicate() {
       }));
       const successful = results.reduce((count, result) => count + (result.data?.filter((item: any) => item.success).length || (result.success ? 1 : 0)), 0);
       const failed = chosen.length - successful;
+      const deliveryErrors = results.flatMap((result: any) => [
+        result.error,
+        ...(result.data || []).map((item: any) => item.error),
+      ]).filter(Boolean);
       if (successful) toast.success(`SMS sent to ${successful} recipient${successful === 1 ? '' : 's'}${failed ? `; ${failed} failed` : ''}.`);
-      else toast.error('SMS delivery failed.');
+      else toast.error(deliveryErrors[0] || 'SMS delivery failed.');
     } catch (error: any) {
       toast.error(error?.message || 'Unable to send SMS. Please try again.');
     } finally { setSending(false); }
