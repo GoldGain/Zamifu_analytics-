@@ -66,36 +66,41 @@ async function hashOtp(otp: string): Promise<string> {
 async function sendViaOlympus(phone: string, message: string): Promise<SmsResult> {
   if (!OLYMPUS_API_TOKEN) return { success: false, error: "SMS provider authentication failed. Please configure a valid SMS API token." };
   const recipient = normalizePhone(phone).replace(/^\+/, "");
-  const response = await fetch(OLYMPUS_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${OLYMPUS_API_TOKEN}`,
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    },
-    body: JSON.stringify({
-      recipient,
-      sender_id: OLYMPUS_SENDER_ID,
-      type: "plain",
-      message: cleanSmsMessage(message),
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  const providerStatus = String(data?.status || '').toLowerCase();
-  const providerMessage = String(data?.message || data?.remarks || '').trim();
-  const providerFailure = providerStatus === 'error'
-    || data?.success === false
-    || /unauthenticated|unauthorized|invalid token|authentication failed|insufficient balance|failed/i.test(providerMessage);
-  if (response.ok && !providerFailure) {
-    return {
-      success: true,
-      messageId: data?.message_id || data?.messageId || data?.data?.messageId || data?.data?.id,
-    };
+  try {
+    const response = await fetch(OLYMPUS_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OLYMPUS_API_TOKEN}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        recipient,
+        sender_id: OLYMPUS_SENDER_ID,
+        type: "plain",
+        message: cleanSmsMessage(message),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    const providerStatus = String(data?.status || '').toLowerCase();
+    const providerMessage = String(data?.message || data?.remarks || '').trim();
+    const providerFailure = providerStatus === 'error'
+      || data?.success === false
+      || /unauthenticated|unauthorized|invalid token|authentication failed|insufficient balance|failed/i.test(providerMessage);
+    if (response.ok && !providerFailure) {
+      return {
+        success: true,
+        messageId: data?.message_id || data?.messageId || data?.data?.messageId || data?.data?.id,
+      };
+    }
+    const error = providerFailure && /unauthenticated|unauthorized|invalid token|authentication failed/i.test(providerMessage)
+      ? 'SMS provider authentication failed. Please configure a valid SMS API token.'
+      : providerMessage || `HTTP ${response.status}`;
+    return { success: false, error };
+  } catch (error) {
+    console.error("Olympus SMS request failed:", error);
+    return { success: false, error: "SMS provider could not be reached. Please try again." };
   }
-  const error = providerFailure && /unauthenticated|unauthorized|invalid token|authentication failed/i.test(providerMessage)
-    ? 'SMS provider authentication failed. Please configure a valid SMS API token.'
-    : providerMessage || `HTTP ${response.status}`;
-  return { success: false, error };
 }
 
 async function sendViaAfricasTalking(
