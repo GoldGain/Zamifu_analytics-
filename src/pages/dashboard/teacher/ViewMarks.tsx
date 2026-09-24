@@ -5,6 +5,7 @@ import { Search, Loader2, Pencil, Save, X, Eye, BookOpen, Filter, Send, Users, C
 import { toast } from 'sonner';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { formatClassStream } from '@/lib/class-label';
+import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
 
 interface MarkEntry {
   id: string;
@@ -57,6 +58,9 @@ const canonicalizeMarks = (rows: MarkEntry[]): MarkEntry[] => {
   });
   return [...unique.values()];
 };
+
+const compareAdmissionNumber = (a: { students?: { admission_number?: string | null } | null }, b: { students?: { admission_number?: string | null } | null }): number =>
+  String(a.students?.admission_number || '').localeCompare(String(b.students?.admission_number || ''), undefined, { numeric: true, sensitivity: 'base' });
 
 export default function ViewMarks() {
   const { user } = useAuth();
@@ -578,8 +582,15 @@ export default function ViewMarks() {
                   <div className="border-t border-gray-100">
                     {group.subjects.map((subject) => {
                       const isSubjectExpanded = expandedSubject === `${group.classId}-${subject.subjectId}`;
-                      const subjectDrafts = subject.marks.filter(m => m.status === 'draft');
-                      const subjectSubmitted = subject.marks.filter(m => m.status === 'submitted');
+                      const sortedMarks = [...subject.marks].sort(compareAdmissionNumber);
+                      const sortedMissing = [...subject.missing].sort((a, b) => String(a.admission_number).localeCompare(String(b.admission_number), undefined, { numeric: true, sensitivity: 'base' }));
+                      const subjectDrafts = sortedMarks.filter(m => m.status === 'draft');
+                      const subjectSubmitted = sortedMarks.filter(m => m.status === 'submitted');
+                      const meanMarks = sortedMarks.length
+                        ? sortedMarks.reduce((sum, mark) => sum + Number(mark.percentage ?? (mark.out_of ? (mark.marks / mark.out_of) * 100 : 0)), 0) / sortedMarks.length
+                        : null;
+                      const subjectBand = getSchoolLevelBand(sortedMarks[0]?.classes || undefined);
+                      const meanGrade = meanMarks === null ? '-' : calculateCompetencyGrade(meanMarks, subjectBand).subLevel;
                       
                       return (
                         <div key={subject.subjectId} className="border-b border-gray-50 last:border-0">
@@ -591,7 +602,9 @@ export default function ViewMarks() {
                             <div className="flex items-center gap-2">
                               <BookOpen className="w-4 h-4 text-blue-500" />
                               <span className="font-medium text-sm text-gray-900">{subject.subjectName}</span>
-                              <span className="text-xs text-gray-400">({subject.marks.length} entries)</span>
+                              <span className="text-xs text-gray-400">({sortedMarks.length} entries)</span>
+                              <span className="ml-2 text-xs font-semibold text-slate-600">Mean Marks: {meanMarks === null ? '-' : `${meanMarks.toFixed(1)} / 100`}</span>
+                              <span className="text-xs font-semibold text-blue-700">Mean Grade: {meanGrade}</span>
                               {subject.missing.length > 0 && (
                                 <span className="text-xs font-semibold text-red-500">· {subject.missing.length} missing</span>
                               )}
@@ -627,7 +640,7 @@ export default function ViewMarks() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {subject.marks.map((m) => (
+                                  {sortedMarks.map((m) => (
                                     <tr key={m.id} className="border-b hover:bg-gray-50">
                                       <td className="px-3 py-2 font-medium">
                                         {m.students?.first_name || 'Unknown'} {m.students?.last_name || ''}
@@ -719,7 +732,7 @@ export default function ViewMarks() {
                                       </td>
                                     </tr>
                                   ))}
-                                  {subject.missing.map((missing) => (
+                                  {sortedMissing.map((missing) => (
                                     <tr key={`missing-${missing.student_id}`} className="border-b bg-red-50/40">
                                       <td className="px-3 py-2 font-medium text-gray-700">{missing.name}</td>
                                       <td className="px-3 py-2 text-gray-500 text-xs">{missing.admission_number}</td>

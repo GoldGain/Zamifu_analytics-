@@ -116,6 +116,18 @@ export default function SchoolAdminStudents() {
     fetchClasses();
   }, [user?.schoolId]);
 
+  const studentClassData = (student: any) => {
+    const classRow = classes.find((item: any) => item.id === student.stream_id)
+      || classes.find((item: any) => item.id === student.class_id)
+      || student.classes;
+    if (!classRow) return null;
+    return {
+      ...classRow,
+      stream_name: classRow.stream_name || student.stream || null,
+      stream: student.stream || classRow.stream || null,
+    };
+  };
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdding(true);
@@ -391,7 +403,7 @@ export default function SchoolAdminStudents() {
       let aVal = '', bVal = '';
       if (sortField === 'name') { aVal = `${a.first_name} ${a.last_name}`; bVal = `${b.first_name} ${b.last_name}`; }
       if (sortField === 'assessment_number') { aVal = a.assessment_number || ''; bVal = b.assessment_number || ''; }
-      if (sortField === 'class') { aVal = formatClassStream(a.classes); bVal = formatClassStream(b.classes); }
+      if (sortField === 'class') { aVal = formatClassStream(studentClassData(a)); bVal = formatClassStream(studentClassData(b)); }
       if (sortField === 'gender') { aVal = a.gender || ''; bVal = b.gender || ''; }
       const comparison = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
       return sortDir === 'asc' ? comparison : -comparison;
@@ -409,7 +421,7 @@ export default function SchoolAdminStudents() {
   }
 
   const classGroups: ClassGroup[] = classes.map((cls: any) => {
-    const classStudents = filteredStudents.filter((s: any) => s.class_id === cls.id);
+    const classStudents = filteredStudents.filter((s: any) => s.stream_id === cls.id || (!s.stream_id && s.class_id === cls.id));
     const totalBoys = classStudents.filter((s: any) => s.gender?.toLowerCase() === 'male').length;
     const totalGirls = classStudents.filter((s: any) => s.gender?.toLowerCase() === 'female').length;
     return {
@@ -636,7 +648,8 @@ export default function SchoolAdminStudents() {
                 ) : (
                   (() => {
                     const grouped = filteredStudents.reduce((acc: Record<string, any[]>, s: any) => {
-      const className = formatClassStream(s.classes);
+                      const formattedClass = formatClassStream(studentClassData(s));
+                      const className = formattedClass === 'Unknown Class' ? 'Unassigned' : formattedClass;
                       if (!acc[className]) acc[className] = [];
                       acc[className].push(s);
                       return acc;
@@ -671,7 +684,7 @@ export default function SchoolAdminStudents() {
                                 <span className="text-xs bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full">{s.boarding_status === 'boarding' ? 'Boarder' : 'Day & Boarding'}</span>
                               )}
                             </td>
-                            <td className="px-4 py-4 text-sm text-gray-600">{formatClassStream(s.classes)}</td>
+                            <td className="px-4 py-4 text-sm text-gray-600">{formatClassStream(studentClassData(s)) === 'Unknown Class' ? 'Unassigned' : formatClassStream(studentClassData(s))}</td>
                             <td className="px-4 py-4 text-sm text-gray-600 capitalize">{s.gender || '-'}</td>
                             <td className="px-4 py-4">
                               <div className="text-sm">{s.parent_name || '-'}</div>

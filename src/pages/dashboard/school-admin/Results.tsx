@@ -369,9 +369,23 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const studentIds = classStudents.map((student) => student.id);
       const { data: parentRelations } = await supabaseUntyped
         .from('parent_student_links')
-        .select('parent_id')
+        .select('student_id, parent_id')
         .in('student_id', studentIds);
       const parentIds = Array.from(new Set((parentRelations || []).map((relation: any) => relation.parent_id).filter(Boolean)));
+      const { data: parentProfiles } = parentIds.length
+        ? await supabaseUntyped.from('profiles').select('id, phone').in('id', parentIds)
+        : { data: [] };
+      const parentPhonesByStudent = new Map<string, string[]>();
+      classStudents.forEach((student: any) => {
+        const phones = [student.parent_phone].filter(Boolean).map(String);
+        (parentRelations || [])
+          .filter((relation: any) => relation.student_id === student.id)
+          .map((relation: any) => (parentProfiles || []).find((profile: any) => profile.id === relation.parent_id)?.phone)
+          .filter(Boolean)
+          .forEach((phone: string) => phones.push(phone));
+        parentPhonesByStudent.set(student.id, [...new Set(phones)]);
+      });
+      const parentContactCount = Array.from(parentPhonesByStudent.values()).reduce((count, phones) => count + phones.length, 0);
       const termData = terms.find((term) => term.id === selectedTerm);
       const classData = classes.find((schoolClass) => schoolClass.id === selectedClass);
       const examData = exams.find((exam) => exam.id === selectedExam);
@@ -405,6 +419,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       } catch (pushError) { console.warn('Parent push notification warning:', pushError); }
 
       let smsSentCount = 0;
+      let smsBalanceRemaining: number | null = null;
+      const smsErrors: string[] = [];
       try {
         const { sendSMS, SMS_TEMPLATES } = await import('@/lib/sms');
         const classObj = classes.find((schoolClass: any) => schoolClass.id === selectedClass);
@@ -412,7 +428,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const classResults = results.filter((result: any) => result.class_id === selectedClass && result.term_id === selectedTerm && (!selectedExam || result.exam_id === selectedExam));
         const allStudentSummaries = buildStudentSummary(classResults, classObj);
         for (const student of classStudents) {
-          if (!student.parent_phone) continue;
+          const parentPhones = parentPhonesByStudent.get(student.id) || [];
+          if (!parentPhones.length) continue;
           const studentResults = classResults.filter((result: any) => result.student_id === student.id);
           if (studentResults.length === 0) continue;
           const subjectList = studentResults.map((result: any) => {
@@ -426,9 +443,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           const totalPercentage = subjectList.reduce((sum: number, result: any) => sum + result.marks, 0);
           const totalPoints = subjectList.reduce((sum: number, result: any) => sum + (calculateCompetencyGrade(result.marks, band).points || 0), 0);
           const studentSummary = allStudentSummaries.find((summary: any) => summary.studentId === student.id);
-          const smsResult = await sendSMS(
-            student.parent_phone,
-            SMS_TEMPLATES.resultsToParent(
+          const smsMessage = SMS_TEMPLATES.resultsToParent(
               `${student.first_name} ${student.last_name}`,
               streamLabel(classData),
               subjectList,
@@ -438,15 +453,34 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               allStudentSummaries.length,
               '',
               classObj,
-            ),
-            undefined,
-            user?.schoolId || undefined,
-          );
-          if (smsResult.success) smsSentCount++;
+            );
+          for (const parentPhone of parentPhones) {
+            const smsResult = await sendSMS(parentPhone, smsMessage, undefined, user?.schoolId || undefined);
+            if (smsResult.success) {
+              smsSentCount++;
+              const balance = Number((smsResult.data as any)?.smsBalance);
+              if (Number.isFinite(balance)) smsBalanceRemaining = balance;
+            } else if (smsResult.error) {
+              smsErrors.push(smsResult.error);
+            }
+          }
         }
       } catch (smsError) { console.warn('Parent SMS notification warning:', smsError); }
 
-      toast.success(`Parent notification sent. ${parentIds.length} in-app recipient(s), ${smsSentCount} SMS sent.`);
+      if (smsSentCount === 0) {
+        if (smsErrors.some((error) => /school has no sms balance|insufficient sms/i.test(error))) {
+          toast.error('Insufficient SMS balance. Please top up.');
+        } else if (parentContactCount === 0) {
+          toast.warning('No parent contacts on file. Add parent phone numbers.');
+        } else if (smsErrors.length === 0) {
+          toast.error('No SMS was sent. Check the selected results and parent contacts, then try again.');
+        } else {
+          toast.error(smsErrors[0]);
+        }
+      } else {
+        const balanceText = smsBalanceRemaining === null ? '' : ` Balance remaining: ${smsBalanceRemaining}.`;
+        toast.success(`Sent to ${parentIds.length} parents. ${smsSentCount} SMS used.${balanceText}`);
+      }
     } catch (err: any) {
       toast.error('Failed to notify parents: ' + err.message);
       console.error(err);

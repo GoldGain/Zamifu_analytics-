@@ -363,10 +363,11 @@ Deno.serve(async (req) => {
     const smsSegments = countSmsSegments(cleanMessage);
     if (!smsSegments) return json({ error: "Message is empty." }, 400);
 
-    // Resellers communicate with assigned schools as a platform service. They
-    // must not be blocked by or charged against a personal/reseller wallet.
-    // School-admin messages continue to use the school's prepaid wallet.
-    const resellerSponsored = callerRole === "reseller_super_admin";
+    // Reseller messages are sent on behalf of the selected school and must use
+    // that school's prepaid wallet, exactly like a school-admin message. The
+    // selected school has already been ownership-checked above, so this remains
+    // tenant-scoped while avoiding any reseller wallet requirement.
+    const resellerSponsored = false;
     let reservation: any = null;
     if (!resellerSponsored) {
       const { data: schoolReservation, error: reservationError } = await adminClient.rpc("reserve_school_sms_credits", {
@@ -393,7 +394,7 @@ Deno.serve(async (req) => {
       : await sendViaOlympus(phone, cleanMessage);
 
     if (resellerSponsored) {
-      // Audit the delivery but do not debit the selected school's wallet.
+      // Retained for legacy deployments; the active reseller path is wallet-backed.
       const { error: auditError } = await adminClient.from("school_sms_transactions").insert({
         school_id: resolvedSchoolId,
         transaction_type: "debit",
