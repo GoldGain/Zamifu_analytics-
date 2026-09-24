@@ -2,7 +2,7 @@ import {
   classifySubject,
   strictSubjectAllowsLesson,
   violatesMathScienceSequence,
-} from './timetable-generator';
+} from './timetable-generator.ts';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 const ALL_DAYS = [0, 1, 2, 3, 4];
@@ -18,6 +18,8 @@ export interface CspTimetableSolverOptions {
   /** Teacher cells already reserved by another selected level in this school. */
   reservedTeacherCells?: ReadonlySet<string>;
   onProgress?: (message: string) => void;
+  /** Internal recursion guard for the sequential class decomposition. */
+  __singleClass?: boolean;
 }
 
 export interface CspSolverIssue {
@@ -536,7 +538,11 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
   const slots = options.lessonSlots
     .filter((slot) => slot?.slot_type === 'lesson')
     .slice()
-    .sort((a, b) => Number(a.slot_order) - Number(b.slot_order));
+    // Some live schools have stale slot_order values (for example Lesson 6,
+    // 7, 8, then 1–5). The label is the authoritative lesson identity for
+    // windows and adjacency; using slot_order here makes doubles and core
+    // subject placement search the wrong timeline.
+    .sort((a, b) => lessonNumber(a, Number(a.slot_order) || 0) - lessonNumber(b, Number(b.slot_order) || 0));
   if (!options.classes.length) issues.push(makeIssue('missing-classes', 'No active classes were supplied for this level.'));
   if (!slots.length) issues.push(makeIssue('missing-slots', `No lesson slots were supplied for ${options.levelKey}.`));
   if (slots.length && slots.length > 9) issues.push(makeIssue('invalid-slot-count', `${options.levelKey} has ${slots.length} lesson slots per day; the solver supports up to 9 explicit lesson slots.`));
@@ -546,6 +552,43 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
   const units = buildUnits(options.classes, byClass, slots, issues);
   preflightUnits(options.classes, units, slots, byClass, issues);
   if (issues.length) return { entries: [], issues, searchNodes: 0, durationMs: Date.now() - startedAt };
+
+  // A global search across several classes creates a large symmetry tree even
+  // when each class is independently feasible. Solve one class at a time and
+  // carry forward the occupied teacher cells; this preserves cross-class
+  // collision rules while keeping the search bounded by the hard instance.
+  if (!options.__singleClass && options.classes.length > 1) {
+    const orderedClasses = [...options.classes].sort((left, right) => {
+      const leftUnits = units.filter((unit) => unit.classId === String(left.id));
+      const rightUnits = units.filter((unit) => unit.classId === String(right.id));
+      return rightUnits.length - leftUnits.length || String(left.name).localeCompare(String(right.name));
+    });
+    const reserved = new Set(options.reservedTeacherCells || []);
+    const allEntries: any[] = [];
+    const allIssues: CspSolverIssue[] = [];
+    let totalNodes = 0;
+    for (const cls of orderedClasses) {
+      const result = solveTimetableCsp({
+        ...options,
+        __singleClass: true,
+        classes: [cls],
+        assignments: options.assignments.filter((assignment) => String(assignment.class_id) === String(cls.id)),
+        reservedTeacherCells: reserved,
+      });
+      totalNodes += result.searchNodes;
+      if (result.issues.length) {
+        allIssues.push(...result.issues);
+        return { entries: [], issues: allIssues, searchNodes: totalNodes, durationMs: Date.now() - startedAt };
+      }
+      allEntries.push(...result.entries);
+      for (const entry of result.entries) {
+        const lessonIndex = slots.findIndex((slot) => String(slot.id) === String(entry.time_slot_id));
+        if (lessonIndex < 0) continue;
+        reserved.add(teacherCellKey(String(entry.teacher_id), Number(entry.day_of_week) - 1, lessonIndex));
+      }
+    }
+    return { entries: allEntries, issues: [], searchNodes: totalNodes, durationMs: Date.now() - startedAt };
+  }
 
   const maxNodes = options.maxSearchNodesPerClass
     ? Math.max(500_000, options.maxSearchNodesPerClass * Math.max(1, options.classes.length))
