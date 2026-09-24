@@ -51,10 +51,35 @@ export function useStudents(schoolId?: string) {
         error = fallbackResult.error;
       }
       if (error) throw error;
-      setStudents((data || []).filter((student: any) => {
+      const activeStudents = (data || []).filter((student: any) => {
         const status = String(student.status || '').trim().toLowerCase();
         return student.is_active !== false && !['graduated', 'inactive', 'withdrawn', 'left'].includes(status);
-      }) as Student[]);
+      }) as any[];
+
+      // Keep the learner page usable on deployments where PostgREST cannot
+      // expand the classes relation. Rehydrate class/stream labels by ID and
+      // keep the lookup scoped to the current school.
+      const classIds = Array.from(new Set(activeStudents.flatMap((student: any) => [student.class_id, student.stream_id]).filter(Boolean)));
+      if (classIds.length) {
+        const { data: classRows } = await supabase
+          .from('classes')
+          .select('id, name, stream, stream_name, level, grade_level')
+          .in('id', classIds)
+          .eq('school_id', schoolId || '');
+        const classById = new Map((classRows || []).map((row: any) => [row.id, row]));
+        activeStudents.forEach((student: any) => {
+          const nested = student.classes && !Array.isArray(student.classes) ? student.classes : null;
+          const classRow = classById.get(student.stream_id) || classById.get(student.class_id) || nested;
+          if (classRow) {
+            student.classes = {
+              ...classRow,
+              stream: student.stream || classRow.stream,
+              stream_name: classRow.stream_name || student.stream || classRow.stream_name,
+            };
+          }
+        });
+      }
+      setStudents(activeStudents as Student[]);
     } catch (err) {
       console.error(err);
     } finally {
