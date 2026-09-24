@@ -16,6 +16,6 @@ const definitions = [
 ] as const;
 const assignments = definitions.map(([subjectId, subjectName, lessons, isDouble, teacherId]) => ({ class_id: cls.id, subject_id: subjectId, teacher_id: teacherId, lessons_per_week: lessons, is_double_lesson: isDouble, subjects: { name: subjectName } }));
 const result = solveTimetableCsp({ schoolId: 'school', levelKey: 'junior', classes: [cls], assignments, lessonSlots: slots, maxSearchNodesPerClass: 500_000 });
-assert.ok(result.issues.some((issue) => issue.code === 'teacher-day-capacity'));
-assert.equal(result.entries.length, 0);
-console.log('ONE CLASS IMPOSSIBILITY DIAGNOSTIC PASS', result.issues.filter((issue) => issue.code === 'teacher-day-capacity').map((issue) => issue.message));
+assert.equal(result.issues.length, 0, result.issues.map((issue) => issue.message).join('\n'));
+assert.equal(result.entries.length, 40);
+console.log('ONE CLASS PASS', JSON.stringify({ entries: result.entries.length, nodes: result.searchNodes, ms: result.durationMs }));

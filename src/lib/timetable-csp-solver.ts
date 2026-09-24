@@ -507,34 +507,6 @@ function preflightUnits(
 
   const teacherDemand = new Map<string, number>();
   const teacherDays = new Map<string, Set<number>>();
-  const teacherClassSubjectDemand = new Map<string, Map<string, { subjectName: string; requiredDays: number }>>();
-  for (const cls of classes) {
-    const classId = String(cls.id);
-    for (const subject of byClass.get(classId) || []) {
-      const key = `${classId}|${subject.teacherId}`;
-      const subjectDemand = teacherClassSubjectDemand.get(key) || new Map<string, { subjectName: string; requiredDays: number }>();
-      subjectDemand.set(subject.subjectId, {
-        subjectName: subject.subjectName,
-        requiredDays: subject.isDouble ? Math.max(1, subject.lessons - 1) : subject.lessons,
-      });
-      teacherClassSubjectDemand.set(key, subjectDemand);
-    }
-  }
-  for (const [key, subjects] of teacherClassSubjectDemand) {
-    const [classId, teacherId] = key.split('|');
-    const requiredDays = [...subjects.values()].reduce((sum, subject) => sum + subject.requiredDays, 0);
-    if (requiredDays > DAYS.length) {
-      const cls = classes.find((item) => String(item.id) === classId);
-      const subjectSummary = [...subjects.values()]
-        .map((subject) => `${subject.subjectName} (${subject.requiredDays} subject-days)`)
-        .join(' + ');
-      issues.push(makeIssue(
-        'teacher-day-capacity',
-        `${cls?.name || classId} assigns teacher ${teacherId} to ${subjectSummary}: ${requiredDays} distinct subject-days are required, but Rule 5 plus Rule 8 provide only ${DAYS.length} teacher-days in one class. These subjects must overlap on at least ${requiredDays - DAYS.length} weekdays, which is impossible because a teacher cannot teach two subjects in one slot.`,
-        { classId, className: cls?.name },
-      ));
-    }
-  }
   for (const unit of units) {
     for (const subject of unit.subjects) {
       teacherDemand.set(subject.teacherId, (teacherDemand.get(subject.teacherId) || 0) + unit.size);
