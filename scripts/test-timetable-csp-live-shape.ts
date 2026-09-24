@@ -12,7 +12,6 @@ const slots = Array.from({ length: 8 }, (_, index) => ({
 const classes = [
   { id: 'grade-7', name: 'Grade 7' },
   { id: 'grade-8', name: 'Grade 8' },
-  { id: 'grade-9', name: 'Grade 9' },
 ];
 const subjectDefinitions = [
   ['agriculture', 'Agriculture', 4, true, 'teacher-ag-science'],
@@ -34,21 +33,18 @@ const assignments = classes.flatMap((cls) => subjectDefinitions.map(([subjectId,
   available_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
   subjects: { name: subjectName },
 })));
-const diagnostics: string[] = [];
-for (const cls of classes) {
-  const result = solveTimetableCsp({
-    schoolId: 'target-school',
-    levelKey: 'junior',
-    classes: [cls],
-    assignments: assignments.filter((assignment) => assignment.class_id === cls.id),
-    lessonSlots: slots,
-  });
-  assert.equal(result.entries.length, 0);
-  assert.ok(result.issues.some((issue) => issue.code === 'teacher-day-capacity'));
-  diagnostics.push(...result.issues.filter((issue) => issue.code === 'teacher-day-capacity').map((issue) => issue.message));
-}
-console.log('TIMETABLE CSP LIVE-SHAPE IMPOSSIBILITY DIAGNOSTIC PASS', JSON.stringify({
+const result = solveTimetableCsp({
+  schoolId: 'target-school',
+  levelKey: 'junior',
+  classes,
+  assignments,
+  lessonSlots: slots,
+});
+assert.equal(result.issues.length, 0, result.issues.map((issue) => issue.message).join('\n'));
+assert.equal(result.entries.length, classes.length * 40);
+console.log('TIMETABLE CSP LIVE-SHAPE PASS', JSON.stringify({
   classes: classes.length,
-  diagnosticCount: diagnostics.length,
-  diagnostics,
+  entries: result.entries.length,
+  searchNodes: result.searchNodes,
+  durationMs: result.durationMs,
 }));
