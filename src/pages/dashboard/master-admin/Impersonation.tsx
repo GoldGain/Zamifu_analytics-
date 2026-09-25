@@ -2,15 +2,20 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AlertTriangle, Search, ShieldCheck, UserRound, Loader2, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
-import { useAuth, type ImpersonationTarget } from '@/contexts/AuthContext';
+import { useAuth, type ImpersonationTarget, type ImpersonationAuditEntry } from '@/contexts/AuthContext';
 
 export default function MasterAdminImpersonation() {
-  const { searchImpersonationTargets, startImpersonation } = useAuth();
+  const { searchImpersonationTargets, listImpersonationAudit, startImpersonation } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [targets, setTargets] = useState<ImpersonationTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState<string | null>(null);
+  const [audit, setAudit] = useState<ImpersonationAuditEntry[]>([]);
+
+  useEffect(() => {
+    void listImpersonationAudit().then(result => { if (!result.error) setAudit(result.entries); });
+  }, [listImpersonationAudit]);
 
   useEffect(() => {
     const value = query.trim();
@@ -26,7 +31,7 @@ export default function MasterAdminImpersonation() {
   }, [query, searchImpersonationTargets]);
 
   const handleStart = async (target: ImpersonationTarget) => {
-    const confirmed = window.confirm(`Open a 30-minute support session as ${target.name} (${target.role.replace(/_/g, ' ')})?\n\nThis action is audited and the target will receive an email notification.`);
+    const confirmed = window.confirm(`Open a 60-minute support session as ${target.name} (${target.role.replace(/_/g, ' ')})?\n\nThis action is audited and the target will receive an email notification.`);
     if (!confirmed) return;
     setStarting(target.id);
     const result = await startImpersonation(target.id);
@@ -52,5 +57,6 @@ export default function MasterAdminImpersonation() {
     <div className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden">
       {loading ? <div className="flex items-center justify-center gap-2 p-10 text-sm text-gray-500"><Loader2 className="h-5 w-5 animate-spin" />Searching secure directory...</div> : targets.length === 0 ? <div className="p-10 text-center text-sm text-gray-400">{query.length < 2 ? 'Enter at least two characters to search.' : 'No active matching accounts found.'}</div> : <div className="divide-y divide-gray-100">{targets.map(target => <div key={target.id} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><div className="rounded-full bg-blue-100 p-3 text-blue-700"><UserRound className="h-5 w-5" /></div><div><p className="font-semibold text-gray-900">{target.name}</p><p className="text-sm text-gray-500">{target.email || 'No email'} · {target.role.replace(/_/g, ' ')}</p><p className="text-xs text-gray-400">{target.school_name || 'Platform account'}{target.admission_number ? ` · Admission ${target.admission_number}` : ''}{target.assessment_number ? ` · Assessment ${target.assessment_number}` : ''}</p></div></div><button disabled={starting === target.id} onClick={() => void handleStart(target)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><LogIn className="h-4 w-4" />{starting === target.id ? 'Opening...' : 'View as user'}</button></div>)}</div>}
     </div>
+    <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"><h2 className="mb-3 text-lg font-semibold text-gray-900">Recent support-access audit</h2>{audit.length === 0 ? <p className="text-sm text-gray-400">No impersonation sessions recorded yet.</p> : <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b text-xs uppercase text-gray-500"><tr><th className="px-2 py-2">Target</th><th className="px-2 py-2">Role</th><th className="px-2 py-2">Started</th><th className="px-2 py-2">Ended</th><th className="px-2 py-2">Reason</th></tr></thead><tbody>{audit.map(entry => <tr key={entry.id} className="border-b last:border-0"><td className="px-2 py-2">{entry.target_email || '—'}</td><td className="px-2 py-2">{entry.target_role.replace(/_/g, ' ')}</td><td className="px-2 py-2">{new Date(entry.started_at).toLocaleString()}</td><td className="px-2 py-2">{entry.ended_at ? new Date(entry.ended_at).toLocaleString() : 'Active'}</td><td className="px-2 py-2">{entry.end_reason || '—'}</td></tr>)}</tbody></table></div>}</div>
   </div>;
 }

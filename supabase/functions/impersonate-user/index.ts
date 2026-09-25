@@ -73,6 +73,12 @@ Deno.serve(async (req) => {
     return json({ targets });
   }
 
+  if (action === "audit") {
+    const { data: entries, error } = await admin.from("impersonation_audit").select("id, impersonator_email, target_email, target_role, target_school_id, started_at, ended_at, end_reason, expires_at").order("started_at", { ascending: false }).limit(100);
+    if (error) return json({ error: error.message }, 500);
+    return json({ entries: entries || [] });
+  }
+
   if (action === "start") {
     const targetId = text(body?.target_user_id);
     if (!targetId || targetId === master.id) return json({ error: "A different target account is required" }, 400);
