@@ -23,6 +23,7 @@ import MasterAdminSchools from '@/pages/dashboard/master-admin/Schools';
 import MasterAdminStudents from '@/pages/dashboard/master-admin/Students';
 import MasterAdminPayments from '@/pages/dashboard/master-admin/Payments';
 import MasterAdminSettings from '@/pages/dashboard/master-admin/Settings';
+import MasterAdminImpersonation from '@/pages/dashboard/master-admin/Impersonation';
 // Reseller Admin pages
 import ResellerDashboard from '@/pages/dashboard/reseller-admin/Dashboard';
 import ResellerSchools from '@/pages/dashboard/reseller-admin/Schools';
@@ -231,6 +232,7 @@ function AppRoutes() {
       <Route path="/master-admin/students" element={<ProtectedRoute allowedRoles={['master_super_admin']}><MasterAdminStudents /></ProtectedRoute>} />
       <Route path="/master-admin/payments" element={<ProtectedRoute allowedRoles={['master_super_admin']}><MasterAdminPayments /></ProtectedRoute>} />
       <Route path="/master-admin/settings" element={<ProtectedRoute allowedRoles={['master_super_admin']}><MasterAdminSettings /></ProtectedRoute>} />
+      <Route path="/master-admin/impersonation" element={<ProtectedRoute allowedRoles={['master_super_admin']}><MasterAdminImpersonation /></ProtectedRoute>} />
       {/* Reseller Super Admin routes */}
       <Route path="/reseller-admin" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerDashboard /></ProtectedRoute>} />
       <Route path="/reseller-admin/schools" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSchools /></ProtectedRoute>} />

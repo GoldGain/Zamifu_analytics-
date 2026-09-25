@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import PWAInstallButton from '@/components/PWAInstallButton';
 import PhotoZoomModal from '@/components/PhotoZoomModal';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 import {
   GraduationCap,
   LayoutDashboard,
@@ -63,6 +64,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'All Learners', icon: <Users className="w-5 h-5" />, path: '/master-admin/students' },
     { label: 'All Payments', icon: <DollarSign className="w-5 h-5" />, path: '/master-admin/payments' },
     { label: 'Platform Settings', icon: <Settings className="w-5 h-5" />, path: '/master-admin/settings' },
+    { label: 'Support Access', icon: <Shield className="w-5 h-5" />, path: '/master-admin/impersonation' },
   ],
   'reseller-super-admin': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/reseller-admin' },
@@ -283,6 +285,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-[#F5F3EF]">
+      <ImpersonationBanner />
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
