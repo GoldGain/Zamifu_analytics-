@@ -36,6 +36,7 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
   impersonation: ImpersonationState | null;
   searchImpersonationTargets: (query: string) => Promise<{ targets: ImpersonationTarget[]; error: string | null }>;
+  listImpersonationAudit: () => Promise<{ entries: ImpersonationAuditEntry[]; error: string | null }>;
   startImpersonation: (targetUserId: string) => Promise<{ error: string | null }>;
   exitImpersonation: (reason?: string) => Promise<void>;
 }
@@ -55,6 +56,18 @@ export interface ImpersonationState {
   auditId: string;
   target: ImpersonationTarget;
   expiresAt: string;
+}
+
+export interface ImpersonationAuditEntry {
+  id: string;
+  impersonator_email: string | null;
+  target_email: string | null;
+  target_role: string;
+  target_school_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  end_reason: string | null;
+  expires_at: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -219,6 +232,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { targets: (data?.targets || []) as ImpersonationTarget[], error: error?.message || data?.error || null };
   }, []);
 
+  const listImpersonationAudit = useCallback(async () => {
+    const { data, error } = await supabase.functions.invoke('impersonate-user', { body: { action: 'audit' } });
+    return { entries: (data?.entries || []) as ImpersonationAuditEntry[], error: error?.message || data?.error || null };
+  }, []);
+
   const startImpersonation = async (targetUserId: string) => {
     const { data: current } = await supabase.auth.getSession();
     if (!current.session) return { error: 'Your master admin session has expired. Please sign in again.' };
@@ -261,7 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [impersonation?.auditId, impersonation?.expiresAt]);
 
   return (
-    <AuthContext.Provider value={{ user, profile, schoolData, loading, signIn, signUp, signOut, resetPassword, refreshProfile, impersonation, searchImpersonationTargets, startImpersonation, exitImpersonation }}>
+    <AuthContext.Provider value={{ user, profile, schoolData, loading, signIn, signUp, signOut, resetPassword, refreshProfile, impersonation, searchImpersonationTargets, listImpersonationAudit, startImpersonation, exitImpersonation }}>
       {children}
     </AuthContext.Provider>
   );
