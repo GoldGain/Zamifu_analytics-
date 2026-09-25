@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
 import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users } from 'lucide-react';
@@ -197,6 +197,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  const [comparisonClassId, setComparisonClassId] = useState('');
   const [comparisonTermA, setComparisonTermA] = useState('');
   const [comparisonTermB, setComparisonTermB] = useState('');
   const [comparisonExamA, setComparisonExamA] = useState('');
@@ -1925,11 +1926,23 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   const filteredExams = exams.filter(e => !selectedTerm || e.term_id === selectedTerm);
+  const comparisonAllStreamsValue = '__compare_all_streams__:';
+  const comparisonIsAllStreams = comparisonClassId.startsWith(comparisonAllStreamsValue);
+  const comparisonSeedClassId = comparisonIsAllStreams ? comparisonClassId.slice(comparisonAllStreamsValue.length) : comparisonClassId;
+  const comparisonSeedClass = classes.find((item) => item.id === comparisonSeedClassId);
+  const comparisonClassIds = comparisonIsAllStreams && comparisonSeedClass
+    ? classes.filter((item) => Number(item.level ?? item.grade_level) === Number(comparisonSeedClass.level ?? comparisonSeedClass.grade_level) || item.name === comparisonSeedClass.name).map((item) => item.id)
+    : comparisonClassId ? [comparisonClassId] : [];
+  const comparisonClassOptions = classes.map((item) => {
+    const level = Number(item.level ?? item.grade_level);
+    const group = classes.filter((candidate) => Number(candidate.level ?? candidate.grade_level) === level || candidate.name === item.name);
+    return { item, hasAllStreams: group.length > 1, isFirst: group[0]?.id === item.id };
+  });
   const streamLabel = (classData: any) => {
     return formatClassStream(classData);
   };
   const loadExamComparison = async () => {
-    if (!selectedClass || !comparisonTermA || !comparisonTermB || !comparisonExamA || !comparisonExamB || (comparisonTermA === comparisonTermB && comparisonExamA === comparisonExamB)) {
+    if (!comparisonClassId || !comparisonClassIds.length || !comparisonTermA || !comparisonTermB || !comparisonExamA || !comparisonExamB || (comparisonTermA === comparisonTermB && comparisonExamA === comparisonExamB)) {
       toast.error('Select a class, two terms, and two different assessments to compare.');
       return;
     }
@@ -1937,18 +1950,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     try {
       const select = 'student_id, subject_id, marks, out_of, percentage, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name, grade_level, level, curriculum)';
       const [first, second] = await Promise.all([
-        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).eq('class_id', selectedClass).eq('term_id', comparisonTermA).eq('exam_id', comparisonExamA).limit(10000),
-        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).eq('class_id', selectedClass).eq('term_id', comparisonTermB).eq('exam_id', comparisonExamB).limit(10000),
+        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).in('class_id', comparisonClassIds).eq('term_id', comparisonTermA).eq('exam_id', comparisonExamA).limit(10000),
+        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).in('class_id', comparisonClassIds).eq('term_id', comparisonTermB).eq('exam_id', comparisonExamB).limit(10000),
       ]);
       if (first.error) throw first.error;
       if (second.error) throw second.error;
-      const classObj = classes.find((item) => item.id === selectedClass);
+      const classObj = comparisonSeedClass;
       const termA = terms.find((item) => item.id === comparisonTermA);
       const termB = terms.find((item) => item.id === comparisonTermB);
       const examA = exams.find((item) => item.id === comparisonExamA);
       const examB = exams.find((item) => item.id === comparisonExamB);
       const built = buildComparisonData({
-        classLabel: streamLabel(classObj),
+        classLabel: comparisonIsAllStreams ? `${classObj?.name || 'Class'} — All Streams` : streamLabel(classObj),
         termALabel: `${termA?.name || 'Term'} ${termA?.academic_year || ''}`.trim(),
         termBLabel: `${termB?.name || 'Term'} ${termB?.academic_year || ''}`.trim(),
         examALabel: examA?.name || 'Exam 1',
@@ -1967,7 +1980,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const downloadExamComparison = async () => {
     if (!comparisonData) { toast.error('Load a comparison first.'); return; }
     try {
-      await generateComparisonPdf(comparisonData, schoolInfo, await getSignatureInfo(classes.find((item) => item.id === selectedClass)));
+      await generateComparisonPdf(comparisonData, schoolInfo);
       toast.success('Compare Exams PDF downloaded.');
     } catch (error: any) { toast.error(error.message || 'Unable to generate comparison PDF.'); }
   };
@@ -2120,7 +2133,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           <div className="flex gap-2"><button onClick={() => void loadExamComparison()} disabled={comparisonLoading} className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">{comparisonLoading ? 'Comparing…' : 'Compare Exams'}</button><button onClick={() => void downloadExamComparison()} disabled={!comparisonData || comparisonLoading} className="px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold disabled:opacity-50"><Download className="inline w-4 h-4 mr-1" />Download PDF</button></div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <label className="text-sm font-medium text-gray-600">Class / Stream<select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select class</option>{classes.map((item) => <option key={item.id} value={item.id}>{streamLabel(item)}</option>)}</select></label>
+          <label className="text-sm font-medium text-gray-600">Class / Stream<select value={comparisonClassId} onChange={(e) => { setComparisonClassId(e.target.value); setComparisonData(null); setComparisonRows([]); }} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select class</option>{comparisonClassOptions.map(({ item, hasAllStreams, isFirst }) => <Fragment key={item.id}>{isFirst && hasAllStreams && <option value={`${comparisonAllStreamsValue}${item.id}`}>Grade {item.name || item.level || item.grade_level} — ALL STREAMS</option>}<option value={item.id}>{streamLabel(item)}</option></Fragment>)}</select></label>
           <label className="text-sm font-medium text-gray-600">Term A<select value={comparisonTermA} onChange={(e) => { setComparisonTermA(e.target.value); setComparisonExamA(''); }} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select term</option>{terms.map((term) => <option key={term.id} value={term.id}>{term.name} {term.academic_year}</option>)}</select></label>
           <label className="text-sm font-medium text-gray-600">Assessment A<select value={comparisonExamA} onChange={(e) => setComparisonExamA(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select first assessment</option>{comparisonExamsA.map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select></label>
           <label className="text-sm font-medium text-gray-600">Term B<select value={comparisonTermB} onChange={(e) => { setComparisonTermB(e.target.value); setComparisonExamB(''); }} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select term</option>{terms.map((term) => <option key={term.id} value={term.id}>{term.name} {term.academic_year}</option>)}</select></label>
