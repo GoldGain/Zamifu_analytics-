@@ -109,12 +109,13 @@ export default function StudentPortfolio() {
         .from('students')
         .select('*, status, graduation_year, classes(name, stream, stream_name)')
         .eq('profile_id', user?.id)
+        .eq('school_id', user?.schoolId)
         .maybeSingle();
 
       if (!student) { setLoading(false); return; }
 
       const [{ data: results }, { data: homework }, { data: assessments }] = await Promise.all([
-        supabaseUntyped.from('results').select('*, subjects(name), school_exams(name, type), terms(name, academic_year)').eq('student_id', student.id).order('created_at', { ascending: false }),
+        supabaseUntyped.from('results').select('*, subjects(name), school_exams(name, type), terms(name, academic_year)').eq('student_id', student.id).eq('school_id', student.school_id).order('created_at', { ascending: false }),
         supabaseUntyped.from('homework_submissions').select('*, homework(title, subjects(name))').eq('student_id', student.id).order('submitted_at', { ascending: false }),
         supabaseUntyped.from('assessment_results').select('*, assessments(name, max_mark, assessment_type)').eq('student_id', student.id).order('created_at', { ascending: false }),
       ]);

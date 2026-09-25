@@ -25,6 +25,7 @@ export default function StudentResults() {
         .from('students')
         .select('id, class_id, school_id, status, graduation_year, classes(name, stream, stream_name)')
         .eq('profile_id', user?.id)
+        .eq('school_id', user?.schoolId)
         .maybeSingle();
       if (studentData) {
         setStudent(studentData);
@@ -59,6 +60,7 @@ export default function StudentResults() {
         .from('results')
         .select('*, subjects(name), terms(name), school_exams(name, type)')
         .eq('student_id', student.id)
+        .eq('school_id', student.school_id)
         .eq('term_id', selectedTerm)
         .order('created_at', { ascending: false });
       const currentResults = data || [];
@@ -78,6 +80,7 @@ export default function StudentResults() {
             .from('results')
             .select('student_id, marks, out_of, cbc_points')
             .eq('class_id', student.class_id)
+            .eq('school_id', student.school_id)
             .eq('term_id', selectedTerm);
           if (classResults && classResults.length > 0) {
             const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
@@ -121,6 +124,7 @@ export default function StudentResults() {
       .from('results')
       .select('marks, out_of, percentage')
       .eq('student_id', student.id)
+      .eq('school_id', student.school_id)
       .eq('term_id', prevTerm.id);
     if (!prevResults || prevResults.length === 0) { setPreviousAvg(null); return; }
     const totalPct = prevResults.reduce((s: number, r: any) => s + (r.percentage || (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0);

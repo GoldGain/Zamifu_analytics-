@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, class_id } = body;
+    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id } = body;
 
     if (!email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields: email, password, role" }), {
@@ -72,40 +72,45 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Issue 4: Validate admission number for learners/students
-    const effectiveAdmissionNumber = admission_number || metadata?.assessment_number || metadata?.admission_number;
-    const effectiveClassId = class_id || metadata?.class_id;
-    
-    console.log(`Creating user: role=${role}, email=${email}, admission=${effectiveAdmissionNumber}, class=${effectiveClassId}`);
+    // Learner accounts are keyed by assessment number. Admission numbers remain
+    // optional display identifiers and must never become login credentials.
+    const effectiveAssessmentNumber = String(assessment_number || metadata?.assessment_number || '').trim();
+    console.log(`Creating user: role=${role}, email=${email}, assessment=${effectiveAssessmentNumber}`);
 
-    if (["learner", "student"].includes(role) && effectiveAdmissionNumber && effectiveClassId) {
+    if (["learner", "student"].includes(role) && !effectiveAssessmentNumber) {
+      return new Response(JSON.stringify({ error: "Assessment number is required for learner accounts", code: "ASSESSMENT_NUMBER_REQUIRED" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (["learner", "student"].includes(role) && effectiveAssessmentNumber) {
       const tempAdminClient = createClient(supabaseUrl, serviceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
 
-      // Check for duplicate admission number in the same class only
+      // Assessment numbers are unique within a school, independent of class.
       const { data: existingStudent, error: checkError } = await tempAdminClient
         .from("students")
-        .select("id, admission_number")
-        .eq("class_id", effectiveClassId)
-        .eq("admission_number", effectiveAdmissionNumber)
+        .select("id, assessment_number")
+        .eq("assessment_number", effectiveAssessmentNumber)
         .eq("school_id", school_id || callerProfile.school_id)
         .maybeSingle();
 
       if (checkError && checkError.code !== "PGRST116") {
-        console.error("Database error checking admission number:", checkError);
-        return new Response(JSON.stringify({ error: "Database error checking admission number" }), {
+        console.error("Database error checking assessment number:", checkError);
+        return new Response(JSON.stringify({ error: "Database error checking assessment number" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (existingStudent) {
-        console.warn(`Duplicate admission number found: ${effectiveAdmissionNumber} in class ${effectiveClassId}`);
+        console.warn(`Duplicate assessment number found: ${effectiveAssessmentNumber}`);
         return new Response(
           JSON.stringify({ 
-            error: `Admission number ${effectiveAdmissionNumber} already exists in this class`,
-            code: "DUPLICATE_ADMISSION_NUMBER"
+            error: `Assessment number ${effectiveAssessmentNumber} already exists in this school`,
+            code: "DUPLICATE_ASSESSMENT_NUMBER"
           }),
           {
             status: 409,
@@ -114,7 +119,7 @@ Deno.serve(async (req) => {
         );
       }
     } else {
-      console.log("Skipping admission number duplicate check (missing role/admission/class)");
+      console.log("Skipping learner assessment duplicate check for a non-learner role");
     }
 
     // Use service role client to create user (does NOT change current session)
@@ -135,6 +140,7 @@ Deno.serve(async (req) => {
         role: role,
         school_id: school_id || callerProfile.school_id,
         admission_number: admission_number || null,
+        assessment_number: effectiveAssessmentNumber || null,
         class_id: class_id || null,
         ...metadata,
       },

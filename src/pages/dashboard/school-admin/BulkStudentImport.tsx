@@ -111,13 +111,13 @@ export default function BulkStudentImport() {
       const last = row.last_name?.trim();
       const className = row.class_name?.trim().toLowerCase();
       const issues: string[] = [];
-      if (!admission && !assessment) issues.push('missing admission_number or assessment_number');
+      if (!assessment) issues.push('missing assessment_number');
       if (!first) issues.push('missing first_name');
       if (!last) issues.push('missing last_name');
       if (!className) issues.push('missing class_name');
       else if (!classByName.has(className)) issues.push('class not found');
-      const key = (admission || assessment)?.toLowerCase() || `row-${index}`;
-      if (seen.has(key)) issues.push('duplicate admission_number/assessment_number in CSV');
+      const key = assessment?.toLowerCase() || `row-${index}`;
+      if (seen.has(key)) issues.push('duplicate assessment_number in CSV');
       seen.add(key);
       return { row, rowNumber: index + 2, issues };
     });
@@ -132,7 +132,7 @@ export default function BulkStudentImport() {
     setResults([]);
     try {
       const { data: existing } = await supabaseUntyped.from('students').select('admission_number, assessment_number, student_email').eq('school_id', user.schoolId);
-      const existingAdmissions = new Set((existing || []).flatMap((s: any) => [s.admission_number, s.assessment_number]).filter(Boolean).map((value: any) => String(value).trim().toLowerCase()));
+      const existingAssessments = new Set((existing || []).map((s: any) => String(s.assessment_number || '').trim().toLowerCase()).filter(Boolean));
       const existingEmails = new Set((existing || []).map((s: any) => String(s.student_email || '').trim().toLowerCase()));
       const schoolPrefix = user.schoolId.split('-')[0] || 'student';
       const completed: ImportResult[] = [];
@@ -142,18 +142,19 @@ export default function BulkStudentImport() {
         const legacy = row[LEGACY_IDENTIFIER_HEADER]?.trim();
         const admission = row[ADMISSION_HEADER]?.trim() || legacy?.split('/')[0]?.trim() || '';
         const assessment = row[ASSESSMENT_HEADER]?.trim() || legacy?.split('/')[1]?.trim() || '';
-        const loginIdentifier = admission || assessment;
-        const admissionKey = (admission || assessment).toLowerCase();
+        const loginIdentifier = assessment.toUpperCase();
+        const assessmentKey = assessment.toLowerCase();
         const classRow = classByName.get(row.class_name.trim().toLowerCase());
         const fallbackEmail = `${loginIdentifier.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`;
         const email = (row.student_email?.trim().toLowerCase() || fallbackEmail);
         const curriculum = row.curriculum?.trim() || 'CBE';
         const genderValue = row.gender?.trim().toLowerCase();
         const gender = ['male', 'female', 'other'].includes(genderValue || '') ? genderValue : null;
-        const password = `${loginIdentifier}@2025`;
+        const password = loginIdentifier;
         const name = `${row.first_name} ${row.middle_name ? `${row.middle_name} ` : ''}${row.last_name}`.trim();
         try {
-          if (existingAdmissions.has(admissionKey) || (assessment && existingAdmissions.has(assessment.toLowerCase()))) throw new Error('admission or assessment number already exists in this school');
+          if (!assessment) throw new Error('assessment number is required');
+          if (existingAssessments.has(assessmentKey)) throw new Error('assessment number already exists in this school');
           if (existingEmails.has(email)) throw new Error('student email already exists in this school');
           if (!classRow) throw new Error('class not found');
 
@@ -165,8 +166,9 @@ export default function BulkStudentImport() {
             role: 'student',
             school_id: user.schoolId,
             admission_number: admission || assessment,
+            assessment_number: assessment,
             class_id: classRow.id,
-            metadata: { admission_number: admission || null, assessment_number: assessment || null, class_id: classRow.id },
+            metadata: { admission_number: admission || null, assessment_number: assessment, class_id: classRow.id },
           });
           const { data: studentData, error } = await supabaseUntyped.from('students').insert({
             profile_id: authData.user.id,
@@ -208,8 +210,7 @@ export default function BulkStudentImport() {
             await deleteScopedUser({ record_id: studentData.id, target_type: 'student', school_id: user.schoolId });
             throw new Error(`Parent account could not be linked: ${parentError.message}`);
           }
-          existingAdmissions.add(admissionKey);
-          if (assessment) existingAdmissions.add(assessment.toLowerCase());
+          existingAssessments.add(assessmentKey);
           existingEmails.add(email);
           completed.push({ row: index + 2, admission_number: admission, assessment_number: assessment, name, email, password, status: 'created' });
         } catch (error: any) {
@@ -247,7 +248,7 @@ export default function BulkStudentImport() {
 ])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
           </div>
           <p className="text-xs text-gray-600">Required columns are <strong>admission_number or assessment_number, first_name, last_name, and class_name</strong>. Provide both identifiers whenever available; legacy merged headers remain supported.
- Email and curriculum are optional; blank curriculum values default to <strong>CBE</strong>, while blank email values receive a unique generated student email. The default temporary password is the admission number followed by <strong>@2025</strong>.</p>
+ Required columns are <strong>assessment_number, first_name, last_name, and class_name</strong>; admission_number is optional display data. Email and curriculum are optional; blank curriculum values default to <strong>CBE</strong>, while blank email values receive a unique generated student email. The initial learner password is the capitalized <strong>assessment number</strong>.</p>
           <label className="border-2 border-dashed border-blue-200 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blue-50 transition">
             <Upload className="text-blue-600 mb-2" />
             <span className="font-bold text-blue-800">Choose CSV file</span>
@@ -259,7 +260,7 @@ export default function BulkStudentImport() {
 
         <section className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-3">
           <h2 className="font-black text-blue-900">Account safety</h2>
-          <p className="text-sm text-blue-800">Each learner is checked for duplicate admission or assessment numbers and emails before account creation. Existing learners are not overwritten.</p>
+          <p className="text-sm text-blue-800">Each learner is checked for a required, school-unique assessment number and email before account creation. Admission numbers remain optional display identifiers.</p>
           <p className="text-sm text-blue-800">The batch uses the same authenticated admin provisioning function as single-learner registration, confirms accounts, and reports failed rows without stopping the remaining import.</p>
           <p className="text-xs text-blue-700">Share the downloaded credentials securely and require learners to change their password after first login.</p>
         </section>

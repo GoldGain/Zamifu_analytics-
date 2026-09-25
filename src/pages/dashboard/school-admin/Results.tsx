@@ -94,7 +94,7 @@ function mergedLearningAreas(canonical: string[], dynamic: string[]) {
 }
 
 function computeTopLearnersPerArea(summaries: any[], areas: string[], band: SchoolLevelBand, topN: number) {
-  const rows: { area: string; rank: number; name: string; marks: number; grade: string }[] = [];
+  const rows: { area: string; rank: number; name: string; stream: string; marks: number; grade: string }[] = [];
   areas.forEach((area) => {
     summaries
       .filter((s: any) => s.subjects[area] !== undefined)
@@ -107,6 +107,7 @@ function computeTopLearnersPerArea(summaries: any[], areas: string[], band: Scho
           area,
           rank: i + 1,
           name: `${s.student?.first_name || ''} ${s.student?.last_name || ''}`.trim() || '—',
+          stream: formatClassStream(s.classObj),
           marks: Math.round(pct),
           grade: band === 'primary' ? gr.grade : gr.subLevel,
         });
@@ -421,6 +422,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       let smsSentCount = 0;
       let smsBalanceRemaining: number | null = null;
       const smsErrors: string[] = [];
+      const smsAttempts: any[] = [];
       try {
         const { sendSMS, SMS_TEMPLATES } = await import('@/lib/sms');
         const classObj = classes.find((schoolClass: any) => schoolClass.id === selectedClass);
@@ -456,6 +458,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             );
           for (const parentPhone of parentPhones) {
             const smsResult = await sendSMS(parentPhone, smsMessage, undefined, user?.schoolId || undefined);
+            smsAttempts.push(smsResult);
             if (smsResult.success) {
               smsSentCount++;
               const balance = Number((smsResult.data as any)?.smsBalance);
@@ -467,6 +470,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         }
       } catch (smsError) { console.warn('Parent SMS notification warning:', smsError); }
 
+      const smsReport = smsAttempts.length > 0
+        ? (await import('@/lib/sms')).summarizeSmsAttempts(smsAttempts, smsAttempts.length)
+        : null;
       if (smsSentCount === 0) {
         if (smsErrors.some((error) => /school has no sms balance|insufficient sms/i.test(error))) {
           toast.error('Insufficient SMS balance. Please top up.');
@@ -475,11 +481,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         } else if (smsErrors.length === 0) {
           toast.error('No SMS was sent. Check the selected results and parent contacts, then try again.');
         } else {
-          toast.error(smsErrors[0]);
+          toast.error(smsReport ? `${(await import('@/lib/sms')).formatSmsDeliverySummary(smsReport)} Completed: ${new Date(smsReport.timestamp).toLocaleString()}` : smsErrors[0]);
         }
       } else {
         const balanceText = smsBalanceRemaining === null ? '' : ` Balance remaining: ${smsBalanceRemaining}.`;
-        toast.success(`Sent to ${parentIds.length} parents. ${smsSentCount} SMS used.${balanceText}`);
+        toast.success(smsReport ? `${(await import('@/lib/sms')).formatSmsDeliverySummary(smsReport)} Completed: ${new Date(smsReport.timestamp).toLocaleString()}` : `Sent to ${parentIds.length} parents. ${smsSentCount} SMS used.${balanceText}`);
       }
     } catch (err: any) {
       toast.error('Failed to notify parents: ' + err.message);
@@ -549,8 +555,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     if (!deletingResult) return;
     setDeletingResultLoading(true);
     try {
-      const { error } = await supabaseUntyped.from('results').delete().eq('id', deletingResult.id);
-      if (error) throw error;
+      await deleteResults({ schoolId: user?.schoolId || '', recordId: deletingResult.id });
       toast.success('Result deleted');
       setDeletingResult(null);
       fetchAll();
@@ -563,7 +568,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const handleDeleteClassResults = async () => {
     const effectiveClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
-    if (!effectiveClassId || !selectedTerm) { toast.error('Select a class and term first'); return; }
+    if (!effectiveClassId || !selectedTerm || !selectedExam) { toast.error('Select a class, term, and assessment first'); return; }
     const className = classes.find((c: any) => c.id === effectiveClassId)?.name || 'this class';
     const termName = terms.find((t: any) => t.id === selectedTerm)?.name || '';
     const examName = exams.find((e: any) => e.id === selectedExam)?.name || '';
@@ -571,7 +576,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     if (!confirm(`Delete ALL results for ${label}? This cannot be undone.`)) return;
     setDeletingClassResults(true);
     try {
-      const deleted = await deleteResults({ schoolId: user?.schoolId || '', classId: effectiveClassId, termId: selectedTerm, examId: selectedExam || undefined });
+      const deleted = await deleteResults({ schoolId: user?.schoolId || '', classId: effectiveClassId, termId: selectedTerm, examId: selectedExam });
       toast.success(`Deleted ${deleted} result(s)`);
       fetchAll();
     } catch (err: any) { toast.error('Failed to delete results: ' + err.message); }
@@ -1426,7 +1431,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     // seed class makes Grade 1/PP1 inherit the wrong area count and produces
     // incorrect class means when streams have different result coverage.
     const summaryClasses = classes.filter((classObj: any) => opts.rawResults.some((result: any) => result.class_id === classObj.id));
-    const summaries = buildSummariesForClasses(opts.rawResults, summaryClasses.length ? summaryClasses : [opts.classObj]);
+    const streamSummaries = buildSummariesForClasses(opts.rawResults, summaryClasses.length ? summaryClasses : [opts.classObj]);
+    const summaries = [...streamSummaries]
+      .sort((a: any, b: any) => (b.totalPct - a.totalPct) || (b.totalPoints - a.totalPoints) || String(a.student?.last_name || '').localeCompare(String(b.student?.last_name || '')))
+      .map((summary: any, index: number) => ({ ...summary, position: index + 1 }));
     const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.filter(hasRecordedMarks).map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
     const totalStudents = summaries.length;
     // Class Mean Marks = sum of every learner's total percentage marks ÷ number of learners.
@@ -1555,8 +1563,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
     doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
     doc.setFontSize(pdfFontSize(doc, 10)); doc.text('TOP 10 LEARNERS PER LEARNING AREA', 105, 16, { align: 'center' });
-    const topAreaRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10).map((row) => [row.area, String(row.rank), row.name, String(row.marks), row.grade]);
-    autoTable(doc, { startY: 26, head: [['Learning Area', 'Rank', 'Learner', 'Marks', 'Grade']], body: topAreaRows, styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 1.5, halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, columnStyles: { 0: { halign: 'left', cellWidth: 42 }, 2: { halign: 'left' } }, showHead: 'everyPage', margin: { left: 14, right: 14 } });
+    const topAreaRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10).map((row) => [row.area, String(row.rank), row.name, row.stream, String(row.marks), row.grade]);
+    autoTable(doc, { startY: 26, head: [['Learning Area', 'Rank', 'Learner', 'Stream', 'Marks', 'Grade']], body: topAreaRows, styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 1.5, halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, columnStyles: { 0: { halign: 'left', cellWidth: 38 }, 2: { halign: 'left' }, 3: { halign: 'left' } }, showHead: 'everyPage', margin: { left: 10, right: 10 } });
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
 
     // ── PAGE 3: LEARNING AREA / SUBJECT PERFORMANCE (with previous exam) ──
@@ -1892,7 +1900,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         classSummaries.forEach((s) => classPositionByStudent.set(s.studentId, s.position));
       });
       const summaries = [...streamSummaries]
-        .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct))
+        .sort((a, b) => (b.totalPct - a.totalPct) || (b.totalPoints - a.totalPoints))
         .map((s, i) => ({
           ...s,
           position: i + 1,

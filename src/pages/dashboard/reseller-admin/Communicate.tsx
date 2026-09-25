@@ -3,7 +3,7 @@ import { Loader2, MessageSquare, Send, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { sendBulkSMS } from '@/lib/sms';
+import { sendBulkSMS, formatSmsDeliverySummary, summarizeSmsAttempts, type SmsDeliverySummary } from '@/lib/sms';
 
 type Recipient = { id: string; school_id: string; name: string; role: 'School Admin' | 'Teacher' | 'DOS'; phone: string | null };
 
@@ -17,6 +17,7 @@ export default function ResellerCommunicate() {
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [lastSmsReport, setLastSmsReport] = useState<SmsDeliverySummary | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -88,14 +89,11 @@ export default function ResellerCommunicate() {
           return { success: false, error: error?.message || 'SMS delivery failed.' };
         }
       }));
+      const report = summarizeSmsAttempts(results, chosen.length);
+      setLastSmsReport(report);
       const successful = results.reduce((count, result) => count + (result.data?.filter((item: any) => item.success).length || (result.success ? 1 : 0)), 0);
-      const failed = chosen.length - successful;
-      const deliveryErrors = results.flatMap((result: any) => [
-        result.error,
-        ...(result.data || []).map((item: any) => item.error),
-      ]).filter(Boolean);
-      if (successful) toast.success(`SMS sent to ${successful} recipient${successful === 1 ? '' : 's'}${failed ? `; ${failed} failed` : ''}.`);
-      else toast.error(deliveryErrors[0] || 'SMS delivery failed.');
+      if (successful) toast.success(formatSmsDeliverySummary(report));
+      else toast.error(formatSmsDeliverySummary(report));
     } catch (error: any) {
       toast.error(error?.message || 'Unable to send SMS. Please try again.');
     } finally { setSending(false); }
@@ -108,6 +106,7 @@ export default function ResellerCommunicate() {
       {loading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="animate-spin" size={16} /> Loading recipients…</div> : <div className="rounded-xl border border-slate-200"><div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-xs text-slate-500"><label className="flex items-center gap-2 font-semibold text-slate-700"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} disabled={!visibleRecipientIds.length} /> Select all visible</label><span>{selectedVisibleCount} selected · {visibleRecipients.length} contacts</span></div><div className="max-h-64 overflow-auto">{visibleRecipients.length ? visibleRecipients.map((recipient) => <label key={recipient.id} className={`flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 ${recipient.phone ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}><input type="checkbox" checked={selected.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)} disabled={!recipient.phone} /><Users size={16} className="text-slate-400" /><span className="flex-1 text-sm text-slate-800">{recipient.name}<span className="ml-2 text-xs text-slate-500">{recipient.role} · {schools.find((school) => school.id === recipient.school_id)?.name || 'School'}</span></span><span className="text-xs text-slate-500">{recipient.phone || 'No phone on file'}</span></label>) : <p className="p-5 text-sm text-slate-500">No contacts match the selected filters.</p>}</div></div>}
       <label className="block text-sm font-semibold text-slate-700">Message<textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength={480} rows={5} placeholder="Type your message…" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" /></label>
       <div className="flex items-center justify-between gap-3"><span className="text-xs text-slate-500">{message.length}/480 characters · {selectedVisibleCount} selected</span><button type="button" onClick={() => void send()} disabled={sending} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{sending ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />} Send SMS</button></div>
+      {lastSmsReport && <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900"><strong>Last delivery report</strong><p className="mt-1">{formatSmsDeliverySummary(lastSmsReport)}</p><p className="mt-1 text-blue-700">Completed: {new Date(lastSmsReport.timestamp).toLocaleString()} · Reseller-sponsored messages do not consume the selected school wallet.</p></div>}
     </section>
   </div>;
 }

@@ -49,7 +49,7 @@ export default function StudentDashboard() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const { data: student } = await supabaseUntyped.from('students').select('*, classes(name, stream, stream_name)').eq('profile_id', user?.id).single();
+    const { data: student } = await supabaseUntyped.from('students').select('*, classes(name, stream, stream_name)').eq('profile_id', user?.id).eq('school_id', user?.schoolId).single();
     if (student) {
       setStudentData(student as unknown as StudentRecord);
       
@@ -57,8 +57,8 @@ export default function StudentDashboard() {
       const clId = student.class_id ?? '';
       const schId = user?.schoolId ?? '';
       const [{ data: results }, { data: invoices }, { data: anns }, { data: hw }] = await Promise.all([
-        supabaseUntyped.from('results').select('*, subjects(name), terms(name)').eq('student_id', sid).order('created_at', { ascending: false }).limit(5),
-        supabaseUntyped.from('fee_invoices').select('*').eq('student_id', sid).is('deleted_at', null),
+        supabaseUntyped.from('results').select('*, subjects(name), terms(name)').eq('student_id', sid).eq('school_id', schId).order('created_at', { ascending: false }).limit(5),
+        supabaseUntyped.from('fee_invoices').select('*').eq('student_id', sid).eq('school_id', schId).is('deleted_at', null),
         supabaseUntyped.from('announcements').select('*').eq('school_id', schId).eq('is_published', true).order('created_at', { ascending: false }).limit(3),
         supabaseUntyped.from('homework').select('*, subjects(name)').eq('class_id', clId).eq('is_active', true).order('due_date').limit(3),
       ]);

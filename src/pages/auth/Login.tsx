@@ -7,15 +7,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import PWAInstallButton from '@/components/PWAInstallButton';
 import SEO from '@/components/SEO';
 
-interface StudentData {
-  email: string;
-  admission_number: string;
-}
-
 export default function Login() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [loginMethod, setLoginMethod] = useState<'email' | 'admission'>('email');
+  const [loginMethod, setLoginMethod] = useState<'email' | 'assessment'>('email');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -52,26 +47,38 @@ export default function Login() {
     }
 
     try {
-      let email = identifier;
+      let email = identifier.trim();
+      let assessmentCredential = '';
+      let legacyAdmissionCredential = '';
 
-      // If using admission number, find the student's email
-      if (loginMethod === 'admission') {
-        const { data: student, error: studentError } = await supabase
+      // Learners use their assessment number as both the username lookup key
+      // and the initial password. Admission numbers are display identifiers and
+      // are intentionally never accepted as learner credentials.
+      if (loginMethod === 'assessment') {
+        assessmentCredential = identifier.trim().toUpperCase();
+        const { data: students, error: studentError } = await supabase
           .from('students')
-          .select('student_email, admission_number, assessment_number')
-          .or(`admission_number.ilike.${identifier.trim()},assessment_number.ilike.${identifier.trim()}`)
-          .maybeSingle();
+          .select('student_email, admission_number, assessment_number, is_active')
+          .ilike('assessment_number', assessmentCredential)
+          .eq('is_active', true)
+          .limit(2);
 
-        if (studentError || !student) {
-          setError('❌ Admission No/Assessment No not found. Please check with your school.');
+        if (studentError || !students?.length) {
+          setError('Assessment number not found. Please check the number given by your school.');
+          setLoading(false);
+          return;
+        }
+        if (students.length > 1) {
+          setError('This assessment number is assigned to more than one learner. Please contact your school administrator.');
           setLoading(false);
           return;
         }
 
-        const studentData = student as unknown as any;
+        const studentData = students[0] as unknown as any;
+        legacyAdmissionCredential = String(studentData.admission_number || '').trim();
         const emailToUse = studentData.student_email || studentData.email;
         if (!emailToUse) {
-          setError('❌ Student account not set up. Please contact your school administrator.');
+          setError('Learner account is not set up. Please contact your school administrator.');
           setLoading(false);
           return;
         }
@@ -79,14 +86,30 @@ export default function Login() {
         email = emailToUse;
       }
 
-      // Attempt login via Supabase directly
-      const { error: loginError, data } = await supabase.auth.signInWithPassword({
+      // Attempt the new assessment-number password first. Existing learner
+      // accounts may still have the former temporary password; a successful
+      // fallback is immediately upgraded to the new password.
+      let { error: loginError, data } = await supabase.auth.signInWithPassword({
         email: email,
-        password: password,
+        password: loginMethod === 'assessment' ? assessmentCredential : password,
       });
 
+      if (loginError && loginMethod === 'assessment') {
+        const legacyPasswords = Array.from(new Set([`${assessmentCredential}@2025`, legacyAdmissionCredential ? `${legacyAdmissionCredential}@2025` : ''].filter(Boolean)));
+        let legacyLogin = await supabase.auth.signInWithPassword({ email, password: legacyPasswords[0] });
+        if (legacyLogin.error && legacyPasswords[1]) {
+          legacyLogin = await supabase.auth.signInWithPassword({ email, password: legacyPasswords[1] });
+        }
+        loginError = legacyLogin.error;
+        data = legacyLogin.data;
+        if (!loginError && data.user) {
+          const { error: upgradeError } = await supabase.auth.updateUser({ password: assessmentCredential });
+          if (upgradeError) console.warn('Legacy learner password upgrade deferred:', upgradeError.message);
+        }
+      }
+
       if (loginError) {
-        setError('❌ Invalid credentials. Please check your email or Admission No/Assessment No and password.');
+        setError(loginMethod === 'assessment' ? 'Invalid assessment number or password. Learner passwords use the capitalized assessment number.' : 'Invalid email or password.');
         setLoading(false);
         return;
       }
@@ -106,6 +129,13 @@ export default function Login() {
 
       const profileRecord = profileData as unknown as { role: string } | null;
       const role = profileRecord?.role || data.user.user_metadata?.role;
+
+      if (role === 'student' && loginMethod !== 'assessment') {
+        await supabase.auth.signOut();
+        setError('Learners must use Student Login with their assessment number.');
+        setLoading(false);
+        return;
+      }
 
       toast.success('Welcome back!');
       setLoading(false);
@@ -189,9 +219,9 @@ export default function Login() {
             </button>
             <button
               type="button"
-              onClick={() => setLoginMethod('admission')}
+              onClick={() => setLoginMethod('assessment')}
               className={`flex-1 min-h-12 py-3 rounded-lg text-sm sm:text-base font-medium transition-colors flex items-center justify-center gap-1 ${
-                loginMethod === 'admission' 
+                loginMethod === 'assessment'
                   ? 'bg-[#2563EB] text-white' 
                   : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -203,19 +233,19 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[#111111] mb-1.5">
-                {loginMethod === 'email' ? 'Email Address' : 'Admission No/Assessment No'}
+                {loginMethod === 'email' ? 'Email Address' : 'Assessment Number'}
               </label>
               <input
                 type={loginMethod === 'email' ? 'email' : 'text'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., ADM001 or ASM001'}
+                placeholder={loginMethod === 'email' ? 'your@email.com' : 'e.g., ASM001'}
                 className="w-full min-h-12 px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
                 required
                 autoFocus
               />
-              {loginMethod === 'admission' && (
-                <p className="text-xs text-gray-500 mt-1">Enter the Admission No/Assessment No given by your school</p>
+              {loginMethod === 'assessment' && (
+                <p className="text-xs text-gray-500 mt-1">Enter the assessment number given by your school. Your initial password is the same number in capitals.</p>
               )}
             </div>
 
@@ -267,8 +297,8 @@ export default function Login() {
           </div>
 
           <div className="mt-6 text-center text-xs text-gray-400">
-            <p>📧 School Admin / Teacher / Parent: Use Email Login</p>
-            <p className="mt-1">🎓 Learners: Use Admission No / Assessment No or Email Login</p>
+            <p>School Admin / Teacher / Parent: Use Email Login</p>
+            <p className="mt-1">Learners: Use Student Login with your assessment number</p>
           </div>
         </div>
       </div>

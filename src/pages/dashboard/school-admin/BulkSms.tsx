@@ -3,7 +3,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Send, Loader2, MessageSquare, Users, CheckCircle, AlertCircle, Bell, Info } from 'lucide-react';
 import { toast } from 'sonner';
-import { sendBulkSMS, generateAnnouncementSMS } from '@/lib/sms';
+import { sendBulkSMS, generateAnnouncementSMS, formatSmsDeliverySummary, summarizeSmsAttempts, type SmsDeliverySummary } from '@/lib/sms';
 import { formatClassStream } from '@/lib/class-label';
 
 type SMSType = 'announcement' | 'custom';
@@ -30,6 +30,7 @@ export default function BulkSms() {
   const [message, setMessage] = useState('');
   const [subject, setSubject] = useState('');
   const [recipientCount, setRecipientCount] = useState(0);
+  const [lastSmsReport, setLastSmsReport] = useState<SmsDeliverySummary | null>(null);
 
   useEffect(() => {
     fetchClasses();
@@ -105,6 +106,7 @@ export default function BulkSms() {
     setSending(true);
     let successCount = 0;
     let failCount = 0;
+    const attempts: any[] = [];
 
     const validStudents = students.filter(s => s.parent_phone && s.parent_phone.length >= 10);
 
@@ -119,6 +121,7 @@ export default function BulkSms() {
         .replace(/{school}/g, schoolData?.name || user?.schoolName || 'School');
 
       const result = await sendBulkSMS([student.parent_phone], personalizedMessage, undefined, user?.schoolId || undefined);
+      attempts.push(result);
       if (result.success) {
         successCount++;
       } else {
@@ -127,12 +130,14 @@ export default function BulkSms() {
     }
 
     setSending(false);
+    const report = summarizeSmsAttempts(attempts, validStudents.length);
+    setLastSmsReport(report);
 
     if (successCount > 0) {
-      toast.success(`SMS sent successfully to ${successCount} parent${successCount > 1 ? 's' : ''}`);
+      toast.success(formatSmsDeliverySummary(report));
     }
     if (failCount > 0) {
-      toast.error(`Failed to send to ${failCount} parent${failCount > 1 ? 's' : ''}`);
+      toast.error(formatSmsDeliverySummary(report));
     }
   };
 
@@ -274,6 +279,7 @@ export default function BulkSms() {
             </>
           )}
         </button>
+        {lastSmsReport && <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900"><strong>Last delivery report</strong><p className="mt-1">{formatSmsDeliverySummary(lastSmsReport)}</p><p className="mt-1 text-blue-700">Completed: {new Date(lastSmsReport.timestamp).toLocaleString()}</p></div>}
       </div>
 
       {/* Preview */}
