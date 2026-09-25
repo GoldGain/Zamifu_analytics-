@@ -6,7 +6,7 @@ import { Loader2, ArrowLeft, Check, Mail, User, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ForgotPassword() {
-  const [resetMethod, setResetMethod] = useState<'email' | 'admission' | 'phone'>('email');
+  const [resetMethod, setResetMethod] = useState<'email' | 'assessment' | 'phone'>('email');
   const [identifier, setIdentifier] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -43,23 +43,23 @@ export default function ForgotPassword() {
       } else {
         let email = identifier;
 
-        // If using admission number, find the student's email
-        if (resetMethod === 'admission') {
+        // Learner reset lookup uses assessment number only.
+        if (resetMethod === 'assessment') {
           const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('email, student_email, admission_number, assessment_number, first_name, last_name')
-            .or(`admission_number.ilike.${identifier.trim()},assessment_number.ilike.${identifier.trim()}`)
+            .select('email, student_email, assessment_number, first_name, last_name')
+            .ilike('assessment_number', identifier.trim().toUpperCase())
             .maybeSingle() as any;
 
           if (studentError || !student) {
-            setError('❌ Admission number not found. Please contact your school.');
+            setError('Assessment number not found. Please contact your school.');
             setLoading(false);
             return;
           }
 
           const linkedEmail = student.email || student.student_email;
           if (!linkedEmail) {
-            setError('❌ No email linked to this Admission No / Assessment No. Please contact your school administrator.');
+            setError('No email linked to this assessment number. Please contact your school administrator.');
             setLoading(false);
             return;
           }
@@ -307,14 +307,14 @@ export default function ForgotPassword() {
             </button>
             <button
               type="button"
-              onClick={() => { setResetMethod('admission'); setMatchedAccount(null); setAccountChoices([]); setSelectedAccountId(''); setError(''); }}
+              onClick={() => { setResetMethod('assessment'); setMatchedAccount(null); setAccountChoices([]); setSelectedAccountId(''); setError(''); }}
               className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
-                resetMethod === 'admission' 
+                resetMethod === 'assessment'
                   ? 'bg-[#2563EB] text-white' 
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              <User className="w-4 h-4" /> Admission
+              <User className="w-4 h-4" /> Assessment
             </button>
             <button
               type="button"
@@ -332,7 +332,7 @@ export default function ForgotPassword() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[#111111] mb-1.5">
-                {resetMethod === 'email' ? 'Email Address' : resetMethod === 'admission' ? 'Admission Number' : 'Phone Number'}
+                {resetMethod === 'email' ? 'Email Address' : resetMethod === 'assessment' ? 'Assessment Number' : 'Phone Number'}
               </label>
               <input
                 type={resetMethod === 'email' ? 'email' : 'text'}
@@ -341,8 +341,8 @@ export default function ForgotPassword() {
                 placeholder={
                   resetMethod === 'email' 
                     ? 'you@school.ac.ke' 
-                    : resetMethod === 'admission' 
-                    ? 'e.g., GFA-2025-001'
+                    : resetMethod === 'assessment'
+                    ? 'e.g., ASM001'
                     : 'e.g., 0712345678 or 254712345678'
                 }
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
@@ -354,9 +354,9 @@ export default function ForgotPassword() {
                   Enter the phone number linked to your account. An OTP will be sent via SMS.
                 </p>
               )}
-              {resetMethod === 'admission' && (
+              {resetMethod === 'assessment' && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Enter your admission number to reset your password
+                  Enter your assessment number to reset your password
                 </p>
               )}
             </div>

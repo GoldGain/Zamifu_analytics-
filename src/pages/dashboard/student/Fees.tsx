@@ -12,9 +12,9 @@ export default function StudentFees() {
 
   const fetchFees = async () => {
     setLoading(true);
-    const { data: student } = await supabaseUntyped.from('students').select('id').eq('profile_id', user?.id).single();
+    const { data: student } = await supabaseUntyped.from('students').select('id, school_id').eq('profile_id', user?.id).eq('school_id', user?.schoolId).single();
     if (student) {
-      const { data } = await supabaseUntyped.from('fee_invoices').select('*, terms(name)').eq('student_id', student.id).is('deleted_at', null).order('created_at', { ascending: false });
+      const { data } = await supabaseUntyped.from('fee_invoices').select('*, terms(name)').eq('student_id', student.id).eq('school_id', student.school_id).is('deleted_at', null).order('created_at', { ascending: false });
       setInvoices(data || []);
     }
     setLoading(false);

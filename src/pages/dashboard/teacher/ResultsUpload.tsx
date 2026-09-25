@@ -6,7 +6,7 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Upload, Download, FileText, Loader2, CheckCircle, AlertCircle, ClipboardEdit, BookOpen, ArrowLeft } from 'lucide-react';
+import { Upload, Download, FileText, Loader2, CheckCircle, AlertCircle, ClipboardEdit, BookOpen, ArrowLeft, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { calculateResultGrades, gradeDisplayLabel, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/lib/teacher-restrictions';
 import { resolveVisibleLearners } from '@/lib/optional-subjects';
 import { saveResultRecords } from '@/lib/save-results';
+import { deleteResults } from '@/lib/resultActions';
 
 interface ProcessedRow {
   student_id: string;
@@ -34,6 +35,7 @@ interface ManualRow {
   name: string;
   admission_number: string;
   marks: string; // string for input control
+  status?: 'draft' | 'submitted';
 }
 
 export default function TeacherResultsUpload({ privileged = false }: { privileged?: boolean }) {
@@ -58,6 +60,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const [csvData, setCsvData] = useState<ProcessedRow[]>([]);
   const [preview, setPreview] = useState(false);
   const [manualRows, setManualRows] = useState<ManualRow[]>([]);
+  const [selectedManualStudentIds, setSelectedManualStudentIds] = useState<string[]>([]);
   const [manualPreview, setManualPreview] = useState<ProcessedRow[]>([]);
   const [manualPreviewReady, setManualPreviewReady] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -161,11 +164,25 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       if (studs.length === 0) {
         const { data } = await supabaseUntyped
           .from('students')
-          .select('id, first_name, last_name, admission_number')
+          .select('id, first_name, last_name, admission_number, assessment_number')
           .eq('class_id', selectedClass)
+          .eq('school_id', user?.schoolId)
           .eq('is_active', true);
         studs = data || [];
       }
+
+      const resultQuery = supabaseUntyped
+        .from('results')
+        .select('student_id, marks, out_of, status')
+        .eq('school_id', user?.schoolId)
+        .eq('class_id', selectedClass)
+        .eq('subject_id', selectedSubject)
+        .eq('term_id', selectedTerm);
+      const scopedResultsQuery = selectedExam ? resultQuery.eq('exam_id', selectedExam) : resultQuery.is('exam_id', null);
+      const { data: existingResults } = selectedSubject && selectedTerm && selectedExam
+        ? await scopedResultsQuery
+        : { data: [] as any[] };
+      const existingByStudent = new Map((existingResults || []).map((result: any) => [result.student_id, result]));
 
       // Issue: Natural sort for admission numbers (e.g., 2 before 10)
       const ordered = studs.sort((a, b) => {
@@ -178,9 +195,11 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       setManualRows(ordered.map((s: any) => ({
         student_id: s.id,
         name: `${s.first_name} ${s.last_name}`,
-        admission_number: s.admission_number,
-        marks: '',
+        admission_number: s.admission_number || s.assessment_number || '—',
+        marks: existingByStudent.has(s.id) ? String(existingByStudent.get(s.id)?.marks ?? '') : '',
+        status: existingByStudent.get(s.id)?.status || undefined,
       })));
+      setSelectedManualStudentIds([]);
       setManualPreviewReady(false);
       setManualPreview([]);
     };
@@ -192,7 +211,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       );
       return stillValid ? prev : '';
     });
-  }, [selectedClass, selectedSubject, teacherAssignments, teacherIdentity, isDoS]);
+  }, [selectedClass, selectedSubject, selectedTerm, selectedExam, teacherAssignments, teacherIdentity, isDoS]);
 
   const currentClassData = classes.find((c: any) => c.id === selectedClass);
   const currentBand = getSchoolLevelBand(currentClassData);
@@ -393,15 +412,6 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       return;
     }
 
-    // Check for duplicates (only on submit, not draft)
-    if (!asDraft) {
-      const isDuplicate = await checkDuplicateSubject();
-      if (isDuplicate) {
-        toast.error('Marks for this learning area already exist. Please use "Edit" from My Marks page.');
-        return;
-      }
-    }
-
     setUploading(true);
     setError('');
     try {
@@ -488,7 +498,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       setPreview(false);
       setManualPreview([]);
       setManualPreviewReady(false);
-      setManualRows(prev => prev.map(r => ({ ...r, marks: '' })));
+      setManualRows(prev => prev.map(r => ({ ...r, status: asDraft ? 'draft' : 'submitted' })));
       if (asDraft) {
         toast.success(`${records.length} results saved as draft! You can edit them later.`);
       } else {
@@ -501,13 +511,39 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     setUploading(false);
   };
 
+  const handleDeleteSelectedMarks = async () => {
+    if (!selectedClass || !selectedSubject || !selectedTerm || !selectedExam) {
+      toast.error('Select a class, learning area, term, and assessment first.');
+      return;
+    }
+    const selectedRows = manualRows.filter((row) => selectedManualStudentIds.includes(row.student_id) && row.marks !== '');
+    if (!selectedRows.length) {
+      toast.error('Select at least one learner with entered marks.');
+      return;
+    }
+    if (!confirm(`Delete marks for ${selectedRows.length} learner(s)? This cannot be undone.`)) return;
+    setUploading(true);
+    try {
+      const deleted = await deleteResults({ schoolId: user?.schoolId || '', classId: selectedClass, subjectId: selectedSubject, termId: selectedTerm, examId: selectedExam, studentIds: selectedRows.map((row) => row.student_id) });
+      setManualRows((rows) => rows.map((row) => selectedManualStudentIds.includes(row.student_id) ? ({ ...row, marks: '', status: undefined }) : row));
+      setSelectedManualStudentIds([]);
+      setManualPreview([]);
+      setManualPreviewReady(false);
+      toast.success(`Deleted ${deleted} mark(s); selected learners are pending again.`);
+    } catch (err: any) {
+      toast.error(`Failed to delete results: ${err.message}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // ── CSV helpers ──────────────────────────────────────────────────────────────
   const downloadTemplate = () => {
     if (!students.length) { toast.error('Please select a class first'); return; }
     const rows = students.map(s => ({
       student_id: s.id,
       name: `${s.first_name} ${s.last_name}`,
-      admission_number: s.admission_number,
+      admission_number: s.admission_number || s.assessment_number || '—',
       marks: '',
       out_of: outOf,
     }));
@@ -539,7 +575,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
           return {
             student_id: row.student_id,
             name: row.name || '',
-            admission_number: row.admission_number || '',
+            admission_number: row.admission_number || row.assessment_number || '—',
             marks,
             out_of: rowOutOf,
             percentage,
@@ -755,8 +791,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-[#111111]">
-                {students.length > 0 ? `Enter marks for ${students.length} students (out of ${outOf})` : 'Select a class to load students'}
+                {students.length > 0 ? `Review marks for ${students.length} learners (out of ${outOf})` : 'Select a class to load students'}
               </h3>
+              {students.length > 0 && <p className="text-xs text-gray-500 mt-1">Entered: {manualRows.filter((row) => row.marks !== '').length} · Pending: {manualRows.filter((row) => row.marks === '').length}</p>}
               {manualPreviewReady && (
                 <div className="flex items-center gap-2">
                   <button onClick={downloadManualPDF} className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-200">
@@ -779,9 +816,10 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">#</th>
+                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3"><input type="checkbox" aria-label="Select all entered marks" checked={manualRows.some((row) => row.marks !== '') && manualRows.filter((row) => row.marks !== '').every((row) => selectedManualStudentIds.includes(row.student_id))} onChange={(event) => setSelectedManualStudentIds(event.target.checked ? manualRows.filter((row) => row.marks !== '').map((row) => row.student_id) : [])} /></th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learner Name</th> {/* Issue 26 */}
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Adm #</th>
+                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Status</th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks (out of {outOf})</th>
                         {manualPreviewReady && (
                           <>
@@ -797,10 +835,15 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                       {manualRows.map((row, idx) => {
                         const previewRow = manualPreview.find(p => p.student_id === row.student_id);
                         return (
-                          <tr key={row.student_id} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-2 px-3 text-gray-400">{idx + 1}</td>
+                          <tr key={row.student_id} className={`border-b border-gray-50 hover:bg-gray-50 ${row.status ? 'bg-emerald-50/40' : ''}`}>
+                            <td className="py-2 px-3 text-gray-400"><input type="checkbox" aria-label={`Select ${row.name}`} checked={selectedManualStudentIds.includes(row.student_id)} disabled={row.marks === ''} onChange={(event) => setSelectedManualStudentIds((current) => event.target.checked ? [...new Set([...current, row.student_id])] : current.filter((id) => id !== row.student_id))} /> <span>{idx + 1}</span></td>
                             <td className="py-2 px-3 font-medium">{row.name}</td>
                             <td className="py-2 px-3 text-gray-500">{row.admission_number}</td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold uppercase ${row.status === 'submitted' ? 'bg-green-100 text-green-700' : row.status === 'draft' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {row.status || 'Pending'}
+                              </span>
+                            </td>
                             <td className="py-2 px-3">
                               <input
                                 type="number"
@@ -850,6 +893,15 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                     <ClipboardEdit className="w-4 h-4" />
                     Calculate Grades &amp; Preview
                   </button>
+                  {selectedExam && selectedManualStudentIds.length > 0 && (
+                    <button
+                      onClick={handleDeleteSelectedMarks}
+                      disabled={uploading}
+                      className="flex items-center gap-2 border border-red-200 bg-red-50 text-red-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-red-100 disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete selected marks ({selectedManualStudentIds.length})
+                    </button>
+                  )}
                   {manualPreviewReady && (
                     <>
                       {/* Mean Calculation Display */}

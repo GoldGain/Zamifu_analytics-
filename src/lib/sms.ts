@@ -24,6 +24,41 @@ interface SMSResponse {
   error?: string;
 }
 
+export interface SmsDeliverySummary {
+  attempted: number;
+  sent: number;
+  failed: number;
+  balanceRemaining: number | null;
+  errors: string[];
+  timestamp: string;
+}
+
+/** Normalize single-send and sendBulkSMS responses into one auditable UI summary. */
+export function summarizeSmsAttempts(attempts: Array<SMSResponse | any>, attemptedOverride?: number): SmsDeliverySummary {
+  const rows = attempts.flatMap((attempt: any) => Array.isArray(attempt?.data) ? attempt.data : [attempt]).filter(Boolean);
+  const sent = rows.filter((row: any) => row.success === true).length;
+  const failedRows = rows.filter((row: any) => row.success !== true);
+  const attempted = Math.max(Number(attemptedOverride || 0), rows.length);
+  const balances = rows
+    .map((row: any) => Number(row?.smsBalance ?? row?.data?.smsBalance))
+    .filter((value: number) => Number.isFinite(value));
+  const errors = Array.from(new Set(failedRows.map((row: any) => row.error || row.message).filter(Boolean).map(String))).slice(0, 3);
+  return {
+    attempted,
+    sent,
+    failed: Math.max(failedRows.length, attempted - sent),
+    balanceRemaining: balances.length ? balances[balances.length - 1] : null,
+    errors,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export function formatSmsDeliverySummary(summary: SmsDeliverySummary): string {
+  const balance = summary.balanceRemaining === null ? 'not returned' : `${summary.balanceRemaining} credit${summary.balanceRemaining === 1 ? '' : 's'}`;
+  const failure = summary.errors.length ? ` First failure: ${summary.errors[0]}` : '';
+  return `SMS delivery — attempted ${summary.attempted}, sent ${summary.sent}, failed ${summary.failed}; balance remaining ${balance}.${failure}`;
+}
+
 export interface SMSConfig {
   provider: 'olympus' | 'africastalking';
   apiKey?: string;

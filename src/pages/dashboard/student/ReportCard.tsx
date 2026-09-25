@@ -62,6 +62,7 @@ export default function StudentReportCard() {
         .from('students')
         .select('*, classes(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
         .eq('profile_id', user?.id)
+        .eq('school_id', user?.schoolId)
         .single();
       setStudent(studentData);
       setPhotoLoadError(false);
@@ -191,6 +192,7 @@ export default function StudentReportCard() {
       .from('results')
       .select('*, subjects(name), terms(name, academic_year), school_exams(name, type)')
       .eq('student_id', student.id)
+      .eq('school_id', student.school_id)
       .eq('term_id', selectedTerm)
       .order('subjects(name)');
     setResults(data || []);
@@ -199,6 +201,7 @@ export default function StudentReportCard() {
       .from('results')
       .select('*, students(id, first_name, last_name), subjects(name)')
       .eq('class_id', student.class_id)
+      .eq('school_id', student.school_id)
       .eq('term_id', selectedTerm);
     if (classResults && classResults.length > 0) {
       setClassBestList(computeBestPerSubject(classResults, student?.classes || {}));
@@ -212,7 +215,8 @@ export default function StudentReportCard() {
     const { data: allResults } = await supabaseUntyped
       .from('results')
         .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
-      .eq('student_id', student.id)
+        .eq('student_id', student.id)
+        .eq('school_id', student.school_id)
       .order('terms(academic_year)', { ascending: true })
       .order('terms(name)', { ascending: true });
     if (!allResults) {
@@ -237,6 +241,7 @@ export default function StudentReportCard() {
       .from('results')
       .select('marks, out_of, percentage')
       .eq('student_id', student.id)
+      .eq('school_id', student.school_id)
       .eq('term_id', prevTerm.id);
     if (!prevResults || prevResults.length === 0) { setPreviousAvg(null); return; }
     const totalPct = prevResults.reduce((s: number, r: any) => s + (r.percentage || (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0);

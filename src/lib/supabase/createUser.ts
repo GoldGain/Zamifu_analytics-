@@ -10,6 +10,7 @@ interface CreateUserInput {
   school_id?: string | null;
   metadata?: Record<string, unknown>;
   admission_number?: string;
+  assessment_number?: string;
   class_id?: string;
 }
 
@@ -41,6 +42,7 @@ export async function createScopedUser(input: CreateUserInput): Promise<CreateUs
       role: input.role,
       school_id: input.school_id || null,
       admission_number: input.admission_number || null,
+      assessment_number: input.assessment_number || null,
       class_id: input.class_id || null,
       metadata: input.metadata || {},
     },

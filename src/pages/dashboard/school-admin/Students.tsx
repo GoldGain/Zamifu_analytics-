@@ -134,19 +134,20 @@ export default function SchoolAdminStudents() {
     try {
       const admissionNumber = formData.admission_number.trim();
       const assessmentNumber = formData.assessment_number.trim();
-      if (!admissionNumber && !assessmentNumber) throw new Error('Provide an admission number or assessment number.');
-      const { data: existingStudent } = await supabaseUntyped
+      if (!assessmentNumber) throw new Error('Assessment number is required for every new learner account.');
+      const { data: existingAssessment } = await supabaseUntyped
         .from('students')
         .select('id')
         .eq('school_id', user?.schoolId)
-        .or(`admission_number.ilike.${admissionNumber || '__none__'},assessment_number.ilike.${assessmentNumber || '__none__'}`)
+        .ilike('assessment_number', assessmentNumber)
         .maybeSingle();
-      if (existingStudent) throw new Error('Admission or assessment number already exists in this school.');
+      if (existingAssessment) throw new Error('Assessment number already exists in this school.');
       
       // Check for duplicate email
       const { data: emailExists } = await supabaseUntyped
         .from('students')
         .select('id')
+        .eq('school_id', user?.schoolId)
         .eq('student_email', formData.student_email)
         .maybeSingle();
       
@@ -156,9 +157,9 @@ export default function SchoolAdminStudents() {
       
       // Make student email unique to this school to avoid cross-school conflicts
       const schoolPrefix = user?.schoolId ? user.schoolId.split('-')[0] : 'student';
-      const loginIdentifier = admissionNumber || assessmentNumber;
+      const loginIdentifier = assessmentNumber.toUpperCase();
       const studentEmail = formData.student_email || `${loginIdentifier.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
-      const studentPassword = `${loginIdentifier}@2025`;
+      const studentPassword = loginIdentifier;
       
       const authData = await createScopedUser({
         email: studentEmail,
@@ -167,7 +168,9 @@ export default function SchoolAdminStudents() {
         last_name: formData.last_name,
         role: 'student',
         school_id: user?.schoolId || null,
-          metadata: { admission_number: admissionNumber || null, assessment_number: assessmentNumber || null, class_id: formData.class_id },
+        admission_number: admissionNumber || undefined,
+        assessment_number: assessmentNumber,
+        metadata: { admission_number: admissionNumber || null, assessment_number: assessmentNumber, class_id: formData.class_id },
       });
       const studentUserId = authData.user.id;
       const { data: studentData, error: studentError } = await supabaseUntyped
@@ -295,9 +298,19 @@ export default function SchoolAdminStudents() {
     if (!editingStudent) return;
     setSaving(true);
     try {
+      const assessmentNumber = editForm.assessment_number.trim();
+      if (!assessmentNumber) throw new Error('Assessment number is required for every learner account.');
+      const { data: duplicateAssessment } = await supabaseUntyped
+        .from('students')
+        .select('id')
+        .eq('school_id', user?.schoolId)
+        .ilike('assessment_number', assessmentNumber)
+        .neq('id', editingStudent.id)
+        .limit(1);
+      if (duplicateAssessment?.length) throw new Error('Assessment number already exists in this school.');
       const { error } = await supabaseUntyped.from('students').update({
         admission_number: editForm.admission_number.trim() || null,
-        assessment_number: editForm.assessment_number.trim() || null,
+        assessment_number: assessmentNumber,
         first_name: editForm.first_name.trim(),
         middle_name: editForm.middle_name.trim() || null,
         last_name: editForm.last_name.trim(),
@@ -311,7 +324,7 @@ export default function SchoolAdminStudents() {
         disability_status: editForm.disability_status.trim() || null,
         emergency_contact_name: editForm.emergency_contact_name.trim() || null,
         emergency_contact_phone: editForm.emergency_contact_phone.trim() || null,
-      }).eq('id', editingStudent.id);
+      }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
       if (error) throw new Error(error.message);
       await syncParentAccounts({
         student_id: editingStudent.id,
@@ -537,14 +550,14 @@ export default function SchoolAdminStudents() {
       {showAdd && (
         <div className="bg-white rounded-2xl p-6 shadow-sm border">
           <h3 className="text-lg font-semibold mb-2">Add New Learner</h3>
-          <p className="text-xs text-blue-600 mb-1">Learner password: <strong>[Admission Number or Assessment Number]@2025</strong></p>
+          <p className="text-xs text-blue-600 mb-1">Learner login: <strong>Assessment Number</strong> · initial password: <strong>capitalized Assessment Number</strong></p>
           <p className="text-xs text-green-600 mb-4">Parent account auto-created with password: <strong>Parent@2025</strong></p>
           <form onSubmit={handleAdd}>
             {/* Section: Basic Info */}
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Basic Information</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <input placeholder="Admission Number (optional)" value={formData.admission_number} onChange={e => setFormData({...formData, admission_number: e.target.value})} className={inputCls} />
-              <input placeholder="Assessment Number (optional)" value={formData.assessment_number} onChange={e => setFormData({...formData, assessment_number: e.target.value})} className={inputCls} />
+              <input placeholder="Assessment Number *" value={formData.assessment_number} onChange={e => setFormData({...formData, assessment_number: e.target.value})} className={inputCls} required />
               <input placeholder="First Name *" value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} className={inputCls} required />
               <input placeholder="Middle Name (optional)" value={formData.middle_name} onChange={e => setFormData({...formData, middle_name: e.target.value})} className={inputCls} />
               <input placeholder="Last Name / Surname *" value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} className={inputCls} required />
@@ -914,7 +927,7 @@ export default function SchoolAdminStudents() {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Basic Information</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div><label className={labelCls}>Admission Number</label><input value={editForm.admission_number} onChange={e => setEditForm({...editForm, admission_number: e.target.value})} className={inputCls} /></div>
-                <div><label className={labelCls}>Assessment Number</label><input value={editForm.assessment_number} onChange={e => setEditForm({...editForm, assessment_number: e.target.value})} className={inputCls} /></div>
+                <div><label className={labelCls}>Assessment Number *</label><input value={editForm.assessment_number} onChange={e => setEditForm({...editForm, assessment_number: e.target.value})} className={inputCls} required /></div>
                 <div><label className={labelCls}>First Name *</label><input value={editForm.first_name} onChange={e => setEditForm({...editForm, first_name: e.target.value})} className={inputCls} required /></div>
                 <div><label className={labelCls}>Middle Name</label><input value={editForm.middle_name} onChange={e => setEditForm({...editForm, middle_name: e.target.value})} className={inputCls} /></div>
                 <div><label className={labelCls}>Last Name *</label><input value={editForm.last_name} onChange={e => setEditForm({...editForm, last_name: e.target.value})} className={inputCls} required /></div>
