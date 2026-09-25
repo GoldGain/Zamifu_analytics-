@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 const text = (value: unknown) => String(value ?? "").trim();
-const MAX_MINUTES = 30;
+const MAX_MINUTES = 60;
 
 async function sendNotification(to: string, targetName: string, masterName: string, schoolName: string) {
   const apiKey = Deno.env.get("RESEND_API_KEY") || "";
@@ -26,6 +26,13 @@ async function sendNotification(to: string, targetName: string, masterName: stri
   });
   const data = await response.json().catch(() => ({}));
   return response.ok ? { sent: true } : { sent: false, error: text(data?.message) || `Resend HTTP ${response.status}` };
+}
+async function sendEndNotification(to: string, targetName: string, masterName: string, reason: string) {
+  const apiKey = Deno.env.get("RESEND_API_KEY") || "";
+  if (!apiKey || !to) return { sent: false };
+  const from = Deno.env.get("RESEND_FROM_EMAIL") || "Zamifu Analytics <notifications@zamifu.company>";
+  const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ from, to: [to], subject: "Zamifu Analytics support access ended", html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#172033"><h2>Support access ended</h2><p>The temporary Zamifu support session for <strong>${targetName || "your account"}</strong> has ended.</p><p>Reason: <strong>${reason || "session_end"}</strong>. If you did not expect this, contact support.</p></div>` }) });
+  return { sent: response.ok };
 }
 
 Deno.serve(async (req) => {
@@ -74,7 +81,7 @@ Deno.serve(async (req) => {
     if (!text(target.email)) return json({ error: "The target account has no email address and cannot receive a secure support session" }, 400);
     const { data: school } = target.school_id ? await admin.from("schools").select("name").eq("id", target.school_id).maybeSingle() : { data: null };
     const expiresAt = new Date(Date.now() + MAX_MINUTES * 60_000).toISOString();
-    const { data: audit, error: auditError } = await admin.from("impersonation_audit").insert({ master_user_id: master.id, target_user_id: target.id, target_role: target.role, target_school_id: target.school_id, expires_at: expiresAt, metadata: { source: "master_admin_support" } }).select("id").single();
+    const { data: audit, error: auditError } = await admin.from("impersonation_audit").insert({ master_user_id: master.id, impersonator_email: master.email, target_user_id: target.id, target_email: target.email, target_role: target.role, target_school_id: target.school_id, expires_at: expiresAt, metadata: { source: "master_admin_support" } }).select("id").single();
     if (auditError) return json({ error: auditError.message }, 500);
     const { data: link, error: linkError } = await admin.auth.admin.generateLink({ type: "magiclink", email: target.email });
     if (linkError || !link?.properties?.hashed_token) {
@@ -90,8 +97,13 @@ Deno.serve(async (req) => {
   if (action === "end") {
     const auditId = text(body?.audit_id);
     if (!auditId) return json({ error: "audit_id is required" }, 400);
-    const { error } = await admin.from("impersonation_audit").update({ ended_at: new Date().toISOString(), end_reason: text(body?.reason) || "manual_exit" }).eq("id", auditId).eq("master_user_id", master.id).is("ended_at", null);
+    const reason = text(body?.reason) || "manual_exit";
+    const { data: audit } = await admin.from("impersonation_audit").select("target_user_id, target_email").eq("id", auditId).eq("master_user_id", master.id).is("ended_at", null).maybeSingle();
+    if (!audit) return json({ ok: true });
+    const { data: target } = await admin.from("profiles").select("first_name, last_name, email").eq("id", audit.target_user_id).maybeSingle();
+    const { error } = await admin.from("impersonation_audit").update({ ended_at: new Date().toISOString(), end_reason: reason }).eq("id", auditId).eq("master_user_id", master.id).is("ended_at", null);
     if (error) return json({ error: error.message }, 500);
+    await sendEndNotification(text(audit.target_email || target?.email), `${text(target?.first_name)} ${text(target?.last_name)}`.trim(), `${text(master.first_name)} ${text(master.last_name)}`.trim(), reason);
     return json({ ok: true });
   }
   return json({ error: "Unsupported action" }, 400);

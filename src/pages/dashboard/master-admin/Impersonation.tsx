@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { AlertTriangle, Search, ShieldCheck, UserRound, Loader2, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth, type ImpersonationTarget } from '@/contexts/AuthContext';
 
 export default function MasterAdminImpersonation() {
   const { searchImpersonationTargets, startImpersonation } = useAuth();
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [targets, setTargets] = useState<ImpersonationTarget[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,7 +31,11 @@ export default function MasterAdminImpersonation() {
     setStarting(target.id);
     const result = await startImpersonation(target.id);
     if (result.error) toast.error(result.error);
-    else toast.success(`Support session opened for ${target.name}`);
+    else {
+      toast.success(`Support session opened for ${target.name}`);
+      const dashboards: Record<string, string> = { school_admin: '/school-admin', teacher: '/teacher', student: '/student', parent: '/parent', reseller_super_admin: '/reseller-admin', super_admin: '/super-admin' };
+      navigate(dashboards[target.role] || '/');
+    }
     setStarting(null);
   };
 
@@ -38,7 +44,7 @@ export default function MasterAdminImpersonation() {
       <div className="rounded-xl bg-amber-100 p-3 text-amber-700"><ShieldCheck className="h-6 w-6" /></div>
       <div><h1 className="text-2xl font-bold text-gray-900">Support Access</h1><p className="mt-1 text-sm text-gray-500">Temporarily view a school, reseller, teacher, parent, or learner account without changing its credentials.</p></div>
     </div>
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex gap-3"><AlertTriangle className="h-5 w-5 shrink-0" /><p>Every session is recorded, limited to 30 minutes, and automatically ends at timeout. Use this only for an authorized support investigation.</p></div>
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex gap-3"><AlertTriangle className="h-5 w-5 shrink-0" /><p>Every session is recorded, limited to 60 minutes, and automatically ends at timeout. Use this only for an authorized support investigation.</p></div>
     <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
       <label className="mb-2 block text-sm font-medium text-gray-700">Find an account</label>
       <div className="relative"><Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search name, email, admission number, assessment number, or school" className="w-full rounded-lg border border-gray-300 py-3 pl-10 pr-4 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
