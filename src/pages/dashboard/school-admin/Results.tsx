@@ -1972,8 +1972,15 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     } catch (error: any) { toast.error(error.message || 'Unable to generate comparison PDF.'); }
   };
 
-  const comparisonExamsA = exams.filter((exam) => !comparisonTermA || exam.term_id === comparisonTermA);
-  const comparisonExamsB = exams.filter((exam) => !comparisonTermB || exam.term_id === comparisonTermB);
+  const comparisonExamsForTerm = (termId: string) => {
+    const matching = exams.filter((exam) => !termId || exam.term_id === termId);
+    // Some legacy school_exams rows predate term_id consistency. Keep the
+    // selector usable in that case; the selected term remains explicit in the
+    // results query and the option shows its recorded term when available.
+    return matching.length > 0 ? matching : exams;
+  };
+  const comparisonExamsA = comparisonExamsForTerm(comparisonTermA);
+  const comparisonExamsB = comparisonExamsForTerm(comparisonTermB);
 
   // Class Teachers must never see school-wide summary counts. Use the resolved
   // assigned class as the source of truth, with selectedClass as a safe fallback.
