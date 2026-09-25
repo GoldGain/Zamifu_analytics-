@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from '@/lib/supabase/client';
 import type { UserRole, Profile } from '@/types/database';
@@ -34,6 +34,27 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
+  impersonation: ImpersonationState | null;
+  searchImpersonationTargets: (query: string) => Promise<{ targets: ImpersonationTarget[]; error: string | null }>;
+  startImpersonation: (targetUserId: string) => Promise<{ error: string | null }>;
+  exitImpersonation: (reason?: string) => Promise<void>;
+}
+
+export interface ImpersonationTarget {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string;
+  school_id: string | null;
+  school_name: string | null;
+  admission_number?: string | null;
+  assessment_number?: string | null;
+}
+
+export interface ImpersonationState {
+  auditId: string;
+  target: ImpersonationTarget;
+  expiresAt: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,6 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [impersonation, setImpersonation] = useState<ImpersonationState | null>(() => {
+    try { return JSON.parse(sessionStorage.getItem('zamifu_impersonation') || 'null'); } catch { return null; }
+  });
 
   const fetchSchoolData = async (schoolId: string) => {
     if (!schoolId) return;
@@ -190,8 +214,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const searchImpersonationTargets = useCallback(async (query: string) => {
+    const { data, error } = await supabase.functions.invoke('impersonate-user', { body: { action: 'search', query } });
+    return { targets: (data?.targets || []) as ImpersonationTarget[], error: error?.message || data?.error || null };
+  }, []);
+
+  const startImpersonation = async (targetUserId: string) => {
+    const { data: current } = await supabase.auth.getSession();
+    if (!current.session) return { error: 'Your master admin session has expired. Please sign in again.' };
+    const { data, error } = await supabase.functions.invoke('impersonate-user', { body: { action: 'start', target_user_id: targetUserId } });
+    if (error || data?.error) return { error: error?.message || data?.error || 'Could not start support access' };
+    sessionStorage.setItem('zamifu_master_session', JSON.stringify(current.session));
+    const nextState: ImpersonationState = { auditId: data.audit_id, target: data.target, expiresAt: data.expires_at };
+    sessionStorage.setItem('zamifu_impersonation', JSON.stringify(nextState));
+    const { error: verifyError } = await supabase.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
+    if (verifyError) {
+      sessionStorage.removeItem('zamifu_master_session');
+      sessionStorage.removeItem('zamifu_impersonation');
+      return { error: verifyError.message };
+    }
+    setImpersonation(nextState);
+    return { error: null };
+  };
+
+  const exitImpersonation = async (reason = 'manual_exit') => {
+    const storedState = impersonation || (() => { try { return JSON.parse(sessionStorage.getItem('zamifu_impersonation') || 'null'); } catch { return null; } })();
+    const storedSession = sessionStorage.getItem('zamifu_master_session');
+    if (!storedSession || !storedState) return;
+    try {
+      const masterSession = JSON.parse(storedSession);
+      await supabase.auth.setSession({ access_token: masterSession.access_token, refresh_token: masterSession.refresh_token });
+      await supabase.functions.invoke('impersonate-user', { body: { action: 'end', audit_id: storedState.auditId, reason } });
+    } finally {
+      sessionStorage.removeItem('zamifu_master_session');
+      sessionStorage.removeItem('zamifu_impersonation');
+      setImpersonation(null);
+      await refreshProfile();
+    }
+  };
+
+  useEffect(() => {
+    if (!impersonation) return;
+    const remaining = new Date(impersonation.expiresAt).getTime() - Date.now();
+    const timer = window.setTimeout(() => { void exitImpersonation('timeout'); }, Math.max(0, remaining));
+    return () => window.clearTimeout(timer);
+  }, [impersonation?.auditId, impersonation?.expiresAt]);
+
   return (
-    <AuthContext.Provider value={{ user, profile, schoolData, loading, signIn, signUp, signOut, resetPassword, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, schoolData, loading, signIn, signUp, signOut, resetPassword, refreshProfile, impersonation, searchImpersonationTargets, startImpersonation, exitImpersonation }}>
       {children}
     </AuthContext.Provider>
   );
