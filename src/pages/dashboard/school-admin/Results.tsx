@@ -43,6 +43,18 @@ import { formatClassStream } from '@/lib/class-label';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
 import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
 
+type ComparisonSourceRow = {
+  student_id?: string | null;
+  subjects?: { name?: string | null } | null;
+};
+
+type LearningAreaClass = {
+  curriculum?: string | null;
+  grade_level?: number | string | null;
+  level?: number | string | null;
+  name?: string | null;
+} | null | undefined;
+
 function sortSubjects(subjects: string[]) {
   return [...subjects].sort((a, b) => {
     const indexA = SUBJECT_ORDER.findIndex(s => a.toLowerCase().includes(s.toLowerCase()));
@@ -62,6 +74,22 @@ function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
 function hasRecordedMarks(result: any) {
   return [result.marks, result.percentage, result.converted_marks, result.grade_844, result.cbc_grade, result.cbc_sublevel]
     .some((value) => value !== null && value !== undefined && String(value).trim() !== '');
+}
+
+function learningAreaCatalogLevel(classObj: LearningAreaClass): string | null {
+  if (!classObj || is844Curriculum(classObj)) return null;
+  const rawLevel = classObj.grade_level ?? classObj.level;
+  const numericLevel = rawLevel == null || String(rawLevel).trim() === '' ? NaN : Number(rawLevel);
+  const parsedLevel = Number.isFinite(numericLevel)
+    ? numericLevel
+    : Number(String(classObj.name || '').match(/(?:grade|class)\s*(-?\d+)/i)?.[1]);
+  if (!Number.isFinite(parsedLevel)) return null;
+  if (parsedLevel <= 0) return 'pre_school';
+  if (parsedLevel <= 3) return 'lower_primary';
+  if (parsedLevel <= 6) return 'upper_primary';
+  if (parsedLevel <= 9) return 'junior';
+  if (parsedLevel <= 12) return 'senior';
+  return null;
 }
 
 function mergedLearningAreas(canonical: string[], dynamic: string[]) {
@@ -1931,18 +1959,47 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     setComparisonLoading(true);
     try {
       const select = 'student_id, subject_id, marks, out_of, percentage, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name, grade_level, level, curriculum)';
-      const [first, second, configuredSubjects] = await Promise.all([
+      const classObj = comparisonSeedClass;
+      const catalogLevel = learningAreaCatalogLevel(classObj);
+      const [first, second, catalogResult, schoolAreasResult] = await Promise.all([
         fetchResultsAll(comparisonClassIds, comparisonTermA, comparisonExamA, select),
         fetchResultsAll(comparisonClassIds, comparisonTermB, comparisonExamB, select),
-        supabaseUntyped.from('subjects').select('name, class_levels').eq('school_id', user?.schoolId).limit(500),
+        catalogLevel
+          ? supabaseUntyped.from('learning_area_catalog').select('id, name').eq('level', catalogLevel).limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        catalogLevel
+          ? supabaseUntyped.from('school_learning_areas').select('learning_area_id').eq('school_id', user?.schoolId).eq('is_active', true).limit(500)
+          : Promise.resolve({ data: [], error: null }),
       ]);
-      if (configuredSubjects.error) throw configuredSubjects.error;
-      const classObj = comparisonSeedClass;
-      const grade = Number(classObj?.grade_level ?? classObj?.level);
-      const learningAreas = (configuredSubjects.data || [])
-        .filter((subject: any) => !Array.isArray(subject.class_levels) || subject.class_levels.length === 0 || !Number.isFinite(grade) || subject.class_levels.includes(grade))
-        .map((subject: any) => subject.name)
+      if (catalogResult.error) throw catalogResult.error;
+      if (schoolAreasResult.error) throw schoolAreasResult.error;
+      const activeAreaRows = (schoolAreasResult.data || []) as { learning_area_id: string }[];
+      const catalogAreas = (catalogResult.data || []) as { id: string; name: string }[];
+      const activeAreaIds = new Set(activeAreaRows.map((area) => area.learning_area_id));
+      const learningAreas = catalogAreas
+        .filter((area) => activeAreaIds.has(area.id))
+        .map((area) => area.name)
         .filter(Boolean);
+      if (catalogLevel && !learningAreas.length) {
+        throw new Error(`No active learning areas are configured for ${classObj?.name || 'this class'}; the comparison was not generated.`);
+      }
+      const allowedAreaNames = catalogLevel
+        ? new Set(learningAreas.map((area: string) => normalizeLearningAreaName(area)))
+        : null;
+      const filterConfiguredRows = (rows: ComparisonSourceRow[]) => allowedAreaNames
+        ? rows.filter((row) => allowedAreaNames.has(normalizeLearningAreaName(row.subjects?.name || '')))
+        : rows;
+      const selectedRowsA = filterConfiguredRows(first as ComparisonSourceRow[]);
+      const selectedRowsB = filterConfiguredRows(second as ComparisonSourceRow[]);
+      const learnerIds = (rows: ComparisonSourceRow[]) => new Set(
+        rows.map((row) => row.student_id).filter((id): id is string => Boolean(id)),
+      );
+      const selectedLearnerIds = new Set([...learnerIds(selectedRowsA), ...learnerIds(selectedRowsB)]);
+      const omittedLearnersA = [...learnerIds(first)].filter((id) => !learnerIds(selectedRowsA).has(id)).length;
+      const omittedLearnersB = [...learnerIds(second)].filter((id) => !learnerIds(selectedRowsB).has(id)).length;
+      if (!selectedRowsA.length || !selectedRowsB.length || selectedLearnerIds.size === 0 || omittedLearnersA > 0 || omittedLearnersB > 0) {
+        throw new Error(`The selected learning-area filter would omit learners with source results (Exam A: ${omittedLearnersA}, Exam B: ${omittedLearnersB}). No marks were altered; check the school's active learning-area selections before comparing.`);
+      }
       const termA = terms.find((item) => item.id === comparisonTermA);
       const termB = terms.find((item) => item.id === comparisonTermB);
       const examA = exams.find((item) => item.id === comparisonExamA);
@@ -1953,8 +2010,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         termBLabel: `${termB?.name || 'Term'} ${termB?.academic_year || ''}`.trim(),
         examALabel: examA?.name || 'Exam 1',
         examBLabel: examB?.name || 'Exam 2',
-        rowsA: first,
-        rowsB: second,
+        rowsA: selectedRowsA,
+        rowsB: selectedRowsB,
         classObj,
         learningAreas,
       });
@@ -2128,7 +2185,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           <label className="text-sm font-medium text-gray-600">Assessment B<select value={comparisonExamB} onChange={(e) => setComparisonExamB(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select second assessment</option>{comparisonExamsB.map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select></label>
         </div>
         {comparisonData && <div className="mt-4 rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-sm text-indigo-900"><b>10 sections ready:</b> summary, grade distribution, top learners, subject performance, subject grades, learner deviation, stream performance, total mean, top-10 listings, and subject grade means. {comparisonRows.length} learner-subject comparisons loaded.</div>}
-        {comparisonRows.length > 0 && <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left p-3">Learner</th><th className="text-left p-3">Stream</th><th className="text-left p-3">Learning Area</th><th className="text-right p-3">Exam 1 %</th><th className="text-right p-3">Exam 2 %</th><th className="text-right p-3">Difference</th></tr></thead><tbody className="divide-y divide-gray-100">{comparisonRows.slice(0, 100).map((row) => <tr key={`${row.student_id}:${row.subject}`}><td className="p-3 font-medium">{row.name}</td><td className="p-3">{row.stream}</td><td className="p-3">{row.subject}</td><td className="p-3 text-right">{row.a == null ? '—' : `${row.a.toFixed(1)}%`}</td><td className="p-3 text-right">{row.b == null ? '—' : `${row.b.toFixed(1)}%`}</td><td className={`p-3 text-right font-bold ${row.diff == null ? 'text-gray-400' : row.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{row.diff == null ? 'Missing on one side' : `${row.diff >= 0 ? '+' : ''}${row.diff.toFixed(1)}%`}</td></tr>)}</tbody></table></div>}
+        {comparisonRows.length > 0 && <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left p-3">Learner</th><th className="text-left p-3">Stream</th><th className="text-left p-3">Learning Area</th><th className="text-right p-3">Exam 1 %</th><th className="text-right p-3">Exam 2 %</th><th className="text-right p-3">Difference</th></tr></thead><tbody className="divide-y divide-gray-100">{comparisonRows.map((row) => <tr key={`${row.student_id}:${row.subject}`}><td className="p-3 font-medium">{row.name}</td><td className="p-3">{row.stream}</td><td className="p-3">{row.subject}</td><td className="p-3 text-right">{row.a == null ? '—' : `${row.a.toFixed(1)}%`}</td><td className="p-3 text-right">{row.b == null ? '—' : `${row.b.toFixed(1)}%`}</td><td className={`p-3 text-right font-bold ${row.diff == null ? 'text-gray-400' : row.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{row.diff == null ? 'Missing on one side' : `${row.diff >= 0 ? '+' : ''}${row.diff.toFixed(1)}%`}</td></tr>)}</tbody></table></div>}
       </section>
       {/* LEARNER RESULTS TABLE GRID */}
       {selectedClass && selectedTerm && (
