@@ -21,6 +21,7 @@ const defaultName = (scope: Scope | undefined, examNames: string[]) =>
 export default function CombineExams() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const db = supabaseUntyped as any;
   const [classes, setClasses] = useState<any[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
@@ -38,10 +39,10 @@ export default function CombineExams() {
     const load = async () => {
       setLoading(true);
       const [{ data: classData, error: classError }, { data: termData, error: termError }, { data: examData, error: examError }, { data: resultRefs, error: resultRefsError }] = await Promise.all([
-        supabaseUntyped.from('classes').select('id, name, stream, stream_name, level, grade_level').eq('school_id', user.schoolId).eq('is_active', true).order('level').order('name'),
-        supabaseUntyped.from('terms').select('id, name, academic_year, start_date, end_date').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('start_date'),
-        supabaseUntyped.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level, created_at, is_active').eq('school_id', user.schoolId).order('created_at', { ascending: false }),
-        supabaseUntyped.from('results').select('exam_id, term_id, class_id').eq('school_id', user.schoolId).not('exam_id', 'is', null).limit(5000),
+        db.from('classes').select('id, name, stream, stream_name, level, grade_level').eq('school_id', user.schoolId).eq('is_active', true).order('level').order('name'),
+        db.from('terms').select('id, name, academic_year, start_date, end_date').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('start_date'),
+        db.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level, created_at, is_active').eq('school_id', user.schoolId).order('created_at', { ascending: false }),
+        db.from('results').select('exam_id, term_id, class_id').eq('school_id', user.schoolId).not('exam_id', 'is', null).limit(5000),
       ]);
       if (classError || termError || examError || resultRefsError) toast.error('Could not load all combine-exam data. Refresh and try again.');
       setClasses(classData || []); setTerms(termData || []); setExams(examData || []); setResultExamRefs(resultRefs || []);
@@ -86,7 +87,7 @@ export default function CombineExams() {
     const pageSize = 1000;
     const resultRows: any[] = [];
     for (let offset = 0; ; offset += pageSize) {
-      const { data, error } = await supabaseUntyped
+      const { data, error } = await db
         .from('results')
         .select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum, exam_id, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name)')
         .eq('school_id', user.schoolId)
@@ -143,29 +144,29 @@ export default function CombineExams() {
       const targetClassId = activeScope.allStreams ? null : activeScope.classIds[0];
       const targetColumn = activeScope.allStreams ? 'target_grade_level' : 'target_class_id';
       const targetValue = activeScope.allStreams ? activeScope.gradeLevel : targetClassId;
-      const { data: existing, error: lookupError } = await supabaseUntyped.from('school_exams').select('id').eq('school_id', user.schoolId).eq('name', name).eq('term_id', selectedTerm).eq('target_type', targetType).eq(targetColumn, targetValue).limit(1).maybeSingle();
+      const { data: existing, error: lookupError } = await db.from('school_exams').select('id').eq('school_id', user.schoolId).eq('name', name).eq('term_id', selectedTerm).eq('target_type', targetType).eq(targetColumn, targetValue).limit(1).maybeSingle();
       if (lookupError) throw lookupError;
       let examId = existing?.id as string | undefined;
       if (!examId) {
         const deactResult = await deactivateSameScopeActives({ schoolId: user.schoolId, termId: selectedTerm, targetType, targetClassId: targetClassId || undefined, targetGradeLevel: activeScope.gradeLevel ? Number(activeScope.gradeLevel) || null : null, actingUserId: user.id });
         if (deactResult.error) throw deactResult.error;
-        const { data: exam, error: examError } = await supabaseUntyped.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
+        const { data: exam, error: examError } = await db.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
         if (examError) throw examError;
         examId = exam.id;
       } else {
-        const { error: deleteError } = await supabaseUntyped.from('results').delete().eq('school_id', user.schoolId).eq('exam_id', examId);
+        const { error: deleteError } = await db.from('results').delete().eq('school_id', user.schoolId).eq('exam_id', examId);
         if (deleteError) throw deleteError;
-        const { error: updateError } = await supabaseUntyped.from('school_exams').update({ is_active: true }).eq('id', examId).eq('school_id', user.schoolId);
+        const { error: updateError } = await db.from('school_exams').update({ is_active: true }).eq('id', examId).eq('school_id', user.schoolId);
         if (updateError) throw updateError;
       }
       const payload = rows.map((row) => ({ school_id: user.schoolId, student_id: row.studentId, class_id: row.classId, subject_id: row.subjectId, teacher_id: row.teacherId || user.id, term_id: selectedTerm, academic_year: row.academicYear, curriculum: row.curriculum, marks: Number(row.marks.toFixed(2)), out_of: 100, percentage: Number(row.percentage.toFixed(2)), exam_id: examId, status: 'submitted' }));
-      const { error: componentDeleteError } = await (supabaseUntyped as any).from('school_exam_components').delete().eq('school_id', user.schoolId).eq('combined_exam_id', examId);
+      const { error: componentDeleteError } = await db.from('school_exam_components').delete().eq('school_id', user.schoolId).eq('combined_exam_id', examId);
       if (componentDeleteError) throw componentDeleteError;
       const componentRows = selectedExams.map((sourceExamId, component_order) => ({ school_id: user.schoolId, combined_exam_id: examId, source_exam_id: sourceExamId, weight: Math.max(0.0001, Number(examWeights[sourceExamId] || 1)), component_order, created_by: user.id }));
-      const { error: componentInsertError } = await (supabaseUntyped as any).from('school_exam_components').insert(componentRows);
+      const { error: componentInsertError } = await db.from('school_exam_components').insert(componentRows);
       if (componentInsertError) throw componentInsertError;
       for (let offset = 0; offset < payload.length; offset += 500) {
-        const { error: resultError } = await supabaseUntyped.from('results').insert(payload.slice(offset, offset + 500));
+        const { error: resultError } = await db.from('results').insert(payload.slice(offset, offset + 500));
         if (resultError) throw resultError;
       }
       toast.success(existing ? `Updated “${name}” with ${payload.length} rows.` : `Saved “${name}” with ${payload.length} rows.`);
