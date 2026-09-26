@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Download, FilePlus2, FileSpreadsheet, FileText, Loader2, Save, Sparkles } from 'lucide-react';
+import { Check, FilePlus2, Loader2, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { useNavigate } from 'react-router-dom';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { deactivateSameScopeActives } from '@/lib/assessment-active';
 import { formatClassStream } from '@/lib/class-label';
+import { resultPercentage } from '@/lib/assessmentAnalytics';
 
 type Scope = { id: string; label: string; classIds: string[]; gradeLevel: string | null; allStreams: boolean };
 type CombinedRow = {
@@ -16,11 +15,13 @@ type CombinedRow = {
   teacherId: string | null; academicYear: string; curriculum: string;
 };
 
-const cleanFileName = (value: string) => value.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'combined_exam';
-const pct = (value: number) => `${Number(value || 0).toFixed(1)}%`;
+const defaultName = (scope: Scope | undefined, examNames: string[]) =>
+  `${scope?.allStreams ? `Grade ${scope.gradeLevel}` : scope?.label || 'Combined assessment'} · ${examNames.join(' + ')}`.slice(0, 160);
 
 export default function CombineExams() {
-  const { user, schoolData } = useAuth();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const db = supabaseUntyped as any;
   const [classes, setClasses] = useState<any[]>([]);
   const [terms, setTerms] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
@@ -29,22 +30,19 @@ export default function CombineExams() {
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExams, setSelectedExams] = useState<string[]>([]);
   const [examWeights, setExamWeights] = useState<Record<string, number>>({});
-  const [rows, setRows] = useState<CombinedRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [combinedName, setCombinedName] = useState('');
-  const [savedExamId, setSavedExamId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.schoolId) return;
     const load = async () => {
       setLoading(true);
       const [{ data: classData, error: classError }, { data: termData, error: termError }, { data: examData, error: examError }, { data: resultRefs, error: resultRefsError }] = await Promise.all([
-        supabaseUntyped.from('classes').select('id, name, stream, stream_name, level, grade_level').eq('school_id', user.schoolId).eq('is_active', true).order('level').order('name'),
-        supabaseUntyped.from('terms').select('id, name, academic_year, start_date, end_date').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('start_date'),
-        supabaseUntyped.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level, created_at, is_active').eq('school_id', user.schoolId).order('created_at', { ascending: false }),
-        supabaseUntyped.from('results').select('exam_id, term_id, class_id').eq('school_id', user.schoolId).not('exam_id', 'is', null).limit(5000),
+        db.from('classes').select('id, name, stream, stream_name, level, grade_level').eq('school_id', user.schoolId).eq('is_active', true).order('level').order('name'),
+        db.from('terms').select('id, name, academic_year, start_date, end_date').eq('school_id', user.schoolId).order('academic_year', { ascending: false }).order('start_date'),
+        db.from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level, created_at, is_active').eq('school_id', user.schoolId).order('created_at', { ascending: false }),
+        db.from('results').select('exam_id, term_id, class_id').eq('school_id', user.schoolId).not('exam_id', 'is', null).limit(5000),
       ]);
       if (classError || termError || examError || resultRefsError) toast.error('Could not load all combine-exam data. Refresh and try again.');
       setClasses(classData || []); setTerms(termData || []); setExams(examData || []); setResultExamRefs(resultRefs || []);
@@ -73,7 +71,7 @@ export default function CombineExams() {
     return linked.length === 0 || linked.some((ref) => activeScope.classIds.includes(ref.class_id));
   }), [activeScope, exams, resultExamRefs, selectedTerm]);
 
-  const resetSelection = () => { setSelectedExams([]); setExamWeights({}); setRows([]); setSavedExamId(null); };
+  const resetSelection = () => { setSelectedExams([]); setExamWeights({}); };
   const selectedExamNames = availableExams.filter((exam) => selectedExams.includes(exam.id)).map((exam) => exam.name);
   const toggleExam = (id: string) => setSelectedExams((current) => {
     if (current.includes(id)) {
@@ -84,107 +82,109 @@ export default function CombineExams() {
     return [...current, id];
   });
 
-  const buildPreview = async () => {
-    if (!user?.schoolId || !activeScope || !selectedTerm || selectedExams.length < 2) { toast.error('Choose a class or all-streams scope, term, and at least two exams.'); return; }
-    setPreviewing(true); setSavedExamId(null);
-    try {
-      const { data, error } = await supabaseUntyped.from('results').select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name)').eq('school_id', user.schoolId).in('class_id', activeScope.classIds).eq('term_id', selectedTerm).in('exam_id', selectedExams).limit(10000);
+  const buildCombinedRows = async (): Promise<CombinedRow[]> => {
+    if (!user?.schoolId || !activeScope || !selectedTerm || selectedExams.length < 2) throw new Error('Choose a class or all-streams scope, term, and at least two exams.');
+    const pageSize = 1000;
+    const resultRows: any[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await db
+        .from('results')
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum, exam_id, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name)')
+        .eq('school_id', user.schoolId)
+        .in('class_id', activeScope.classIds)
+        .eq('term_id', selectedTerm)
+        .in('exam_id', selectedExams)
+        .range(offset, offset + pageSize - 1);
       if (error) throw error;
-      const grouped = new Map<string, { result: any; values: any[] }>();
-      (data || []).forEach((result: any) => {
-        const key = `${result.student_id}:${result.subject_id}`;
-        const item = grouped.get(key) || { result, values: [] };
-        const percentage = Number(result.percentage ?? (Number(result.out_of) > 0 ? Number(result.marks || 0) / Number(result.out_of) * 100 : 0));
-        item.values.push({ ...result, percentage, weight: Math.max(0.0001, Number(examWeights[result.exam_id] || 1)) }); grouped.set(key, item);
-      });
-      const preview = Array.from(grouped.values()).map(({ result, values }) => {
-        const totalWeight = values.reduce((sum: number, item: any) => sum + item.weight, 0);
-        const percentage = values.reduce((sum: number, item: any) => sum + item.percentage * item.weight, 0) / Math.max(totalWeight, 0.0001);
-        return { studentId: result.student_id, studentName: `${result.students?.first_name || ''} ${result.students?.last_name || ''}`.trim() || 'Unnamed learner', admissionNumber: result.students?.admission_number || '', classId: result.class_id, className: formatClassStream(result.classes), stream: result.classes?.stream || result.classes?.stream_name || '', subjectId: result.subject_id, subjectName: result.subjects?.name || 'Learning Area', sourceCount: values.length, percentage, marks: percentage, teacherId: values.find((item: any) => item.teacher_id)?.teacher_id || null, academicYear: result.academic_year || String(new Date().getFullYear()), curriculum: result.curriculum || 'CBE' };
-      }).sort((a, b) => a.className.localeCompare(b.className) || a.admissionNumber.localeCompare(b.admissionNumber, undefined, { numeric: true }) || a.subjectName.localeCompare(b.subjectName));
-      setRows(preview); if (!combinedName) setCombinedName(`${activeScope.allStreams ? `Grade ${activeScope.gradeLevel}` : activeScope.label} · ${selectedExamNames.join(' + ')}`.slice(0, 160));
-      toast.success(`Preview ready: ${preview.length} learner-learning-area rows.`);
-    } catch (error: any) { toast.error(`Could not preview combined results: ${error.message || 'Unknown error'}`); } finally { setPreviewing(false); }
+      resultRows.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+    }
+
+    // Union by learner + learning area. This deliberately uses OR semantics:
+    // marks present in either source exam are enough to create the combined row.
+    const grouped = new Map<string, { result: any; values: any[] }>();
+    resultRows.forEach((result: any) => {
+      if (!result.student_id || !result.subject_id) return;
+      const key = `${result.student_id}:${result.subject_id}`;
+      const item = grouped.get(key) || { result, values: [] };
+      item.values.push({ ...result, percentage: resultPercentage(result), weight: Math.max(0.0001, Number(examWeights[result.exam_id] || 1)) });
+      grouped.set(key, item);
+    });
+    return Array.from(grouped.values()).map(({ result, values }) => {
+      const totalWeight = values.reduce((sum: number, item: any) => sum + item.weight, 0);
+      const percentage = values.reduce((sum: number, item: any) => sum + item.percentage * item.weight, 0) / Math.max(totalWeight, 0.0001);
+      return {
+        studentId: result.student_id,
+        studentName: `${result.students?.first_name || ''} ${result.students?.last_name || ''}`.trim() || 'Unnamed learner',
+        admissionNumber: result.students?.admission_number || '',
+        classId: result.class_id,
+        className: formatClassStream(result.classes),
+        stream: result.classes?.stream || result.classes?.stream_name || '',
+        subjectId: result.subject_id,
+        subjectName: result.subjects?.name || 'Learning Area',
+        sourceCount: values.length,
+        percentage,
+        marks: percentage,
+        teacherId: values.find((item: any) => item.teacher_id)?.teacher_id || null,
+        academicYear: result.academic_year || String(new Date().getFullYear()),
+        curriculum: result.curriculum || 'CBE',
+      };
+    }).sort((a, b) => a.className.localeCompare(b.className) || a.admissionNumber.localeCompare(b.admissionNumber, undefined, { numeric: true }) || a.subjectName.localeCompare(b.subjectName));
   };
 
   const saveCombinedExam = async () => {
-    if (!user?.schoolId || !activeScope || !selectedTerm || rows.length === 0 || selectedExams.length < 2) { toast.error('Create a preview before saving the combined exam.'); return; }
-    const name = combinedName.trim(); if (!name) { toast.error('Enter a name for the combined exam.'); return; }
+    if (!user?.schoolId || !activeScope || !selectedTerm || selectedExams.length < 2) { toast.error('Choose a class or all-streams scope, term, and at least two exams.'); return; }
+    const name = combinedName.trim() || defaultName(activeScope, selectedExamNames);
+    if (!name) { toast.error('Enter a name for the combined exam.'); return; }
     setSaving(true);
     try {
+      const rows = await buildCombinedRows();
+      if (!rows.length) throw new Error('No marks were found in either selected exam.');
       const targetType = activeScope.allStreams ? 'grade' : 'class';
       const targetClassId = activeScope.allStreams ? null : activeScope.classIds[0];
       const targetColumn = activeScope.allStreams ? 'target_grade_level' : 'target_class_id';
       const targetValue = activeScope.allStreams ? activeScope.gradeLevel : targetClassId;
-      const { data: existing, error: lookupError } = await supabaseUntyped.from('school_exams').select('id').eq('school_id', user.schoolId).eq('name', name).eq('term_id', selectedTerm).eq('target_type', targetType).eq(targetColumn, targetValue).limit(1).maybeSingle();
+      const { data: existing, error: lookupError } = await db.from('school_exams').select('id').eq('school_id', user.schoolId).eq('name', name).eq('term_id', selectedTerm).eq('target_type', targetType).eq(targetColumn, targetValue).limit(1).maybeSingle();
       if (lookupError) throw lookupError;
       let examId = existing?.id as string | undefined;
       if (!examId) {
         const deactResult = await deactivateSameScopeActives({ schoolId: user.schoolId, termId: selectedTerm, targetType, targetClassId: targetClassId || undefined, targetGradeLevel: activeScope.gradeLevel ? Number(activeScope.gradeLevel) || null : null, actingUserId: user.id });
         if (deactResult.error) throw deactResult.error;
-        const { data: exam, error: examError } = await supabaseUntyped.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
-        if (examError) throw examError; examId = exam.id;
+        const { data: exam, error: examError } = await db.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
+        if (examError) throw examError;
+        examId = exam.id;
       } else {
-        const { error: deleteError } = await supabaseUntyped.from('results').delete().eq('school_id', user.schoolId).eq('exam_id', examId);
+        const { error: deleteError } = await db.from('results').delete().eq('school_id', user.schoolId).eq('exam_id', examId);
         if (deleteError) throw deleteError;
-        const { error: updateError } = await supabaseUntyped.from('school_exams').update({ is_active: true }).eq('id', examId).eq('school_id', user.schoolId);
+        const { error: updateError } = await db.from('school_exams').update({ is_active: true }).eq('id', examId).eq('school_id', user.schoolId);
         if (updateError) throw updateError;
       }
-        const payload = rows.map((row) => ({ school_id: user.schoolId, student_id: row.studentId, class_id: row.classId, subject_id: row.subjectId, teacher_id: row.teacherId || user.id, term_id: selectedTerm, academic_year: row.academicYear, curriculum: row.curriculum, marks: Number(row.marks.toFixed(2)), out_of: 100, percentage: Number(row.percentage.toFixed(2)), exam_id: examId, status: 'submitted' }));
-      const { error: componentDeleteError } = await (supabaseUntyped as any)
-        .from('school_exam_components')
-        .delete()
-        .eq('school_id', user.schoolId)
-        .eq('combined_exam_id', examId);
+      const payload = rows.map((row) => ({ school_id: user.schoolId, student_id: row.studentId, class_id: row.classId, subject_id: row.subjectId, teacher_id: row.teacherId || user.id, term_id: selectedTerm, academic_year: row.academicYear, curriculum: row.curriculum, marks: Number(row.marks.toFixed(2)), out_of: 100, percentage: Number(row.percentage.toFixed(2)), exam_id: examId, status: 'submitted' }));
+      const { error: componentDeleteError } = await db.from('school_exam_components').delete().eq('school_id', user.schoolId).eq('combined_exam_id', examId);
       if (componentDeleteError) throw componentDeleteError;
-      const componentRows = selectedExams.map((sourceExamId, component_order) => ({
-        school_id: user.schoolId,
-        combined_exam_id: examId,
-        source_exam_id: sourceExamId,
-        weight: Math.max(0.0001, Number(examWeights[sourceExamId] || 1)),
-        component_order,
-        created_by: user.id,
-      }));
-      const { error: componentInsertError } = await (supabaseUntyped as any).from('school_exam_components').insert(componentRows);
+      const componentRows = selectedExams.map((sourceExamId, component_order) => ({ school_id: user.schoolId, combined_exam_id: examId, source_exam_id: sourceExamId, weight: Math.max(0.0001, Number(examWeights[sourceExamId] || 1)), component_order, created_by: user.id }));
+      const { error: componentInsertError } = await db.from('school_exam_components').insert(componentRows);
       if (componentInsertError) throw componentInsertError;
-      // Combined exams are rebuilt from the preview. Insert the rebuilt rows
-      // explicitly instead of using ON CONFLICT against partial unique indexes;
-      // PostgREST cannot reliably infer that conflict target across deployments.
       for (let offset = 0; offset < payload.length; offset += 500) {
-        const { error: resultError } = await supabaseUntyped.from('results').insert(payload.slice(offset, offset + 500));
+        const { error: resultError } = await db.from('results').insert(payload.slice(offset, offset + 500));
         if (resultError) throw resultError;
       }
-      setSavedExamId(examId || null); toast.success(existing ? `Updated “${name}” with ${payload.length} rows.` : `Saved “${name}” with ${payload.length} rows.`);
-    } catch (error: any) { toast.error(`Could not save combined exam: ${error.message || 'Unknown error'}`); } finally { setSaving(false); }
+      toast.success(existing ? `Updated “${name}” with ${payload.length} rows.` : `Saved “${name}” with ${payload.length} rows.`);
+      navigate(user.role === 'school_admin' ? '/school-admin/results' : '/dean-of-studies/results');
+    } catch (error: any) {
+      toast.error(`Could not save combined results: ${error.message || 'Unknown error'}`);
+    } finally { setSaving(false); }
   };
-
-  const learnerSummary = useMemo(() => Array.from(new Map(rows.map((row) => [`${row.classId}:${row.studentId}`, row])).entries()).map(([key, first]) => { const items = rows.filter((row) => `${row.classId}:${row.studentId}` === key); const average = items.reduce((sum, item) => sum + item.percentage, 0) / items.length; return { className: first.className, stream: first.stream, studentName: first.studentName, admissionNumber: first.admissionNumber, subjects: items.length, average, status: average >= 50 ? 'Pass' : 'Needs support' }; }).sort((a, b) => b.average - a.average), [rows]);
-  const streamSummary = useMemo(() => Array.from(new Map(rows.map((row) => [row.classId, row])).values()).map((first) => { const items = rows.filter((row) => row.classId === first.classId); const learnerAverages = Array.from(new Set(items.map((item) => item.studentId))).map((studentId) => { const studentRows = items.filter((item) => item.studentId === studentId); return studentRows.reduce((sum, item) => sum + item.percentage, 0) / studentRows.length; }); const average = learnerAverages.reduce((sum, value) => sum + value, 0) / Math.max(learnerAverages.length, 1); return { className: first.className, stream: first.stream || 'Main', learners: learnerAverages.length, average, passRate: learnerAverages.filter((value) => value >= 50).length / Math.max(learnerAverages.length, 1) * 100, highest: Math.max(...learnerAverages, 0), lowest: Math.min(...learnerAverages, 0) }; }), [rows]);
-
-  const downloadXlsx = (kind: 'learners' | 'streams') => {
-    if (!rows.length) { toast.error('Build a preview before downloading summaries.'); return; }
-    const data = kind === 'learners' ? learnerSummary.map((item, index) => ({ Rank: index + 1, Class: item.className, Stream: item.stream, Learner: item.studentName, 'Admission No.': item.admissionNumber, Subjects: item.subjects, Average: Number(item.average.toFixed(2)), Status: item.status })) : streamSummary.map((item) => ({ Class: item.className, Stream: item.stream, Learners: item.learners, Average: Number(item.average.toFixed(2)), 'Pass Rate': Number(item.passRate.toFixed(2)), Highest: Number(item.highest.toFixed(2)), Lowest: Number(item.lowest.toFixed(2)) }));
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), kind === 'learners' ? 'Class Summary' : 'All Streams'); XLSX.writeFile(wb, `${cleanFileName(combinedName)}_${kind}_summary.xlsx`); toast.success('Excel summary downloaded.');
-  };
-
-  const downloadCsv = () => { if (!rows.length) return toast.error('Build a preview before downloading.'); const headers = ['Class', 'Stream', 'Learner', 'Admission No.', 'Learning Area', 'Source Exams', 'Average']; const body = rows.map((row) => [row.className, row.stream, row.studentName, row.admissionNumber, row.subjectName, row.sourceCount, row.percentage.toFixed(2)]); const csv = [headers, ...body].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n'); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); link.download = `${cleanFileName(combinedName)}_results.csv`; link.click(); URL.revokeObjectURL(link.href); toast.success('CSV downloaded.'); };
-
-  const downloadPdf = () => { if (!rows.length) return toast.error('Build a preview before downloading.'); const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' }); doc.setFontSize(16); doc.text(combinedName || 'Combined Exam Summary', 14, 14); doc.setFontSize(9); doc.text(`${schoolData?.name || 'School'} · ${activeScope?.label || ''} · ${terms.find((term) => term.id === selectedTerm)?.name || ''}`, 14, 20); autoTable(doc, { startY: 25, head: [['Rank', 'Class', 'Stream', 'Learner', 'Admission No.', 'Subjects', 'Average', 'Status']], body: learnerSummary.map((item, index) => [index + 1, item.className, item.stream, item.studentName, item.admissionNumber, item.subjects, pct(item.average), item.status]), styles: { fontSize: 8 }, headStyles: { fillColor: [109, 40, 217] }, showHead: 'everyPage' }); doc.save(`${cleanFileName(combinedName)}_class_summary.pdf`); toast.success('Class summary PDF downloaded.'); };
 
   if (loading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-violet-600" /></div>;
   return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FilePlus2 className="w-7 h-7 text-violet-600" /> Combine Exams</h1><p className="text-sm text-gray-500 mt-1">Combine assessments once, safely update the same named exam, and download powerful class and all-stream summaries.</p></div>
+    <div><h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><FilePlus2 className="w-7 h-7 text-violet-600" /> Combine Exams</h1><p className="text-sm text-gray-500 mt-1">Combine assessments once, then use Download Results to generate the saved output.</p></div>
     <div className="bg-white rounded-2xl border p-5 grid grid-cols-1 md:grid-cols-4 gap-4">
       <label className="text-sm font-medium text-gray-700">Class or scope<select value={selectedScope} onChange={(event) => { setSelectedScope(event.target.value); resetSelection(); }} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Select class or all streams</option>{scopes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       <label className="text-sm font-medium text-gray-700">Term<select value={selectedTerm} onChange={(event) => { setSelectedTerm(event.target.value); resetSelection(); }} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Select term</option>{terms.map((item) => <option key={item.id} value={item.id}>{item.name} {item.academic_year}</option>)}</select></label>
-      <label className="text-sm font-medium text-gray-700 md:col-span-2">Combined exam name<input value={combinedName} onChange={(event) => setCombinedName(event.target.value)} placeholder="e.g. Term 2 Final Combined Assessment" className="mt-2 w-full rounded-xl border px-3 py-2.5" /></label>
+      <label className="text-sm font-medium text-gray-700 md:col-span-2">Combined exam name<input value={combinedName} onChange={(event) => setCombinedName(event.target.value)} placeholder={defaultName(activeScope, selectedExamNames) || 'e.g. Term 2 Final Combined Assessment'} className="mt-2 w-full rounded-xl border px-3 py-2.5" /></label>
     </div>
-    <div className="bg-white rounded-2xl border p-5"><div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold text-gray-900">Available source exams</h2><p className="text-xs text-gray-500">Select two or more exams from the chosen term and scope. Set a positive weight for each source before previewing.</p></div><span className="text-sm font-semibold text-violet-700">{selectedExams.length} selected</span></div>{availableExams.length === 0 ? <p className="text-sm text-gray-500">{activeScope && selectedTerm ? 'No source exams are available for this scope and term. Choose another term or scope, or add results to at least two source exams.' : 'Choose a class or all-streams scope and term to see available exams.'}</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{availableExams.map((exam) => <label key={exam.id} className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer ${selectedExams.includes(exam.id) ? 'border-violet-500 bg-violet-50' : 'border-gray-200'}`}><input type="checkbox" checked={selectedExams.includes(exam.id)} onChange={() => toggleExam(exam.id)} /><span className="flex-1"><span className="block font-medium">{exam.name}</span><span className="text-xs text-gray-500">{exam.type || 'Assessment'} · {new Date(exam.created_at).toLocaleDateString()}</span>{selectedExams.includes(exam.id) && <span className="mt-2 flex items-center gap-2 text-xs text-violet-700">Weight <input type="number" min="0.01" step="0.05" value={examWeights[exam.id] || 1} onClick={(event) => event.stopPropagation()} onChange={(event) => setExamWeights((weights) => ({ ...weights, [exam.id]: Math.max(0.01, Number(event.target.value) || 0.01) }))} className="w-20 rounded-lg border border-violet-200 bg-white px-2 py-1 text-sm text-gray-900" /></span>}</span>{selectedExams.includes(exam.id) && <Check className="w-5 h-5 text-violet-600" />}</label>)}</div>}<button type="button" onClick={buildPreview} disabled={previewing || selectedExams.length < 2} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-violet-600 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{previewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Preview combined results</button></div>
-    {rows.length > 0 && <>
-      <div className="bg-white rounded-2xl border p-5 flex flex-wrap items-center gap-3"><div className="mr-auto"><h2 className="font-semibold text-gray-900">{combinedName}</h2><p className="text-xs text-gray-500">{rows.length} subject rows · {learnerSummary.length} learners · {streamSummary.length} classes/streams</p></div><button type="button" onClick={saveCombinedExam} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-green-600 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} {savedExamId ? 'Update combined exam' : 'Save combined exam'}</button><button type="button" onClick={downloadPdf} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold"><FileText className="w-4 h-4" /> Class summary PDF</button><button type="button" onClick={() => downloadXlsx('learners')} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold"><FileSpreadsheet className="w-4 h-4" /> Class Excel</button><button type="button" onClick={() => downloadXlsx('streams')} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold"><Download className="w-4 h-4" /> All streams Excel</button><button type="button" onClick={downloadCsv} className="inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold">CSV</button></div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">{[{ label: 'Learners', value: learnerSummary.length }, { label: 'Classes / streams', value: streamSummary.length }, { label: 'Overall average', value: pct(learnerSummary.reduce((sum, item) => sum + item.average, 0) / Math.max(learnerSummary.length, 1)) }, { label: 'Pass rate', value: pct(learnerSummary.filter((item) => item.average >= 50).length / Math.max(learnerSummary.length, 1) * 100) }].map((card) => <div key={card.label} className="rounded-2xl border bg-violet-50 p-4"><p className="text-xs text-violet-700">{card.label}</p><p className="text-2xl font-bold text-violet-950 mt-1">{card.value}</p></div>)}</div>
-      <div className="bg-white rounded-2xl border overflow-hidden"><div className="p-5 border-b"><h2 className="font-semibold">Learner class summary</h2><p className="text-xs text-gray-500">Average across all selected source exams and learning areas.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3">Rank</th><th className="px-4 py-3">Class / Stream</th><th className="px-4 py-3">Learner</th><th className="px-4 py-3">Admission No.</th><th className="px-4 py-3">Subjects</th><th className="px-4 py-3">Average</th><th className="px-4 py-3">Status</th></tr></thead><tbody>{learnerSummary.map((item, index) => <tr key={`${item.className}:${item.admissionNumber}:${item.studentName}`} className="border-t"><td className="px-4 py-3 font-semibold">{index + 1}</td><td className="px-4 py-3">{item.className}</td><td className="px-4 py-3 font-medium">{item.studentName}</td><td className="px-4 py-3">{item.admissionNumber || '-'}</td><td className="px-4 py-3">{item.subjects}</td><td className="px-4 py-3 font-semibold">{pct(item.average)}</td><td className={`px-4 py-3 font-semibold ${item.status === 'Pass' ? 'text-green-700' : 'text-amber-700'}`}>{item.status}</td></tr>)}</tbody></table></div></div>
-      <div className="bg-white rounded-2xl border overflow-hidden"><div className="p-5 border-b flex items-center justify-between"><div><h2 className="font-semibold">All streams summary</h2><p className="text-xs text-gray-500">Compare every selected stream and download it as Excel.</p></div><button type="button" onClick={() => downloadXlsx('streams')} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 text-white px-3 py-2 text-sm font-semibold"><Download className="w-4 h-4" /> Download all streams</button></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50"><tr><th className="px-4 py-3">Class</th><th className="px-4 py-3">Stream</th><th className="px-4 py-3">Learners</th><th className="px-4 py-3">Average</th><th className="px-4 py-3">Pass rate</th><th className="px-4 py-3">Highest</th><th className="px-4 py-3">Lowest</th></tr></thead><tbody>{streamSummary.map((item) => <tr key={`${item.className}:${item.stream}`} className="border-t"><td className="px-4 py-3 font-medium">{item.className}</td><td className="px-4 py-3">{item.stream}</td><td className="px-4 py-3">{item.learners}</td><td className="px-4 py-3 font-semibold">{pct(item.average)}</td><td className="px-4 py-3">{pct(item.passRate)}</td><td className="px-4 py-3">{pct(item.highest)}</td><td className="px-4 py-3">{pct(item.lowest)}</td></tr>)}</tbody></table></div></div>
-    </>}
+    <div className="bg-white rounded-2xl border p-5"><div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold text-gray-900">Available source exams</h2><p className="text-xs text-gray-500">Select two or more exams from the chosen term and scope. Set a positive weight for each source before saving.</p></div><span className="text-sm font-semibold text-violet-700">{selectedExams.length} selected</span></div>{availableExams.length === 0 ? <p className="text-sm text-gray-500">{activeScope && selectedTerm ? 'No source exams are available for this scope and term. Choose another term or scope, or add results to at least two source exams.' : 'Choose a class or all-streams scope and term to see available exams.'}</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{availableExams.map((exam) => <label key={exam.id} className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer ${selectedExams.includes(exam.id) ? 'border-violet-500 bg-violet-50' : 'border-gray-200'}`}><input type="checkbox" checked={selectedExams.includes(exam.id)} onChange={() => toggleExam(exam.id)} /><span className="flex-1"><span className="block font-medium">{exam.name}</span><span className="text-xs text-gray-500">{exam.type || 'Assessment'} · {new Date(exam.created_at).toLocaleDateString()}</span>{selectedExams.includes(exam.id) && <span className="mt-2 flex items-center gap-2 text-xs text-violet-700">Weight <input type="number" min="0.01" step="0.05" value={examWeights[exam.id] || 1} onClick={(event) => event.stopPropagation()} onChange={(event) => setExamWeights((weights) => ({ ...weights, [exam.id]: Math.max(0.01, Number(event.target.value) || 0.01) }))} className="w-20 rounded-lg border border-violet-200 bg-white px-2 py-1 text-sm text-gray-900" /></span>}</span>{selectedExams.includes(exam.id) && <Check className="w-5 h-5 text-violet-600" />}</label>)}</div>}<button type="button" onClick={saveCombinedExam} disabled={saving || selectedExams.length < 2} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-green-600 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save combined exam</button></div>
+    <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm text-violet-900">After saving, Download Results opens with the stored combined assessment available for class summaries, all-stream summaries, and PDFs.</div>
   </div>;
 }

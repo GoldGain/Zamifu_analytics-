@@ -41,6 +41,19 @@ import {
 } from '@/lib/pdfFontSize';
 import { formatClassStream } from '@/lib/class-label';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
+import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
+
+type ComparisonSourceRow = {
+  student_id?: string | null;
+  subjects?: { name?: string | null } | null;
+};
+
+type LearningAreaClass = {
+  curriculum?: string | null;
+  grade_level?: number | string | null;
+  level?: number | string | null;
+  name?: string | null;
+} | null | undefined;
 
 function sortSubjects(subjects: string[]) {
   return [...subjects].sort((a, b) => {
@@ -61,6 +74,22 @@ function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
 function hasRecordedMarks(result: any) {
   return [result.marks, result.percentage, result.converted_marks, result.grade_844, result.cbc_grade, result.cbc_sublevel]
     .some((value) => value !== null && value !== undefined && String(value).trim() !== '');
+}
+
+function learningAreaCatalogLevel(classObj: LearningAreaClass): string | null {
+  if (!classObj || is844Curriculum(classObj)) return null;
+  const rawLevel = classObj.grade_level ?? classObj.level;
+  const numericLevel = rawLevel == null || String(rawLevel).trim() === '' ? NaN : Number(rawLevel);
+  const parsedLevel = Number.isFinite(numericLevel)
+    ? numericLevel
+    : Number(String(classObj.name || '').match(/(?:grade|class)\s*(-?\d+)/i)?.[1]);
+  if (!Number.isFinite(parsedLevel)) return null;
+  if (parsedLevel <= 0) return 'pre_school';
+  if (parsedLevel <= 3) return 'lower_primary';
+  if (parsedLevel <= 6) return 'upper_primary';
+  if (parsedLevel <= 9) return 'junior';
+  if (parsedLevel <= 12) return 'senior';
+  return null;
 }
 
 function mergedLearningAreas(canonical: string[], dynamic: string[]) {
@@ -605,36 +634,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return data.reduce((s, r) => s + (r.percentage ?? (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0) / data.length;
   };
 
-  const buildStudentSummary = (rawResults: any[], classObj: any) => {
-    const studentMap: Record<string, any> = {};
-    rawResults.forEach(r => {
-      const sid = r.student_id;
-      if (!studentMap[sid]) {
-        studentMap[sid] = { studentId: sid, classId: r.class_id, student: r.students, subjects: {}, totalPct: 0, count: 0, totalPoints: 0, gender: r.students?.gender || null, examName: r.school_exams?.name || r.exams?.name || '' };
-      }
-      const pct = r.percentage !== undefined && r.percentage !== null ? Number(r.percentage) : (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0);
-      const areaKey = normalizeLearningAreaName(r.subjects?.name || 'Unknown');
-      const isNewArea = studentMap[sid].subjects[areaKey] === undefined;
-      studentMap[sid].subjects[areaKey] = pct;
-      if (isNewArea) { studentMap[sid].totalPct += pct; studentMap[sid].count++; }
-      if (r.school_exams?.name || r.exams?.name) studentMap[sid].examName = r.school_exams?.name || r.exams?.name;
-    });
-    const band = getSchoolLevelBand(classObj);
-    Object.values(studentMap).forEach((s: any) => {
-      s.totalPoints = 0;
-      Object.values(s.subjects).forEach((pct: any) => { const gr = calculateCompetencyGrade(Number(pct), band); s.totalPoints += (gr.points || 0); });
-    });
-    // Use the curriculum's configured/canonical count where one exists. This
-    // prevents a learner with one missing result from silently changing the
-    // class denominator (the Grade 1 bug). For PP1 and Grades 1–3, where the
-    // school may configure a different set of areas, use the complete set of
-    // areas present in the class results.
-    const observedAreaCount = new Set(rawResults.map((r: any) => normalizeLearningAreaName(r.subjects?.name || '')).filter((name) => name && name !== 'Unknown')).size;
-    const canonicalAreaCount = getCanonicalLearningAreas(classObj).length;
-    const configuredAreaCount = canonicalAreaCount || observedAreaCount;
-    const requiredAreas = getRequiredLearningAreas(classObj, configuredAreaCount);
-    return Object.values(studentMap).map((s: any) => ({ ...s, avgPct: requiredAreas ? s.totalPct / requiredAreas : (s.count > 0 ? s.totalPct / s.count : 0), gender: s.gender || s.student?.gender || null })).sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct)).map((s, i) => ({ ...s, position: i + 1 }));
-  };
+  const buildStudentSummary = (rawResults: any[], classObj: any) => buildAssessmentLearnerSummaries(rawResults, classObj);
 
   const buildSummariesForClasses = (rawResults: any[], classList: any[]) =>
     classList.flatMap((classObj: any) =>
@@ -1428,7 +1428,21 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const fetchResultsForClassIds = async (classIds: string[], termId: string, examId?: string): Promise<any[]> =>
     fetchResultsAll(classIds, termId, examId);
 
-  const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; previousTerm: any; previousSubjectStats: Map<string, number>; previousDistribution: Map<string, number>; previousTotalStudents: number | null; previousTotals: Map<string, number>; fontSize: PdfFontSize }) => {
+  const fetchPreviousAssessment = async (classIds: string[], termId: string, currentExamId: string) => {
+    const currentExam = exams.find((exam) => exam.id === currentExamId);
+    if (!currentExam) return null;
+    const candidates = exams
+      .filter((exam) => exam.id !== currentExamId && exam.term_id === termId && exam.type !== 'combined')
+      .filter((exam) => !exam.target_type || exam.target_type === 'grade' || classIds.includes(exam.target_class_id))
+      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    for (const exam of candidates) {
+      const previousResults = await fetchResultsAll(classIds, termId, exam.id, 'student_id, marks, out_of, percentage, subjects(name)');
+      if (previousResults.length > 0) return { exam, results: previousResults };
+    }
+    return null;
+  };
+
+  const renderCompactStreamSummary = async (doc: jsPDF, opts: { classObj: any; label: string; rawResults: any[]; termObj: any; assessmentLabel: string; previousExam: any; previousSubjectStats: Map<string, number>; previousDistribution: Map<string, number>; previousTotalStudents: number | null; previousTotals: Map<string, number>; fontSize: PdfFontSize }) => {
     const band = getSchoolLevelBand(opts.classObj); const isPrimary = band === 'primary';
     // All streams must be summarized per class. Building one summary with the
     // seed class makes Grade 1/PP1 inherit the wrong area count and produces
@@ -1469,7 +1483,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       return { name, mean: values.length ? values.reduce((sum: number, value: number) => sum + value, 0) / values.length : 0 };
     }).sort((a, b) => b.mean - a.mean);
     const previousSubjectStats = opts.previousSubjectStats || new Map<string, number>();
-    const previousTerm = opts.previousTerm || null;
+    const previousExam = opts.previousExam || null;
     const previousDistribution = opts.previousDistribution || new Map<string, number>();
     const previousTotalStudents = opts.previousTotalStudents ?? null;
     const previousTotals = opts.previousTotals || new Map<string, number>();
@@ -1533,7 +1547,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const distTotals = [['TOTAL', `${totalStudents}`, previousTotalStudents != null ? `${previousTotalStudents}` : '—', totalDiffLabel]];
     autoTable(doc, {
       startY: 163,
-      head: [['Grade', 'Current Exam', 'Previous Exam', 'Difference']],
+      head: [['Grade', opts.assessmentLabel || 'Current Exam', previousExam ? `Previous: ${previousExam.name}` : 'Previous Exam', 'Difference']],
       body: [...distributionRows, ...distTotals],
       styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2, halign: 'center' },
       headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
@@ -1578,10 +1592,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
     doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
     doc.setFontSize(pdfFontSize(doc, 10));
-    doc.text(previousTerm ? 'SUBJECT PERFORMANCE ANALYSIS — CURRENT VS PREVIOUS EXAM' : 'LEARNING AREA PERFORMANCE COMPARISON', 105, 16, { align: 'center' });
+    doc.text(previousExam ? 'SUBJECT PERFORMANCE ANALYSIS — CURRENT VS PREVIOUS EXAM' : 'LEARNING AREA PERFORMANCE COMPARISON', 105, 16, { align: 'center' });
     doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80); doc.setFontSize(pdfFontSize(doc, 9));
     doc.text(`Current: ${opts.assessmentLabel || opts.termObj?.name || 'Selected assessment'}`, 14, 26);
-    if (previousTerm) doc.text(`Previous: ${previousTerm.name} ${previousTerm.academic_year || ''}`, 112, 26);
+    if (previousExam) doc.text(`Previous: ${previousExam.name} — ${opts.termObj?.name || ''} ${opts.termObj?.academic_year || ''}`, 112, 26);
     doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 9));
     subjectStats.forEach((subject, index) => {
       const y = 32 + index * 6;
@@ -1590,12 +1604,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       doc.text(label, 14, y);
       doc.setFillColor(225, 230, 240); doc.rect(44, y - 2, 52, 3, 'F');
       doc.setFillColor(37, 99, 235); doc.rect(44, y - 2, 52 * Math.min(100, subject.mean) / 100, 3, 'F');
-      if (previousTerm && previous != null) {
+      if (previousExam && previous != null) {
         doc.setFillColor(225, 230, 240); doc.rect(142, y - 2, 52, 3, 'F');
         doc.setFillColor(106, 27, 154); doc.rect(142, y - 2, 52 * Math.min(100, previous) / 100, 3, 'F');
       }
       doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 100, y);
-      if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(previous != null ? `${previous.toFixed(1)}%` : '—', 198, y); }
+      if (previousExam) { doc.setTextColor(106, 27, 154); doc.text(previous != null ? `${previous.toFixed(1)}%` : '—', 198, y); }
       doc.setTextColor(0, 0, 0);
     });
 
@@ -1776,7 +1790,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
     doc.setTextColor(26, 35, 126); doc.setFontSize(pdfFontSize(doc, 13)); doc.setFont('helvetica', 'bold'); doc.text('LEARNER RESULTS — ALL STREAMS', 105, 12, { align: 'center' });
     const subjectShorts = allSubjects.map((s) => shortName(s));
-    const headers = isPrimary ? ['POS', 'Learner', 'Stream', ...subjectShorts, 'Total', 'Avg%', 'Deviation', 'Grade'] : ['POS', 'Learner', 'Stream', ...subjectShorts, 'Total', 'Avg%', 'Pts', 'Deviation', 'Grade'];
+    const deviationHeader = previousExam ? `Deviation (vs ${previousExam.name})` : 'Deviation';
+    const headers = isPrimary ? ['POS', 'Learner', 'Stream', ...subjectShorts, 'Total', 'Avg%', deviationHeader, 'Grade'] : ['POS', 'Learner', 'Stream', ...subjectShorts, 'Total', 'Avg%', 'Pts', deviationHeader, 'Grade'];
     const body = summaries.map((s: any) => {
       const gr = overallGradeWithBand(s.avgPct, band);
       const studentClass = classes.find((c: any) => c.id === s.classId);
@@ -1789,7 +1804,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       row.push(isPrimary ? gr.grade : gr.subLevel);
       return row;
     });
-    autoTable(doc, { startY: 26, head: [headers], body, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, overflow: 'linebreak', halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, showHead: 'everyPage', margin: { left: 8, right: 8 }, didParseCell: (data: any) => { if (data.section === 'body' && data.column.index === headers.indexOf('Deviation')) { const value = String(data.cell.raw || ''); data.cell.styles.textColor = value === '—' || value === '0' ? [100, 100, 100] : value.startsWith('+') ? [22, 128, 65] : [190, 45, 45]; data.cell.styles.fontStyle = 'bold'; } } });
+    autoTable(doc, { startY: 26, head: [headers], body, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, overflow: 'linebreak', halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, showHead: 'everyPage', margin: { left: 8, right: 8 }, didParseCell: (data: any) => { if (data.section === 'body' && data.column.index === headers.indexOf(deviationHeader)) { const value = String(data.cell.raw || ''); data.cell.styles.textColor = value === '—' || value === '0' ? [100, 100, 100] : value.startsWith('+') ? [22, 128, 65] : [190, 45, 45]; data.cell.styles.fontStyle = 'bold'; } } });
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
 
   };
@@ -1803,20 +1818,15 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const rawResults = await fetchResultsForClassIds(streamClasses.map((c) => c.id), selectedTerm, selectedExam || undefined);
       if (!rawResults.length) { toast.error('No results found'); return; }
       const termObj = terms.find((t) => t.id === selectedTerm); const assessmentLabel = resolveAssessmentLabel(rawResults);
-      const orderedTerms = [...terms].sort((a, b) => Number(a.academic_year) - Number(b.academic_year) || Number(a.term_number || 0) - Number(b.term_number || 0));
-      const currentTermIndex = orderedTerms.findIndex((term) => term.id === selectedTerm);
-      const previousTerm = currentTermIndex > 0 ? orderedTerms[currentTermIndex - 1] : null;
+      const previousComparison = selectedExam
+        ? await fetchPreviousAssessment(streamClasses.map((c) => c.id), selectedTerm, selectedExam)
+        : null;
       const previousSubjectStats = new Map<string, number>();
       const previousDistribution = new Map<string, number>();
       const previousTotals = new Map<string, number>();
       let previousTotalStudents: number | null = null;
-      if (previousTerm) {
-        const previousResults = await fetchResultsAll(
-          streamClasses.map((c) => c.id),
-          previousTerm.id,
-          undefined,
-          'student_id, marks, out_of, percentage, subjects(name)',
-        );
+      if (previousComparison) {
+        const previousResults = previousComparison.results;
         const previousBySubject = new Map<string, number[]>();
         const previousByStudent = new Map<string, Record<string, number>>();
         const prevBand = getSchoolLevelBand(seedClassObj);
@@ -1851,7 +1861,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         });
       }
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }); configurePdfFontSize(doc, fontSize);
-      await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, previousTerm, previousSubjectStats, previousDistribution, previousTotalStudents, previousTotals, fontSize });
+      await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, previousExam: previousComparison?.exam || null, previousSubjectStats, previousDistribution, previousTotalStudents, previousTotals, fontSize });
       doc.save(`class_summary_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
       toast.success(`Class summary generated for all ${streamClasses.length} stream(s)!`);
     } catch (err: any) { toast.error('Failed: ' + err.message); console.error(err); }
@@ -1949,13 +1959,47 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     setComparisonLoading(true);
     try {
       const select = 'student_id, subject_id, marks, out_of, percentage, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name, grade_level, level, curriculum)';
-      const [first, second] = await Promise.all([
-        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).in('class_id', comparisonClassIds).eq('term_id', comparisonTermA).eq('exam_id', comparisonExamA).limit(10000),
-        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).in('class_id', comparisonClassIds).eq('term_id', comparisonTermB).eq('exam_id', comparisonExamB).limit(10000),
-      ]);
-      if (first.error) throw first.error;
-      if (second.error) throw second.error;
       const classObj = comparisonSeedClass;
+      const catalogLevel = learningAreaCatalogLevel(classObj);
+      const [first, second, catalogResult, schoolAreasResult] = await Promise.all([
+        fetchResultsAll(comparisonClassIds, comparisonTermA, comparisonExamA, select),
+        fetchResultsAll(comparisonClassIds, comparisonTermB, comparisonExamB, select),
+        catalogLevel
+          ? supabaseUntyped.from('learning_area_catalog').select('id, name').eq('level', catalogLevel).limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        catalogLevel
+          ? supabaseUntyped.from('school_learning_areas').select('learning_area_id').eq('school_id', user?.schoolId).eq('is_active', true).limit(500)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (catalogResult.error) throw catalogResult.error;
+      if (schoolAreasResult.error) throw schoolAreasResult.error;
+      const activeAreaRows = (schoolAreasResult.data || []) as { learning_area_id: string }[];
+      const catalogAreas = (catalogResult.data || []) as { id: string; name: string }[];
+      const activeAreaIds = new Set(activeAreaRows.map((area) => area.learning_area_id));
+      const learningAreas = catalogAreas
+        .filter((area) => activeAreaIds.has(area.id))
+        .map((area) => area.name)
+        .filter(Boolean);
+      if (catalogLevel && !learningAreas.length) {
+        throw new Error(`No active learning areas are configured for ${classObj?.name || 'this class'}; the comparison was not generated.`);
+      }
+      const allowedAreaNames = catalogLevel
+        ? new Set(learningAreas.map((area: string) => normalizeLearningAreaName(area)))
+        : null;
+      const filterConfiguredRows = (rows: ComparisonSourceRow[]) => allowedAreaNames
+        ? rows.filter((row) => allowedAreaNames.has(normalizeLearningAreaName(row.subjects?.name || '')))
+        : rows;
+      const selectedRowsA = filterConfiguredRows(first as ComparisonSourceRow[]);
+      const selectedRowsB = filterConfiguredRows(second as ComparisonSourceRow[]);
+      const learnerIds = (rows: ComparisonSourceRow[]) => new Set(
+        rows.map((row) => row.student_id).filter((id): id is string => Boolean(id)),
+      );
+      const selectedLearnerIds = new Set([...learnerIds(selectedRowsA), ...learnerIds(selectedRowsB)]);
+      const omittedLearnersA = [...learnerIds(first)].filter((id) => !learnerIds(selectedRowsA).has(id)).length;
+      const omittedLearnersB = [...learnerIds(second)].filter((id) => !learnerIds(selectedRowsB).has(id)).length;
+      if (!selectedRowsA.length || !selectedRowsB.length || selectedLearnerIds.size === 0 || omittedLearnersA > 0 || omittedLearnersB > 0) {
+        throw new Error(`The selected learning-area filter would omit learners with source results (Exam A: ${omittedLearnersA}, Exam B: ${omittedLearnersB}). No marks were altered; check the school's active learning-area selections before comparing.`);
+      }
       const termA = terms.find((item) => item.id === comparisonTermA);
       const termB = terms.find((item) => item.id === comparisonTermB);
       const examA = exams.find((item) => item.id === comparisonExamA);
@@ -1966,9 +2010,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         termBLabel: `${termB?.name || 'Term'} ${termB?.academic_year || ''}`.trim(),
         examALabel: examA?.name || 'Exam 1',
         examBLabel: examB?.name || 'Exam 2',
-        rowsA: first.data || [],
-        rowsB: second.data || [],
+        rowsA: selectedRowsA,
+        rowsB: selectedRowsB,
         classObj,
+        learningAreas,
       });
       if (!built.sideA.learners.length && !built.sideB.learners.length) throw new Error('No results found for either selected assessment.');
       setComparisonData(built);
@@ -2140,7 +2185,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           <label className="text-sm font-medium text-gray-600">Assessment B<select value={comparisonExamB} onChange={(e) => setComparisonExamB(e.target.value)} className="mt-1 w-full px-3 py-2.5 border border-gray-200 rounded-xl bg-white"><option value="">Select second assessment</option>{comparisonExamsB.map((exam) => <option key={exam.id} value={exam.id}>{exam.name}</option>)}</select></label>
         </div>
         {comparisonData && <div className="mt-4 rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-sm text-indigo-900"><b>10 sections ready:</b> summary, grade distribution, top learners, subject performance, subject grades, learner deviation, stream performance, total mean, top-10 listings, and subject grade means. {comparisonRows.length} learner-subject comparisons loaded.</div>}
-        {comparisonRows.length > 0 && <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left p-3">Learner</th><th className="text-left p-3">Stream</th><th className="text-left p-3">Learning Area</th><th className="text-right p-3">Exam 1 %</th><th className="text-right p-3">Exam 2 %</th><th className="text-right p-3">Difference</th></tr></thead><tbody className="divide-y divide-gray-100">{comparisonRows.slice(0, 100).map((row) => <tr key={`${row.student_id}:${row.subject}`}><td className="p-3 font-medium">{row.name}</td><td className="p-3">{row.stream}</td><td className="p-3">{row.subject}</td><td className="p-3 text-right">{row.a == null ? '—' : `${row.a.toFixed(1)}%`}</td><td className="p-3 text-right">{row.b == null ? '—' : `${row.b.toFixed(1)}%`}</td><td className={`p-3 text-right font-bold ${row.diff == null ? 'text-gray-400' : row.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{row.diff == null ? 'Missing on one side' : `${row.diff >= 0 ? '+' : ''}${row.diff.toFixed(1)}%`}</td></tr>)}</tbody></table></div>}
+        {comparisonRows.length > 0 && <div className="mt-5 overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50"><tr><th className="text-left p-3">Learner</th><th className="text-left p-3">Stream</th><th className="text-left p-3">Learning Area</th><th className="text-right p-3">Exam 1 %</th><th className="text-right p-3">Exam 2 %</th><th className="text-right p-3">Difference</th></tr></thead><tbody className="divide-y divide-gray-100">{comparisonRows.map((row) => <tr key={`${row.student_id}:${row.subject}`}><td className="p-3 font-medium">{row.name}</td><td className="p-3">{row.stream}</td><td className="p-3">{row.subject}</td><td className="p-3 text-right">{row.a == null ? '—' : `${row.a.toFixed(1)}%`}</td><td className="p-3 text-right">{row.b == null ? '—' : `${row.b.toFixed(1)}%`}</td><td className={`p-3 text-right font-bold ${row.diff == null ? 'text-gray-400' : row.diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>{row.diff == null ? 'Missing on one side' : `${row.diff >= 0 ? '+' : ''}${row.diff.toFixed(1)}%`}</td></tr>)}</tbody></table></div>}
       </section>
       {/* LEARNER RESULTS TABLE GRID */}
       {selectedClass && selectedTerm && (
