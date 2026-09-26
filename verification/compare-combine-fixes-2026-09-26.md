@@ -4,10 +4,10 @@
 
 - Repository: `GoldGain/Zamifu_analytics-`
 - Branch: `fix/compare-combine-all-seven-2026-09-26`
-- Commit: `571c630` — `Fix Compare/Combine Exams reports and means`
+- Commits: `571c630` — `Fix Compare/Combine Exams reports and means`; `29da26e` — `Tighten Combine Exams database typing`
 - Production deployment: `https://zamifu.company`
-- Vercel deployment: `zamifu-80crgnzfh-goldgain-3350s-projects.vercel.app`
-- Production alias was explicitly repointed to the forced local-source deployment.
+- Final Vercel deployment: `zamifu-89c7nn420-goldgain-3350s-projects.vercel.app`
+- Production alias was explicitly repointed to the final local prebuilt deployment.
 
 ## Implemented
 
