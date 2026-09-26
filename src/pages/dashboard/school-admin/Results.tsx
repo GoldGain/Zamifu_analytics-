@@ -1932,12 +1932,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     try {
       const select = 'student_id, subject_id, marks, out_of, percentage, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name, grade_level, level, curriculum)';
       const [first, second, configuredSubjects] = await Promise.all([
-        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).in('class_id', comparisonClassIds).eq('term_id', comparisonTermA).eq('exam_id', comparisonExamA).limit(10000),
-        supabaseUntyped.from('results').select(select).eq('school_id', user?.schoolId).in('class_id', comparisonClassIds).eq('term_id', comparisonTermB).eq('exam_id', comparisonExamB).limit(10000),
+        fetchResultsAll(comparisonClassIds, comparisonTermA, comparisonExamA, select),
+        fetchResultsAll(comparisonClassIds, comparisonTermB, comparisonExamB, select),
         supabaseUntyped.from('subjects').select('name, class_levels').eq('school_id', user?.schoolId).limit(500),
       ]);
-      if (first.error) throw first.error;
-      if (second.error) throw second.error;
       if (configuredSubjects.error) throw configuredSubjects.error;
       const classObj = comparisonSeedClass;
       const grade = Number(classObj?.grade_level ?? classObj?.level);
@@ -1955,8 +1953,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         termBLabel: `${termB?.name || 'Term'} ${termB?.academic_year || ''}`.trim(),
         examALabel: examA?.name || 'Exam 1',
         examBLabel: examB?.name || 'Exam 2',
-        rowsA: first.data || [],
-        rowsB: second.data || [],
+        rowsA: first,
+        rowsB: second,
         classObj,
         learningAreas,
       });
