@@ -18,6 +18,10 @@ export interface SchoolE2EResult {
   id: string;
   name: string;
   verdict: 'PASS' | 'WARN' | 'BLOCK';
+  /** Level groups that had classes with active assignments and were actually solved. */
+  evaluatedLevels: number;
+  /** Level groups that exist for this school but could not be solved at all. */
+  skippedLevels: { levelKey: string; reason: string }[];
   levels: {
     levelKey: string;
     classes: number;
@@ -38,9 +42,31 @@ export async function e2eSchool(schoolId: string, name?: string): Promise<School
   const relaxed = runSchool(fixture, { maxNodesPerClass: 500_000, allowIncompleteClasses: true })
     .filter((r) => r.classes > 0);
 
+  // runSchool silently skips any level group with no classes, no saved Timetable
+  // Setup, or no active assignments. Those gaps are reported explicitly so a
+  // school with nothing to solve can never be mistaken for a clean solve.
+  const evaluatedKeys = new Set(strict.map((r) => r.levelKey));
+  const skippedLevels: { levelKey: string; reason: string }[] = [];
+  for (const levelKey of LEVEL_GROUPS) {
+    if (evaluatedKeys.has(levelKey)) continue;
+    const levelClasses = fixture.classes.filter((cls) => classMatchesLevel(cls, levelKey));
+    if (!levelClasses.length) continue;
+    if (!fixture.levelConfigs?.[levelKey]) {
+      skippedLevels.push({ levelKey, reason: 'no saved Timetable Setup for this level group' });
+      continue;
+    }
+    const levelAssignmentCount = fixture.assignments.filter((a) =>
+      levelClasses.some((cls) => String(cls.id) === String(a.class_id))).length;
+    if (levelAssignmentCount === 0) {
+      skippedLevels.push({
+        levelKey,
+        reason: `${levelClasses.length} class(es) exist but have no active teacher assignments, so no lessons can be scheduled`,
+      });
+    }
+  }
+
   const levels = strict.map((result) => {
     const soft = relaxed.find((r) => r.levelKey === result.levelKey);
-    const violations = result.violations.length;
     return {
       levelKey: result.levelKey,
       classes: result.classes,
@@ -48,23 +74,37 @@ export async function e2eSchool(schoolId: string, name?: string): Promise<School
       nodes: result.searchNodes,
       ms: result.durationMs,
       complete: result.ok,
-      violations,
+      violations: result.violations.length,
       shortClasses: result.failedClasses,
-      blockedClasses: (soft?.failedClasses || []).filter((f) => /no active teacher assignments|no lessons to schedule/i.test(f.reason)),
+      blockedClasses: (soft?.failedClasses || []).filter((f) =>
+        /no active teacher assignments|no lessons to schedule/i.test(f.reason)),
     };
   });
 
   const anyComplete = levels.some((level) => level.entries > 0 && level.violations === 0);
   const allComplete = levels.every((level) => level.complete && level.violations === 0);
   const anyProduced = levels.some((level) => level.entries > 0);
-  const verdict: SchoolE2EResult['verdict'] = allComplete ? 'PASS' : anyComplete || anyProduced ? 'WARN' : 'BLOCK';
+  // Nothing evaluable is NOT a pass - it means the school has classes but no usable
+  // timetable data, which must be reported as blocked rather than silently green.
+  const verdict: SchoolE2EResult['verdict'] = levels.length === 0
+    ? 'BLOCK'
+    : allComplete && skippedLevels.length === 0
+      ? 'PASS'
+      : anyComplete || anyProduced ? 'WARN' : 'BLOCK';
   const firstProblem = levels.flatMap((level) => level.shortClasses)[0];
   return {
     id: schoolId,
     name: fixture.name,
     verdict,
+    evaluatedLevels: levels.length,
+    skippedLevels,
     levels,
-    reason: verdict === 'PASS' ? undefined : firstProblem?.reason,
+    reason: verdict === 'PASS'
+      ? undefined
+      : firstProblem?.reason
+        || (skippedLevels.length
+          ? `${skippedLevels[0].levelKey}: ${skippedLevels[0].reason}`
+          : 'No level group could be evaluated.'),
   };
 }
 
@@ -77,7 +117,8 @@ async function main() {
     const list = argv[schoolsIndex + 1].split(',').filter(Boolean);
     const rows = await sql<any>(`select id, name from schools`);
     targets = list.map((entry) => {
-      const match = rows.find((r: any) => r.id === entry || (r.name || '').toLowerCase().includes(entry.toLowerCase()));
+      const match = rows.find((r: any) => r.id === entry
+        || (r.name || '').toLowerCase().includes(entry.toLowerCase()));
       if (!match) throw new Error(`No school matched ${entry}`);
       return { id: match.id, name: match.name };
     });
@@ -98,7 +139,7 @@ async function main() {
         : level.complete ? 'complete'
         : `${level.entries} entries`;
       return `${level.levelKey}:${level.classes}cls/${state}/${level.nodes}n`;
-    }).join(' ');
+    }).join(' ') || '(no evaluable level)';
     console.log(`${result.verdict.padEnd(6)} ${String(result.name || '').slice(0, 36).padEnd(38)} ${detail}`);
     if (result.reason) console.log(`       ${result.reason.replace(/\s+/g, ' ').slice(0, 150)}`);
   }
@@ -106,9 +147,11 @@ async function main() {
   const pass = results.filter((r) => r.verdict === 'PASS').length;
   const warn = results.filter((r) => r.verdict === 'WARN').length;
   const block = results.filter((r) => r.verdict === 'BLOCK').length;
+  const noEvaluable = results.filter((r) => r.evaluatedLevels === 0).length;
   const solverFailures = results.reduce((sum, r) =>
     sum + r.levels.filter((l) => l.entries === 0 && l.shortClasses.length === 0).length, 0);
   console.log(`\nschools=${results.length} PASS=${pass} WARN=${warn} BLOCK=${block}`);
+  console.log(`schools with no evaluable level: ${noEvaluable}`);
   console.log(`opaque solver failures (no named data reason): ${solverFailures}`);
   if (jsonIndex >= 0 && argv[jsonIndex + 1]) {
     const { writeFileSync } = await import('node:fs');
