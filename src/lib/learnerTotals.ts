@@ -84,8 +84,11 @@ function rowPoints(result: any, percentage: number, band: SchoolLevelBand): numb
 export function aggregateLearnerTotals(rawResults: any[], classObj: any): LearnerTotals[] {
   const band: SchoolLevelBand = getSchoolLevelBand(classObj);
   const studentMap: Record<string, LearnerTotals> = {};
+  // The raw row currently winning each learning area, so the choice can be
+  // decided by recency rather than by whatever order PostgREST returned.
+  const winner: Record<string, Record<string, { createdAt: number; index: number; row: any }>> = {};
 
-  (rawResults || []).forEach((result: any) => {
+  (rawResults || []).forEach((result: any, index: number) => {
     const studentId = result?.student_id;
     if (!studentId) return;
     if (!studentMap[studentId]) {
@@ -101,24 +104,39 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
         gender: result.students?.gender || null,
         examName: result.school_exams?.name || result.exams?.name || '',
       };
+      winner[studentId] = {};
     }
     const entry = studentMap[studentId];
     const percentage = rowPercentage(result);
     const areaKey = normalizeLearningAreaName(result.subjects?.name || 'Unknown');
-    // First recorded row per learning area wins; later duplicates are ignored.
-    if (entry.subjects[areaKey] !== undefined) {
-      if (result.school_exams?.name || result.exams?.name) {
-        entry.examName = result.school_exams?.name || result.exams?.name;
-      }
-      return;
-    }
-    entry.subjects[areaKey] = percentage;
-    entry.totalMarks += percentage;
-    entry.totalPoints += rowPoints(result, percentage, band);
-    entry.count += 1;
+    const createdAt = Date.parse(String(result.created_at || '')) || 0;
     if (result.school_exams?.name || result.exams?.name) {
       entry.examName = result.school_exams?.name || result.exams?.name;
     }
+    // A term can hold several rows for the same learning area (Exam 1, Exam 2
+    // and their combined row). Counting more than one would inflate the
+    // learner's total, and picking "the first row the API happened to return"
+    // makes the total depend on request ordering — which is how the same
+    // learner ended up with different positions on different pages. The most
+    // recently recorded row wins deterministically, so every page derives the
+    // same total. The newest row per learning area is the school's latest word
+    // on that learning area (a later exam, or the combined result).
+    const previous = winner[studentId][areaKey];
+    if (previous && (previous.createdAt > createdAt
+      || (previous.createdAt === createdAt && previous.index <= index))) {
+      return;
+    }
+    if (previous) {
+      // Replace the row that previously won this learning area.
+      entry.totalMarks -= entry.subjects[areaKey];
+      entry.totalPoints -= rowPoints(previous.row, entry.subjects[areaKey], band);
+    } else {
+      entry.count += 1;
+    }
+    winner[studentId][areaKey] = { createdAt, index, row: result };
+    entry.subjects[areaKey] = percentage;
+    entry.totalMarks += percentage;
+    entry.totalPoints += rowPoints(result, percentage, band);
   });
 
   const observedAreaCount = new Set(

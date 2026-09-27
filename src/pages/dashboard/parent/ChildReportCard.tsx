@@ -283,7 +283,7 @@ export default function ParentChildReportCard() {
       .select('*, students(id, first_name, last_name), subjects(name)')
       .eq('class_id', selectedChild.class_id)
       .eq('term_id', selectedTerm)
-      .order('student_id')
+      .order('created_at')
       .range(from, to));
     if (classResults && classResults.length > 0) {
       setClassBestList(computeBestPerSubject(classResults, selectedChild?.classes || {}));

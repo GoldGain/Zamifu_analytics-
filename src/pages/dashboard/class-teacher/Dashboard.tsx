@@ -152,7 +152,7 @@ export default function ClassTeacherDashboard() {
         .eq('class_id', assignedClass.id)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
-        .order('student_id')
+        .order('created_at')
         .range(from, to));
 
       const resultsMap: Record<string, Record<string, any>> = {};

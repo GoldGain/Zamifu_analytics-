@@ -115,7 +115,7 @@ export default function StudentResults() {
             .eq('class_id', student.class_id)
             .eq('school_id', student.school_id)
             .eq('term_id', selectedTerm)
-            .order('student_id')
+            .order('created_at')
             .range(from, to));
           if (classResults && classResults.length > 0) {
             // Same aggregation the class summary uses, so a term holding both

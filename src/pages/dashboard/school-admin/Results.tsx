@@ -637,7 +637,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         .eq('class_id', effectiveClassId)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
-        .order('student_id')
+        .order('created_at')
         .range(from, to);
       if (selectedExam) query = query.eq('exam_id', selectedExam);
       return query;

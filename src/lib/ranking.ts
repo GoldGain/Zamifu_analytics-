@@ -75,7 +75,11 @@ export function compareByUnifiedRanking(
   }
   const avgDiff = num(b?.avgPct ?? b?.totalPct) - num(a?.avgPct ?? a?.totalPct);
   if (avgDiff !== 0) return avgDiff;
-  return rankingTiebreakLabel(a).localeCompare(rankingTiebreakLabel(b));
+  // Final tie-break is by student id / name so the ORDER is deterministic even
+  // though the ranks are equal. Without this the sort depends on the order the
+  // rows arrived in, which is not stable across requests.
+  return rankingTiebreakLabel(a).localeCompare(rankingTiebreakLabel(b))
+    || rankingTiebreakLabel(a).length - rankingTiebreakLabel(b).length;
 }
 
 /**
