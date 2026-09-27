@@ -122,6 +122,66 @@ const blankIssues = validateTimetableRules({
 });
 assert.equal(blankIssues.some((issue) => issue.rule === 'no-blanks'), true);
 
+// Rule 14: a class the admin explicitly accepted a shortfall for may keep the
+// cells it has no lessons for, but every other class must still be complete.
+const shortClassId = 'class-short';
+const fullClassId = 'class-full';
+const perClassEntry = (classId: string, subject_id: string, time_slot_id: string) => ({
+  ...entry(subject_id, time_slot_id),
+  class_id: classId,
+});
+const twoClassOptions = {
+  slots,
+  subjectNames,
+  classes: [
+    { id: shortClassId, name: 'Grade 7 Short' },
+    { id: fullClassId, name: 'Grade 7 Full' },
+  ],
+  days: [1],
+  levelGroup: 'junior',
+  requireComplete: true,
+};
+// The short class really is short (one lesson), the full class really is full (eight).
+const mixedEntries = [
+  perClassEntry(shortClassId, 'math', 'lesson-1'),
+  ...slots.map((slot, index) => perClassEntry(fullClassId, index === 0 ? 'math' : 'english', slot.id)),
+];
+
+const strictMixed = validateTimetableRules({ entries: mixedEntries, ...twoClassOptions });
+assert.equal(
+  strictMixed.filter((issue) => issue.rule === 'no-blanks').length,
+  7,
+  'without an accepted shortfall the short class still reports all seven blank lessons',
+);
+
+const acceptedMixed = validateTimetableRules({
+  entries: mixedEntries,
+  ...twoClassOptions,
+  allowBlankSlotsForClassIds: [shortClassId],
+});
+assert.equal(
+  acceptedMixed.some((issue) => issue.rule === 'no-blanks'),
+  false,
+  'accepting the short class clears its blanks',
+);
+
+// The allowance must not leak onto classes the admin never saw in the warning.
+const leakedBlank = mixedEntries.map((item) =>
+  item.class_id === fullClassId && item.time_slot_id === 'lesson-8'
+    ? { ...item, time_slot_id: 'lesson-7' }
+    : item,
+);
+const leakedIssues = validateTimetableRules({
+  entries: leakedBlank,
+  ...twoClassOptions,
+  allowBlankSlotsForClassIds: [shortClassId],
+});
+assert.equal(
+  leakedIssues.filter((issue) => issue.rule === 'no-blanks').length,
+  1,
+  'a blank in a class outside the accepted shortfall list is still a hard failure',
+);
+
 const fillerIssues = validateTimetableRules({
   entries: [entry('study', 'lesson-3')],
   slots,

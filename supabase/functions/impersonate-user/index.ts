@@ -55,17 +55,65 @@ Deno.serve(async (req) => {
   if (action === "search") {
     const query = text(body?.query).toLowerCase();
     if (query.length < 2) return json({ targets: [] });
-    const [{ data: profiles }, { data: students }, { data: schools }] = await Promise.all([
-      admin.from("profiles").select("id, first_name, last_name, email, role, school_id, is_active").neq("role", "master_super_admin").eq("is_active", true).limit(2000),
-      admin.from("students").select("profile_id, admission_number, assessment_number, school_id").limit(5000),
-      admin.from("schools").select("id, name").limit(2000),
+    // Search in the database, not in a downloaded page of profiles. The platform
+    // has far more accounts than one REST page, so filtering a fixed slice here
+    // made most schools impossible to find.
+    const pattern = `%${query.replace(/[%_\\]/g, (match) => `\\${match}`)}%`;
+    const [schoolMatches, studentMatches, directMatches] = await Promise.all([
+      admin.from("schools").select("id, name").ilike("name", pattern).limit(50),
+      admin
+        .from("students")
+        .select("profile_id, admission_number, assessment_number")
+        .or(`admission_number.ilike.${pattern},assessment_number.ilike.${pattern}`)
+        .limit(50),
+      admin
+        .from("profiles")
+        .select("id, first_name, last_name, email, role, school_id, is_active")
+        .neq("role", "master_super_admin")
+        .eq("is_active", true)
+        .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`)
+        .limit(50),
     ]);
-    const studentByProfile = new Map((students || []).filter((row) => row.profile_id).map((row) => [row.profile_id, row]));
-    const schoolById = new Map((schools || []).map((row) => [row.id, row.name]));
-    const targets = (profiles || []).filter((profile) => {
-      const student = studentByProfile.get(profile.id);
-      const haystack = [profile.first_name, profile.last_name, profile.email, profile.role, student?.admission_number, student?.assessment_number, schoolById.get(profile.school_id)].map(text).join(" ").toLowerCase();
-      return haystack.includes(query);
+    const schoolById = new Map((schoolMatches.data || []).map((row) => [row.id, row.name]));
+    const studentByProfile = new Map(
+      (studentMatches.data || []).filter((row) => row.profile_id).map((row) => [row.profile_id, row]),
+    );
+    // Accounts that belong to a school whose name matched the query.
+    const schoolIds = [...schoolById.keys()];
+    if (schoolIds.length) {
+      const { data: bySchool } = await admin
+        .from("profiles")
+        .select("id, first_name, last_name, email, role, school_id, is_active")
+        .neq("role", "master_super_admin")
+        .eq("is_active", true)
+        .in("school_id", schoolIds)
+        .limit(50);
+      directMatches.data = [...(directMatches.data || []), ...(bySchool || [])];
+    }
+    // Learners matched by admission/assessment number.
+    const studentProfileIds = [...studentByProfile.keys()];
+    if (studentProfileIds.length) {
+      const { data: byStudent } = await admin
+        .from("profiles")
+        .select("id, first_name, last_name, email, role, school_id, is_active")
+        .neq("role", "master_super_admin")
+        .eq("is_active", true)
+        .in("id", studentProfileIds)
+        .limit(50);
+      directMatches.data = [...(directMatches.data || []), ...(byStudent || [])];
+    }
+    // Any school referenced by a matched account still needs its name resolved.
+    const referencedSchoolIds = [...new Set((directMatches.data || []).map((row) => row.school_id).filter(Boolean))]
+      .filter((id) => !schoolById.has(id));
+    if (referencedSchoolIds.length) {
+      const { data: extraSchools } = await admin.from("schools").select("id, name").in("id", referencedSchoolIds);
+      for (const school of extraSchools || []) schoolById.set(school.id, school.name);
+    }
+    const seen = new Set<string>();
+    const targets = (directMatches.data || []).filter((profile) => {
+      if (!profile?.id || seen.has(profile.id)) return false;
+      seen.add(profile.id);
+      return true;
     }).slice(0, 50).map((profile) => {
       const student = studentByProfile.get(profile.id);
       return { id: profile.id, name: `${text(profile.first_name)} ${text(profile.last_name)}`.trim() || "Unnamed user", email: profile.email, role: profile.role, school_id: profile.school_id, school_name: schoolById.get(profile.school_id) || null, admission_number: student?.admission_number || null, assessment_number: student?.assessment_number || null };
