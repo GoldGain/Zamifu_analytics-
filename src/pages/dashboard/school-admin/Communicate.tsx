@@ -46,7 +46,7 @@ export default function Communicate() {
     const [{ data: classRows }, { data: teacherRows }, { data: studentRows }, { data: wallet }] = await Promise.all([
       supabaseUntyped.from('classes').select('id, name, stream, stream_name').eq('school_id', schoolId).eq('is_active', true).order('name'),
       supabaseUntyped.from('teachers').select('id, first_name, last_name, phone').eq('school_id', schoolId).eq('is_active', true).order('first_name'),
-      supabaseUntyped.from('students').select('id, first_name, last_name, class_id, parent_name, parent_phone, parent2_name, parent2_phone, classes(name, stream, stream_name)').eq('school_id', schoolId).eq('is_active', true).order('admission_number'),
+      supabaseUntyped.from('students').select('id, first_name, last_name, class_id, parent_name, parent_phone, parent2_name, parent2_phone, classes!students_class_id_fkey(name, stream, stream_name)').eq('school_id', schoolId).eq('is_active', true).order('admission_number'),
       supabaseUntyped.from('school_sms_wallets').select('sms_balance').eq('school_id', schoolId).maybeSingle(),
     ]);
     const classMap = new Map((classRows || []).map((item: SchoolClass) => [item.id, formatClassStream(item)]));

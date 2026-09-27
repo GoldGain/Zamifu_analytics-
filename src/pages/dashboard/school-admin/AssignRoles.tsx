@@ -5,6 +5,7 @@ import { UserCheck, Users, GraduationCap, Loader2, CheckCircle, AlertCircle, Sav
 import { createScopedUser } from '@/lib/supabase/createUser';
 import { deleteScopedUser } from '@/lib/supabase/accountActions';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Teacher {
   id: string;
@@ -21,6 +22,9 @@ interface ClassInfo {
   level: number;
   class_teacher_id: string | null;
   class_teacher_name?: string;
+  stream?: string | null;
+  stream_name?: string | null;
+  grade_level?: number | null;
 }
 
 interface SchoolInfo {
@@ -59,7 +63,9 @@ export default function AssignRoles() {
           .order('first_name'),
         (supabase as any)
           .from('classes')
-          .select('id, name, level, class_teacher_id')
+          // Stream columns are required so multi-stream schools can tell
+          // "Grade 9A" from "Grade 9B" on this page.
+          .select('id, name, level, grade_level, stream, stream_name, class_teacher_id')
           .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('level'),
@@ -208,7 +214,7 @@ export default function AssignRoles() {
           .eq('assigned_class_id', classId);
       }
 
-      toast.success(`Class teacher ${teacherId ? 'assigned' : 'removed'} for ${classes.find((c) => c.id === classId)?.name}`);
+      toast.success(`Class teacher ${teacherId ? 'assigned' : 'removed'} for ${formatClassStream(classes.find((c) => c.id === classId))}`);
       fetchData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to assign class teacher');
@@ -343,7 +349,9 @@ export default function AssignRoles() {
                   <UserCheck className="w-4 h-4 text-blue-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{cls.name}</p>
+                  {/* Full class name = grade + stream so multi-stream schools
+                      can tell Grade 9A from Grade 9B (Issue 3). */}
+                  <p className="text-sm font-semibold text-gray-900">{formatClassStream(cls)}</p>
                   {cls.class_teacher_id && (
                     <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
                       <CheckCircle className="w-3 h-3" />

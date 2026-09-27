@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { sortByAdmissionNumber } from '@/lib/student-order';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Student {
   id: string;
@@ -478,7 +479,7 @@ export default function Marklist() {
           <option value="">-- Choose a class --</option>
           {classes.map((cls) => (
             <option key={cls.id} value={cls.id}>
-              {cls.name} {cls.stream ? `(${cls.stream})` : ''}
+              {formatClassStream(cls)}
             </option>
           ))}
         </select>

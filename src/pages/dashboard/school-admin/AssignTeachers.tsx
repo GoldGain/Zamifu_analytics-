@@ -276,7 +276,7 @@ export default function AssignTeachers() {
     );
     const duplicateWithAnotherTeacher = replacing.some((assignment) => assignment.teacher_id !== formData.teacher_id);
     if (duplicateWithAnotherTeacher) {
-      setError(`${selectedClass?.name || 'This class'} already has ${subject?.name || 'this learning area'} assigned to another teacher. Edit or remove the existing assignment first.`);
+      setError(`${formatClassStream(selectedClass) || 'This class'} already has ${subject?.name || 'this learning area'} assigned to another teacher. Edit or remove the existing assignment first.`);
       return;
     }
     const currentTotal = assignments
@@ -284,7 +284,7 @@ export default function AssignTeachers() {
       .reduce((sum, assignment) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
     const candidateTotal = currentTotal + lessonsPerWeek;
     if (candidateTotal > required) {
-      setError(`${selectedClass?.name || 'This class'} (${levelGroup || 'level'}): ${candidateTotal} configured; exactly ${required} required (${required / ALL_DAYS.length}/day × ${ALL_DAYS.length}). Over by ${candidateTotal - required}. Reduce this allocation before saving.`);
+      setError(`${formatClassStream(selectedClass) || 'This class'} (${levelGroup || 'level'}): ${candidateTotal} configured; exactly ${required} required (${required / ALL_DAYS.length}/day × ${ALL_DAYS.length}). Over by ${candidateTotal - required}. Reduce this allocation before saving.`);
       return;
     }
     try {
@@ -310,7 +310,7 @@ export default function AssignTeachers() {
       if (insertError) throw insertError;
 
       setSuccess(candidateTotal < required
-        ? `Assignment saved. ${selectedClass?.name || 'This class'} is Under by ${required - candidateTotal}; add ${required - candidateTotal} more lesson period(s) before generating.`
+        ? `Assignment saved. ${formatClassStream(selectedClass) || 'This class'} is Under by ${required - candidateTotal}; add ${required - candidateTotal} more lesson period(s) before generating.`
         : 'Assignment saved successfully!');
       setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'auto', is_double_lesson: false, double_lesson_days: [...ALL_DAYS], available_days: [...ALL_DAYS] });
       await fetchAssignments();
@@ -740,7 +740,9 @@ export default function AssignTeachers() {
                 <div key={row.id} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-xs font-black text-gray-800">{row.name}</p>
+                      {/* Full class name = grade + stream so an "over"/"under"
+                          badge points at the exact stream (Issue 4). */}
+                      <p className="text-xs font-black text-gray-800">{formatClassStream(row)}</p>
                       <p className="text-[10px] text-gray-500">{row.levelGroup} · {row.lessonsPerDay}/day × 5 = {row.required} required</p>
                     </div>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${

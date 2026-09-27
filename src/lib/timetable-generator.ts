@@ -1,3 +1,5 @@
+import { formatClassStream } from './class-label';
+
 /**
  * Shared timetable generation logic
  *
@@ -329,7 +331,7 @@ export interface ExactGridAssignmentIssue {
  * subject may occur only once per day.
  */
 export function getExactGridAssignmentIssues(options: {
-  classes: Array<{ id: string; name?: string | null }>;
+  classes: Array<{ id: string; name?: string | null; stream?: string | null; stream_name?: string | null }>;
   assignments: Array<{
     class_id: string;
     lessons_per_week?: number | null;
@@ -381,9 +383,9 @@ export function getExactGridAssignmentIssues(options: {
     if (configuredTotal !== options.totalLessons * days.length) {
       issues.push({
         classId,
-        className: String(cls.name || `Class ${classId}`),
+        className: formatClassStream(cls) || `Class ${classId}`,
         subjectName: 'Weekly total',
-        message: `${String(cls.name || `Class ${classId}`)} has ${configuredTotal} configured lesson periods but requires exactly ${options.totalLessons * days.length}.`,
+        message: `${formatClassStream(cls) || `Class ${classId}`} has ${configuredTotal} configured lesson periods but requires exactly ${options.totalLessons * days.length}.`,
       });
     }
 
@@ -397,9 +399,9 @@ export function getExactGridAssignmentIssues(options: {
       if (allowedDays.length < requiredDistinctDays) {
         issues.push({
           classId,
-          className: String(cls.name || `Class ${classId}`),
+          className: formatClassStream(cls) || `Class ${classId}`,
           subjectName,
-          message: `${String(cls.name || `Class ${classId}`)} — ${subjectName}: ${lessons} weekly lessons require at least ${requiredDistinctDays} available weekdays, but only ${allowedDays.length} are allowed (${allowedDays.join(', ') || 'none'}).`,
+          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: ${lessons} weekly lessons require at least ${requiredDistinctDays} available weekdays, but only ${allowedDays.length} are allowed (${allowedDays.join(', ') || 'none'}).`,
         });
       }
 
@@ -407,9 +409,9 @@ export function getExactGridAssignmentIssues(options: {
       if (assignment.is_double_lesson && configuredDoubleDays.length > 0 && !configuredDoubleDays.some((day) => allowedDays.includes(day))) {
         issues.push({
           classId,
-          className: String(cls.name || `Class ${classId}`),
+          className: formatClassStream(cls) || `Class ${classId}`,
           subjectName,
-          message: `${String(cls.name || `Class ${classId}`)} — ${subjectName}: the configured double-lesson weekday (${configuredDoubleDays.join(', ')}) is not in the assignment's available weekdays (${allowedDays.join(', ') || 'none'}).`,
+          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: the configured double-lesson weekday (${configuredDoubleDays.join(', ')}) is not in the assignment's available weekdays (${allowedDays.join(', ') || 'none'}).`,
         });
       }
     }

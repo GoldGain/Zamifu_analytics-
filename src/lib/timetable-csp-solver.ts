@@ -43,6 +43,7 @@
  */
 
 import { classifySubject, strictSubjectAllowsLesson } from './timetable-generator.ts';
+import { formatClassStream } from './class-label';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 const DAY_COUNT = 5;
@@ -2237,7 +2238,7 @@ class LevelSearch {
       for (let index = 0; index < cells; index += 1) {
         if (grid[index]) continue;
         const day = Math.floor(index / slotsPerDay);
-        return `${this.model.classes[classIndex].name} has a blank ${DAYS[day]} Lesson ${(index % slotsPerDay) + 1}`;
+        return `${formatClassStream(this.model.classes[classIndex])} has a blank ${DAYS[day]} Lesson ${(index % slotsPerDay) + 1}`;
       }
     }
 
@@ -2253,7 +2254,7 @@ class LevelSearch {
         const isDoubleDay = this.doubleDay[session.index] === day;
         if (today > 1 && !(isDoubleDay && today === 2)) {
           return `${session.subjectNames.join(' + ')} appears ${today} times on ${DAYS[day]} in `
-            + `${this.model.classes[session.classIndex].name}`;
+            + `${formatClassStream(this.model.classes[session.classIndex])}`;
         }
       }
       if (placed !== session.lessons) {
@@ -2261,7 +2262,7 @@ class LevelSearch {
         // Accepting a Rule 14 shortfall only allows cells to stay EMPTY - the
         // lessons a class does have are all placed.
         return `${session.subjectNames.join(' + ')} has ${placed} lessons in `
-          + `${this.model.classes[session.classIndex].name} but requires exactly ${session.lessons}`;
+          + `${formatClassStream(this.model.classes[session.classIndex])} but requires exactly ${session.lessons}`;
       }
       if (session.doubleRequested && session.lessons >= 2 && this.doubleDay[session.index] < 0) {
         return `${session.subjectNames.join(' + ')} asked for a double lesson but none was placed`;
@@ -2325,7 +2326,7 @@ class LevelSearch {
             const rightValue = grid[day * slotsPerDay + slot + 1];
             if (rightValue && this.model.sessions[rightValue - 1].family === 'science') {
               return `Mathematics is immediately followed by ${this.model.sessions[rightValue - 1].subjectNames.join(' + ')} `
-                + `in ${this.model.classes[classIndex].name} on ${DAYS[day]}`;
+                + `in ${formatClassStream(this.model.classes[classIndex])} on ${DAYS[day]}`;
             }
           }
         }
@@ -2517,7 +2518,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
   // ── Proven impossibility, with specific evidence ─────────────────────────
   const refused = model.sessions.filter((session) => model.remaining[session.index] > 0);
   const outstanding = refused
-    .map((session) => `${model.classes[session.classIndex].name} / ${session.subjectNames.join(' + ')} `
+    .map((session) => `${formatClassStream(model.classes[session.classIndex])} / ${session.subjectNames.join(' + ')} `
       + `(${model.remaining[session.index]} left)`)
     .slice(0, 6);
   const day = deepest >= 0 ? Math.floor(deepest / slotsPerDay) : 0;

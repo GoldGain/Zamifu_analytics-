@@ -1,4 +1,5 @@
 import { isFillerSubject, strictSubjectAllowsLesson, violatesMathScienceSequence } from './timetable-generator';
+import { formatClassStream } from './class-label';
 
 export interface TimetableValidationSlot {
   id: string | number;
@@ -20,6 +21,8 @@ export interface TimetableValidationEntry {
 export interface TimetableValidationClass {
   id: string | number;
   name?: string | null;
+  stream?: string | null;
+  stream_name?: string | null;
 }
 
 export interface TimetableValidationOptions {
@@ -285,7 +288,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
           if (!occupiedCells.has(entryKey(cls.id, day, slot.id))) {
             issues.push({
               rule: 'no-blanks',
-              message: `${cls.name || `Class ${String(cls.id)}`} has a blank ${slot.label || 'lesson'} on day ${day}.`,
+              message: `${formatClassStream(cls)} has a blank ${slot.label || 'lesson'} on day ${day}.`,
             });
           }
         }

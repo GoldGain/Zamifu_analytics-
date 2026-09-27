@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { calculateCompetencyGrade, getSchoolLevelBand, getRequiredLearningAreas } from '@/lib/grading';
 import { MarksProgress } from '@/components/MarksProgress';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { formatClassStream } from '@/lib/class-label';
 
 interface StudentPerformance {
   id: string;
@@ -179,23 +181,29 @@ export default function ClassTeacherDashboard() {
         
         const hasAllMarks = subjects.length > 0 && Object.keys(sResults).length >= subjects.length;
 
+        const pointsTotal = Object.values(sResults).reduce((sum: number, r: any) => sum + (Number(r.points) || 0), 0);
         return {
           ...student,
           avgPercentage: avgPct,
           totalMarks,
           totalOutOf,
-          totalPoints: null,
+          totalPoints: pointsTotal || null,
           position: null,
           subjectResults: sResults,
           hasAllMarks,
         };
       });
 
-      // Rank by average
-      const ranked = [...perf]
-        .filter((p) => p.avgPercentage !== null)
-        .sort((a, b) => (b.avgPercentage ?? 0) - (a.avgPercentage ?? 0));
-      ranked.forEach((p, i) => { p.position = i + 1; });
+      // Unified ranking: total marks first, then points (Junior) or a shared
+      // rank (Primary) — identical to the school-wide reports.
+      const ranked = rankByUnifiedRule(
+        perf
+          .filter((p) => p.avgPercentage !== null)
+          .map((p) => ({ ...p, totalMarks: p.totalMarks ?? 0, totalPoints: p.totalPoints ?? 0 })),
+        getSchoolLevelBand(assignedClass || {}),
+      );
+      const positionById = new Map(ranked.map((row) => [row.id, row.position]));
+      perf.forEach((p) => { p.position = positionById.get(p.id) ?? null; });
 
       setPerformance(perf);
     } catch (err) {
@@ -246,12 +254,12 @@ export default function ClassTeacherDashboard() {
     const selectedTermName = terms.find((term: any) => term.id === selectedTerm)?.name || 'the selected term';
     setRemindingSubjectId(subject.id);
     try {
-      const body = `Reminder: ${missingCount} learner${missingCount === 1 ? '' : 's'} in ${assignedClass.name} still need ${subject.name} marks for ${selectedTermName}. Please complete the marks entry.`;
+      const body = `Reminder: ${missingCount} learner${missingCount === 1 ? '' : 's'} in ${formatClassStream(assignedClass)} still need ${subject.name} marks for ${selectedTermName}. Please complete the marks entry.`;
       const { error } = await supabaseUntyped.from('teacher_messages').insert({
         school_id: user.schoolId,
         sender_id: user.id,
         recipient_id: subject.teacher_profile_id,
-        subject: `Pending marks: ${assignedClass.name} — ${subject.name}`,
+        subject: `Pending marks: ${formatClassStream(assignedClass)} — ${subject.name}`,
         body,
       });
       if (error) throw error;
@@ -314,7 +322,7 @@ export default function ClassTeacherDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Class Teacher Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {assignedClass.name} · {students.length} learners · {subjects.length} learning areas
+            {formatClassStream(assignedClass)} · {students.length} learners · {subjects.length} learning areas
           </p>
         </div>
         <select
@@ -514,7 +522,7 @@ export default function ClassTeacherDashboard() {
           <h2 className="text-lg font-bold text-gray-900 mb-4">Detailed Marks Entry Progress</h2>
           <MarksProgress
             classId={assignedClass.id}
-            className={assignedClass.name}
+            className={formatClassStream(assignedClass)}
             termId={selectedTerm}
             schoolId={user?.schoolId || ''}
           />

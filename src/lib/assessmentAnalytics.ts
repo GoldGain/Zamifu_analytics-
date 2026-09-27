@@ -6,6 +6,7 @@ import {
   type SchoolLevelBand,
 } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
+import { rankByUnifiedRule } from '@/lib/ranking';
 
 export type AssessmentLearnerSummary = {
   studentId: string;
@@ -13,6 +14,8 @@ export type AssessmentLearnerSummary = {
   student: any;
   subjects: Record<string, number>;
   totalPct: number;
+  /** Total marks across learning areas — the primary metric for ranking. */
+  totalMarks?: number;
   count: number;
   avgPct: number;
   totalPoints: number;
@@ -127,14 +130,16 @@ export function buildAssessmentLearnerSummaries(rawResults: any[], classObj: any
   const configuredAreaCount = canonicalAreaCount || observedAreaCount;
   const requiredAreas = getRequiredLearningAreas(classObj, configuredAreaCount);
 
-  return Object.values(studentMap)
-    .map((summary: any) => ({
-      ...summary,
-      avgPct: requiredAreas
-        ? summary.totalPct / requiredAreas
-        : summary.count > 0 ? summary.totalPct / summary.count : 0,
-      gender: summary.gender || summary.student?.gender || null,
-    }))
-    .sort((a: any, b: any) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct))
-    .map((summary: any, index) => ({ ...summary, position: index + 1 }));
+  // Unified ranking: total marks first, then the level-specific tie-breaker.
+  // Every page that displays a position consumes this order, so a learner keeps
+  // the same rank in the portal, the class summary and the report card.
+  const summaries = Object.values(studentMap).map((summary: any) => ({
+    ...summary,
+    totalMarks: summary.totalPct,
+    avgPct: requiredAreas
+      ? summary.totalPct / requiredAreas
+      : summary.count > 0 ? summary.totalPct / summary.count : 0,
+    gender: summary.gender || summary.student?.gender || null,
+  }));
+  return rankByUnifiedRule(summaries, band) as AssessmentLearnerSummary[];
 }

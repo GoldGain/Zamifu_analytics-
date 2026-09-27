@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useClasses } from '@/hooks/useSupabaseData';
 import { Plus, Loader2, School, Search, ArrowRight, Users, Pencil, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 type CurriculumType = 'CBE' | '';
 
@@ -130,7 +131,7 @@ export default function SchoolAdminClasses() {
     try {
       const { error } = await supabaseUntyped.from('classes').delete().eq('id', deletingClass.id);
       if (error) throw new Error(error.message);
-      toast.success(`Class "${deletingClass.name}" deleted.`);
+      toast.success(`Class "${formatClassStream(deletingClass)}" deleted.`);
       setDeletingClass(null);
       refetch();
     } catch (err: any) {
@@ -293,7 +294,7 @@ export default function SchoolAdminClasses() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-lg">
             <h2 className="text-lg font-semibold mb-1">Bulk Promote Class</h2>
-            <p className="text-sm text-gray-500 mb-4">Promote ALL active students from <strong>{bulkPromoteClass.name}</strong> to a new class.</p>
+            <p className="text-sm text-gray-500 mb-4">Promote ALL active students from <strong>{formatClassStream(bulkPromoteClass)}</strong> to a new class.</p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Destination Class</label>
               <select value={bulkDestClassId} onChange={e => setBulkDestClassId(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">

@@ -468,7 +468,7 @@ export default function SchoolAdminStudents() {
     const rows = students.filter((student: any) => student.class_id === filterClassId);
     if (!selectedClass || rows.length === 0) { toast.info('No learners found in the selected class.'); return; }
     const doc = new jsPDF();
-    doc.setFontSize(16); doc.text(`${selectedClass.name} - Learner List`, 14, 16);
+    doc.setFontSize(16); doc.text(`${formatClassStream(selectedClass)} - Learner List`, 14, 16);
     doc.setFontSize(11); doc.text(`Generated ${new Date().toLocaleDateString()}`, 14, 24);
     autoTable(doc, {
       startY: 32,
@@ -476,8 +476,8 @@ export default function SchoolAdminStudents() {
       body: rows.map((student: any, index: number) => [index + 1, student.admission_number || '-', student.assessment_number || '-', `${student.first_name} ${student.middle_name || ''} ${student.last_name}`.replace(/\s+/g, ' ').trim(), student.gender || '-', student.parent_name || '-', student.parent_phone || '-']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [37, 99, 235] },
     });
-    doc.save(`learner_list_${String(selectedClass.name).replace(/[^a-z0-9]+/gi, '_')}.pdf`);
-    toast.success(`Downloaded all ${rows.length} learners in ${selectedClass.name}.`);
+    doc.save(`learner_list_${classLabelFilename(selectedClass)}.pdf`);
+    toast.success(`Downloaded all ${rows.length} learners in ${formatClassStream(selectedClass)}.`);
   };
 
   // If trial is expired, show payment lock

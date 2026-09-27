@@ -318,7 +318,7 @@ export default function TeacherAnalytics() {
             {[...new Set([teacherClassId, ...teacherAssignments.map(a => a.class_id)].filter(Boolean))].map((cid, i) => {
               const cls = classes.find(c => c.id === cid);
               return cls ? (
-                <span key={i} className="text-xs px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full font-medium">{cls.name}</span>
+                <span key={i} className="text-xs px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full font-medium">{formatClassStream(cls)}</span>
               ) : null;
             })}
           </div>
@@ -338,7 +338,7 @@ export default function TeacherAnalytics() {
               {classPerformance.map((cls, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-sm text-[#111111]">{cls.name}</span>
+                    <span className="font-semibold text-sm text-[#111111]">{formatClassStream(cls)}</span>
                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${cls.avg >= 75 ? 'bg-green-100 text-green-700' : cls.avg >= 41 ? 'bg-blue-100 text-blue-700' : cls.avg >= 21 ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
                       {cls.avg}% avg
                     </span>

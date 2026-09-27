@@ -33,6 +33,7 @@ import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
+import { rankByUnifiedRule } from '@/lib/ranking';
 
 declare global {
   interface Window {
@@ -78,6 +79,7 @@ export default function ParentChildReportCard() {
   const [previousAvg, setPreviousAvg] = useState<number | null>(null);
   const [trendData, setTrendData] = useState<{ term: string; avg: number }[]>([]);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [classPosition, setClassPosition] = useState<number | null>(null);
   const [childPhotoLoadError, setChildPhotoLoadError] = useState(false);
   const [showFontSizeDialog, setShowFontSizeDialog] = useState(false);
 
@@ -93,7 +95,7 @@ export default function ParentChildReportCard() {
       const ids = links.map((l: any) => l.student_id);
       const { data: students } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
         .in('id', ids);
       setChildren(students || []);
       if (students && students.length > 0) {
@@ -282,6 +284,25 @@ export default function ParentChildReportCard() {
     } else {
       setClassBestList([]);
     }
+    // Unified ranking: the parent view must show the same position as the
+    // Student Portal, Class Summary and report card for the same learner.
+    if (classResults && classResults.length > 0) {
+      const totals: Record<string, { totalMarks: number; totalPoints: number }> = {};
+      (classResults as any[]).forEach((row: any) => {
+        const pct = Number(row.percentage ?? (Number(row.out_of) > 0 ? (Number(row.marks) / Number(row.out_of)) * 100 : 0));
+        if (!totals[row.student_id]) totals[row.student_id] = { totalMarks: 0, totalPoints: 0 };
+        totals[row.student_id].totalMarks += pct;
+        totals[row.student_id].totalPoints += Number(row.cbc_points) || 0;
+      });
+      const ranked = rankByUnifiedRule(
+        Object.entries(totals).map(([sid, value]) => ({ studentId: sid, totalMarks: value.totalMarks, totalPoints: value.totalPoints })),
+        getSchoolLevelBand(selectedChild?.classes || {}),
+      );
+      const entry = ranked.find((row) => row.studentId === selectedChild.id);
+      setClassPosition(entry ? entry.position : null);
+    } else {
+      setClassPosition(null);
+    }
   };
 
   const fetchTrendData = async () => {
@@ -341,7 +362,9 @@ export default function ParentChildReportCard() {
           }, 0);
       const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
-      const position = results[0]?.class_position || results[0]?.position || null;
+      // Prefer the unified ranking position so the parent sees the same rank as
+      // the school's class summary and the learner's own portal.
+      const position = classPosition ?? results[0]?.class_position ?? results[0]?.position ?? null;
       const positionStr = formatPosition(position, totalStudents || 0);
       // Build subjectScores with `percentage` key (matching SubjectResult interface for pathway logic)
       const subjectScores = results.map(r => ({
@@ -553,7 +576,7 @@ export default function ParentChildReportCard() {
                 <div className="bg-white p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
                   <p className="text-xs font-bold text-[#666666] uppercase mb-1">Class Position</p>
                   <span className="text-2xl font-black text-blue-600">
-                    {results[0]?.class_position || results[0]?.position || 'N/A'}
+                    {classPosition ?? results[0]?.class_position ?? results[0]?.position ?? 'N/A'}
                     <span className="text-sm font-normal text-gray-400 ml-1">/ {totalStudents}</span>
                   </span>
                 </div>

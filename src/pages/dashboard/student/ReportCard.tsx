@@ -34,6 +34,7 @@ import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
+import { rankByUnifiedRule } from '@/lib/ranking';
 
 export default function StudentReportCard() {
   const { user } = useAuth();
@@ -47,6 +48,7 @@ export default function StudentReportCard() {
   const [generating, setGenerating] = useState(false);
   const [previousAvg, setPreviousAvg] = useState<number | null>(null);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [classPosition, setClassPosition] = useState<number | null>(null);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({ name: '' });
   const [signatures, setSignatures] = useState<SignatureInfo>({});
   const [classBestList, setClassBestList] = useState<BestInSubject[]>([]);
@@ -60,7 +62,7 @@ export default function StudentReportCard() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .single();
@@ -208,6 +210,25 @@ export default function StudentReportCard() {
     } else {
       setClassBestList([]);
     }
+    // Unified ranking: the report card position must match the Student Portal
+    // and the Class Summary for the same learner, term and assessment.
+    if (classResults && classResults.length > 0) {
+      const totals: Record<string, { totalMarks: number; totalPoints: number }> = {};
+      (classResults as any[]).forEach((row: any) => {
+        const pct = Number(row.percentage ?? (Number(row.out_of) > 0 ? (Number(row.marks) / Number(row.out_of)) * 100 : 0));
+        if (!totals[row.student_id]) totals[row.student_id] = { totalMarks: 0, totalPoints: 0 };
+        totals[row.student_id].totalMarks += pct;
+        totals[row.student_id].totalPoints += Number(row.cbc_points) || 0;
+      });
+      const ranked = rankByUnifiedRule(
+        Object.entries(totals).map(([sid, value]) => ({ studentId: sid, totalMarks: value.totalMarks, totalPoints: value.totalPoints })),
+        getSchoolLevelBand(student?.classes || {}),
+      );
+      const entry = ranked.find((row) => row.studentId === student.id);
+      setClassPosition(entry ? entry.position : null);
+    } else {
+      setClassPosition(null);
+    }
   };
 
   const fetchTrendData = async () => {
@@ -284,7 +305,9 @@ export default function StudentReportCard() {
 
       const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
-      const position = results[0]?.class_position || results[0]?.position || null;
+      // Prefer the unified ranking position so the report card cannot disagree
+      // with the portal and class summary; fall back to the stored value.
+      const position = classPosition ?? results[0]?.class_position ?? results[0]?.position ?? null;
       const positionStr = formatPosition(position, totalStudents || 0);
 
       const subjectScores = results.map(r => ({

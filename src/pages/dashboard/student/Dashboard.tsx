@@ -49,7 +49,7 @@ export default function StudentDashboard() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const { data: student } = await supabaseUntyped.from('students').select('*, classes(name, stream, stream_name)').eq('profile_id', user?.id).eq('school_id', user?.schoolId).single();
+    const { data: student } = await supabaseUntyped.from('students').select('*, classes!students_class_id_fkey(name, stream, stream_name)').eq('profile_id', user?.id).eq('school_id', user?.schoolId).single();
     if (student) {
       setStudentData(student as unknown as StudentRecord);
       

@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { getRequiredLearningAreas } from '@/lib/grading';
+import { getRequiredLearningAreas, getSchoolLevelBand } from '@/lib/grading';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { formatClassStream } from '@/lib/class-label';
 import { Award, Download, Filter, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+
+/** Term order helper: Term 1 < Term 2 < Term 3 regardless of label casing. */
+const termNumber = (name: string | null | undefined): number => {
+  const match = String(name || '').match(/(\d+)/);
+  return match ? Number(match[1]) : 0;
+};
 
 export default function StudentResults() {
   const { user } = useAuth();
@@ -23,21 +31,40 @@ export default function StudentResults() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('id, class_id, school_id, status, graduation_year, classes(name, stream, stream_name)')
+        // students has two FKs to classes (class_id, stream_id); the embed must
+        // name the class_id relationship explicitly or PostgREST returns
+        // PGRST201 and the whole learner portal loses its student record.
+        .select('id, class_id, school_id, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name)')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .maybeSingle();
       if (studentData) {
         setStudent(studentData);
+        // Only offer terms that actually have results for this learner, newest
+        // first, so the dropdown is populated and immediately selectable.
         const { data: termsData } = await supabaseUntyped
           .from('terms')
           .select('*')
           .eq('school_id', studentData.school_id)
           .order('academic_year', { ascending: false });
-        const allTerms = termsData || [];
-        setTerms(allTerms);
-        if (allTerms.length > 0) {
-          setSelectedTerm(allTerms[0].id);
+        const { data: learnerResultRows } = await supabaseUntyped
+          .from('results')
+          .select('term_id')
+          .eq('student_id', studentData.id)
+          .eq('school_id', studentData.school_id);
+        const termsWithResults = new Set((learnerResultRows || []).map((row: any) => row.term_id));
+        const allTerms = (termsData || []) as any[];
+        const availableTerms = allTerms
+          .filter((term: any) => termsWithResults.has(term.id))
+          .sort((a: any, b: any) => {
+            const yearDiff = Number(b.academic_year) - Number(a.academic_year);
+            if (yearDiff !== 0) return yearDiff;
+            return termNumber(b.name) - termNumber(a.name);
+          });
+        const offeredTerms = availableTerms.length ? availableTerms : allTerms;
+        setTerms(offeredTerms);
+        if (offeredTerms.length > 0) {
+          setSelectedTerm(offeredTerms[0].id);
         }
       }
     } catch (err) {
@@ -72,10 +99,11 @@ export default function StudentResults() {
         const avg = totalPct / req;
         setCurrentAvg(avg);
 
-        const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position;
-        if (storedPosition) {
-          setClassPosition(storedPosition);
-        } else if (student.class_id) {
+        const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position || null;
+        // Position always comes from the unified ranking rule (total marks,
+        // then points for Junior School, shared rank on exact ties) so the
+        // portal matches the class summary and the report card exactly.
+        if (student.class_id) {
           const { data: classResults } = await supabaseUntyped
             .from('results')
             .select('student_id, marks, out_of, cbc_points')
@@ -83,21 +111,25 @@ export default function StudentResults() {
             .eq('school_id', student.school_id)
             .eq('term_id', selectedTerm);
           if (classResults && classResults.length > 0) {
-            const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
+            const studentTotals: Record<string, { totalMarks: number; totalPoints: number; count: number }> = {};
             (classResults as any[]).forEach((r: any) => {
-              const pct = r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0;
-              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, totalPoints: 0, count: 0 };
-              studentTotals[r.student_id].totalPct += pct;
+              const pct = Number(r.out_of) > 0 ? (Number(r.marks) / Number(r.out_of)) * 100 : 0;
+              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalMarks: 0, totalPoints: 0, count: 0 };
+              studentTotals[r.student_id].totalMarks += pct;
               studentTotals[r.student_id].totalPoints += Number(r.cbc_points) || 0;
               studentTotals[r.student_id].count += 1;
             });
-            const req = getRequiredLearningAreas(student.classes || student) || 0;
-            const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ studentId: sid, avg: req > 0 ? v.totalPct / req : v.totalPct / v.count, totalPoints: v.totalPoints, totalPct: v.totalPct }))
-              .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct));
-            const position = ranked.findIndex(r => r.studentId === student.id) + 1;
-            setClassPosition(position || null);
+            const ranked = rankByUnifiedRule(
+              Object.entries(studentTotals).map(([sid, v]) => ({ studentId: sid, totalMarks: v.totalMarks, totalPoints: v.totalPoints })),
+              getSchoolLevelBand(student.classes || student),
+            );
+            const entry = ranked.find((row) => row.studentId === student.id);
+            setClassPosition(entry ? entry.position : (storedPosition || null));
+          } else if (storedPosition) {
+            setClassPosition(storedPosition);
           }
+        } else if (storedPosition) {
+          setClassPosition(storedPosition);
         }
       } else {
         setCurrentAvg(0);
