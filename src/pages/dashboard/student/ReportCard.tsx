@@ -210,6 +210,7 @@ export default function StudentReportCard() {
       .eq('school_id', student.school_id)
       .eq('term_id', selectedTerm)
       .order('created_at')
+      .order('id')
       .range(from, to));
     if (classResults && classResults.length > 0) {
       setClassBestList(computeBestPerSubject(classResults, student?.classes || {}));

@@ -298,14 +298,26 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        // Paged: this school-wide read is far larger than PostgREST's 1000-row
+        // cap (one term alone is ~6000 rows) and an unpaged read silently drops
+        // the tail. Rows arrive newest-first, so the dropped rows were the
+        // OLDEST — exactly the single-exam rows a learner needs for their
+        // learning-area totals, which is why learners whose rows fell past the
+        // cut lost learning areas and slid down the table.
+        fetchAllRows((from, to) => supabaseUntyped
+          .from('results')
+          .select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
+          .eq('school_id', schoolId)
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to)),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('students').select('id, class_id').eq('school_id', schoolId).eq('is_active', true),
       ]);
-      setResults((resultsData[0].data as any[]) || []);
+      setResults((resultsData[0] as any[]) || []);
       const loadedClasses = (resultsData[1].data as any[]) || [];
       const visibleClasses = scope === 'class_teacher' && resolvedScopedClassId
         ? loadedClasses.filter((c: any) => c.id === resolvedScopedClassId)
@@ -638,6 +650,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
         .order('created_at')
+        .order('id')
         .range(from, to);
       if (selectedExam) query = query.eq('exam_id', selectedExam);
       return query;

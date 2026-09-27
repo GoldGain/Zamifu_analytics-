@@ -311,6 +311,7 @@ export default function StreamDashboard() {
             .eq('school_id', user?.schoolId)
             .eq('term_id', selectedTerm)
             .order('created_at')
+            .order('id')
             .range(from, to);
           if (selectedExam) q = q.eq('exam_id', selectedExam);
           return q;
@@ -324,6 +325,7 @@ export default function StreamDashboard() {
                   .eq('school_id', user?.schoolId)
                   .eq('term_id', selectedTerm)
                   .order('created_at')
+                  .order('id')
                   .range(from, to);
                 if (selectedExam) subjectQuery = subjectQuery.eq('exam_id', selectedExam);
                 return subjectQuery;
@@ -346,7 +348,7 @@ export default function StreamDashboard() {
         return index > 0 ? ordered[index - 1] : null;
       })();
       const previousResultList: ResultRow[] = previousTerm
-        ? deduplicateResults((await fetchAllRows((from, to) => supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).order('created_at').range(from, to))) as ResultRow[])
+        ? deduplicateResults((await fetchAllRows((from, to) => supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).order('created_at').order('id').range(from, to))) as ResultRow[])
         : [];
 
       const pctOf = (r: ResultRow): number => {

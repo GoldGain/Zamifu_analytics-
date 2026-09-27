@@ -469,6 +469,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               .eq('class_id', selectedClass)
               .eq('term_id', selectedTerm)
               .order('created_at')
+              .order('id')
               .range(from, to);
             positionQuery = selectedExam ? positionQuery.eq('exam_id', selectedExam) : positionQuery.is('exam_id', null);
             return positionQuery;

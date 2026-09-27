@@ -284,6 +284,7 @@ export default function ParentChildReportCard() {
       .eq('class_id', selectedChild.class_id)
       .eq('term_id', selectedTerm)
       .order('created_at')
+      .order('id')
       .range(from, to));
     if (classResults && classResults.length > 0) {
       setClassBestList(computeBestPerSubject(classResults, selectedChild?.classes || {}));
