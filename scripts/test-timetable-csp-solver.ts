@@ -66,15 +66,62 @@ for (const entry of result.entries) {
   if (/kiswahili/i.test(name)) assert.ok(lesson <= 7, `Kiswahili was placed in Lesson ${lesson}`);
 }
 
-const badTotal = solveTimetableCsp({
+// Rule 14 — a class whose weekly lessons do not fill the level's week must WARN
+// and let the admin decide, never block outright. Dropping the single Music lesson
+// leaves the class one lesson short of the week.
+const shortTotal = solveTimetableCsp({
   schoolId,
   levelKey: 'junior',
   classes: [classItem],
   assignments: assignments.slice(0, -1),
   lessonSlots: slots,
 });
-assert.ok(badTotal.issues.some((issue) => issue.code === 'level-total'));
-assert.match(badTotal.issues.map((issue) => issue.message).join('\n'), /configured subject lessons/);
+assert.equal(shortTotal.issues.length, 0, 'a lesson-count mismatch must not be a hard error');
+assert.ok(shortTotal.needsConfirmation, 'a lesson-count mismatch must ask the admin');
+assert.equal(shortTotal.shortClasses.length, 1);
+assert.equal(shortTotal.shortClasses[0].configuredTotal, 39);
+assert.equal(shortTotal.shortClasses[0].expectedTotal, 40);
+assert.ok(shortTotal.warnings.some((warning) => warning.code === 'weekly-total-mismatch'));
+assert.equal(shortTotal.entries.length, 0, 'nothing is saved before the admin answers');
+
+// Choosing to continue places every configured lesson and leaves only the cells
+// the class has no lessons for empty.
+const continued = solveTimetableCsp({
+  schoolId,
+  levelKey: 'junior',
+  classes: [classItem],
+  assignments: assignments.slice(0, -1),
+  lessonSlots: slots,
+  allowIncompleteClasses: true,
+});
+assert.equal(continued.issues.length, 0, continued.issues.map((issue) => issue.message).join('\n'));
+assert.equal(continued.entries.length, 39, 'every configured lesson must still be placed');
+assert.equal(continued.needsConfirmation, false, 'continuing must not ask again');
+const continuedIssues = validateTimetableRules({
+  entries: continued.entries,
+  slots,
+  subjectNames,
+  classes: [classItem],
+  levelGroup: 'junior',
+  requireComplete: false,
+  requiredLessonCounts: new Map(
+    assignments.slice(0, -1).map((a) => [`${a.class_id}-${a.subject_id}`, a.lessons_per_week]),
+  ),
+});
+assert.deepEqual(continuedIssues, [], continuedIssues.map((issue) => issue.message).join('\n'));
+
+// A class with MORE lessons than the week holds can never be placed, so that is a
+// hard error naming the class and the exact fix.
+const overTotal = solveTimetableCsp({
+  schoolId,
+  levelKey: 'junior',
+  classes: [classItem],
+  assignments: [...assignments, { class_id: classId, subject_id: 'extra', teacher_id: 'teacher-extra', lessons_per_week: 3, subjects: { name: 'Extra Subject' } }],
+  lessonSlots: slots,
+  allowIncompleteClasses: true,
+});
+assert.ok(overTotal.issues.some((issue) => issue.code === 'too-many-lessons'));
+assert.match(overTotal.issues.map((issue) => issue.message).join('\n'), /can never be placed/);
 
 const casDoubleResult = solveTimetableCsp({
   schoolId,
