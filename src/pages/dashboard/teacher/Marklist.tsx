@@ -40,6 +40,9 @@ interface ClassItem {
   id: string;
   name: string;
   stream?: string;
+  stream_name?: string | null;
+  level?: number | null;
+  grade_level?: number | null;
 }
 
 export default function Marklist() {
@@ -90,7 +93,7 @@ export default function Marklist() {
         // Fetch classes for this school
         const { data: classesData } = await supabaseUntyped
           .from('classes')
-          .select('id, name, stream')
+          .select('id, name, stream, stream_name, level, grade_level')
           .eq('school_id', teacherData.school_id)
           .order('name', { ascending: true });
 
@@ -283,9 +286,7 @@ export default function Marklist() {
 
     try {
       const selectedClassData = classes.find(c => c.id === selectedClass);
-      const classLabel = selectedClassData?.stream?.trim()
-        ? `${selectedClassData.name} (${selectedClassData.stream.trim()})`
-        : selectedClassData?.name || 'Unknown Class';
+      const classLabel = selectedClassData ? formatClassStream(selectedClassData) : 'Unknown Class';
       const fileLabel = classLabel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
@@ -332,9 +333,7 @@ export default function Marklist() {
     setDownloading(true);
     try {
       const selectedClassData = classes.find(c => c.id === selectedClass);
-      const classLabel = selectedClassData?.stream?.trim()
-        ? `${selectedClassData.name} (${selectedClassData.stream.trim()})`
-        : selectedClassData?.name || 'Unknown Class';
+      const classLabel = selectedClassData ? formatClassStream(selectedClassData) : 'Unknown Class';
       const fileLabel = classLabel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
       const rows = sortByAdmissionNumber(students).map((student, index) => {
         const row: Record<string, string | number> = {

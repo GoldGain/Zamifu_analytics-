@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import type { AnnouncementType } from '@/types/database';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { classLabelFilename } from '@/lib/class-label';
+import { classLabelFilename, formatClassStream } from '@/lib/class-label';
 
 export default function SchoolAdminAnnouncements() {
   const { user } = useAuth();
@@ -429,7 +429,7 @@ export default function SchoolAdminAnnouncements() {
             >
               <option value="">-- Select Class --</option>
               {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.name} {c.stream || ''}</option>
+                <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
               ))}
             </select>
           </div>

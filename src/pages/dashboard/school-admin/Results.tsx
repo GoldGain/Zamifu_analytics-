@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
 import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users } from 'lucide-react';
@@ -256,6 +256,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [learnerMatches, setLearnerMatches] = useState<any[]>([]);
   const [learnerSearchLoading, setLearnerSearchLoading] = useState(false);
   const [selectedLearner, setSelectedLearner] = useState<any | null>(null);
+  // Issue 2 — the learner roster for the current class/stream scope, cached so a
+  // search filters in memory. This is also what makes a FULL name work: PostgREST
+  // cannot compare a two-word query against the single first_name/last_name
+  // columns, so "LATIFA MWACHONDO" previously matched nothing even though the
+  // learner exists. Tokenised matching against the whole name fixes that.
+  const [learnerRoster, setLearnerRoster] = useState<any[]>([]);
+  const [learnerRosterKey, setLearnerRosterKey] = useState('');
+  const learnerRosterReq = useRef<{ key: string; promise: Promise<any[]> } | null>(null);
   const [downloadingLearner, setDownloadingLearner] = useState(false);
   const [deletingResultLoading, setDeletingResultLoading] = useState(false);
   const [deletingClassResults, setDeletingClassResults] = useState(false);
@@ -771,37 +779,83 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
    * Assessment). Matches on name, admission number or assessment number, and
    * also accepts learners who are enrolled in the class but have no marks yet.
    */
+  /**
+   * Loads (once per scope) every learner enrolled in the selected class, or in
+   * every stream of the selected grade when "All Streams" is on. Paged so a
+   * large grade cannot be silently truncated at the PostgREST row cap, and
+   * ordered by a unique key so the pages stitch together deterministically.
+   */
+  const ensureLearnerRoster = async (classIds: string[]): Promise<any[]> => {
+    const key = classIds.slice().sort().join(',');
+    if (!key) return [];
+    if (learnerRosterKey === key && learnerRoster.length > 0) return learnerRoster;
+    if (learnerRosterReq.current && learnerRosterReq.current.key === key) {
+      return learnerRosterReq.current.promise;
+    }
+    const promise = (async () => {
+      try {
+        const rows = await fetchAllRows<any>((from, to) =>
+          supabaseUntyped
+            .from('students')
+            .select('id, first_name, middle_name, last_name, admission_number, assessment_number, class_id, stream_id, classes!students_class_id_fkey(name, stream, stream_name)')
+            .eq('school_id', user?.schoolId)
+            .in('class_id', classIds)
+            .order('last_name')
+            .order('first_name')
+            .order('id')
+            .range(from, to),
+        );
+        const classMap = new Map(classes.map((c: any) => [c.id, c]));
+        const roster = rows.map((row: any) => ({
+          ...row,
+          classLabel: formatClassStream(row.classes || classMap.get(row.class_id)),
+          searchText: [row.first_name, row.middle_name, row.last_name, row.admission_number, row.assessment_number]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase(),
+        }));
+        setLearnerRoster(roster);
+        setLearnerRosterKey(key);
+        return roster;
+      } catch (err: any) {
+        toast.error('Could not load the class list: ' + (err?.message || 'unknown error'));
+        return [];
+      } finally {
+        learnerRosterReq.current = null;
+      }
+    })();
+    learnerRosterReq.current = { key, promise };
+    return promise;
+  };
+
+  /**
+   * Issue 2 — Search one learner inside the CURRENT filters (Class, Term,
+   * Assessment). Every word typed must appear somewhere in the learner's name,
+   * admission number or assessment number, so "MUCHESI", "MUCHESI EMMANUEL",
+   * "EMMANUEL MUCHESI", "ADM133" and the assessment number all match.
+   */
   const searchLearnersForReportCard = async (query: string) => {
     const term = query.trim();
     const effectiveClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
     if (!effectiveClassId) { setLearnerMatches([]); return; }
-    if (term.length < 2) { setLearnerMatches([]); return; }
+    if (term.length < 2) { setLearnerMatches([]); setSelectedLearner(null); return; }
+    const classIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
+      ? allStreamClassIds
+      : [effectiveClassId];
     setLearnerSearchLoading(true);
     try {
-      const classIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
-        ? allStreamClassIds
-        : [effectiveClassId];
-      const escaped = term.replace(/[%,()]/g, ' ');
-      const orFilter = [
-        `first_name.ilike.%${escaped}%`,
-        `last_name.ilike.%${escaped}%`,
-        `admission_number.ilike.%${escaped}%`,
-        `assessment_number.ilike.%${escaped}%`,
-      ].join(',');
-      const { data, error } = await supabaseUntyped
-        .from('students')
-        .select('id, first_name, middle_name, last_name, admission_number, assessment_number, class_id, stream_id, classes!students_class_id_fkey(name, stream, stream_name)')
-        .eq('school_id', user?.schoolId)
-        .in('class_id', classIds)
-        .or(orFilter)
-        .order('last_name')
-        .limit(25);
-      if (error) throw error;
-      const classMap = new Map(classes.map((c: any) => [c.id, c]));
-      setLearnerMatches(((data || []) as any[]).map((row) => ({
-        ...row,
-        classLabel: formatClassStream(row.classes || classMap.get(row.class_id)),
-      })));
+      const roster = await ensureLearnerRoster(classIds);
+      const tokens = term.toLowerCase().split(/\s+/).filter(Boolean);
+      const matches = roster.filter((row: any) => tokens.every((token) => row.searchText.includes(token)));
+      // Name matches rank above admission/assessment-only matches, then alphabetical.
+      matches.sort((a: any, b: any) => {
+        const nameOf = (r: any) => [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' ').toLowerCase();
+        const aByName = tokens.every((t: string) => nameOf(a).includes(t)) ? 0 : 1;
+        const bByName = tokens.every((t: string) => nameOf(b).includes(t)) ? 0 : 1;
+        if (aByName !== bByName) return aByName - bByName;
+        return nameOf(a).localeCompare(nameOf(b));
+      });
+      setLearnerMatches(matches.slice(0, 25));
       setSelectedLearner(null);
     } catch (err: any) {
       toast.error('Learner search failed: ' + (err?.message || 'unknown error'));
@@ -2359,7 +2413,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               {learnerSearch.trim().length >= 2 && !learnerSearchLoading && (
                 <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
                   {learnerMatches.length === 0 ? (
-                    <p className="px-4 py-3 text-sm text-gray-500">No learner matches this search in the selected class.</p>
+                    <p className="px-4 py-3 text-sm text-gray-500">No learner in the selected class matches that search. Try a full name, part of a name, or an admission / assessment number.</p>
                   ) : learnerMatches.map((match) => (
                     <button
                       type="button"

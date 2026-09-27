@@ -708,7 +708,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
           >
             <option value="">Select Class</option>
             {classes.map((c: any) => (
-              <option key={c.id} value={c.id}>{c.name}{c.stream ? ` (${c.stream})` : ''}</option>
+              <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
             ))}
           </select>
 

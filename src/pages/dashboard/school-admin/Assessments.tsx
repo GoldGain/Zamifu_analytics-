@@ -537,7 +537,7 @@ export default function Assessments() {
                       <option value="">Select Class</option>
                       {classes.map((classItem) => (
                         <option key={classItem.id} value={classItem.id}>
-                          {classItem.name}{classItem.stream ? ` (${classItem.stream})` : ''}
+                          {formatClassStream(classItem)}
                         </option>
                       ))}
                     </select>

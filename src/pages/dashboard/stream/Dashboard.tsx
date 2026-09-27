@@ -19,6 +19,7 @@ import { addLogoToPDF } from '@/lib/reportCardPdf';
 import { configurePdfFontSize, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
 import { fetchAllRows } from '@/lib/paginatedQuery';
 import { rankByUnifiedRule } from '@/lib/ranking';
+import { formatClassStream } from '@/lib/class-label';
 
 interface StreamClass {
   id: string;
@@ -214,10 +215,14 @@ export default function StreamDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGrade, selectedTerm, selectedExam]);
 
+  /**
+   * Issue 5 — delegate to the shared formatter so this dashboard cannot drift
+   * from the rest of the app. It previously built "Grade 9 B" itself while the
+   * other pages rendered a different shape for the same class.
+   */
   const streamLabel = (c: any): string => {
-    const base = String(c?.name || 'Class').trim();
-    const stream = String(c?.stream_name || c?.stream || '').trim();
-    return stream ? `${base} ${stream}` : (base || 'Unassigned stream');
+    const label = formatClassStream(c);
+    return label === 'Unknown Class' ? 'Unassigned stream' : label;
   };
 
   const fetchInitialData = async () => {

@@ -2287,7 +2287,7 @@ export default function TimetableGenerate() {
         if (stillMissing.length > 0) {
           const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${formatClassStream(cls)} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
           const shortageByClass = new Map<string, { name: string; demand: number; cells: number }>();
-          classesToProcess.forEach((cls: any) => shortageByClass.set(String(cls.id), { name: String(cls.name || 'Class'), demand: 0, cells: lessonSlots.length * TIMETABLE_DAYS.length }));
+          classesToProcess.forEach((cls: any) => shortageByClass.set(String(cls.id), { name: formatClassStream(cls), demand: 0, cells: lessonSlots.length * TIMETABLE_DAYS.length }));
           assignmentContexts.forEach((context) => {
             const item = shortageByClass.get(String(context.cls.id));
             if (item) item.demand += Math.max(0, Number(context.assignment.lessons_per_week || 0));
