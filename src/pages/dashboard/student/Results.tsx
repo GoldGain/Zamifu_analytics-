@@ -4,6 +4,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { getRequiredLearningAreas, getSchoolLevelBand } from '@/lib/grading';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 import { Award, Download, Filter, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 /** Term order helper: Term 1 < Term 2 < Term 3 regardless of label casing. */
@@ -104,12 +105,17 @@ export default function StudentResults() {
         // then points for Junior School, shared rank on exact ties) so the
         // portal matches the class summary and the report card exactly.
         if (student.class_id) {
-          const { data: classResults } = await supabaseUntyped
+          // PostgREST caps a single response at 1000 rows, so a class-sized
+          // result set must be paged or the ranking is computed from a partial
+          // class and the learner's position comes out wrong.
+          const classResults = await fetchAllRows((from, to) => supabaseUntyped
             .from('results')
             .select('student_id, marks, out_of, cbc_points')
             .eq('class_id', student.class_id)
             .eq('school_id', student.school_id)
-            .eq('term_id', selectedTerm);
+            .eq('term_id', selectedTerm)
+            .order('student_id')
+            .range(from, to));
           if (classResults && classResults.length > 0) {
             const studentTotals: Record<string, { totalMarks: number; totalPoints: number; count: number }> = {};
             (classResults as any[]).forEach((r: any) => {

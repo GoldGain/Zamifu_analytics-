@@ -17,6 +17,8 @@ import {
 import { getSchoolLevelBand, is844Curriculum, calculateCompetencyGrade, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import { addLogoToPDF } from '@/lib/reportCardPdf';
 import { configurePdfFontSize, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
+import { fetchAllRows } from '@/lib/paginatedQuery';
+import { rankByUnifiedRule } from '@/lib/ranking';
 
 interface StreamClass {
   id: string;
@@ -289,31 +291,44 @@ export default function StreamDashboard() {
       }
 
       const [{ data: students }, { data: results }, subjectRes] = await Promise.all([
-        supabaseUntyped
+        // Paged: a grade's full roster can exceed the 1000-row response cap.
+        fetchAllRows((from, to) => supabaseUntyped
           .from('students')
           .select('id, first_name, last_name, admission_number, class_id, stream_id')
           .in('class_id', classIds)
           .eq('is_active', true)
           .eq('school_id', user?.schoolId)
-          .range(0, 9999),
-        (() => {
+          .order('id')
+          .range(from, to)).then((rows) => ({ data: rows, error: null })),
+        // Paged: PostgREST's max_rows (1000) caps even an explicit
+        // .range(0, 9999), so a stream-wide result set was silently truncated
+        // and every stream ranking was computed from a partial cohort.
+        fetchAllRows((from, to) => {
           let q: any = supabaseUntyped
             .from('results')
             .select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at')
             .in('class_id', classIds)
             .eq('school_id', user?.schoolId)
-            .eq('term_id', selectedTerm);
+            .eq('term_id', selectedTerm)
+            .order('student_id')
+            .range(from, to);
           if (selectedExam) q = q.eq('exam_id', selectedExam);
-          return q.range(0, 9999);
-        })(),
-        (async () => {              const subjectQuery = supabaseUntyped
-                .from('results')
-                .select('subject_id')
-                .in('class_id', classIds)
-                .eq('school_id', user?.schoolId)
-                .eq('term_id', selectedTerm);
-              if (selectedExam) subjectQuery.eq('exam_id', selectedExam);
-              const { data: subjectResultRows } = await subjectQuery;
+          return q;
+        }).then((rows) => ({ data: rows, error: null })),
+        (async () => {
+              const subjectRows = await fetchAllRows((from, to) => {
+                let subjectQuery = supabaseUntyped
+                  .from('results')
+                  .select('subject_id')
+                  .in('class_id', classIds)
+                  .eq('school_id', user?.schoolId)
+                  .eq('term_id', selectedTerm)
+                  .order('subject_id')
+                  .range(from, to);
+                if (selectedExam) subjectQuery = subjectQuery.eq('exam_id', selectedExam);
+                return subjectQuery;
+              });
+              const subjectResultRows = subjectRows;
               const subjectIds = [...new Set((subjectResultRows || []).map((x: any) => x.subject_id).filter(Boolean))];
           if (subjectIds.length === 0) return { data: [], error: null };
           return supabaseUntyped.from('subjects').select('id, name').in('id', subjectIds);
@@ -331,7 +346,7 @@ export default function StreamDashboard() {
         return index > 0 ? ordered[index - 1] : null;
       })();
       const previousResultList: ResultRow[] = previousTerm
-        ? deduplicateResults(((await supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).range(0, 9999)).data || []) as ResultRow[])
+        ? deduplicateResults((await fetchAllRows((from, to) => supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).order('student_id').range(from, to))) as ResultRow[])
         : [];
 
       const pctOf = (r: ResultRow): number => {
@@ -470,16 +485,22 @@ export default function StreamDashboard() {
       setSubjectMatrix(matrix);
 
       // ---- Global learner rankings across every stream in the selected grade ----
-      const rankRows: LearnerRank[] = studentList
-        .map((student) => ({ student, stats: statsByStudent[student.id] }))
-        .filter((entry) => entry.stats && entry.stats.avg !== null)
-        .sort((a, b) => (
-          (b.stats!.totalMarks - a.stats!.totalMarks)
-          || (b.stats!.totalPoints - a.stats!.totalPoints)
-          || ((b.stats!.avg ?? -1) - (a.stats!.avg ?? -1))
-          || `${a.student.first_name} ${a.student.last_name}`.localeCompare(`${b.student.first_name} ${b.student.last_name}`)
-        ))
-        .map((entry, index) => {
+      // Unified rule: total marks first, then total points (Junior/Senior), and
+      // exact ties share a rank and skip the next one — the same numbers the
+      // class summary, report cards and student portal show.
+      const gradeBand = getSchoolLevelBand(streamClasses[0] || {});
+      const rankRows: LearnerRank[] = rankByUnifiedRule(
+        studentList
+          .map((student) => ({ student, stats: statsByStudent[student.id] }))
+          .filter((entry) => entry.stats && entry.stats.avg !== null)
+          .map((entry) => ({
+            ...entry,
+            studentId: entry.student.id,
+            totalMarks: entry.stats!.totalMarks,
+            totalPoints: entry.stats!.totalPoints,
+          })),
+        gradeBand,
+      ).map((entry) => {
           const stats = entry.stats!;
           const classId = entry.student.stream_id || entry.student.class_id;
           const classInfo = classById.get(classId) || classById.get(entry.student.class_id);
@@ -495,7 +516,7 @@ export default function StreamDashboard() {
             totalMarks: Math.round(stats.totalMarks * 10) / 10,
             totalOutOf: Math.round(stats.totalOutOf * 10) / 10,
             grade: gradeFromAvg(classInfo, stats.avg),
-            position: index + 1,
+            position: entry.position,
             subjects: subjectValuesByStudent[entry.student.id] || {},
           };
         });

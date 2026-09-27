@@ -35,6 +35,7 @@ import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
 import { rankByUnifiedRule } from '@/lib/ranking';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 
 export default function StudentReportCard() {
   const { user } = useAuth();
@@ -199,12 +200,16 @@ export default function StudentReportCard() {
       .order('subjects(name)');
     setResults(data || []);
     await fetchPreviousAvg();
-    const { data: classResults } = await supabaseUntyped
+    // Paged: PostgREST returns at most 1000 rows, and a class-sized result set
+    // exceeds that, so an unpaged read would truncate the ranking cohort.
+    const classResults = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
       .select('*, students(id, first_name, last_name), subjects(name)')
       .eq('class_id', student.class_id)
       .eq('school_id', student.school_id)
-      .eq('term_id', selectedTerm);
+      .eq('term_id', selectedTerm)
+      .order('student_id')
+      .range(from, to));
     if (classResults && classResults.length > 0) {
       setClassBestList(computeBestPerSubject(classResults, student?.classes || {}));
     } else {

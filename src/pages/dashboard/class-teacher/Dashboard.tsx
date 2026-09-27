@@ -11,6 +11,7 @@ import { MarksProgress } from '@/components/MarksProgress';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 
 interface StudentPerformance {
   id: string;
@@ -142,12 +143,16 @@ export default function ClassTeacherDashboard() {
     if (!assignedClass || !selectedTerm) return;
     setLoadingPerf(true);
     try {
-      const { data: results } = await supabaseUntyped
+      // Paged: PostgREST caps a response at 1000 rows, so an unpaged read of a
+      // whole class x term would silently truncate the ranking cohort.
+      const results = await fetchAllRows((from, to) => supabaseUntyped
         .from('results')
-        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844')
+        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points')
         .eq('class_id', assignedClass.id)
         .eq('term_id', selectedTerm)
-        .eq('school_id', user?.schoolId);
+        .eq('school_id', user?.schoolId)
+        .order('student_id')
+        .range(from, to));
 
       const resultsMap: Record<string, Record<string, any>> = {};
       (results || []).forEach((r: any) => {

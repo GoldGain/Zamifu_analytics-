@@ -19,6 +19,7 @@ import { saveResultRecords } from '@/lib/save-results';
 import { deleteResults } from '@/lib/resultActions';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 
 interface ProcessedRow {
   student_id: string;
@@ -459,13 +460,19 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       // Recalculate class positions (only on final submit)
       if (!asDraft) {
         try {
-          let positionQuery = supabaseUntyped
-            .from('results')
-            .select('id, student_id, marks, out_of, cbc_points')
-            .eq('class_id', selectedClass)
-            .eq('term_id', selectedTerm);
-          positionQuery = selectedExam ? positionQuery.eq('exam_id', selectedExam) : positionQuery.is('exam_id', null);
-          const { data: allResults } = await positionQuery;
+          // Paged: a class x term x assessment set exceeds the 1000-row cap, and
+          // a truncated read would write wrong class_position values.
+          const allResults = await fetchAllRows((from, to) => {
+            let positionQuery = supabaseUntyped
+              .from('results')
+              .select('id, student_id, marks, out_of, cbc_points')
+              .eq('class_id', selectedClass)
+              .eq('term_id', selectedTerm)
+              .order('student_id')
+              .range(from, to);
+            positionQuery = selectedExam ? positionQuery.eq('exam_id', selectedExam) : positionQuery.is('exam_id', null);
+            return positionQuery;
+          });
           if (allResults && allResults.length > 0) {
             const requiredAreas = getRequiredLearningAreas(currentClassData) || 0;
             const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};

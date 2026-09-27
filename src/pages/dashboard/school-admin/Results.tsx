@@ -41,6 +41,7 @@ import {
   pdfFontSize,
 } from '@/lib/pdfFontSize';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
 import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
 import { rankByUnifiedRule } from '@/lib/ranking';
@@ -626,11 +627,21 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchClassResults = async () => {
     const effectiveClassId = scope === 'class_teacher' ? scopedClassId : selectedClass;
-    let query = supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)').eq('class_id', effectiveClassId).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
-    if (selectedExam) query = query.eq('exam_id', selectedExam);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    // PostgREST caps one response at 1000 rows. A class x term x assessment
+    // result set exceeds that at this school, so an unpaged read silently
+    // truncated the class and every ranking built from it was wrong.
+    return fetchAllRows((from, to) => {
+      let query = supabaseUntyped
+        .from('results')
+        .select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
+        .eq('class_id', effectiveClassId)
+        .eq('term_id', selectedTerm)
+        .eq('school_id', user?.schoolId)
+        .order('student_id')
+        .range(from, to);
+      if (selectedExam) query = query.eq('exam_id', selectedExam);
+      return query;
+    });
   };
 
   const fetchPreviousTermAvg = async (studentId: string, currentTermId: string) => {
