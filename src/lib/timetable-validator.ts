@@ -38,6 +38,12 @@ export interface TimetableValidationOptions {
   allowMathScienceAdjacency?: boolean;
   /** Allow a complete timetable to be saved when exact counts cannot be reconciled. */
   allowLessonCountMismatch?: boolean;
+  /**
+   * Rule 14 shortfall classes the admin explicitly accepted. Only these classes
+   * may have empty cells, and only for the lessons they have no lessons for; every
+   * other class is still checked for blanks.
+   */
+  allowBlankSlotsForClassIds?: readonly (string | number)[];
 }
 
 export interface TimetableValidationIssue {
@@ -266,7 +272,14 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
 
   if (options.requireComplete && options.classes?.length) {
     const days = options.days || [1, 2, 3, 4, 5];
+    // Rule 14: when the admin accepted a lesson-count shortfall, only those
+    // classes may keep the cells their own counts cannot fill. Any other class
+    // with a blank cell is still a hard failure.
+    const allowedBlankClasses = new Set(
+      (options.allowBlankSlotsForClassIds || []).map((id) => String(id)),
+    );
     for (const cls of options.classes) {
+      if (allowedBlankClasses.has(String(cls.id))) continue;
       for (const day of days) {
         for (const slot of lessonSlots) {
           if (!occupiedCells.has(entryKey(cls.id, day, slot.id))) {

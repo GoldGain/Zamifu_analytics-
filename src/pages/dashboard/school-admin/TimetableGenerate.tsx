@@ -899,9 +899,13 @@ export default function TimetableGenerate() {
             subjectNames,
             classes: classesToProcess,
             levelGroup: levelKey,
-            // Continuing past a Rule 14 warning means the short classes are
-            // expected to have empty cells; every other rule is still enforced.
-            requireComplete: !runOptions.continuePastWarning,
+            // Continuing past a Rule 14 warning means only the classes the admin
+            // saw in the warning may keep empty cells; every other class must
+            // still be completely filled.
+            requireComplete: true,
+            allowBlankSlotsForClassIds: runOptions.continuePastWarning
+              ? solverResult.shortClasses.map((entry) => entry.classId)
+              : undefined,
             requiredLessonCounts,
             requireReligiousPairing: true,
           });
