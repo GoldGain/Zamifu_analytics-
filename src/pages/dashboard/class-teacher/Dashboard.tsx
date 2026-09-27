@@ -9,6 +9,10 @@ import { toast } from 'sonner';
 import { calculateCompetencyGrade, getSchoolLevelBand, getRequiredLearningAreas } from '@/lib/grading';
 import { MarksProgress } from '@/components/MarksProgress';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
+import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 
 interface StudentPerformance {
   id: string;
@@ -140,12 +144,17 @@ export default function ClassTeacherDashboard() {
     if (!assignedClass || !selectedTerm) return;
     setLoadingPerf(true);
     try {
-      const { data: results } = await supabaseUntyped
+      // Paged: PostgREST caps a response at 1000 rows, so an unpaged read of a
+      // whole class x term would silently truncate the ranking cohort.
+      const results = await fetchAllRows((from, to) => supabaseUntyped
         .from('results')
-        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844')
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points, created_at, students(id, gender), subjects(name)')
         .eq('class_id', assignedClass.id)
         .eq('term_id', selectedTerm)
-        .eq('school_id', user?.schoolId);
+        .eq('school_id', user?.schoolId)
+        .order('created_at')
+        .order('id')
+        .range(from, to));
 
       const resultsMap: Record<string, Record<string, any>> = {};
       (results || []).forEach((r: any) => {
@@ -179,23 +188,28 @@ export default function ClassTeacherDashboard() {
         
         const hasAllMarks = subjects.length > 0 && Object.keys(sResults).length >= subjects.length;
 
+        const pointsTotal = Object.values(sResults).reduce((sum: number, r: any) => sum + (Number(r.points) || 0), 0);
         return {
           ...student,
           avgPercentage: avgPct,
           totalMarks,
           totalOutOf,
-          totalPoints: null,
+          totalPoints: pointsTotal || null,
           position: null,
           subjectResults: sResults,
           hasAllMarks,
         };
       });
 
-      // Rank by average
-      const ranked = [...perf]
-        .filter((p) => p.avgPercentage !== null)
-        .sort((a, b) => (b.avgPercentage ?? 0) - (a.avgPercentage ?? 0));
-      ranked.forEach((p, i) => { p.position = i + 1; });
+      // Rank the SHARED aggregation (one entry per learner per learning area —
+      // the same totals the class summary, portal and report cards use) so the
+      // position shown here matches every other surface.
+      const ranked = rankByUnifiedRule(
+        aggregateLearnerTotals(results || [], assignedClass || {}),
+        getSchoolLevelBand(assignedClass || {}),
+      );
+      const positionById = new Map(ranked.map((row) => [row.studentId, row.position]));
+      perf.forEach((p) => { p.position = positionById.get(p.id) ?? null; });
 
       setPerformance(perf);
     } catch (err) {
@@ -246,12 +260,12 @@ export default function ClassTeacherDashboard() {
     const selectedTermName = terms.find((term: any) => term.id === selectedTerm)?.name || 'the selected term';
     setRemindingSubjectId(subject.id);
     try {
-      const body = `Reminder: ${missingCount} learner${missingCount === 1 ? '' : 's'} in ${assignedClass.name} still need ${subject.name} marks for ${selectedTermName}. Please complete the marks entry.`;
+      const body = `Reminder: ${missingCount} learner${missingCount === 1 ? '' : 's'} in ${formatClassStream(assignedClass)} still need ${subject.name} marks for ${selectedTermName}. Please complete the marks entry.`;
       const { error } = await supabaseUntyped.from('teacher_messages').insert({
         school_id: user.schoolId,
         sender_id: user.id,
         recipient_id: subject.teacher_profile_id,
-        subject: `Pending marks: ${assignedClass.name} — ${subject.name}`,
+        subject: `Pending marks: ${formatClassStream(assignedClass)} — ${subject.name}`,
         body,
       });
       if (error) throw error;
@@ -314,7 +328,7 @@ export default function ClassTeacherDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Class Teacher Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {assignedClass.name} · {students.length} learners · {subjects.length} learning areas
+            {formatClassStream(assignedClass)} · {students.length} learners · {subjects.length} learning areas
           </p>
         </div>
         <select
@@ -514,7 +528,7 @@ export default function ClassTeacherDashboard() {
           <h2 className="text-lg font-bold text-gray-900 mb-4">Detailed Marks Entry Progress</h2>
           <MarksProgress
             classId={assignedClass.id}
-            className={assignedClass.name}
+            className={formatClassStream(assignedClass)}
             termId={selectedTerm}
             schoolId={user?.schoolId || ''}
           />

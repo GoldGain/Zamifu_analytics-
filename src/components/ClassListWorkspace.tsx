@@ -10,6 +10,7 @@ import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import { configurePdfFontSize, DEFAULT_PDF_FONT_SIZE, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatClassStream } from '@/lib/class-label';
 
 interface Student {
   id: string;
@@ -435,7 +436,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
         <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
         <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="w-full sm:w-80 rounded-xl border border-gray-200 px-3 py-2 text-sm">
           <option value="">Select class…</option>
-          {classes.map((c) => <option key={c.id} value={c.id}>{c.name}{c.stream ? ` (${c.stream})` : ''}</option>)}
+          {classes.map((c) => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
         </select>
       </div>
 

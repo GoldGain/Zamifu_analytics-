@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { BarChart3, Loader2, ChevronDown, ChevronUp, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { MarksProgress } from '@/components/MarksProgress';
+import { formatClassStream } from '@/lib/class-label';
 
 interface ClassInfo {
   id: string;
@@ -37,7 +38,7 @@ export default function MarksOverview() {
       const [{ data: classesData }, { data: termsData }, { data: examsData }] = await Promise.all([
         (supabase as any)
           .from('classes')
-          .select('id, name, level')
+          .select('id, name, level, grade_level, stream, stream_name')
           .eq('school_id', user?.schoolId)
           .eq('is_active', true)
           .order('level'),
@@ -138,7 +139,7 @@ export default function MarksOverview() {
                   <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center">
                     <BarChart3 className="w-5 h-5 text-blue-600" />
                   </div>
-                  <span className="font-semibold text-gray-900">{cls.name}</span>
+                  <span className="font-semibold text-gray-900">{formatClassStream(cls)}</span>
                 </div>
                 {expandedClass === cls.id ? (
                   <ChevronUp className="w-5 h-5 text-gray-400" />
@@ -152,7 +153,7 @@ export default function MarksOverview() {
                   <div className="pt-4">
                     <MarksProgress
                       classId={cls.id}
-                      className={cls.name}
+                      className={formatClassStream(cls)}
                       termId={selectedTerm}
                       schoolId={user?.schoolId || ''}
                       examId={selectedExam}

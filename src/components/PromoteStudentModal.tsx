@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { AlertCircle, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 interface PromoteStudentModalProps {
   student: any;
@@ -73,7 +74,7 @@ export default function PromoteStudentModal({
       }
 
       toast.success(
-        `${student.first_name} ${student.last_name} promoted to ${selectedClass?.name || 'new class'}`
+        `${student.first_name} ${student.last_name} promoted to ${selectedClass ? formatClassStream(selectedClass) : 'new class'}`
       );
 
       onSuccess();
@@ -103,14 +104,14 @@ export default function PromoteStudentModal({
             <div className="flex-1">
               <p className="text-xs text-[#666666] uppercase font-medium mb-1">Current Class</p>
               <p className="text-sm font-semibold text-[#111111]">
-                {currentClass?.name || 'Unknown'} {currentClass?.stream || ''}
+                {currentClass ? formatClassStream(currentClass) : 'Unknown'}
               </p>
             </div>
             <ArrowRight className="w-5 h-5 text-blue-500 flex-shrink-0" />
             <div className="flex-1">
               <p className="text-xs text-[#666666] uppercase font-medium mb-1">New Class</p>
               <p className="text-sm font-semibold text-blue-600">
-                {selectedClass?.name || 'Select below'}
+                {selectedClass ? formatClassStream(selectedClass) : 'Select below'}
               </p>
             </div>
           </div>
@@ -130,7 +131,7 @@ export default function PromoteStudentModal({
               .sort((a, b) => (a.level || 0) - (b.level || 0))
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} {c.stream || ''} {c.level ? `(Level ${c.level})` : ''}
+                  {formatClassStream(c)}
                 </option>
               ))}
           </select>

@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect } from 'react';
+import { Fragment, useState, useEffect, useRef } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
 import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users } from 'lucide-react';
@@ -27,6 +27,7 @@ import {
   drawDeviation,
   drawAchievements,
   drawReportFooter,
+  ordinal,
   SUBJECT_ORDER,
   buildPerformanceTrend,
   type SchoolInfo,
@@ -40,8 +41,10 @@ import {
   pdfFontSize,
 } from '@/lib/pdfFontSize';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
 import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
+import { rankByUnifiedRule } from '@/lib/ranking';
 
 type ComparisonSourceRow = {
   student_id?: string | null;
@@ -247,6 +250,21 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [savingResult, setSavingResult] = useState(false);
 
   const [deletingResult, setDeletingResult] = useState<any | null>(null);
+  // Issue 2 — Individual report card: search one learner by name, admission
+  // number or assessment number within the current Class/Term/Assessment scope.
+  const [learnerSearch, setLearnerSearch] = useState('');
+  const [learnerMatches, setLearnerMatches] = useState<any[]>([]);
+  const [learnerSearchLoading, setLearnerSearchLoading] = useState(false);
+  const [selectedLearner, setSelectedLearner] = useState<any | null>(null);
+  // Issue 2 — the learner roster for the current class/stream scope, cached so a
+  // search filters in memory. This is also what makes a FULL name work: PostgREST
+  // cannot compare a two-word query against the single first_name/last_name
+  // columns, so "LATIFA MWACHONDO" previously matched nothing even though the
+  // learner exists. Tokenised matching against the whole name fixes that.
+  const [learnerRoster, setLearnerRoster] = useState<any[]>([]);
+  const [learnerRosterKey, setLearnerRosterKey] = useState('');
+  const learnerRosterReq = useRef<{ key: string; promise: Promise<any[]> } | null>(null);
+  const [downloadingLearner, setDownloadingLearner] = useState(false);
   const [deletingResultLoading, setDeletingResultLoading] = useState(false);
   const [deletingClassResults, setDeletingClassResults] = useState(false);
   const [schoolName, setSchoolName] = useState('School');
@@ -288,14 +306,26 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
-        supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        // Paged: this school-wide read is far larger than PostgREST's 1000-row
+        // cap (one term alone is ~6000 rows) and an unpaged read silently drops
+        // the tail. Rows arrive newest-first, so the dropped rows were the
+        // OLDEST — exactly the single-exam rows a learner needs for their
+        // learning-area totals, which is why learners whose rows fell past the
+        // cut lost learning areas and slid down the table.
+        fetchAllRows((from, to) => supabaseUntyped
+          .from('results')
+          .select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
+          .eq('school_id', schoolId)
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to)),
         supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
         supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('students').select('id, class_id').eq('school_id', schoolId).eq('is_active', true),
       ]);
-      setResults((resultsData[0].data as any[]) || []);
+      setResults((resultsData[0] as any[]) || []);
       const loadedClasses = (resultsData[1].data as any[]) || [];
       const visibleClasses = scope === 'class_teacher' && resolvedScopedClassId
         ? loadedClasses.filter((c: any) => c.id === resolvedScopedClassId)
@@ -617,11 +647,22 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchClassResults = async () => {
     const effectiveClassId = scope === 'class_teacher' ? scopedClassId : selectedClass;
-    let query = supabaseUntyped.from('results').select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)').eq('class_id', effectiveClassId).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
-    if (selectedExam) query = query.eq('exam_id', selectedExam);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    // PostgREST caps one response at 1000 rows. A class x term x assessment
+    // result set exceeds that at this school, so an unpaged read silently
+    // truncated the class and every ranking built from it was wrong.
+    return fetchAllRows((from, to) => {
+      let query = supabaseUntyped
+        .from('results')
+        .select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
+        .eq('class_id', effectiveClassId)
+        .eq('term_id', selectedTerm)
+        .eq('school_id', user?.schoolId)
+        .order('created_at')
+        .order('id')
+        .range(from, to);
+      if (selectedExam) query = query.eq('exam_id', selectedExam);
+      return query;
+    });
   };
 
   const fetchPreviousTermAvg = async (studentId: string, currentTermId: string) => {
@@ -731,6 +772,170 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     });
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
     doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
+  };
+
+  /**
+   * Issue 2 — Search one learner inside the CURRENT filters (Class, Term,
+   * Assessment). Matches on name, admission number or assessment number, and
+   * also accepts learners who are enrolled in the class but have no marks yet.
+   */
+  /**
+   * Loads (once per scope) every learner enrolled in the selected class, or in
+   * every stream of the selected grade when "All Streams" is on. Paged so a
+   * large grade cannot be silently truncated at the PostgREST row cap, and
+   * ordered by a unique key so the pages stitch together deterministically.
+   */
+  const ensureLearnerRoster = async (classIds: string[]): Promise<any[]> => {
+    const key = classIds.slice().sort().join(',');
+    if (!key) return [];
+    if (learnerRosterKey === key && learnerRoster.length > 0) return learnerRoster;
+    if (learnerRosterReq.current && learnerRosterReq.current.key === key) {
+      return learnerRosterReq.current.promise;
+    }
+    const promise = (async () => {
+      try {
+        const rows = await fetchAllRows<any>((from, to) =>
+          supabaseUntyped
+            .from('students')
+            .select('id, first_name, middle_name, last_name, admission_number, assessment_number, class_id, stream_id, classes!students_class_id_fkey(name, stream, stream_name)')
+            .eq('school_id', user?.schoolId)
+            .in('class_id', classIds)
+            .order('last_name')
+            .order('first_name')
+            .order('id')
+            .range(from, to),
+        );
+        const classMap = new Map(classes.map((c: any) => [c.id, c]));
+        const roster = rows.map((row: any) => ({
+          ...row,
+          classLabel: formatClassStream(row.classes || classMap.get(row.class_id)),
+          searchText: [row.first_name, row.middle_name, row.last_name, row.admission_number, row.assessment_number]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase(),
+        }));
+        setLearnerRoster(roster);
+        setLearnerRosterKey(key);
+        return roster;
+      } catch (err: any) {
+        toast.error('Could not load the class list: ' + (err?.message || 'unknown error'));
+        return [];
+      } finally {
+        learnerRosterReq.current = null;
+      }
+    })();
+    learnerRosterReq.current = { key, promise };
+    return promise;
+  };
+
+  /**
+   * Issue 2 — Search one learner inside the CURRENT filters (Class, Term,
+   * Assessment). Every word typed must appear somewhere in the learner's name,
+   * admission number or assessment number, so "MUCHESI", "MUCHESI EMMANUEL",
+   * "EMMANUEL MUCHESI", "ADM133" and the assessment number all match.
+   */
+  const searchLearnersForReportCard = async (query: string) => {
+    const term = query.trim();
+    const effectiveClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
+    if (!effectiveClassId) { setLearnerMatches([]); return; }
+    if (term.length < 2) { setLearnerMatches([]); setSelectedLearner(null); return; }
+    const classIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
+      ? allStreamClassIds
+      : [effectiveClassId];
+    setLearnerSearchLoading(true);
+    try {
+      const roster = await ensureLearnerRoster(classIds);
+      const tokens = term.toLowerCase().split(/\s+/).filter(Boolean);
+      const matches = roster.filter((row: any) => tokens.every((token) => row.searchText.includes(token)));
+      // Name matches rank above admission/assessment-only matches, then alphabetical.
+      matches.sort((a: any, b: any) => {
+        const nameOf = (r: any) => [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(' ').toLowerCase();
+        const aByName = tokens.every((t: string) => nameOf(a).includes(t)) ? 0 : 1;
+        const bByName = tokens.every((t: string) => nameOf(b).includes(t)) ? 0 : 1;
+        if (aByName !== bByName) return aByName - bByName;
+        return nameOf(a).localeCompare(nameOf(b));
+      });
+      setLearnerMatches(matches.slice(0, 25));
+      setSelectedLearner(null);
+    } catch (err: any) {
+      toast.error('Learner search failed: ' + (err?.message || 'unknown error'));
+      setLearnerMatches([]);
+    } finally {
+      setLearnerSearchLoading(false);
+    }
+  };
+
+  /**
+   * Issue 2 — Download ONE learner's report card using the same renderer and
+   * the same ranking rule as the bulk download, so the PDF matches the batch
+   * output and the selected assessment filter (single, combined or all).
+   */
+  const downloadIndividualReportCard = async (learner: any, fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
+    const effectiveClassId = scope === 'class_teacher' ? (scopedClassId || selectedClass) : selectedClass;
+    if (!effectiveClassId || !selectedTerm) { toast.error('Select a class and term first'); return; }
+    setDownloadingLearner(true);
+    try {
+      const rawResults = await fetchClassResults();
+      const classObj = classes.find((c: any) => c.id === effectiveClassId);
+      const termObj = terms.find((t: any) => t.id === selectedTerm);
+      const assessmentLabel = resolveAssessmentLabel(rawResults);
+      const combinedExam = selectedExam ? exams.find((exam: any) => exam.id === selectedExam && exam.type === 'combined') : null;
+      const band = getSchoolLevelBand(classObj);
+
+      const summaries = buildStudentSummary(rawResults, classObj);
+      const target = summaries.find((s: any) => s.studentId === learner.id);
+      if (!target) {
+        toast.error(`${learner.first_name} ${learner.last_name} has no marks for the selected class, term and assessment.`);
+        return;
+      }
+      const totalStudents = summaries.length;
+      const prevAvg = await fetchPreviousTermAvg(target.studentId, selectedTerm);
+      const deviation = prevAvg !== null && prevAvg !== undefined ? target.avgPct - prevAvg : null;
+      const isNew = deviation === null;
+      const subjectEntries = (Object.entries(target.subjects).filter(([k]) => !k.endsWith('_grade') && !k.endsWith('_points')) as [string, number][]).sort((a, b) => {
+        const indexA = SUBJECT_ORDER.findIndex((s) => a[0].toLowerCase().includes(s.toLowerCase()));
+        const indexB = SUBJECT_ORDER.findIndex((s) => b[0].toLowerCase().includes(s.toLowerCase()));
+        if (indexA === -1 && indexB === -1) return a[0].localeCompare(b[0]);
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
+      const byScore = [...subjectEntries].sort((a, b) => b[1] - a[1]);
+      const bestSubject = byScore[0]?.[0] || 'all learning areas';
+      const weakestSubject = byScore[byScore.length - 1]?.[0] || 'some learning areas';
+      const studentFullName = `${target.student?.first_name || ''} ${target.student?.last_name || ''}`.trim();
+      const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
+        name,
+        percentage: pct,
+        grade: calculateCompetencyGrade(pct, band).subLevel,
+        previousPercentage: null,
+      }));
+      const aiComment = generateUniqueAIComment(studentFullName, target.avgPct, deviation, bestSubject, weakestSubject, target.position, totalStudents, isNew, classObj, allSubjectResults);
+      const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+      configurePdfFontSize(doc, fontSize);
+      const sig: SignatureInfo = await getSignatureInfo(classObj);
+      await drawReportHeader(doc, schoolInfo, { name: studentFullName, photoUrl: target.student?.photo_url });
+      const cardAssessment = target.examName || assessmentLabel || '';
+      const studentPosition = `${ordinal(target.position)} out of ${totalStudents}`;
+      drawStudentInfo(doc, studentFullName, target.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, target.student?.assessment_number || undefined, { classPosition: studentPosition });
+      const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63);
+      const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
+      if (gradeLevelNum >= 6 && gradeLevelNum <= 9) currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
+      currentY = drawSummaryBox(doc, studentResultsForTable, target.avgPct, target.totalPoints, `${target.position}/${totalStudents}`, classObj, currentY + 4);
+      currentY = drawDeviation(doc, deviation, prevAvg, null, currentY);
+      currentY = drawAIComment(doc, aiComment, currentY + 2);
+      await addSignaturesToPDF(doc, sig, currentY + 2, schoolInfo);
+      drawReportFooter(doc);
+      const safeName = studentFullName.replace(/[^a-z0-9]+/gi, '_') || 'learner';
+      doc.save(`report_card_${safeName}_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
+      toast.success(`Report card downloaded for ${studentFullName}`);
+    } catch (err: any) {
+      toast.error('Failed: ' + (err?.message || 'unknown error'));
+      console.error(err);
+    } finally {
+      setDownloadingLearner(false);
+    }
   };
 
   const downloadClassResultsPDF = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
@@ -1449,9 +1654,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     // incorrect class means when streams have different result coverage.
     const summaryClasses = classes.filter((classObj: any) => opts.rawResults.some((result: any) => result.class_id === classObj.id));
     const streamSummaries = buildSummariesForClasses(opts.rawResults, summaryClasses.length ? summaryClasses : [opts.classObj]);
-    const summaries = [...streamSummaries]
-      .sort((a: any, b: any) => (b.totalPct - a.totalPct) || (b.totalPoints - a.totalPoints) || String(a.student?.last_name || '').localeCompare(String(b.student?.last_name || '')))
-      .map((summary: any, index: number) => ({ ...summary, position: index + 1 }));
+    // Unified ranking: total marks first, then points (Junior) or a shared
+    // rank (Primary) — identical numbers on every page that shows a position.
+    const summaries = rankByUnifiedRule(streamSummaries, band);
     const allSubjects = sortSubjects(normalizeLearningAreas(Array.from(new Set(opts.rawResults.filter(hasRecordedMarks).map((r: any) => r.subjects?.name).filter(Boolean))) as string[]));
     const totalStudents = summaries.length;
     // Class Mean Marks = sum of every learner's total percentage marks ÷ number of learners.
@@ -1730,8 +1935,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const classResults = opts.rawResults.filter((result: any) => result.class_id === e.cid);
         const observed = new Set(classResults.map((result: any) => normalizeLearningAreaName(result.subjects?.name || '')).filter((name) => name && name !== 'Unknown')).size;
         const denominator = getRequiredLearningAreas(classObj, getCanonicalLearningAreas(classObj).length || observed) ?? observed;
-        const stream = String(cls.stream_name || cls.stream || '').trim();
-        const label = stream ? `${cls.name || 'Class'} ${stream}` : (cls.name || 'Class');
+        const label = formatClassStream(classObj || cls);
         return { label, mean: e.n > 0 ? e.totalPct / e.n : 0, outOf: denominator * 100 };
       }).sort((a, b) => b.mean - a.mean).map((e, i) => ({ ...e, rank: i + 1 }));
 
@@ -1886,16 +2090,15 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         classTotalsById.set(c.id, classSummaries.length);
         classSummaries.forEach((s) => classPositionByStudent.set(s.studentId, s.position));
       });
-      const summaries = [...streamSummaries]
-        .sort((a, b) => (b.totalPct - a.totalPct) || (b.totalPoints - a.totalPoints))
-        .map((s, i) => ({
-          ...s,
-          position: i + 1,
-          streamPosition: i + 1,
-          classPosition: classPositionByStudent.get(s.studentId) || null,
-          classTotal: classTotalsById.get(s.classId) || 0,
-          classObj: classById.get(s.classId) || seedClassObj,
-        }));
+      // Unified ranking across all streams of the grade: total marks first,
+      // then points (Junior) or a shared rank (Primary).
+      const summaries = rankByUnifiedRule(streamSummaries, getSchoolLevelBand(seedClassObj)).map((s) => ({
+        ...s,
+        streamPosition: s.position,
+        classPosition: classPositionByStudent.get(s.studentId) || null,
+        classTotal: classTotalsById.get(s.classId) || 0,
+        classObj: classById.get(s.classId) || seedClassObj,
+      }));
       const totalStudents = summaries.length;
       const sigById: Record<string, SignatureInfo> = {};
       for (const sc of streamClasses) { sigById[sc.id] = await getSignatureInfo(sc); }
@@ -2169,6 +2372,83 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             {deletingClassResults ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
             {deletingClassResults ? 'Deleting...' : 'Delete All Results'}
           </button>
+        </div>
+        {/* Issue 2 — Download ONE learner's report card. Search respects the
+            current Class / Term / Assessment filters, including combined exams. */}
+        <div className="mt-6 border-t border-gray-100 pt-5">
+          <label className="block text-sm font-bold text-[#111111] mb-1">
+            Download Individual Report Card
+          </label>
+          <p className="text-xs text-[#666666] mb-3">
+            Search one learner in the selected class and assessment, then download their report card.
+            The PDF uses the same format and ranking as the bulk download.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="relative w-full sm:max-w-xl">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={learnerSearch}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setLearnerSearch(value);
+                  void searchLearnersForReportCard(value);
+                }}
+                placeholder="Search learner by name, admission or assessment number..."
+                className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
+                disabled={!selectedClass && !scopedClassId}
+              />
+              {learnerSearchLoading && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-gray-400" />}
+              {!learnerSearchLoading && learnerSearch && (
+                <button
+                  type="button"
+                  onClick={() => { setLearnerSearch(''); setLearnerMatches([]); setSelectedLearner(null); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:bg-gray-100"
+                  aria-label="Clear learner search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+              {/* Typeahead matches */}
+              {learnerSearch.trim().length >= 2 && !learnerSearchLoading && (
+                <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+                  {learnerMatches.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-gray-500">No learner in the selected class matches that search. Try a full name, part of a name, or an admission / assessment number.</p>
+                  ) : learnerMatches.map((match) => (
+                    <button
+                      type="button"
+                      key={match.id}
+                      onClick={() => setSelectedLearner(match)}
+                      className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm hover:bg-blue-50 ${selectedLearner?.id === match.id ? 'bg-blue-50' : ''}`}
+                    >
+                      <span>
+                        <span className="block font-semibold text-[#111111]">{match.first_name} {match.middle_name ? `${match.middle_name} ` : ''}{match.last_name}</span>
+                        <span className="block text-xs text-[#666666]">{match.classLabel} · Adm {match.admission_number || '—'}{match.assessment_number ? ` · Assessment ${match.assessment_number}` : ''}</span>
+                      </span>
+                      <Download className="h-4 w-4 shrink-0 text-blue-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => selectedLearner && void downloadIndividualReportCard(selectedLearner)}
+              disabled={!selectedLearner || downloadingLearner}
+              className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1d4ed8] disabled:opacity-50"
+            >
+              {downloadingLearner ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {downloadingLearner ? 'Preparing…' : 'Download Report Card'}
+            </button>
+          </div>
+          {selectedLearner && (
+            <p className="mt-3 text-xs font-medium text-blue-700">
+              Selected: {selectedLearner.first_name} {selectedLearner.last_name} · {selectedLearner.classLabel}
+              {' · '}{terms.find((t: any) => t.id === selectedTerm)?.name || 'Term'}{' '}
+              {terms.find((t: any) => t.id === selectedTerm)?.academic_year || ''}
+              {selectedExam ? ` · ${exams.find((exam: any) => exam.id === selectedExam)?.name || 'Assessment'}` : ' · All assessments'}
+            </p>
+          )}
         </div>
       </div>
 

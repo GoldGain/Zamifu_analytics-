@@ -2285,9 +2285,9 @@ export default function TimetableGenerate() {
         }
         const stillMissing = missingCells.filter(({ cls, day, slot }) => !lessonCellEntries.has(`${cls.id}-${day}-${slot.id}`));
         if (stillMissing.length > 0) {
-          const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${cls.name} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
+          const missingLabels = stillMissing.slice(0, 8).map(({ cls, day, slot }) => `${formatClassStream(cls)} / ${TIMETABLE_DAYS[day - 1]} / Lesson ${lessonNumberOf(slot)}`);
           const shortageByClass = new Map<string, { name: string; demand: number; cells: number }>();
-          classesToProcess.forEach((cls: any) => shortageByClass.set(String(cls.id), { name: String(cls.name || 'Class'), demand: 0, cells: lessonSlots.length * TIMETABLE_DAYS.length }));
+          classesToProcess.forEach((cls: any) => shortageByClass.set(String(cls.id), { name: formatClassStream(cls), demand: 0, cells: lessonSlots.length * TIMETABLE_DAYS.length }));
           assignmentContexts.forEach((context) => {
             const item = shortageByClass.get(String(context.cls.id));
             if (item) item.demand += Math.max(0, Number(context.assignment.lessons_per_week || 0));
@@ -2807,7 +2807,7 @@ export default function TimetableGenerate() {
         for (const { context, target } of targetBySubject.values()) {
           const actual = balancedCounts.get(`${context.cls.id}:${context.assignment.subject_id}`) || 0;
           if (actual !== target) {
-            finalCountMismatches.push(`${context.cls.name} / ${context.subjectName}: ${actual}/${target}`);
+            finalCountMismatches.push(`${formatClassStream(context.cls)} / ${context.subjectName}: ${actual}/${target}`);
           }
         }
         if (finalCountMismatches.length > 0) {

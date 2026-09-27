@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatClassStream } from '@/lib/class-label';
 import {
   JUNIOR_SCHOOL_SUBJECTS,
   juniorExamSubjects,
@@ -556,7 +557,7 @@ export default function CurriculumNavigator() {
   // Progress
   const [teacherId, setTeacherId] = useState<string | null>(null);
   const [classId, setClassId] = useState<string | null>(null);
-  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
+  const [classes, setClasses] = useState<{ id: string; name: string; stream?: string | null; stream_name?: string | null }[]>([]);
   const [progressMap, setProgressMap] = useState<Record<string, string>>({});
 
   // School info
@@ -592,7 +593,7 @@ export default function CurriculumNavigator() {
     const { data: t } = await supabaseUntyped.from('teachers').select('id, school_id').eq('profile_id', user.id).single();
     if (t) {
       setTeacherId(t.id);
-      const { data: cls } = await supabaseUntyped.from('classes').select('id, name').eq('school_id', t.school_id);
+      const { data: cls } = await supabaseUntyped.from('classes').select('id, name, stream, stream_name, level, grade_level').eq('school_id', t.school_id);
       setClasses(cls || []);
       if (cls && cls.length > 0) setClassId(cls[0].id);
     }
@@ -1242,7 +1243,7 @@ Draft: ${JSON.stringify(blueprint).slice(0, 6000)}`;
             >
               <option value="">Select Class</option>
               {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
               ))}
             </select>
           </div>

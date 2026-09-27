@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Plus, Trash2, Edit2, CheckCircle, XCircle, Calendar, BookOpen, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 type AssessmentTargetType = 'school' | 'grade' | 'class';
 
@@ -314,7 +315,7 @@ export default function Assessments() {
     const targetType = exam.target_type || 'school';
     if (targetType === 'class') {
       const targetClass = classes.find((classItem) => classItem.id === exam.target_class_id);
-      return targetClass ? `Class: ${targetClass.name}${targetClass.stream ? ` (${targetClass.stream})` : ''}` : 'Specific Class';
+      return targetClass ? `Class: ${formatClassStream(targetClass)}` : 'Specific Class';
     }
     if (targetType === 'grade') return `Grade ${exam.target_grade_level}`;
     return 'Whole School';
@@ -536,7 +537,7 @@ export default function Assessments() {
                       <option value="">Select Class</option>
                       {classes.map((classItem) => (
                         <option key={classItem.id} value={classItem.id}>
-                          {classItem.name}{classItem.stream ? ` (${classItem.stream})` : ''}
+                          {formatClassStream(classItem)}
                         </option>
                       ))}
                     </select>

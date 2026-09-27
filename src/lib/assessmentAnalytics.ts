@@ -6,6 +6,8 @@ import {
   type SchoolLevelBand,
 } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 
 export type AssessmentLearnerSummary = {
   studentId: string;
@@ -13,6 +15,8 @@ export type AssessmentLearnerSummary = {
   student: any;
   subjects: Record<string, number>;
   totalPct: number;
+  /** Total marks across learning areas — the primary metric for ranking. */
+  totalMarks?: number;
   count: number;
   avgPct: number;
   totalPoints: number;
@@ -84,57 +88,14 @@ export function requiredLearningAreaCount(classObj: any, rawResults: any[], addi
 }
 
 export function buildAssessmentLearnerSummaries(rawResults: any[], classObj: any): AssessmentLearnerSummary[] {
-  const studentMap: Record<string, any> = {};
-  rawResults.forEach((result: any) => {
-    const studentId = result.student_id;
-    if (!studentId) return;
-    if (!studentMap[studentId]) {
-      studentMap[studentId] = {
-        studentId,
-        classId: result.class_id,
-        student: result.students,
-        subjects: {},
-        totalPct: 0,
-        count: 0,
-        totalPoints: 0,
-        gender: result.students?.gender || null,
-        examName: result.school_exams?.name || result.exams?.name || '',
-      };
-    }
-    const percentage = resultPercentage(result);
-    const areaKey = normalizeLearningAreaName(result.subjects?.name || 'Unknown');
-    const isNewArea = studentMap[studentId].subjects[areaKey] === undefined;
-    studentMap[studentId].subjects[areaKey] = percentage;
-    if (isNewArea) {
-      studentMap[studentId].totalPct += percentage;
-      studentMap[studentId].count += 1;
-    }
-    if (result.school_exams?.name || result.exams?.name) {
-      studentMap[studentId].examName = result.school_exams?.name || result.exams?.name;
-    }
-  });
-
   const band: SchoolLevelBand = getSchoolLevelBand(classObj);
-  Object.values(studentMap).forEach((summary: any) => {
-    summary.totalPoints = Object.values(summary.subjects).reduce(
-      (sum: number, percentage: any) => sum + (calculateCompetencyGrade(Number(percentage), band).points || 0),
-      0,
-    );
-  });
-
-  const observedAreaCount = learningAreaNames(rawResults).length;
-  const canonicalAreaCount = getCanonicalLearningAreas(classObj).length;
-  const configuredAreaCount = canonicalAreaCount || observedAreaCount;
-  const requiredAreas = getRequiredLearningAreas(classObj, configuredAreaCount);
-
-  return Object.values(studentMap)
-    .map((summary: any) => ({
-      ...summary,
-      avgPct: requiredAreas
-        ? summary.totalPct / requiredAreas
-        : summary.count > 0 ? summary.totalPct / summary.count : 0,
-      gender: summary.gender || summary.student?.gender || null,
-    }))
-    .sort((a: any, b: any) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct))
-    .map((summary: any, index) => ({ ...summary, position: index + 1 }));
+  // Shared aggregation (also used by the student/parent portals and report
+  // cards) so every surface ranks the same totals, then the shared rule orders
+  // them: total marks first, then the level-specific tie-breaker.
+  const summaries = aggregateLearnerTotals(rawResults, classObj).map((entry) => ({
+    ...entry,
+    // Kept for existing consumers that read totalPct.
+    totalPct: entry.totalMarks,
+  }));
+  return rankByUnifiedRule(summaries, band) as AssessmentLearnerSummary[];
 }

@@ -7,6 +7,7 @@
  */
 
 import { supabaseUntyped } from '@/lib/supabase/client';
+import { formatClassStream } from '@/lib/class-label';
 
 export type AiRole =
   | 'school_admin'
@@ -282,7 +283,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
       if (teacher?.id) {
         const { data: assigns } = await supabaseUntyped
           .from('teacher_subject_assignments')
-          .select('id, subjects(name), classes(name)')
+          .select('id, subjects(name), classes(name, stream, stream_name)')
           .eq('teacher_id', teacher.id)
           .eq('is_active', true);
         const n = assigns?.length || 0;
@@ -295,7 +296,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
                 .slice(0, 6)
                 .map(
                   (a: any) =>
-                    `${a.subjects?.name || 'Subject'} · ${a.classes?.name || 'Class'}`
+                    `${a.subjects?.name || 'Subject'} · ${a.classes ? formatClassStream(a.classes) : 'Class'}`
                 )
                 .join('; ')
             : 'Ask school admin to assign learning areas before uploading results.',

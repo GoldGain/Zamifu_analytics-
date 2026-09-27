@@ -4,6 +4,7 @@ import { Plus, Download, Save, RefreshCw, AlertCircle, Calendar } from 'lucide-r
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { formatClassStream } from '@/lib/class-label';
 
 interface ExamSlot {
   id: string;
@@ -58,7 +59,7 @@ export default function ExamTimetable() {
 
       const { data, error } = await supabase
         .from('teacher_classes')
-        .select('classes(id, name, grade_level)')
+        .select('classes(id, name, grade_level, stream, stream_name)')
         .eq('teacher_id', user.id);
 
       if (error) throw error;
@@ -316,7 +317,7 @@ export default function ExamTimetable() {
               <option value="">Select a class</option>
               {classes.map(cls => (
                 <option key={cls.id} value={cls.id}>
-                  {cls.name}
+                  {formatClassStream(cls)}
                 </option>
               ))}
             </select>

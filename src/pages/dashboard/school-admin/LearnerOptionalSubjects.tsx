@@ -4,6 +4,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { fetchSubjectGroups, type SubjectGroup } from '@/lib/optional-subjects';
 import { Loader2, Save, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 export default function LearnerOptionalSubjects() {
   const { user } = useAuth();
@@ -27,7 +28,7 @@ export default function LearnerOptionalSubjects() {
       try {
         const [g, c] = await Promise.all([
           fetchSubjectGroups(schoolId),
-          supabaseUntyped.from('classes').select('id, name, grade_level, level').eq('school_id', schoolId).order('level'),
+          supabaseUntyped.from('classes').select('id, name, grade_level, level, stream, stream_name').eq('school_id', schoolId).order('level'),
         ]);
         setGroups(g);
         setClasses(c.data || []);
@@ -128,7 +129,7 @@ export default function LearnerOptionalSubjects() {
         <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)}
           className="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-blue-400">
           <option value="">Select grade/class</option>
-          {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
         </select>
         <select value={selectedStudent} onChange={e => setSelectedStudent(e.target.value)}
           className="rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:border-blue-400">

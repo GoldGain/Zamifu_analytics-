@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useClasses } from '@/hooks/useSupabaseData';
 import { Plus, Loader2, School, Search, ArrowRight, Users, Pencil, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatClassStream } from '@/lib/class-label';
 
 type CurriculumType = 'CBE' | '';
 
@@ -78,7 +79,7 @@ export default function SchoolAdminClasses() {
         is_active: true,
       }]);
       if (error) throw new Error(error.message);
-      const displayName = stream.trim() ? `${preset.name} (${stream.trim()})` : preset.name;
+      const displayName = formatClassStream({ name: preset.name, stream: stream.trim() || null });
       toast.success(`Class "${displayName}" added successfully!`);
       setShowAdd(false);
       setSelectedPreset('');
@@ -130,7 +131,7 @@ export default function SchoolAdminClasses() {
     try {
       const { error } = await supabaseUntyped.from('classes').delete().eq('id', deletingClass.id);
       if (error) throw new Error(error.message);
-      toast.success(`Class "${deletingClass.name}" deleted.`);
+      toast.success(`Class "${formatClassStream(deletingClass)}" deleted.`);
       setDeletingClass(null);
       refetch();
     } catch (err: any) {
@@ -274,7 +275,7 @@ export default function SchoolAdminClasses() {
             </div>
             {previewPreset && (
               <div className="md:col-span-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-800">
-                <strong>Preview:</strong> {previewPreset.name}{stream.trim() ? ` (${stream.trim()})` : ''} &nbsp;·&nbsp; {previewPreset.curriculum === '' ? '' : 'CBE'} &nbsp;·&nbsp; Grade level {previewPreset.grade_level} &nbsp;·&nbsp; Capacity {capacity}
+                <strong>Preview:</strong> {formatClassStream({ name: previewPreset.name, stream: stream.trim() || null })} &nbsp;·&nbsp; {previewPreset.curriculum === '' ? '' : 'CBE'} &nbsp;·&nbsp; Grade level {previewPreset.grade_level} &nbsp;·&nbsp; Capacity {capacity}
               </div>
             )}
             <div className="flex items-end gap-3 md:col-span-3">
@@ -293,13 +294,13 @@ export default function SchoolAdminClasses() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-lg">
             <h2 className="text-lg font-semibold mb-1">Bulk Promote Class</h2>
-            <p className="text-sm text-gray-500 mb-4">Promote ALL active students from <strong>{bulkPromoteClass.name}</strong> to a new class.</p>
+            <p className="text-sm text-gray-500 mb-4">Promote ALL active students from <strong>{formatClassStream(bulkPromoteClass)}</strong> to a new class.</p>
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">Destination Class</label>
               <select value={bulkDestClassId} onChange={e => setBulkDestClassId(e.target.value)} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
                 <option value="">-- Select Destination Class --</option>
                 {classes.filter(c => c.id !== bulkPromoteClass.id).sort((a,b) => (a.level||0)-(b.level||0)).map(c => (
-                  <option key={c.id} value={c.id}>{c.name} {c.stream || ''} {c.level ? `(Level ${c.level})` : ''}</option>
+                  <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
                 ))}
               </select>
             </div>
@@ -338,7 +339,7 @@ export default function SchoolAdminClasses() {
                   <div key={c.id} className="p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-semibold text-[#111111]">
-                        {c.name}{c.stream ? ` (${c.stream})` : ''}
+                        {formatClassStream(c)}
                       </span>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getLevelBadgeColor(gradeLevel, c.curriculum)}`}>
                         {getLevelLabel(gradeLevel, c.curriculum, c.name)}
@@ -424,7 +425,7 @@ export default function SchoolAdminClasses() {
               </div>
             </div>
             <p className="text-sm text-gray-700 mb-6">
-              Are you sure you want to delete <strong>{deletingClass.name}{deletingClass.stream ? ` (${deletingClass.stream})` : ''}</strong>?
+              Are you sure you want to delete <strong>{formatClassStream(deletingClass)}</strong>?
             </p>
             <div className="flex gap-3">
               <button onClick={() => setDeletingClass(null)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>

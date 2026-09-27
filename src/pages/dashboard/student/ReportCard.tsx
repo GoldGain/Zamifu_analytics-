@@ -34,6 +34,9 @@ import { getSchoolLevelBand } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { fetchAllRows } from '@/lib/paginatedQuery';
+import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 
 export default function StudentReportCard() {
   const { user } = useAuth();
@@ -47,6 +50,7 @@ export default function StudentReportCard() {
   const [generating, setGenerating] = useState(false);
   const [previousAvg, setPreviousAvg] = useState<number | null>(null);
   const [totalStudents, setTotalStudents] = useState(0);
+  const [classPosition, setClassPosition] = useState<number | null>(null);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo>({ name: '' });
   const [signatures, setSignatures] = useState<SignatureInfo>({});
   const [classBestList, setClassBestList] = useState<BestInSubject[]>([]);
@@ -60,7 +64,7 @@ export default function StudentReportCard() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .single();
@@ -197,16 +201,34 @@ export default function StudentReportCard() {
       .order('subjects(name)');
     setResults(data || []);
     await fetchPreviousAvg();
-    const { data: classResults } = await supabaseUntyped
+    // Paged: PostgREST returns at most 1000 rows, and a class-sized result set
+    // exceeds that, so an unpaged read would truncate the ranking cohort.
+    const classResults = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
       .select('*, students(id, first_name, last_name), subjects(name)')
       .eq('class_id', student.class_id)
       .eq('school_id', student.school_id)
-      .eq('term_id', selectedTerm);
+      .eq('term_id', selectedTerm)
+      .order('created_at')
+      .order('id')
+      .range(from, to));
     if (classResults && classResults.length > 0) {
       setClassBestList(computeBestPerSubject(classResults, student?.classes || {}));
     } else {
       setClassBestList([]);
+    }
+    // Unified ranking: the report card position must match the Student Portal
+    // and the Class Summary for the same learner, term and assessment.
+    if (classResults && classResults.length > 0) {
+      // Same aggregation as the class summary, so both report the same total.
+      const ranked = rankByUnifiedRule(
+        aggregateLearnerTotals(classResults, student?.classes || {}),
+        getSchoolLevelBand(student?.classes || {}),
+      );
+      const entry = ranked.find((row) => row.studentId === student.id);
+      setClassPosition(entry ? entry.position : null);
+    } else {
+      setClassPosition(null);
     }
   };
 
@@ -284,7 +306,9 @@ export default function StudentReportCard() {
 
       const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
-      const position = results[0]?.class_position || results[0]?.position || null;
+      // Prefer the unified ranking position so the report card cannot disagree
+      // with the portal and class summary; fall back to the stored value.
+      const position = classPosition ?? results[0]?.class_position ?? results[0]?.position ?? null;
       const positionStr = formatPosition(position, totalStudents || 0);
 
       const subjectScores = results.map(r => ({

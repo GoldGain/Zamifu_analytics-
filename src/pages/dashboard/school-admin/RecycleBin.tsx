@@ -27,7 +27,7 @@ export default function RecycleBin() {
     setLoading(true);
     const { data, error } = await supabaseUntyped
       .from('students')
-      .select('id, first_name, last_name, admission_number, parent_name, class_id, classes(name, stream, stream_name)')
+      .select('id, first_name, last_name, admission_number, parent_name, class_id, classes!students_class_id_fkey(name, stream, stream_name)')
       .eq('school_id', user.schoolId)
       .eq('is_active', false)
       .order('updated_at', { ascending: false });

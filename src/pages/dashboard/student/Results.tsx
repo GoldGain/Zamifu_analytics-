@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { getRequiredLearningAreas } from '@/lib/grading';
+import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
+import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 import { Award, Download, Filter, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+
+/** Term order helper: Term 1 < Term 2 < Term 3 regardless of label casing. */
+const termNumber = (name: string | null | undefined): number => {
+  const match = String(name || '').match(/(\d+)/);
+  return match ? Number(match[1]) : 0;
+};
 
 export default function StudentResults() {
   const { user } = useAuth();
@@ -23,21 +33,40 @@ export default function StudentResults() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('id, class_id, school_id, status, graduation_year, classes(name, stream, stream_name)')
+        // students has two FKs to classes (class_id, stream_id); the embed must
+        // name the class_id relationship explicitly or PostgREST returns
+        // PGRST201 and the whole learner portal loses its student record.
+        .select('id, class_id, school_id, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name)')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .maybeSingle();
       if (studentData) {
         setStudent(studentData);
+        // Only offer terms that actually have results for this learner, newest
+        // first, so the dropdown is populated and immediately selectable.
         const { data: termsData } = await supabaseUntyped
           .from('terms')
           .select('*')
           .eq('school_id', studentData.school_id)
           .order('academic_year', { ascending: false });
-        const allTerms = termsData || [];
-        setTerms(allTerms);
-        if (allTerms.length > 0) {
-          setSelectedTerm(allTerms[0].id);
+        const { data: learnerResultRows } = await supabaseUntyped
+          .from('results')
+          .select('term_id')
+          .eq('student_id', studentData.id)
+          .eq('school_id', studentData.school_id);
+        const termsWithResults = new Set((learnerResultRows || []).map((row: any) => row.term_id));
+        const allTerms = (termsData || []) as any[];
+        const availableTerms = allTerms
+          .filter((term: any) => termsWithResults.has(term.id))
+          .sort((a: any, b: any) => {
+            const yearDiff = Number(b.academic_year) - Number(a.academic_year);
+            if (yearDiff !== 0) return yearDiff;
+            return termNumber(b.name) - termNumber(a.name);
+          });
+        const offeredTerms = availableTerms.length ? availableTerms : allTerms;
+        setTerms(offeredTerms);
+        if (offeredTerms.length > 0) {
+          setSelectedTerm(offeredTerms[0].id);
         }
       }
     } catch (err) {
@@ -67,37 +96,42 @@ export default function StudentResults() {
       setResults(currentResults);
 
       if (currentResults.length > 0) {
-        const totalPct = currentResults.reduce((s: number, r: any) => s + (r.percentage || r.marks || 0), 0);
-        const req = getRequiredLearningAreas(student.classes || student) || currentResults.length;
-        const avg = totalPct / req;
-        setCurrentAvg(avg);
+        // Same learning-area aggregation the class summary and report card use,
+        // so the "current average" compared against the previous term matches.
+        const ownTotals = aggregateLearnerTotals(currentResults, student.classes || student);
+        setCurrentAvg(ownTotals[0] ? ownTotals[0].avgPct : 0);
 
-        const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position;
-        if (storedPosition) {
-          setClassPosition(storedPosition);
-        } else if (student.class_id) {
-          const { data: classResults } = await supabaseUntyped
+        const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position || null;
+        // Position always comes from the unified ranking rule (total marks,
+        // then points for Junior School, shared rank on exact ties) so the
+        // portal matches the class summary and the report card exactly.
+        if (student.class_id) {
+          // PostgREST caps a single response at 1000 rows, so a class-sized
+          // result set must be paged or the ranking is computed from a partial
+          // class and the learner's position comes out wrong.
+          const classResults = await fetchAllRows((from, to) => supabaseUntyped
             .from('results')
-            .select('student_id, marks, out_of, cbc_points')
+            .select('student_id, class_id, marks, out_of, percentage, cbc_points, created_at, students(id, gender), subjects(name)')
             .eq('class_id', student.class_id)
             .eq('school_id', student.school_id)
-            .eq('term_id', selectedTerm);
+            .eq('term_id', selectedTerm)
+            .order('created_at')
+            .order('id')
+            .range(from, to));
           if (classResults && classResults.length > 0) {
-            const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
-            (classResults as any[]).forEach((r: any) => {
-              const pct = r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0;
-              if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, totalPoints: 0, count: 0 };
-              studentTotals[r.student_id].totalPct += pct;
-              studentTotals[r.student_id].totalPoints += Number(r.cbc_points) || 0;
-              studentTotals[r.student_id].count += 1;
-            });
-            const req = getRequiredLearningAreas(student.classes || student) || 0;
-            const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ studentId: sid, avg: req > 0 ? v.totalPct / req : v.totalPct / v.count, totalPoints: v.totalPoints, totalPct: v.totalPct }))
-              .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct));
-            const position = ranked.findIndex(r => r.studentId === student.id) + 1;
-            setClassPosition(position || null);
+            // Same aggregation the class summary uses, so a term holding both
+            // single exams and their combined rows does not double-count.
+            const ranked = rankByUnifiedRule(
+              aggregateLearnerTotals(classResults, student.classes || student),
+              getSchoolLevelBand(student.classes || student),
+            );
+            const entry = ranked.find((row) => row.studentId === student.id);
+            setClassPosition(entry ? entry.position : (storedPosition || null));
+          } else if (storedPosition) {
+            setClassPosition(storedPosition);
           }
+        } else if (storedPosition) {
+          setClassPosition(storedPosition);
         }
       } else {
         setCurrentAvg(0);
@@ -149,24 +183,25 @@ export default function StudentResults() {
     return grade.startsWith(filter);
   });
 
-  const overallAvg = results.length ? Math.round(results.reduce((s, r) => s + (r.percentage || (r.out_of > 0 ? (r.marks / r.out_of) * 100 : r.marks || 0)), 0) / results.length) : 0;
-  const totalPoints = results.reduce((s, r) => s + (r.cbc_points || r.points_ || 0), 0);
-  const subjectPerformance = Object.values(results.reduce<Record<string, { name: string; total: number; count: number }>>((acc, result: any) => {
-    const name = result.subjects?.name || 'Learning Area';
-    const percentage = Number(result.percentage ?? (result.out_of > 0 ? (result.marks / result.out_of) * 100 : result.marks || 0));
-    acc[name] ||= { name, total: 0, count: 0 };
-    acc[name].total += percentage;
-    acc[name].count += 1;
-    return acc;
-  }, {})).map((item) => ({ name: item.name, percentage: Math.round(item.total / item.count) })).sort((a, b) => b.percentage - a.percentage);
+  // One entry per learning area (first recorded row wins), exactly like the
+  // class summary and the report card, so the average, the points and the grade
+  // shown here cannot disagree with them.
+  const learnerTotals = aggregateLearnerTotals(results, student?.classes || student || {});
+  const learnerTotal = learnerTotals[0];
+  const overallAvg = learnerTotal ? Math.round(learnerTotal.avgPct) : 0;
+  const totalPoints = learnerTotal ? learnerTotal.totalPoints : 0;
+  const subjectPerformance = learnerTotal
+    ? Object.entries(learnerTotal.subjects)
+        .map(([name, percentage]) => ({ name, percentage: Math.round(Number(percentage)) }))
+        .sort((a, b) => b.percentage - a.percentage)
+    : [];
 
   const getOverallGrade = () => {
-    if (results.length === 0) return 'N/A';
-    const avgPoints = totalPoints / results.length;
-    if (avgPoints >= 10) return 'EE';
-    if (avgPoints >= 8) return 'ME';
-    if (avgPoints >= 6) return 'AE';
-    return 'BE';
+    if (!learnerTotal || learnerTotal.count === 0) return 'N/A';
+    return calculateCompetencyGrade(
+      learnerTotal.avgPct,
+      getSchoolLevelBand(student?.classes || student || {}),
+    ).subLevel;
   };
 
   const deviation = previousAvg !== null ? currentAvg - previousAvg : null;

@@ -55,7 +55,7 @@ export default function ParentChatbot() {
     if (links && links.length > 0) {
       const { data: student } = await supabaseUntyped
         .from('students')
-        .select('*, classes(name, stream, stream_name)')
+        .select('*, classes!students_class_id_fkey(name, stream, stream_name)')
         .eq('id', links[0].student_id)
         .single();
       setChildData(student);

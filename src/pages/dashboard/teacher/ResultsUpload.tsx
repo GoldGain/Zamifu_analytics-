@@ -17,6 +17,9 @@ import {
 import { resolveVisibleLearners } from '@/lib/optional-subjects';
 import { saveResultRecords } from '@/lib/save-results';
 import { deleteResults } from '@/lib/resultActions';
+import { rankByUnifiedRule } from '@/lib/ranking';
+import { formatClassStream } from '@/lib/class-label';
+import { fetchAllRows } from '@/lib/paginatedQuery';
 
 interface ProcessedRow {
   student_id: string;
@@ -312,7 +315,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     if (!manualPreview.length) return;
     const doc = new jsPDF();
     const subjectName = subjects.find(s => s.id === selectedSubject)?.name || 'Subject';
-    const className = classes.find(c => c.id === selectedClass)?.name || 'Class';
+    const className = formatClassStream(classes.find(c => c.id === selectedClass)) || 'Class';
     const termName = terms.find(t => t.id === selectedTerm)?.name || 'Term';
     doc.setFontSize(16);
     doc.text('Zamifu Analytics - Results Report', 14, 15);
@@ -335,7 +338,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const downloadManualExcel = () => {
     if (!manualPreview.length) return;
     const subjectName = subjects.find(s => s.id === selectedSubject)?.name || 'Subject';
-    const className = classes.find(c => c.id === selectedClass)?.name || 'Class';
+    const className = formatClassStream(classes.find(c => c.id === selectedClass)) || 'Class';
     const ws = XLSX.utils.json_to_sheet(manualPreview.map(row => ({
       Position: row.position,
       'Student Name': row.name,
@@ -457,13 +460,20 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       // Recalculate class positions (only on final submit)
       if (!asDraft) {
         try {
-          let positionQuery = supabaseUntyped
-            .from('results')
-            .select('id, student_id, marks, out_of, cbc_points')
-            .eq('class_id', selectedClass)
-            .eq('term_id', selectedTerm);
-          positionQuery = selectedExam ? positionQuery.eq('exam_id', selectedExam) : positionQuery.is('exam_id', null);
-          const { data: allResults } = await positionQuery;
+          // Paged: a class x term x assessment set exceeds the 1000-row cap, and
+          // a truncated read would write wrong class_position values.
+          const allResults = await fetchAllRows((from, to) => {
+            let positionQuery = supabaseUntyped
+              .from('results')
+              .select('id, student_id, marks, out_of, cbc_points')
+              .eq('class_id', selectedClass)
+              .eq('term_id', selectedTerm)
+              .order('created_at')
+              .order('id')
+              .range(from, to);
+            positionQuery = selectedExam ? positionQuery.eq('exam_id', selectedExam) : positionQuery.is('exam_id', null);
+            return positionQuery;
+          });
           if (allResults && allResults.length > 0) {
             const requiredAreas = getRequiredLearningAreas(currentClassData) || 0;
             const studentTotals: Record<string, { totalPct: number; totalPoints: number; count: number }> = {};
@@ -474,13 +484,23 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               studentTotals[r.student_id].totalPoints += Number(r.cbc_points) || 0;
               studentTotals[r.student_id].count += 1;
             });
-            const ranked = Object.entries(studentTotals)
-              .map(([sid, v]) => ({ student_id: sid, avg: requiredAreas > 0 ? v.totalPct / requiredAreas : v.totalPct / v.count, totalPoints: v.totalPoints, totalPct: v.totalPct }))
-              .sort((a, b) => (b.totalPoints - a.totalPoints) || (b.totalPct - a.totalPct));
+            // Unified ranking: total marks first, then points (Junior) or a
+            // shared rank on exact ties (Primary). The stored class_position
+            // therefore matches every report that recomputes the ranking.
+            const ranked = rankByUnifiedRule(
+              Object.entries(studentTotals).map(([sid, v]) => ({
+                student_id: sid,
+                studentId: sid,
+                avg: requiredAreas > 0 ? v.totalPct / requiredAreas : v.totalPct / v.count,
+                totalMarks: v.totalPct,
+                totalPoints: v.totalPoints,
+              })),
+              getSchoolLevelBand(currentClassData),
+            );
             for (let i = 0; i < ranked.length; i++) {
               let posUpdate = supabaseUntyped
                 .from('results')
-                .update({ class_position: i + 1 })
+                .update({ class_position: ranked[i].position })
                 .eq('student_id', ranked[i].student_id)
                 .eq('class_id', selectedClass)
                 .eq('term_id', selectedTerm);
@@ -594,7 +614,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const downloadPDF = () => {
     const doc = new jsPDF();
     const subjectName = subjects.find(s => s.id === selectedSubject)?.name || 'Subject';
-    const className = classes.find(c => c.id === selectedClass)?.name || 'Class';
+    const className = formatClassStream(classes.find(c => c.id === selectedClass)) || 'Class';
     const termName = terms.find(t => t.id === selectedTerm)?.name || 'Term';
     doc.setFontSize(16);
     doc.text('Zamifu Analytics - Results Report', 14, 15);
@@ -616,7 +636,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
   const downloadExcel = () => {
     const subjectName = subjects.find(s => s.id === selectedSubject)?.name || 'Subject';
-    const className = classes.find(c => c.id === selectedClass)?.name || 'Class';
+    const className = formatClassStream(classes.find(c => c.id === selectedClass)) || 'Class';
     const ws = XLSX.utils.json_to_sheet(csvData.map(row => ({
       Position: row.position,
       'Student Name': row.name,
@@ -688,7 +708,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
           >
             <option value="">Select Class</option>
             {classes.map((c: any) => (
-              <option key={c.id} value={c.id}>{c.name}{c.stream ? ` (${c.stream})` : ''}</option>
+              <option key={c.id} value={c.id}>{formatClassStream(c)}</option>
             ))}
           </select>
 
