@@ -35,6 +35,7 @@ import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { fetchAllRows } from '@/lib/paginatedQuery';
+import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 
 declare global {
   interface Window {
@@ -292,15 +293,9 @@ export default function ParentChildReportCard() {
     // Unified ranking: the parent view must show the same position as the
     // Student Portal, Class Summary and report card for the same learner.
     if (classResults && classResults.length > 0) {
-      const totals: Record<string, { totalMarks: number; totalPoints: number }> = {};
-      (classResults as any[]).forEach((row: any) => {
-        const pct = Number(row.percentage ?? (Number(row.out_of) > 0 ? (Number(row.marks) / Number(row.out_of)) * 100 : 0));
-        if (!totals[row.student_id]) totals[row.student_id] = { totalMarks: 0, totalPoints: 0 };
-        totals[row.student_id].totalMarks += pct;
-        totals[row.student_id].totalPoints += Number(row.cbc_points) || 0;
-      });
+      // Same aggregation as the class summary, so both report the same total.
       const ranked = rankByUnifiedRule(
-        Object.entries(totals).map(([sid, value]) => ({ studentId: sid, totalMarks: value.totalMarks, totalPoints: value.totalPoints })),
+        aggregateLearnerTotals(classResults, selectedChild?.classes || {}),
         getSchoolLevelBand(selectedChild?.classes || {}),
       );
       const entry = ranked.find((row) => row.studentId === selectedChild.id);

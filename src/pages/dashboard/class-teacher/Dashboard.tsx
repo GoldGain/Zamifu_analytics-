@@ -12,6 +12,7 @@ import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
+import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 
 interface StudentPerformance {
   id: string;
@@ -147,7 +148,7 @@ export default function ClassTeacherDashboard() {
       // whole class x term would silently truncate the ranking cohort.
       const results = await fetchAllRows((from, to) => supabaseUntyped
         .from('results')
-        .select('student_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points')
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points, students(id, gender), subjects(name)')
         .eq('class_id', assignedClass.id)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
@@ -199,15 +200,14 @@ export default function ClassTeacherDashboard() {
         };
       });
 
-      // Unified ranking: total marks first, then points (Junior) or a shared
-      // rank (Primary) — identical to the school-wide reports.
+      // Rank the SHARED aggregation (one entry per learner per learning area —
+      // the same totals the class summary, portal and report cards use) so the
+      // position shown here matches every other surface.
       const ranked = rankByUnifiedRule(
-        perf
-          .filter((p) => p.avgPercentage !== null)
-          .map((p) => ({ ...p, totalMarks: p.totalMarks ?? 0, totalPoints: p.totalPoints ?? 0 })),
+        aggregateLearnerTotals(results || [], assignedClass || {}),
         getSchoolLevelBand(assignedClass || {}),
       );
-      const positionById = new Map(ranked.map((row) => [row.id, row.position]));
+      const positionById = new Map(ranked.map((row) => [row.studentId, row.position]));
       perf.forEach((p) => { p.position = positionById.get(p.id) ?? null; });
 
       setPerformance(perf);
