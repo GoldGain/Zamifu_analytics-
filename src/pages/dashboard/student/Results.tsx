@@ -111,7 +111,7 @@ export default function StudentResults() {
           // class and the learner's position comes out wrong.
           const classResults = await fetchAllRows((from, to) => supabaseUntyped
             .from('results')
-            .select('student_id, class_id, marks, out_of, percentage, cbc_points, students(id, gender), subjects(name)')
+            .select('student_id, class_id, marks, out_of, percentage, cbc_points, created_at, students(id, gender), subjects(name)')
             .eq('class_id', student.class_id)
             .eq('school_id', student.school_id)
             .eq('term_id', selectedTerm)

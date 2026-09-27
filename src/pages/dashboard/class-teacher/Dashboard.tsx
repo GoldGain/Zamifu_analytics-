@@ -148,7 +148,7 @@ export default function ClassTeacherDashboard() {
       // whole class x term would silently truncate the ranking cohort.
       const results = await fetchAllRows((from, to) => supabaseUntyped
         .from('results')
-        .select('student_id, class_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points, students(id, gender), subjects(name)')
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points, created_at, students(id, gender), subjects(name)')
         .eq('class_id', assignedClass.id)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
