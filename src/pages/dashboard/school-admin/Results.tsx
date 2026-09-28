@@ -683,6 +683,26 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         .map((summary: any) => ({ ...summary, classObj }))
     );
 
+  /** Report-card class rank is grade-wide; stream rank is stream-local. */
+  const rankReportCardCohorts = (gradeSummaries: any[], streamClasses: any[], bandClass: any) => {
+    const gradeRanked = rankByUnifiedRule(gradeSummaries, getSchoolLevelBand(bandClass));
+    const classPositionByStudent = new Map<string, number>();
+    gradeRanked.forEach((summary) => classPositionByStudent.set(summary.studentId, summary.position));
+    const streamPositionByStudent = new Map<string, number>();
+    const streamTotalByStudent = new Map<string, number>();
+    for (const streamClass of streamClasses) {
+      const streamRanked = rankByUnifiedRule(
+        gradeSummaries.filter((summary) => summary.classId === streamClass.id),
+        getSchoolLevelBand(streamClass),
+      );
+      streamRanked.forEach((summary) => {
+        streamPositionByStudent.set(summary.studentId, summary.position);
+        streamTotalByStudent.set(summary.studentId, streamRanked.length);
+      });
+    }
+    return { classPositionByStudent, streamPositionByStudent, streamTotalByStudent, classTotal: gradeRanked.length };
+  };
+
   const resolveAssessmentLabel = (raw: any[]) => {
     const names = Array.from(new Set(raw.map(r => r.school_exams?.name || r.exams?.name).filter(Boolean)));
     return names.length === 1 ? (names[0] as string) : '';
@@ -875,20 +895,30 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     if (!effectiveClassId || !selectedTerm) { toast.error('Select a class and term first'); return; }
     setDownloadingLearner(true);
     try {
-      const rawResults = await fetchClassResults();
-      const classObj = classes.find((c: any) => c.id === effectiveClassId);
+      const seedClassObj = classes.find((c: any) => c.id === effectiveClassId);
+      const streamClasses = await fetchGradeStreamClasses(seedClassObj);
+      const rawResults = await fetchResultsForClassIds(streamClasses.map((c: any) => c.id), selectedTerm, selectedExam || undefined);
+      const classById = new Map(streamClasses.map((c: any) => [c.id, c]));
+      const classObj = classById.get(learner.class_id) || seedClassObj;
       const termObj = terms.find((t: any) => t.id === selectedTerm);
       const assessmentLabel = resolveAssessmentLabel(rawResults);
       const combinedExam = selectedExam ? exams.find((exam: any) => exam.id === selectedExam && exam.type === 'combined') : null;
       const band = getSchoolLevelBand(classObj);
 
-      const summaries = buildStudentSummary(rawResults, classObj);
+      const summaries = streamClasses.flatMap((streamClass: any) =>
+        buildStudentSummary(rawResults.filter((result: any) => result.class_id === streamClass.id), streamClass)
+          .map((summary: any) => ({ ...summary, classObj: streamClass }))
+      );
+      const rankInfo = rankReportCardCohorts(summaries, streamClasses, seedClassObj);
       const target = summaries.find((s: any) => s.studentId === learner.id);
       if (!target) {
         toast.error(`${learner.first_name} ${learner.last_name} has no marks for the selected class, term and assessment.`);
         return;
       }
-      const totalStudents = summaries.length;
+      const totalStudents = rankInfo.classTotal;
+      const classPosition = rankInfo.classPositionByStudent.get(target.studentId) || null;
+      const streamPosition = rankInfo.streamPositionByStudent.get(target.studentId) || null;
+      const streamTotal = rankInfo.streamTotalByStudent.get(target.studentId) || 0;
       const prevAvg = await fetchPreviousTermAvg(target.studentId, selectedTerm);
       const deviation = prevAvg !== null && prevAvg !== undefined ? target.avgPct - prevAvg : null;
       const isNew = deviation === null;
@@ -910,19 +940,20 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         grade: calculateCompetencyGrade(pct, band).subLevel,
         previousPercentage: null,
       }));
-      const aiComment = generateUniqueAIComment(studentFullName, target.avgPct, deviation, bestSubject, weakestSubject, target.position, totalStudents, isNew, classObj, allSubjectResults);
+      const aiComment = generateUniqueAIComment(studentFullName, target.avgPct, deviation, bestSubject, weakestSubject, classPosition, totalStudents, isNew, classObj, allSubjectResults);
       const doc = new jsPDF({ unit: 'mm', format: 'a4' });
       configurePdfFontSize(doc, fontSize);
       const sig: SignatureInfo = await getSignatureInfo(classObj);
       await drawReportHeader(doc, schoolInfo, { name: studentFullName, photoUrl: target.student?.photo_url });
       const cardAssessment = target.examName || assessmentLabel || '';
-      const studentPosition = `${ordinal(target.position)} out of ${totalStudents}`;
-      drawStudentInfo(doc, studentFullName, target.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, target.student?.assessment_number || undefined, { classPosition: studentPosition });
+      const classPositionLabel = classPosition ? `${ordinal(classPosition)} out of ${totalStudents}` : 'N/A';
+      const streamPositionLabel = streamPosition ? `${ordinal(streamPosition)} out of ${streamTotal}` : 'N/A';
+      drawStudentInfo(doc, studentFullName, target.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', streamPositionLabel, 48, cardAssessment, target.student?.assessment_number || undefined, { classPosition: classPositionLabel, streamPosition: streamPositionLabel });
       const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
       let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63);
       const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
       if (gradeLevelNum >= 6 && gradeLevelNum <= 9) currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
-      currentY = drawSummaryBox(doc, studentResultsForTable, target.avgPct, target.totalPoints, `${target.position}/${totalStudents}`, classObj, currentY + 4);
+      currentY = drawSummaryBox(doc, studentResultsForTable, target.avgPct, target.totalPoints, `${classPosition || 'N/A'}/${totalStudents}`, classObj, currentY + 4);
       currentY = drawDeviation(doc, deviation, prevAvg, null, currentY);
       currentY = drawAIComment(doc, aiComment, currentY + 2);
       await addSignaturesToPDF(doc, sig, currentY + 2, schoolInfo);
@@ -2083,20 +2114,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const termObj = terms.find((t) => t.id === selectedTerm); const assessmentLabel = resolveAssessmentLabel(rawResults);
       const classById = new Map(streamClasses.map((c) => [c.id, c]));
       const streamSummaries = streamClasses.flatMap((c) => buildStudentSummary(rawResults.filter((r) => r.class_id === c.id), c).map((s) => ({ ...s, classObj: c })));
-      const classTotalsById = new Map<string, number>();
-      const classPositionByStudent = new Map<string, number>();
-      streamClasses.forEach((c) => {
-        const classSummaries = streamSummaries.filter((s) => s.classId === c.id);
-        classTotalsById.set(c.id, classSummaries.length);
-        classSummaries.forEach((s) => classPositionByStudent.set(s.studentId, s.position));
-      });
-      // Unified ranking across all streams of the grade: total marks first,
-      // then points (Junior) or a shared rank (Primary).
-      const summaries = rankByUnifiedRule(streamSummaries, getSchoolLevelBand(seedClassObj)).map((s) => ({
+      const { classPositionByStudent, streamPositionByStudent, streamTotalByStudent, classTotal } =
+        rankReportCardCohorts(streamSummaries, streamClasses, seedClassObj);
+      // Class Position is grade-wide; Stream Position is restricted to the
+      // learner's own stream. Both use total marks, then Junior points.
+      const summaries = streamSummaries.map((s) => ({
         ...s,
-        streamPosition: s.position,
         classPosition: classPositionByStudent.get(s.studentId) || null,
-        classTotal: classTotalsById.get(s.classId) || 0,
+        streamPosition: streamPositionByStudent.get(s.studentId) || null,
+        classTotal,
+        streamTotal: streamTotalByStudent.get(s.studentId) || 0,
         classObj: classById.get(s.classId) || seedClassObj,
       }));
       const totalStudents = summaries.length;
@@ -2118,7 +2145,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         if (addedFirst) mainDoc.addPage(); addedFirst = true;
         await drawReportHeader(mainDoc, schoolInfo, { name: studentFullName, photoUrl: s.student?.photo_url });
         const cardAssessment = s.examName || assessmentLabel || '';
-        const studentPosition = `${s.streamPosition}${s.streamPosition === 1 ? 'st' : s.streamPosition === 2 ? 'nd' : s.streamPosition === 3 ? 'rd' : 'th'} out of ${totalStudents}`;
+        const studentPosition = `${ordinal(s.streamPosition || 0)} out of ${s.streamTotal || 0}`;
         const classPosition = s.classPosition ? `${s.classPosition}${s.classPosition === 1 ? 'st' : s.classPosition === 2 ? 'nd' : s.classPosition === 3 ? 'rd' : 'th'} out of ${s.classTotal}` : 'N/A';
         drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition });
         const studentResultsForTable = subjectEntries.map(([subName, pct]) => ({ subjects: { name: subName }, marks: pct, out_of: 100 }));
