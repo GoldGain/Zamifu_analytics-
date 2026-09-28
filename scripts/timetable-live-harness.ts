@@ -204,6 +204,8 @@ export interface LevelRunResult {
   error?: string;
   lessonSlots: number;
   expectedWeeklyTotal: number;
+  entriesData?: any[];
+  slotsData?: any[];
 }
 
 /**
@@ -316,6 +318,8 @@ export function runLevel(
   base.durationMs = Date.now() - started;
   base.searchNodes = solverResult.searchNodes;
   base.entries = solverResult.entries.length;
+  base.entriesData = solverResult.entries;
+  base.slotsData = createdSlots;
   base.solverIssues = (solverResult.issues || []).map((issue: any) => `[${issue.code}] ${issue.message}`);
   base.solverWarnings = (solverResult.warnings || []).map((warning: any) => `[${warning.code}] ${warning.message}`);
   base.failedClasses = (solverResult.failedClasses || []).map((item: any) => ({ className: item.className, reason: item.reason }));

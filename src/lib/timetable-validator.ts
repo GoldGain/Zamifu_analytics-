@@ -97,7 +97,13 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
   const lessonSlots = options.slots
     .filter((slot) => slot.slot_type === 'lesson')
     .slice()
-    .sort((a, b) => a.slot_order - b.slot_order);
+    .sort((a, b) => {
+      const lessonOf = (slot: TimetableValidationSlot): number => {
+        const parsed = Number(String(slot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
+        return Number.isFinite(parsed) ? parsed : slot.slot_order;
+      };
+      return lessonOf(a) - lessonOf(b) || a.slot_order - b.slot_order;
+    });
   const slotById = new Map(lessonSlots.map((slot) => [String(slot.id), slot]));
   const occupiedCells = new Set(
     options.entries
@@ -192,7 +198,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     const ordered = entries
       .map((entry) => slotById.get(String(entry.time_slot_id)))
       .filter((slot): slot is TimetableValidationSlot => Boolean(slot))
-      .sort((a, b) => a.slot_order - b.slot_order);
+      .sort((a, b) => lessonNumberOf(a, lessonSlots) - lessonNumberOf(b, lessonSlots));
     const firstLessonIndex = ordered.length === 2 ? lessonSlots.findIndex((slot) => String(slot.id) === String(ordered[0].id)) : -1;
     const secondLessonIndex = ordered.length === 2 ? lessonSlots.findIndex((slot) => String(slot.id) === String(ordered[1].id)) : -1;
     const isLegalDouble = entries.length === 2

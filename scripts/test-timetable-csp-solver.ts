@@ -57,6 +57,23 @@ const validationIssues = validateTimetableRules({
 });
 assert.deepEqual(validationIssues, [], validationIssues.map((issue) => issue.message).join('\n'));
 
+// Activity rows can shift persisted slot_order values; lesson labels must still
+// determine adjacency and CAS placement windows.
+const activityShiftedSlots = slots.map((slot) => ({
+  ...slot,
+  slot_order: slot.slot_order + (slot.slot_order >= 7 ? 5 : 0),
+}));
+const activityShiftedIssues = validateTimetableRules({
+  entries: result.entries,
+  slots: activityShiftedSlots,
+  subjectNames,
+  classes: [classItem],
+  levelGroup: 'junior',
+  requireComplete: true,
+  requiredLessonCounts,
+});
+assert.deepEqual(activityShiftedIssues, [], activityShiftedIssues.map((issue) => issue.message).join('\n'));
+
 for (const entry of result.entries) {
   const name = subjectNames.get(String(entry.subject_id)) || '';
   const lesson = Number(String(slots.find((slot) => slot.id === entry.time_slot_id)?.label).match(/(\d+)/)?.[1]);
