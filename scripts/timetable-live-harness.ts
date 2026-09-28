@@ -212,7 +212,7 @@ export interface LevelRunResult {
 export function runLevel(
   fixture: SchoolFixture,
   levelKey: string,
-  options: { maxNodesPerClass?: number } = {},
+  options: { maxNodesPerClass?: number; allowIncompleteClasses?: boolean } = {},
 ): LevelRunResult {
   const base: LevelRunResult = {
     levelKey, classes: 0, entries: 0, searchNodes: 0, durationMs: 0,
@@ -388,6 +388,7 @@ async function main() {
   const explicitSchools = schoolsArgIndex >= 0 ? argv[schoolsArgIndex + 1].split(',').filter(Boolean) : null;
   const maxNodesIndex = argv.indexOf('--max-nodes');
   const maxNodesPerClass = maxNodesIndex >= 0 ? Number(argv[maxNodesIndex + 1]) : undefined;
+  const allowIncompleteClasses = argv.includes('--continue-data-warnings');
 
   let schools: { id: string; name: string }[];
   if (onlySchool) {
@@ -410,7 +411,7 @@ async function main() {
   let failures = 0;
   for (const school of schools) {
     const fixture = await loadSchool(school.id, school.name);
-    const results = runSchool(fixture, { maxNodesPerClass });
+    const results = runSchool(fixture, { maxNodesPerClass, allowIncompleteClasses });
     const levels = results.filter((result) => result.classes > 0);
     const okAll = results.length > 0 && results.every((result) => result.ok);
     if (!okAll) failures += 1;

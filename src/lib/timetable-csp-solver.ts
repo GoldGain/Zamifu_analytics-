@@ -352,16 +352,19 @@ function diagnoseClass(
     return { hard, warnings };
   }
 
-  // A class with MORE lessons than the week holds cannot be placed at all: no grid
-  // can contain more lessons than it has cells. This is a data problem with a
-  // precise fix, so it is reported as such rather than as a failed search.
+  // A class with MORE lessons than the week holds cannot produce an exact grid,
+  // but this is still a data warning rather than a solver error. The UI presents
+  // the precise correction and does not offer continuation because persisting a
+  // partial over-capacity grid would violate the exact-count contract.
   if (plan.configuredTotal > expected) {
-    hard.push(makeIssue('too-many-lessons',
-      `${plan.className} has ${plan.configuredTotal} weekly lessons but this level's week holds only ${expected} `
+    warnings.push({
+      code: 'weekly-total-overflow',
+      message: `${plan.className} has ${plan.configuredTotal} weekly lessons but this level's week holds only ${expected} `
       + `(${plan.configuredTotal - expected} too many), so ${plan.configuredTotal - expected} of them can never be placed. `
       + `Lower the weekly counts for ${plan.className} by ${plan.configuredTotal - expected}, or add `
       + `${Math.ceil((plan.configuredTotal - expected) / DAY_COUNT)} lesson(s) per day to this level in Timetable Setup.`,
-      ctx));
+      ...ctx,
+    });
     return { hard, warnings };
   }
   // Rule 14 — WARN, never block. Every school must be able to attempt.
