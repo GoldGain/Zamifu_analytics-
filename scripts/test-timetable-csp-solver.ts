@@ -110,18 +110,18 @@ const continuedIssues = validateTimetableRules({
 });
 assert.deepEqual(continuedIssues, [], continuedIssues.map((issue) => issue.message).join('\n'));
 
-// A class with MORE lessons than the week holds can never be placed, so that is a
-// hard error naming the class and the exact fix.
+// A class with MORE lessons than the week holds is a data warning. The UI shows
+// the exact fix and does not offer continuation because no exact grid exists.
 const overTotal = solveTimetableCsp({
   schoolId,
   levelKey: 'junior',
   classes: [classItem],
   assignments: [...assignments, { class_id: classId, subject_id: 'extra', teacher_id: 'teacher-extra', lessons_per_week: 3, subjects: { name: 'Extra Subject' } }],
   lessonSlots: slots,
-  allowIncompleteClasses: true,
 });
-assert.ok(overTotal.issues.some((issue) => issue.code === 'too-many-lessons'));
-assert.match(overTotal.issues.map((issue) => issue.message).join('\n'), /can never be placed/);
+assert.equal(overTotal.issues.length, 0);
+assert.equal(overTotal.needsConfirmation, true);
+assert.ok(overTotal.warnings.some((warning) => warning.code === 'weekly-total-overflow'));
 
 const casDoubleResult = solveTimetableCsp({
   schoolId,
