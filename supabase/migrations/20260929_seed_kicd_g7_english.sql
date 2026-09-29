@@ -1,0 +1,46 @@
+-- Stage English, Grade 7. Inactive until final activation; legacy rows remain available.
+DO $stage_one_catalog$
+DECLARE
+  v_catalog jsonb := $payload${"subject":"English","grade":7,"strand_count":15,"sub_strand_count":75,"source_name":"KICD Junior School Curriculum Design - English Grade 7 (Rationalized 2024)","source_url":"https://drive.google.com/file/d/1HAU_WMYmdmfWmr4kAvZxjcgG0lizPHZv/preview","source_note":"Official KICD Grade 7 index: https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/ Current public viewer: https://drive.google.com/file/d/1HAU_WMYmdmfWmr4kAvZxjcgG0lizPHZv/preview. Numbered two-level hierarchy transcribed from the grade summary; no topics tier. Report: research/verified-20260929/04-english.md","strands":[{"strand_name":"THEME 1.0: PERSONAL RESPONSIBILITY","order":1,"sub_strands":[{"sub_strand_name":"1.1.1 Oral skills –polite language","order":1},{"sub_strand_name":"1.2.1 Independent reading","order":2},{"sub_strand_name":"1.3.1 Word classes -Nouns","order":3},{"sub_strand_name":"1.4.1 Intensive reading-trickster narrative","order":4},{"sub_strand_name":"1.5.1 Handwriting –Legibility","order":5}]},{"strand_name":"THEME 2.0: SCIENCE AND HEALTH EDUCATION","order":2,"sub_strands":[{"sub_strand_name":"2.1.1 Oral presentations-oral narratives","order":1},{"sub_strand_name":"2.2.1 Simple poems","order":2},{"sub_strand_name":"2.3.1 Word classes- Nouns","order":3},{"sub_strand_name":"2.4.1 Class reader –Previewing a text","order":4},{"sub_strand_name":"2.5.1 Punctuation marks","order":5}]},{"strand_name":"THEME 3.0: HYGIENE","order":3,"sub_strands":[{"sub_strand_name":"3.1.1 Listening for Main Idea","order":1},{"sub_strand_name":"3.2.1 Information and meaning","order":2},{"sub_strand_name":"3.3.1 Verbs and tense-regular and irregular verbs","order":3},{"sub_strand_name":"3.4.1 Reading poetry","order":4},{"sub_strand_name":"3.5.1 Narrative paragraphs","order":5}]},{"strand_name":"THEME 4.0: LEADERSHIP","order":4,"sub_strands":[{"sub_strand_name":"4.1.1 Selective listening","order":1},{"sub_strand_name":"4.2.1 Intensive reading","order":2},{"sub_strand_name":"4.3.1 Verbs and tense-simple present and past","order":3},{"sub_strand_name":"4.4.1 Class reader –Main characters","order":4},{"sub_strand_name":"4.5.1 Paragraphing using examples","order":5}]},{"strand_name":"THEME 5.0: FAMILY","order":5,"sub_strands":[{"sub_strand_name":"5.1.1 Sounds and word stress","order":1},{"sub_strand_name":"5.2.1 Synonyms and antonyms","order":2},{"sub_strand_name":"5.3.1 Comparative and superlative adjectives","order":3},{"sub_strand_name":"5.4.1 Intensive reading –Oral narratives","order":4},{"sub_strand_name":"5.5.1 Friendly letter","order":5}]},{"strand_name":"THEME 6.0: DRUG AND SUBSTANCE ABUSE","order":6,"sub_strands":[{"sub_strand_name":"6.1.1 Conversational skills","order":1},{"sub_strand_name":"6.2.1 Reading fluency","order":2},{"sub_strand_name":"6.3.1 Adverbs","order":3},{"sub_strand_name":"6.4.1 Oral literature -songs","order":4},{"sub_strand_name":"6.5.1 Commonly misspelt words","order":5}]},{"strand_name":"THEME 7.0: NATURAL RESOURCES – FORESTS","order":7,"sub_strands":[{"sub_strand_name":"7.1.1 Listening for details","order":1},{"sub_strand_name":"7.2.1 Independent reading-Visuals","order":2},{"sub_strand_name":"7.3.1 Personal and possessive Pronouns","order":3},{"sub_strand_name":"7.4.1 Class reader -Characters","order":4},{"sub_strand_name":"7.5.1 The writing process-Narrative composition","order":5}]},{"strand_name":"THEME 8.0: TRAVEL","order":8,"sub_strands":[{"sub_strand_name":"8.1.1 Explanatory Narratives","order":1},{"sub_strand_name":"8.2.1 Main idea from supporting details","order":2},{"sub_strand_name":"8.3.1 Simple prepositions","order":3},{"sub_strand_name":"8.4.1 Intensive reading-Poetry","order":4},{"sub_strand_name":"8.5.1 Composition-Self assessment","order":5}]},{"strand_name":"THEME 9.0: HEROES AND HEROINES - KENYA","order":9,"sub_strands":[{"sub_strand_name":"9.1.1 Consonant and vowel sounds","order":1},{"sub_strand_name":"9.2.1 Grade appropriate fiction materials","order":2},{"sub_strand_name":"9.3.1 Conjunctions","order":3},{"sub_strand_name":"9.4.1 Class reader-sequence of events","order":4},{"sub_strand_name":"9.5.1 Narrative Composition","order":5}]},{"strand_name":"THEME 10.0: MUSIC","order":10,"sub_strands":[{"sub_strand_name":"10.1.1 Delivering speeches","order":1},{"sub_strand_name":"10.2.1 Study skills –note making","order":2},{"sub_strand_name":"10.3.1 Determiners","order":3},{"sub_strand_name":"10.4.1 Character traits-Monster Narratives","order":4},{"sub_strand_name":"10.5.1 Packing and Shopping lists","order":5}]},{"strand_name":"THEME 11.0: PROFESSIONS","order":11,"sub_strands":[{"sub_strand_name":"11.1.1 Interviews","order":1},{"sub_strand_name":"11.2.1 Non-fiction materials","order":2},{"sub_strand_name":"11.3.1 Formation of Adjectives","order":3},{"sub_strand_name":"11.4.1 Intensive reading-Dilemma Narratives","order":4},{"sub_strand_name":"11.5.1 Spelling Antonyms, Synonyms and Numbers","order":5}]},{"strand_name":"THEME 12.0: TRADITIONAL FASHION","order":12,"sub_strands":[{"sub_strand_name":"12.1.1 Views and Opinions","order":1},{"sub_strand_name":"12.2.1 Reading comprehension","order":2},{"sub_strand_name":"12.3.1 Phrasal verbs","order":3},{"sub_strand_name":"12.4.1 Reading for Main idea","order":4},{"sub_strand_name":"12.5.1 Writing process-Dialogues","order":5}]},{"strand_name":"THEME 13.0: LAND TRAVEL","order":13,"sub_strands":[{"sub_strand_name":"13.1.1 Extensive Listening","order":1},{"sub_strand_name":"13.2.1 Comprehension strategies","order":2},{"sub_strand_name":"13.3.1 Simple sentences","order":3},{"sub_strand_name":"13.4.1 Praise songs-Purpose and occasion","order":4},{"sub_strand_name":"13.5.1 Narrative Composition","order":5}]},{"strand_name":"THEME 14.0: SPORTS - OUTDOOR GAMES","order":14,"sub_strands":[{"sub_strand_name":"14.1.1 Sounds and Intonation","order":1},{"sub_strand_name":"14.2.1 Study skills –summary","order":2},{"sub_strand_name":"14.3.1 Subject -verb agreement","order":3},{"sub_strand_name":"14.4.1 Features of style-Identification and use","order":4},{"sub_strand_name":"14.5.1 Descriptive writing","order":5}]},{"strand_name":"THEME 15.0: TOURIST ATTRACTION SITES - KENYA","order":15,"sub_strands":[{"sub_strand_name":"15.1.1 Oral Reports","order":1},{"sub_strand_name":"15.2.1 Reading Fluency","order":2},{"sub_strand_name":"15.3.1 Affirmative and Negative Sentences","order":3},{"sub_strand_name":"15.4.1 Poetry","order":4},{"sub_strand_name":"15.5.1 Functional Writing –Notices and Posters","order":5}]}]}$payload$::jsonb;
+  v_grade_id uuid;
+  v_subject_id uuid;
+  v_source_id uuid;
+  v_strand_id uuid;
+  v_strand jsonb;
+  v_sub_strand jsonb;
+  v_strands integer := 0;
+  v_sub_strands integer := 0;
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.curriculum_sources WHERE source_name = v_catalog->>'source_name' LIMIT 1) THEN
+    RAISE EXCEPTION 'Source already staged: %', v_catalog->>'source_name';
+  END IF;
+  SELECT id INTO v_grade_id FROM public.curriculum_grades
+    WHERE grade_number = (v_catalog->>'grade')::integer AND curriculum_type = 'CBE' LIMIT 1;
+  IF v_grade_id IS NULL THEN RAISE EXCEPTION 'CBE Grade % missing.', v_catalog->>'grade'; END IF;
+  SELECT id INTO v_subject_id FROM public.curriculum_subjects
+    WHERE grade_id = v_grade_id AND subject_name = v_catalog->>'subject' LIMIT 1;
+  IF v_subject_id IS NULL THEN RAISE EXCEPTION 'CBE Grade % subject missing: %.', v_catalog->>'grade', v_catalog->>'subject'; END IF;
+
+  INSERT INTO public.curriculum_sources (source_name, source_url, source_type, license_status, retrieval_status, notes)
+  VALUES (v_catalog->>'source_name', v_catalog->>'source_url', 'official_design', 'official_public', 'approved', v_catalog->>'source_note')
+  RETURNING id INTO v_source_id;
+  UPDATE public.curriculum_subjects SET curriculum_source_id = v_source_id WHERE id = v_subject_id;
+
+  FOR v_strand IN SELECT value FROM jsonb_array_elements(v_catalog->'strands') LOOP
+    INSERT INTO public.curriculum_strands (subject_id, strand_name, strand_description, strand_order, is_current)
+    VALUES (v_subject_id, v_strand->>'strand_name', 'Official KICD source-verified curriculum. Provenance is linked through curriculum_subjects.curriculum_source_id.', (v_strand->>'order')::integer, false)
+    RETURNING id INTO v_strand_id;
+    v_strands := v_strands + 1;
+    FOR v_sub_strand IN SELECT value FROM jsonb_array_elements(v_strand->'sub_strands') LOOP
+      INSERT INTO public.curriculum_sub_strands (strand_id, sub_strand_name, sub_strand_description, sub_strand_order, is_current)
+      VALUES (v_strand_id, v_sub_strand->>'sub_strand_name', 'Official KICD source-verified sub-strand; no third-tier topic record is created.', (v_sub_strand->>'order')::integer, false);
+      v_sub_strands := v_sub_strands + 1;
+    END LOOP;
+  END LOOP;
+
+  IF v_strands <> (v_catalog->>'strand_count')::integer OR v_sub_strands <> (v_catalog->>'sub_strand_count')::integer THEN
+    RAISE EXCEPTION 'Catalog count mismatch for % Grade %: strands %/%, sub-strands %/%',
+      v_catalog->>'subject',v_catalog->>'grade',v_catalog->>'strand_count',v_strands,v_catalog->>'sub_strand_count',v_sub_strands;
+  END IF;
+END
+$stage_one_catalog$;

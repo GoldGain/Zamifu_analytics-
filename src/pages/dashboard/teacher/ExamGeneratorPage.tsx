@@ -5,10 +5,7 @@ import ExamGenerator, {
   type CurriculumStrandOption,
   type CurriculumSubStrandOption,
 } from '@/components/curriculum/ExamGenerator';
-import {
-  juniorExamSubjects,
-  getStrandPacks,
-} from '@/lib/kicd-knowledge';
+import { juniorExamSubjects } from '@/lib/kicd-knowledge';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -17,7 +14,11 @@ interface Subject { id: string; subject_name: string; subject_code: string; }
 interface Strand { id: string; strand_name: string; strand_order: number; sub_strands?: SubStrand[]; }
 interface SubStrand { id: string; sub_strand_name: string; sub_strand_order: number; }
 function displaySubjectName(name: string): string {
-  return /agriculture\s+and\s+nutrition/i.test(name) ? 'Agriculture' : name;
+  return name;
+}
+function normalizeSubjectQuery(name: string): string {
+  const normalized = name.toLowerCase().replace(/\s+/g, '');
+  return normalized === 'agriculture' ? 'agricultureandnutrition' : normalized;
 }
 
 export default function ExamGeneratorPage() {
@@ -49,15 +50,10 @@ export default function ExamGeneratorPage() {
     const { data } = await supabaseUntyped
       .from('curriculum_grades')
       .select('*')
+      .eq('curriculum_type', 'CBE')
       .order('grade_number');
     const juniorGrades = (data || []).filter((grade: Grade) => grade.grade_number >= 7 && grade.grade_number <= 9);
-    const availableGrades = juniorGrades.length
-      ? [...juniorGrades].sort((a: Grade, b: Grade) => a.grade_number - b.grade_number)
-      : [
-        { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
-        { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
-        { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
-      ];
+    const availableGrades = [...juniorGrades].sort((a: Grade, b: Grade) => a.grade_number - b.grade_number);
     setGrades(availableGrades);
     const requested = requestedGrade.toLowerCase().replace(/\s+/g, '');
     if (requested) {
@@ -77,24 +73,19 @@ export default function ExamGeneratorPage() {
       .from('curriculum_subjects')
       .select('*')
       .eq('grade_id', selectedGrade)
+      .eq('is_current', true)
       .order('subject_name')
       .then(({ data }) => {
         const juniorSubjectNames = new Set(juniorExamSubjects());
         const databaseSubjects = (data || [])
-          .filter((subject: Subject) => juniorSubjectNames.has(subject.subject_name) || /agriculture\s+and\s+nutrition/i.test(subject.subject_name))
+          .filter((subject: Subject) => juniorSubjectNames.has(subject.subject_name))
           .map((subject: Subject) => ({ ...subject, subject_name: displaySubjectName(subject.subject_name) }));
-        const availableSubjects: Subject[] = databaseSubjects.length
-          ? databaseSubjects as Subject[]
-          : juniorExamSubjects().map((name, idx) => ({
-            id: `local-${selectedGrade}-${idx}`,
-            subject_name: name,
-            subject_code: name.slice(0, 4).toUpperCase(),
-          }));
+        const availableSubjects: Subject[] = databaseSubjects as Subject[];
         setSubjects(availableSubjects);
-        const requested = requestedSubject.toLowerCase().replace(/\s+/g, '');
+        const requested = normalizeSubjectQuery(requestedSubject);
         if (requested) {
           const match = availableSubjects.find((subject: Subject) =>
-            subject.subject_name.toLowerCase().replace(/\s+/g, '') === requested
+            normalizeSubjectQuery(subject.subject_name) === requested
           );
           if (match) setSelectedSubject(match.id);
         }
@@ -113,31 +104,13 @@ export default function ExamGeneratorPage() {
       .from('curriculum_strands')
       .select('id, strand_name, strand_order, strand_description')
       .eq('subject_id', selectedSubject)
+      .eq('is_current', true)
       .order('strand_order');
 
-    // Prefer rows explicitly marked as source-verified KICD when a subject also
-    // contains legacy generic curriculum rows. This keeps the selector truthful
-    // without deleting legacy records that may be referenced by school content.
-    const sourceVerifiedStrands = (strandsData || []).filter((strand: { strand_description?: string | null }) =>
-      /(?:official|source-verified)\s+kicd/i.test(strand.strand_description || '')
-    );
-    const effectiveStrandsData = sourceVerifiedStrands.length > 0 ? sourceVerifiedStrands : (strandsData || []);
+    const effectiveStrandsData = strandsData || [];
 
     if (effectiveStrandsData.length === 0) {
-      // Fallback to embedded KICD knowledge — build the strand and sub-strand tree.
-      const packs = getStrandPacks(subjectName);
-      const localStrands: CurriculumStrandOption[] = packs.map((pack, si) => {
-        const subStrands: CurriculumSubStrandOption[] = pack.subStrands.map((ss, ssi) => ({
-          id: `local-ss-${si}-${ssi}`,
-          sub_strand_name: ss.name,
-        }));
-        return {
-          id: `local-strand-${si}`,
-          strand_name: pack.strand,
-          sub_strands: subStrands,
-        };
-      });
-      setStrands(localStrands);
+      setStrands([]);
       setLoadingTree(false);
       return;
     }
@@ -150,6 +123,7 @@ export default function ExamGeneratorPage() {
         .from('curriculum_sub_strands')
         .select('id, sub_strand_name, sub_strand_order')
         .eq('strand_id', strand.id)
+        .eq('is_current', true)
         .order('sub_strand_order');
 
       const subStrands: CurriculumSubStrandOption[] = (ssData || []).map((ss: { id: string; sub_strand_name: string }) => ({
@@ -167,7 +141,7 @@ export default function ExamGeneratorPage() {
 
     setStrands(enriched);
     setLoadingTree(false);
-  }, [selectedSubject, subjectName]);
+  }, [selectedSubject]);
 
   useEffect(() => { loadCurriculumTree(); }, [loadCurriculumTree]);
 

@@ -44,13 +44,6 @@ import {
 
 type UiPaperVariant = 'single' | 'paper1' | 'paper2' | 'both';
 
-export interface CurriculumTopicOption {
-  id: string;
-  topic_name: string;
-  strand_id?: string;
-  sub_strand_id?: string;
-}
-
 export interface CurriculumSubStrandOption {
   id: string;
   sub_strand_name: string;
@@ -159,28 +152,28 @@ export default function ExamGenerator({
       .filter((strand) => selectedStrands.has(strand.id))
       .map((strand) => {
         const visibleSubStrands = (strand.sub_strands || [])
-          .filter((subStrand) => selectedSubStrands.size === 0 || selectedSubStrands.has(subStrand.id));
-        const visibleSubStrandIds = new Set(visibleSubStrands.map((subStrand) => subStrand.id));
+          .filter((subStrand) => selectedSubStrands.has(subStrand.id));
         return {
           strand: strand.strand_name,
           subStrands: visibleSubStrands.map((subStrand) => subStrand.sub_strand_name),
           topics: [],
         };
-      });
+      })
+      .filter((node) => node.subStrands.length > 0);
   }, [selectedStrands, selectedSubStrands, strands]);
 
   useEffect(() => {
     setSelectedSubStrands((current) => retainVisibleIds(current, availableSubStrands.map((subStrand) => subStrand.id)));
   }, [availableSubStrands]);
 
-  const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size);
+  const canGenerate = Boolean(gradeLevel && subject && curriculumScope.length && selectedSubStrands.size && selectedQuestionTypes.size);
   const coveragePreview = useMemo(() => buildCoveragePlanFromRequest({
-    strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
-    subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
+    strands: curriculumScope.map((node) => node.strand),
+    subStrands: Array.from(new Set(curriculumScope.flatMap((node) => node.subStrands))),
     curriculumScope,
     totalMarks,
     blueprint: ['standard30', 'kpsea', 'kjsea'].includes(format) ? makeFormatBlueprint(format, totalMarks, difficulty) : undefined,
-  }), [strands, selectedStrands, availableSubStrands, selectedSubStrands, curriculumScope, totalMarks, format, difficulty]);
+  }), [curriculumScope, totalMarks, format, difficulty]);
   const coverageNote = useMemo(() => coverageInstruction(coveragePreview), [coveragePreview]);
   const selectedFormatDescription = formatOptions.find((option) => option.value === format)?.description || '';
 
@@ -358,7 +351,7 @@ export default function ExamGenerator({
 
   async function generate() {
     if (!canGenerate) {
-      toast.error('Select a grade, subject, and at least one question type.');
+      toast.error('Select a grade, subject, at least one strand, at least one sub-strand, and a question type.');
       return;
     }
     setGenerating(true);
@@ -376,8 +369,8 @@ export default function ExamGenerator({
         title,
         gradeLevel,
         subject,
-        strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
-        subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
+        strands: curriculumScope.map((node) => node.strand),
+        subStrands: Array.from(new Set(curriculumScope.flatMap((node) => node.subStrands))),
         topics: [],
         curriculumScope,
         questionTypes: Array.from(selectedQuestionTypes),
@@ -700,7 +693,7 @@ export default function ExamGenerator({
 
           <div className="mt-5 grid gap-3 lg:grid-cols-2">
             <SelectionPanel title="1. Strands" count={selectedStrands.size} description="Choose one or more broad curriculum areas." onSelectAll={() => setSelectedStrands(new Set(strands.map((strand) => strand.id)))} onClear={() => setSelectedStrands(new Set())}>
-              {strands.length ? strands.map((strand) => <SelectableRow key={strand.id} checked={selectedStrands.has(strand.id)} label={strand.strand_name} onChange={() => setSelectedStrands((current) => toggleValue(current, strand.id))} />) : <EmptySelection label="Select a grade and subject first." />}
+              {strands.length ? strands.map((strand) => <SelectableRow key={strand.id} checked={selectedStrands.has(strand.id)} label={strand.strand_name} onChange={() => setSelectedStrands((current) => toggleValue(current, strand.id))} />) : <EmptySelection label={gradeLevel && subject ? 'No source-verified KICD curriculum is loaded for this grade and subject.' : 'Select a grade and subject first.'} />}
             </SelectionPanel>
             <SelectionPanel title="2. Sub-strands" count={selectedSubStrands.size} description={selectedStrands.size ? 'Filtered by the selected strands.' : 'Select a strand first to unlock sub-strands.'} onSelectAll={() => setSelectedSubStrands(new Set(availableSubStrands.map((subStrand) => subStrand.id)))} onClear={() => setSelectedSubStrands(new Set())}>
               {availableSubStrands.length ? availableSubStrands.map((subStrand) => <SelectableRow key={subStrand.id} checked={selectedSubStrands.has(subStrand.id)} label={subStrand.sub_strand_name} onChange={() => setSelectedSubStrands((current) => toggleValue(current, subStrand.id))} />) : <EmptySelection label="Select one or more strands first." />}

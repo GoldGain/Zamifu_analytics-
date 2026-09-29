@@ -1,0 +1,4560 @@
+{
+  "title": "KICD Junior School curriculum hierarchy (Grades 7–9)",
+  "as_of": "2026-09-29",
+  "hierarchy_contract": "strand → sub-strand only; no topics layer is created, stored, or displayed because it would duplicate the terminal sub-strand",
+  "data_contract": {
+    "grades": [
+      7,
+      8,
+      9
+    ],
+    "learning_areas": [
+      "Agriculture and Nutrition",
+      "Creative Arts and Sports",
+      "Christian Religious Education",
+      "English",
+      "Integrated Science",
+      "Islamic Religious Education",
+      "Kiswahili",
+      "Mathematics",
+      "Pre-Technical Studies",
+      "Social Studies"
+    ],
+    "topics_included": false,
+    "source_name_policy": "Preserve source numbering and names; English themes are represented as the strand level because the KICD summary uses themes; Kiswahili follows its official Mada/Mada Ndogo summary table."
+  },
+  "audit_totals": {
+    "learning_areas": 10,
+    "grade_subject_catalogs": 30,
+    "strand_rows": 171,
+    "sub_strand_rows": 758
+  },
+  "subjects": [
+    {
+      "subject": "Agriculture and Nutrition",
+      "research_status": "verified-current-official-extract",
+      "evidence_level": "High: current official KICD-linked Grade 7–9 design previews were inspected; the numbered summary hierarchies were transcribed from the public viewer text, with grade-specific independent mirror PDFs used as cross-checks.",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1ShQA3XZmu_X2jKolAA_rGzbvFVHNe-FA/preview",
+        "https://drive.google.com/file/d/1MzOFhLc8kbRwvjg03q7oeDrbbvux75Wy/preview",
+        "https://drive.google.com/file/d/14lKcmhXxEMYRHLISkK8j-ZzcCmLE59hf/preview",
+        "https://teacher.co.ke/wp-content/uploads/2024/07/GRADE-7-CURRICULUM-DESIGNS-AGRICULTURE-2024-TEACHER.CO_.KE_.pdf",
+        "https://teacher.co.ke/wp-content/uploads/2024/07/GRADE-8-CURRICULUM-DESIGNS-AGRICULTURE2024-TEACHER.CO_.KE_.pdf",
+        "https://cbcelimu.com/2024/12/04/g9-agriculture-and-nutrition-rationalised-curriculum-designs/",
+        "https://cbcelimu.com/wp-content/uploads/2024/12/Agriculture-Grade-9-Formatted-April-2024.pdf"
+      ],
+      "notes": [
+        "The official embedded Google Drive documents were titled Agriculture Grade7 1.8.2024 -Proofread.pdf (35 pages), Agriculture Grade8 1.8.2024 - Proofread.pdf (34 pages), and Agriculture Grade9 1.8.2024 -Proofread.pdf (36 pages). The numbered hierarchy was transcribed from PDF page 12 in each current KICD-linked viewer.",
+        "The Grade 7 and Grade 8 teacher.co.ke PDFs are older drafts and disagree materially with the current official hierarchy. The Grade 9 CBCelimu mirror broadly agrees but has wording/spelling differences; the current KICD-linked viewer controls.",
+        "The complete cited report is included at research/verified-20260929/01-agriculture-and-nutrition.md."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 4,
+          "sub_strand_count": 14,
+          "strands": [
+            {
+              "strand_name": "1.0 Conservation of Resources",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Controlling Soil Pollution",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Constructing Water Retention Structures",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Conserving Food Nutrients",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4 Growing Trees",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Food Production Processes",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Crop Establishment",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Selected Crop Management Practises",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Preparing Animal Products",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Cooking Food",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Hygiene Practises",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Hygiene in Rearing Animals",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Laundry: Loose-coloured Items",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Production Techniques",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Knitting Skills",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Constructing Framed Suspended Garden",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Adding Value to Crop Produce",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4 Making Homemade Soap",
+                  "order": 4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 4,
+          "sub_strand_count": 12,
+          "strands": [
+            {
+              "strand_name": "1.0 Conservation of Resources",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Soil Conservation Measures",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Water Harvesting and Storage",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Food Production Processes",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Kitchen and Backyard Gardening",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Poultry Rearing in a Fold",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Crop Pest and Disease Control",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Preparation of Animal Products",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5 Preserving Animal Products",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "2.6 Cooking: Preparing a Balanced Meal",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Hygiene Practices",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Cleaning the Kitchen",
+                  "order": 1
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Production Techniques",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Sewing Skills: Constructing Household Items",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Constructing Innovative Animal Waterer",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 ICT Support Services",
+                  "order": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 4,
+          "sub_strand_count": 10,
+          "strands": [
+            {
+              "strand_name": "1.0 Conservation of Resources",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Conserving Animal Feed: Hay",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Conserving Leftover Food",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Integrated Farming",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Food Production Processes",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Organic Gardening",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Storage of Crop Produce",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Cooking: Using Flour Mixtures",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Hygiene Practises",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Cleaning Waste Disposal Facilities",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Disinfecting Clothing and Household Articles",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Production Techniques",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Grafting in Plants",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Homemade Sun Dryer",
+                  "order": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Creative Arts and Sports",
+      "research_status": "complete",
+      "evidence_level": "high: official KICD landing pages verified first, grade-specific KICD-labelled mirror PDFs extracted with pdftotext, and Grade 9 independently cross-checked against a second accessible KICD-labelled copy; official embedded Drive downloads were permission-restricted",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/13vhFpDNHHufpz__VRZ5lZUkARfIUra7L/preview",
+        "https://drive.google.com/file/d/1ji89ZIdF9ZA5d6rkchqJJYa2G5ZQO5zP/preview",
+        "https://drive.google.com/file/d/1XONxUP98Z6I85bPKx7CYIsAkEucl_dm-/preview",
+        "https://arena.co.ke/free-grade-7-8-9-kicd-curriculum-designs-rationalized/",
+        "https://drive.google.com/uc?export=download&id=1BKoiHBUahOPaEuNbSCkWhmeSyoxkB3Rq",
+        "https://drive.google.com/uc?export=download&id=1WCZmkjGLS2Xhc1SYoZW8tINlNzfRB_le",
+        "https://drive.google.com/uc?export=download&id=1sADJPzUvCkJpru0eR1dq2T2KgFYTqSe9",
+        "https://doyenpublishers.com/wp-content/uploads/2025/04/Grade-9-Creative-Arts-and-Sports-Curriculum-Design.pdf"
+      ],
+      "notes": [
+        "Exact names were transcribed from the numbered SUMMARY OF STRAND AND SUB STRAND tables: Grade 7 and 8 at physical PDF page 9 / printed page vii; Grade 9 at physical page 12 / printed page x. Counts are Grade 7=3 strands/12 sub-strands, Grade 8=3/12, Grade 9=3/15.",
+        "The downloaded Arena PDFs are separate, grade-specific, KICD-labelled files; no generic pack or cross-grade inference was used.",
+        "Official KICD landing pages expose Creative Arts embeds, but Google Drive returned an owner/editor download restriction, so no official landing-page PDF file could be saved. The accessible mirror PDFs provide the extracted evidence.",
+        "The report records and resolves summary-table/body discrepancies: Grade 7 and Grade 8 reverse the numbering of swimming versus folk-song/folk-dance body sections; Grade 9 body uses 2.11.2 for Kenyan Indigenous Games while both the summary table and independent Doyen copy use 2.12.2. The summary-table numbering is retained exactly as requested."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 3,
+          "sub_strand_count": 12,
+          "strands": [
+            {
+              "strand_name": "1.0 Foundations of Creative Arts and Sports",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1. Introduction to Creative Arts and Sports",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2. Components of Creative Arts and Sports",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Creating and Performing in Creative Arts and Sports",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1. Composing rhythm",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Athletics",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3. Composing Melody",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Handball",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5. Western Solo Instruments",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "2.6 Football",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "2.7 Storytelling",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "2.8 Kenyan Folk song",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "2.9 Swimming (Optional)",
+                  "order": 9
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Appreciation in Creative Arts and Sports",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Analysis of Creative Arts and Sports",
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 3,
+          "sub_strand_count": 12,
+          "strands": [
+            {
+              "strand_name": "1.0 Foundations of Creative Arts and Sports",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1. Introduction to Creative Arts and Sports",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2. Components of Creative Arts and Sports",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Creating and Performing in Creative Arts and Sports",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1. Composing rhythm",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Athletics",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3. Composing Melody",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Netball",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5. Descant Recorder",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "2.6 Volleyball",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "2.7 Verse",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "2.8 Kenyan Folk Dance",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "2.9 Swimming (Optional)",
+                  "order": 9
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Appreciation in Creative Arts and Sports",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Analysis of Creative Arts and Sports",
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 3,
+          "sub_strand_count": 15,
+          "strands": [
+            {
+              "strand_name": "1.0 Foundations of Creative Arts and Sports",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1. Careers in Creative Arts and Sports",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2. Components of Creative Arts and Sports",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Creating and Performing in Creative Arts and Sports",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Drawing and Painting",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2. Rhythm",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Athletics and Mosaic",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4. Melody",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5 Rugby",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "2.6 Photography",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "2.7 Descant Recorder",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "2.8 Play",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "2.9. Basketball and Logo Design",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "2.10 Indigenous Kenyan craft",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "2.11.1 Swimming (Optional)",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "2.12.2 Kenyan Indigenous Games (Optional)",
+                  "order": 12
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Appreciation in Creative Arts and Sports",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Analysis of Creative Arts and Sports",
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Christian Religious Education",
+      "research_status": "complete",
+      "evidence_level": "high",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1Vx6Y8lWUiSpWO-MBO58nEOtPlFDM7JA3/preview",
+        "https://drive.google.com/file/d/1ZVqaVImBDLeGVUbLwA54C8zqWZMsr3V8/preview",
+        "https://drive.google.com/file/d/1FBMLUxBo1q4dHUkXLidZeqCiZWDzRBNI/preview",
+        "https://easylearn.co.ke/curriculum-design",
+        "https://easylearn.co.ke/images/document/11752064/CRE-Grade-7-Revised.pdf",
+        "https://easylearn.co.ke/images/document/11752335/CRE-Grade-8-Revised.pdf",
+        "https://easylearn.co.ke/images/document/11752401/CRE-Grade-9-Revised.pdf",
+        "https://teacher.co.ke/wp-content/uploads/2024/07/GRADE-7-CURRICULUM-DESIGNS-CRE-2024-TEACHER.CO_.KE_.pdf",
+        "https://www.teacherspalace.co.ke/uploads/documents/cre-grade-9-revised-unlocked-2024-12-02-o2v6MHwrcm.pdf",
+        "https://doyenpublishers.com/wp-content/uploads/2025/04/Grade-9-CRE-Curriculum-Design.pdf"
+      ],
+      "notes": [
+        "Official KICD Grade 7, 8, and 9 landing pages were checked first; each embeds a CRE Google Drive preview URL in current page HTML.",
+        "Raw official Drive downloads were blocked or returned error HTML in this environment, so the retained PDFs are direct downloads from the Easylearn education-resource mirror and additional independent mirrors; they are KICD-labelled and were checked with pdftotext -layout.",
+        "Grade 7 hierarchy is on physical PDF pages 12-13 (printed xii-xiii), Grade 8 on physical pages 12-13 (printed xii-xiii), and Grade 9 on physical page 12 (printed xii).",
+        "Grade 8 prints unnumbered descriptors Selected Miracles of Jesus Christ and Responsible sexual behaviour; these were excluded from the numbered sub-strand count. Its summary table says 3.0 The Life and Ministry of Jesus while its TOC/body says MIRACLES OF JESUS CHRIST; the summary-table wording is reported and the discrepancy is documented in the report.",
+        "An older KICD-labelled 2021 Grade 7 draft from Teacher.co.ke has different older strand wording; it was retained only for disagreement analysis and not merged with the current revised 2024 hierarchy.",
+        "Grade 9 was additionally cross-checked against the Teachers Palace and Doyen Publishers KICD-labelled copies; hierarchy wording matched despite pagination/file-size differences."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 6,
+          "sub_strand_count": 19,
+          "strands": [
+            {
+              "strand_name": "1.0 Overview of Christian Religious Education",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Importance of Learning CRE",
+                  "order": 1
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Creation",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Accounts of Creation",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Responsibility over Animals, Fish and Birds",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Responsibility over Plants",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Use and Misuse of God’s Creation",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 The Bible",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Functions of the Bible",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Divisions of the Bible",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Bible Translations",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4 Leadership in the Bible: Moses",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 The Early Life of Jesus Christ",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Background to the Birth of Jesus Christ",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Annunciation of the Birth of John the Baptist",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 The Birth and Childhood of Jesus Christ",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 The church in Action",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Selected Forms of Worship",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Role of the Church in Education and Health",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "6.0 Christian Living Today",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1 Human Sexuality",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2 Christian Marriage and Family",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3 Alcohol, drugs and substance use",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4 Gambling",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "6.5 Social Media",
+                  "order": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 6,
+          "sub_strand_count": 18,
+          "strands": [
+            {
+              "strand_name": "1.0 Creation",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Origin and Consequences of Sin",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 God’s Plan for Redemption",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 The Bible",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Faith and God’s Promises",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Abrahamic Covenant",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Leadership in Israel (Saul)",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 The Life and Ministry of Jesus",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Healing of Blind Bartimaeus",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Calming the Storm",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Healing of the Paralytic",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Teachings of Jesus Christ",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Teaching on Prayer",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 The Lost Sheep",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 The Church",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 The Holy Spirit",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Acts of Compassion",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "6.0 Christian Living Today",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1 Family Relationships",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2 Human Sexuality",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3 Sacredness of Life",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4 Bullying",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "6.5 Work: Talents and Abilities",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.6 Leisure",
+                  "order": 6
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 5,
+          "sub_strand_count": 14,
+          "strands": [
+            {
+              "strand_name": "1.0 Creation",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Work",
+                  "order": 1
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 The Bible",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Christian Moral Values",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Kings David and Solomon",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 The Life and Ministry of Jesus Christ",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Raising the Widow’s Son",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Healing the 10 Lepers",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Parable on Prayer",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4 Nicodemus Encounter with Jesus Christ",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5 Jesus Ministry in Jerusalem",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 The Church",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 The Early Church",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 The Gifts of the Holy Spirit",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Christian Living Today",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Courtship and Marriage",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Responsible Parenthood",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Leisure",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4 Wealth Money and Poverty",
+                  "order": 4
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "English",
+      "research_status": "complete",
+      "evidence_level": "high: official KICD landing pages and embedded Drive previews identified; accessible KICD-labelled/education-resource mirror PDFs downloaded and text-extracted; independent Teacher.co.ke copies for Grades 7–8 and Arena copy for Grade 9 cross-checked",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1HAU_WMYmdmfWmr4kAvZxjcgG0lizPHZv/preview",
+        "https://drive.google.com/file/d/1WmQXD4FTiFrInrCQMu1w-cjmPPaLEvw5/preview",
+        "https://drive.google.com/file/d/1ehe01q4q8G-ft1PsA0r7skcz6grZfiNQ/preview",
+        "https://easylearn.co.ke/curriculum-design",
+        "https://easylearn.co.ke/images/document/11752181/English-Grade-7-REVISED-OCT.pdf",
+        "https://easylearn.co.ke/images/document/11752334/English-Grade-8-Revised-Oct.pdf",
+        "https://easylearn.co.ke/images/document/11752400/English-Grade-9-Revised-Oct.pdf",
+        "https://teacher.co.ke/grade-7-curriculum-designs/",
+        "https://teacher.co.ke/grade-8-curriculum-designs/",
+        "https://teacher.co.ke/wp-content/uploads/2024/07/GRADE-7-CURRICULUM-DESIGNS-ENGLISH-2024-TEACHER.CO_.KE_.pdf",
+        "https://teacher.co.ke/wp-content/uploads/2024/07/GRADE-8-CURRICULUM-DESIGNS-ENGLISH-12024-TEACHER.CO_.KE_.pdf",
+        "https://arena.co.ke/curriculum-designs/",
+        "https://drive.google.com/uc?export=download&id=1nAU1iOGLVLwxlM1d60yVSJfh4543TCg_"
+      ],
+      "notes": [
+        "The official KICD landing pages embed the English PDFs in Google Drive iframes. The preview URLs were retrievable, but Google Drive returned “owner has not given you permission to download this file” for direct downloads; no credentials were used.",
+        "The accessible Easylearn PDFs are labelled as revised KICD curriculum designs and were used for the exact numbered summary hierarchy. Teacher.co.ke copies cross-check Grades 7–8; the Arena Drive PDF cross-checks Grade 9 theme titles and detailed sections.",
+        "Each grade has 15 numbered themes and 75 numbered sub-strands (five per theme). The JSON strands array deliberately represents the numbered THEME hierarchy requested; the PDFs also use unnumbered domain labels such as Listening and Speaking, Reading 1 and 2, Grammar, and Writing.",
+        "Where a summary-page line wrapped, the line break was removed only to make one name; spelling, case, punctuation, hyphen/en-dash usage, and grade-specific differences were retained. No progression or inferred names were added.",
+        "The Grade 9 Arena copy has an older unnumbered summary presentation; it was used as a secondary check of the numbered theme sequence, while the revised Easylearn Grade 9 summary supplied the exact numbered sub-strand strings."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 15,
+          "sub_strand_count": 75,
+          "strands": [
+            {
+              "strand_name": "THEME 1.0: PERSONAL RESPONSIBILITY",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1.1 Oral skills –polite language",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2.1 Independent reading",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3.1 Word classes -Nouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4.1 Intensive reading-trickster narrative",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "1.5.1 Handwriting –Legibility",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 2.0: SCIENCE AND HEALTH EDUCATION",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1.1 Oral presentations-oral narratives",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2.1 Simple poems",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3.1 Word classes- Nouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4.1 Class reader –Previewing a text",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5.1 Punctuation marks",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 3.0: HYGIENE",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1.1 Listening for Main Idea",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2.1 Information and meaning",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3.1 Verbs and tense-regular and irregular verbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4.1 Reading poetry",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5.1 Narrative paragraphs",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 4.0: LEADERSHIP",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1.1 Selective listening",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2.1 Intensive reading",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3.1 Verbs and tense-simple present and past",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4.1 Class reader –Main characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "4.5.1 Paragraphing using examples",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 5.0: FAMILY",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1.1 Sounds and word stress",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2.1 Synonyms and antonyms",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3.1 Comparative and superlative adjectives",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4.1 Intensive reading –Oral narratives",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.5.1 Friendly letter",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 6.0: DRUG AND SUBSTANCE ABUSE",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1.1 Conversational skills",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2.1 Reading fluency",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3.1 Adverbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4.1 Oral literature -songs",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "6.5.1 Commonly misspelt words",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 7.0: NATURAL RESOURCES – FORESTS",
+              "order": 7,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "7.1.1 Listening for details",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "7.2.1 Independent reading-Visuals",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "7.3.1 Personal and possessive Pronouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "7.4.1 Class reader -Characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "7.5.1 The writing process-Narrative composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 8.0: TRAVEL",
+              "order": 8,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "8.1.1 Explanatory Narratives",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "8.2.1 Main idea from supporting details",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "8.3.1 Simple prepositions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "8.4.1 Intensive reading-Poetry",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "8.5.1 Composition-Self assessment",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 9.0: HEROES AND HEROINES - KENYA",
+              "order": 9,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "9.1.1 Consonant and vowel sounds",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "9.2.1 Grade appropriate fiction materials",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "9.3.1 Conjunctions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "9.4.1 Class reader-sequence of events",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "9.5.1 Narrative Composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 10.0: MUSIC",
+              "order": 10,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "10.1.1 Delivering speeches",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "10.2.1 Study skills –note making",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "10.3.1 Determiners",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "10.4.1 Character traits-Monster Narratives",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "10.5.1 Packing and Shopping lists",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 11.0: PROFESSIONS",
+              "order": 11,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "11.1.1 Interviews",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "11.2.1 Non-fiction materials",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "11.3.1 Formation of Adjectives",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "11.4.1 Intensive reading-Dilemma Narratives",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "11.5.1 Spelling Antonyms, Synonyms and Numbers",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 12.0: TRADITIONAL FASHION",
+              "order": 12,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "12.1.1 Views and Opinions",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "12.2.1 Reading comprehension",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "12.3.1 Phrasal verbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "12.4.1 Reading for Main idea",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "12.5.1 Writing process-Dialogues",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 13.0: LAND TRAVEL",
+              "order": 13,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "13.1.1 Extensive Listening",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "13.2.1 Comprehension strategies",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "13.3.1 Simple sentences",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "13.4.1 Praise songs-Purpose and occasion",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "13.5.1 Narrative Composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 14.0: SPORTS - OUTDOOR GAMES",
+              "order": 14,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "14.1.1 Sounds and Intonation",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "14.2.1 Study skills –summary",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "14.3.1 Subject -verb agreement",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "14.4.1 Features of style-Identification and use",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "14.5.1 Descriptive writing",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 15.0: TOURIST ATTRACTION SITES - KENYA",
+              "order": 15,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "15.1.1 Oral Reports",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "15.2.1 Reading Fluency",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "15.3.1 Affirmative and Negative Sentences",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "15.4.1 Poetry",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "15.5.1 Functional Writing –Notices and Posters",
+                  "order": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 15,
+          "sub_strand_count": 75,
+          "strands": [
+            {
+              "strand_name": "THEME 1: HUMAN RIGHTS",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1.1 Polite Language (telephone etiquette)",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2.1 Independent reading",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3.1 Word classes –compound Nouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4.1 Intensive reading – class reader – sequencing events",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "1.5.1 Handwriting –Legibility",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 2: SCIENTIFIC INNOVATIONS",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1.1 Oral presentations – songs",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2.1 Simple poems",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3.1 Word classes – collective Nouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4.1 Class reader – setting (time and place)",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5.1 Punctuation marks",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 3: POLLUTION",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1.1 Listening comprehension",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2.1 Intensive reading – given texts",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3.1 Primary auxiliaries",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4.1 Intensive reading – poetry",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5.1 Narrative paragraphs",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 4: CONSUMER ROLES AND RESPONSIBILITES",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1.1 Selective listening",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2.1 Intensive reading – reading strategies",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3.1 Verbs and tenses",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4.1 Class reader – characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "4.5.1 Paragraphing using examples",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 5: RELATIONSHIPS: PEERS",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1.1 Pronunciation",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2.1 Study skills-Reference materials",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3.1 Adjectives",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4.1 Class reader – style (dialogue and repetition)",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.5.1 Friendly letter",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 6: REHABILITATION",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1.1 Conversational skills – disagreeing politely",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2.1 Reading fluency – poem",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3.1 Adverbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4.1 Class reader – main idea",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "6.5.1 Commonly misspelt words",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 7: NATURAL RESOURCES: WILDLIFE",
+              "order": 7,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "7.1.1 Listening for details-responding appropriately",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "7.2.1 Intensive reading – visuals",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "7.3.1 Pronouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "7.4.1 Class Reader – relationship between characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "7.5.1 The writing process – narrative composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 8: TOURISM: DOMESTIC",
+              "order": 8,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "8.1.1 Oral Narratives – myths",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "8.2.1 Intensive reading – poem",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "8.3.1 Simple prepositions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "8.4.1 Intensive reading – poetry",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "8.5.1 Composition – self assessment",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 9: HEROES AND HEROINES: AFRICA",
+              "order": 9,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "9.1.1 Pronunciation – sounds and stress",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "9.2.1 Extensive reading – fiction -Characters",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "9.3.1 Conjunctions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "9.4.1 Intensive reading-Similes and Metaphors",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "9.5.1 Narrative Composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 10: ART",
+              "order": 10,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "10.1.1 Oral Presentations",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "10.2.1 Study skills – note making",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "10.3.1 Determiners and Quantifiers",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "10.4.1 Class reader – relating events to real life",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "10.5.1 Packing and Shopping lists",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 11: CHOOSING A CAREER",
+              "order": 11,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "11.1.1 Interviews",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "11.2.1 Extensive Reading – non-fiction materials",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "11.3.1 Adverbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "11.4.1 Class reader – lessons learnt",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "11.5.1 Spelling Antonyms ,Synonyms and Numbers",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 12: MODERN FASHION",
+              "order": 12,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "12.1.1 Listening to respond – attitude",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "12.2.1 Reading comprehension",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "12.3.1 Adverbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "12.4.1 Class reader – writing about characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "12.5.1 Writing process – dialogues",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 13: CONSUMER PROTECTION",
+              "order": 13,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "13.1.1 Extensive Listening – poems",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "13.2.1 Intensive Reading – comprehension strategies",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "13.3.1 Compound Sentences",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "13.4.1 Class reader – style (personification, flashback)",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "13.5.1 Narrative Composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 14: SPORTS: OLYMPICS",
+              "order": 14,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "14.1.1 Pronunciation and Intonation – silent consonant sounds",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "14.2.1 Study skills – summary and note making",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "14.3.1 Active and Passive voice",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "14.4.1 Class reader – relating ideas to real life",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "14.5.1 Descriptive writing",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 15: TOURIST ATTRACTION SITES: AFRICA",
+              "order": 15,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "15.1.1 Oral reports – events",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "15.2.1 Reading Fluency",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "15.3.1 Interrogative Sentences",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "15.4.1 Poems",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "15.5.1 Functional Writing – notices, posters",
+                  "order": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 15,
+          "sub_strand_count": 75,
+          "strands": [
+            {
+              "strand_name": "THEME 1.0: CITIZENSHIP",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1.1 Polite Language -Euphemism",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2.1 Independent reading-Grade appropriate texts",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3.1 Gender neutral language",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4.1 Class reader – Structure and setting",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "1.5.1 Legibility and neatness",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 2.0: SCIENCE: FICTION",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1.1 Oral Literature-Short forms",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2.1 Intensive reading-Simple poems",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3.1 Nouns and quantifiers",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4.1 Class reader- Plot",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5.1 Punctuation marks",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 3.0: ENVIRONMENTAL CONSERVATION",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1.1 Listening comprehension –Grade appropriate texts (main idea and specific details",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2.1 Reading for information and meaning",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3.1 Modal auxialiaries",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4.1 Poems -Structure",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5.1 Structure of a paragraph",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 4.0: CONSUMER PROTECTION: CONSUMER LAWS AND POLICIES",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1.1 Selective listening",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2.1 Intensive reading-Key events",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3.1 Present and Past Perfect Aspect",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4.1 Class reader -characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "4.5.1 Descriptive Paragraph Narrative and Descriptive Paragraphs",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 5.0 RELATIONSHIPS: COMMUNITY",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1.1 Pronunciation",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2.1 Reference materials",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3.1 Order of Adjectives",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4.1 Class reader –Style",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.5.1 Letter of application",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 6.0: LEISURE TIME",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1.1 Conversational skills -Negotiation skills",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2.1 Reading fluency",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3.1 Comparison of Adverbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4.1 Class reader- Themes",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "6.5.1 Spelling",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 7.0: NATURAL RESOURCES: MARINE LIFE",
+              "order": 7,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "7.1.1 Listening for details",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "7.2.1 Intensive reading-Interpretation and evaluation",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "7.3.1 Relative Pronouns, Interrogative Pronouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "7.4.1 Class Reader- (Intensive reading) characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "7.5.1 The writing process -Steps",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 8.0: TOURISM: INTERNATIONAL",
+              "order": 8,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "8.1.1 Oral Poetry",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "8.2.1 Reading for interpretation",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "8.3.1 Complex Prepositions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "8.4.1 Poetry-Characters",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "8.5.1 Assessing writing",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 9.0: HEROES AND HEROINES: WORLD",
+              "order": 9,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "9.1.1 Diphthongs and sentence stress",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "9.2.1 Extensive reading- Grade appropriate fiction",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "9.3.1 Conjunctions-Correlative conjunctions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "9.4.1 Class reader -Style",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "9.5.1 Narrative Composition",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 10.0: SOCIAL AND MASS MEDIA",
+              "order": 10,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "10.1.1 Impromptu Speeches",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "10.2.1 Study skills –Note making",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "10.3.1 Determiners –Numerals and Ordinals",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "10.4.1 Class reader- Play (project)",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "10.5.1 Filling forms-Application forms",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 11.0: INCOME GENERATING ACTIVITIES",
+              "order": 11,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "11.1.1 Conversation skills- Job Interviews",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "11.2.1 Extensive Reading -Fiction",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "11.3.1 Nouns",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "11.4.1 Class reader- Lessons learnt",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "11.5.1 Mechanics of writing-Abbreviations and Acronyms",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 12.0: PERSONAL GROOMING",
+              "order": 12,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "12.1.1 Listening to respond-Expressing feelings",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "12.2.1 Intensive Reading-Comprehension Strategies",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "12.3.1 Phrasal verbs",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "12.4.1 Class reader-Characterisation",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "12.5.1 The Writing process",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 13.0: SEA TRAVEL",
+              "order": 13,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "13.1.1 Extensive listening- Speeches",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "13.2.1 Intensive Reading –Visualising and Summarising",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "13.3.1 Complex Sentences",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "13.4.1 Class reader –Style",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "13.5.1 Creative writing: Idioms",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 14.0: SPORTS – WORLD CUP (FOOTBALL)",
+              "order": 14,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "14.1.1 Intonation in sentences-question tags",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "14.2.1 Summarising-argumentative texts",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "14.3.1 Direct and Indirect Speech",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "14.4.1 Class reader- Relating characters and themes to real life",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "14.5.1 Descriptive writing",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "THEME 15.0: TOURIST ATTRACTION SITES- WORLD",
+              "order": 15,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "15.1.1 Oral reports- News (role play)",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "15.2.1 Reading Fluency",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "15.3.1 Imperatives (Commands, requests) and exclamatory sentences",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "15.4.1 Intensive reading-Poems",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "15.5.1 Emails",
+                  "order": 5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Integrated Science",
+      "research_status": "complete",
+      "evidence_level": "high: official KICD landing pages and embedded previews verified, with direct pdftotext extraction from accessible KICD-labelled independent PDF mirrors",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1jbicj1qkLFEV_ZXwO8Kmlw7KzGhZD2ri/preview",
+        "https://drive.google.com/file/d/1RpqZRmeMywbc1Tya0_x-tNJBs75Gy0-v/preview",
+        "https://drive.google.com/file/d/18QAC1qZzTWQv4vso-y1c5qaY9YxeSaUp/preview",
+        "https://easylearn.co.ke/curriculum-design",
+        "https://easylearn.co.ke/images/document/11752167/Integrated-Science-Grade-7-July-2024.pdf",
+        "https://easylearn.co.ke/images/document/11752313/Integrated-Science-Grade-8-July-2024.pdf",
+        "https://easylearn.co.ke/images/document/11752385/Integrated-Science-Grade-9-July-2024.pdf",
+        "https://doyenpublishers.com/wp-content/uploads/2025/04/Grade-8-Integrated-Science-Curriculum-Design.pdf"
+      ],
+      "notes": [
+        "The detailed cited report includes official landing-page URLs, embedded Google Drive preview URLs, independent mirror URLs, local PDF paths, PDF and printed page numbers, exact counts, extraction method, and limitations.",
+        "Official Google Drive binary downloads returned a permission-denied HTML response, so local PDFs are valid directly downloaded KICD-labelled mirror copies; no invalid pseudo-PDF was retained.",
+        "Grade 7 has an internal inconsistency: its summary and detailed curriculum pages use 4.1 Electrical Energy and 4.2 Magnetism, while Appendix 2 uses 4.2 Electrical Energy and 4.3 Magnetism and expands 3.2 with Skin and Kidneys. The summary plus detailed pages were used as the controlling hierarchy, and the disagreement is documented in the report.",
+        "Grade-specific entries were kept separate; no progression was inferred and no grades were merged."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 4,
+          "sub_strand_count": 9,
+          "strands": [
+            {
+              "strand_name": "1.0 Scientific Investigation",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Introduction to Integrated Science",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Laboratory Safety",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Laboratory apparatus and instruments",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Mixtures, Elements and Compounds",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Mixtures",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Acids, bases and indicators",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Living things and the Environment",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Human reproductive system",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Human Excretory System",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Force and Energy",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Electrical Energy",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Magnetism",
+                  "order": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 3,
+          "sub_strand_count": 8,
+          "strands": [
+            {
+              "strand_name": "1.0 Mixtures, Elements and Compounds",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Elements and Compounds",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Physical and chemical changes",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Classes of fire",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Living Things and the Environment",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 The Cell",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Movement of materials in and out of the cell",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Reproduction in human beings",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Force and Energy",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1. Transformation of Energy",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2. Pressure",
+                  "order": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 3,
+          "sub_strand_count": 9,
+          "strands": [
+            {
+              "strand_name": "1.0 Mixtures, Elements, and Compounds",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1. Structure of the atom",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2. Metals and Alloys",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3. Water hardness",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Living Things and their Environment",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1. Nutrition in plants",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2. Nutrition in animals",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3. Reproduction in plants",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4. The interdependence of life",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Force and Energy",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1. Curved Mirrors",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2. Waves",
+                  "order": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Islamic Religious Education",
+      "research_status": "complete",
+      "evidence_level": "high: official KICD landing pages and embedded IRE links verified; exact hierarchy extracted from downloaded KICD-labelled Easylearn mirror PDFs with pdftotext and cross-checked against each PDF body tables",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1Po_NF_oEsMMYXukVcM82nVEqXS7yY2Zu/preview",
+        "https://drive.google.com/file/d/10HXITblf3E9bwYFABlcbv_qA9ZGSSod1/preview",
+        "https://drive.google.com/file/d/1QAtDW4Pq0enTVPOb32TlfQzge2au4RRC/preview",
+        "https://easylearn.co.ke/curriculum-design",
+        "https://easylearn.co.ke/images/document/11752166/Islamic-Religious-Education-Grade-7-July-2024.pdf",
+        "https://easylearn.co.ke/images/document/11752310/Islamic-Religious-Education-Grade-8-July-2024.pdf",
+        "https://easylearn.co.ke/images/document/11752383/Islamic-Religious-Education-Grade-9-July-2024.pdf"
+      ],
+      "notes": [
+        "Detailed cited report includes physical PDF page numbers, exact counts, source URLs, local paths, limitations, and disagreements resolved.",
+        "The official KICD landing pages expose Google Drive previews, but direct Google Drive download was blocked by owner permissions; saved PDFs are accessible Easylearn mirror copies that are KICD-labelled and identify the relevant grade.",
+        "No hierarchy disagreement was found between each downloaded PDF's summary table and numbered body tables. Grade 7 and Grade 9 body headings print QURAN while the summary table prints Qur’an; Grade 9 summary literally prints 1.1 Ulum al- Qur’an with a space after the hyphen, preserved here."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 7,
+          "sub_strand_count": 16,
+          "strands": [
+            {
+              "strand_name": "1.0 Qur’an",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Ulumul Qur’an",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Selected Chapters (Surah)",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Hadith",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Ulum al-Hadith",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Selected Hadith",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Pillars of Iman",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Significance of Tawheed",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Shirk",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Devotional Acts",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Swalah",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Zakat",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Saum",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Akhlaq (Moral Teachings)",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Dimensions of Morality in Islam",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Virtues in Islam",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Prohibitions in Islam",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "6.0 Muamalat (Social Relations)",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1 Marriage",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2 Trade and Finance in Islam",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3 Contemporary issues",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "7.0 Islamic Heritage and Civilisation",
+              "order": 7,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "7.1 Reforms introduced by Prophet Muhammad (S.A.W.)",
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 7,
+          "sub_strand_count": 17,
+          "strands": [
+            {
+              "strand_name": "1.0 Qur’an",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Modes of preservation of the Qur’an",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Divisions of the Qur’an",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Selected verses (Al-Luqman 12-19)",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Hadith",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Ulum al-Hadith",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Selected Hadith",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Pillars of Iman",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Belief in revealed scriptures",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Ulul-Azm Prophets",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Devotional Acts",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Prayers on special occasions",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Hajj and Umrah",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Akhlaq (Moral Teachings)",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Commanding good and forbidding evil",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Virtues in Islam",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Prohibitions in Islam",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "6.0 Muamalat (Social Relations)",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1 Divorce",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2 Types of divorce",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3 Trade and Finance in Islam",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4 Human Rights",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "7.0 Islamic Heritage and Civilisation",
+              "order": 7,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "7.1 The Rightly Guided Caliphs",
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 7,
+          "sub_strand_count": 20,
+          "strands": [
+            {
+              "strand_name": "1.0 Qur’an",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Ulum al- Qur’an",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Selected Chapter Surah Al-Hujurat (Q 49)",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Hadith",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Ulum al-Hadith",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Selected Hadith",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Pillars of Iman",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Belief in the Last Day (Day of Judgement)",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Belief in Qadar",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Devotional Acts",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Shariah (Islamic law)",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Tawbah (Repentance)",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Akhlaq (Moral Teachings)",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Virtues in Islam",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Significance of Islamic Morality",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Prohibitions in Islam",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "6.0 Muamalat (Social Relations)",
+              "order": 6,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "6.1 Domestic violence",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "6.2 Iddah",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "6.3 Child custody",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "6.4 Polygamy in Islam",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "6.5 Trade and Finance in Islam",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.6 Contemporary Issues",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "7.0 Islamic Heritage and Civilisation",
+              "order": 7,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "7.1 Islam in Kenya",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "7.2 Unity of Muslims",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "7.3 Muslim Institutions",
+                  "order": 3
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Kiswahili",
+      "research_status": "verified-current-official-extract",
+      "evidence_level": "high: current official KICD Google Drive previews; the KICD-revised October 2024 edition title, page count, and numbered summary table were extracted from the publicly rendered previews",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/"
+      ],
+      "notes": [
+        "Older Grade 7/8 mirror extracts were excluded; Grade 7 and 8 official current viewer titles identify July 2024, Revised Oct, and Grade 9 identifies 2024, Revised Oct."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 4,
+          "sub_strand_count": 60,
+          "strands": [
+            {
+              "strand_name": "Kusikiliza na Kuzungumza",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1.1 Kusikiliza na Kujibu: Mazungumzo",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.1.1 Kusikiliza kwa Kina: Sauti /dh/ na /th/",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.1.1 Tanzu za Fasihi: Fasihi andishi na simulizi",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.1.1 Nyimbo: Nyimbo za Watoto na Bembelezi",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.1.1 Mazungumzo Mahususi",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.1.1 Kusikiliza kwa Kufasiri",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.1.1 Kusikiliza kwa Ufahamu: Ufahamu wa kusikiliza",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.1.1 Kuzungumza ili Kupasha Habari",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.1.1 Kusikiliza kwa Kina: Sauti /d/ na /nd/",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.1.1 Nyimbo: Nyimbo za Kazi na Nyimbo za Dini",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.1.1 Kuzungumza kwa Kuambatanisha na Vitendo/Ishara",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.1.1 Kusikiliza kwa Makini",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.1.1 Wahusika katika Nyimbo",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.1.1 Lugha katika Nyimbo",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.1.1 Kusikiliza Habari na Kujibu",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Kusoma",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.2.1 Kusoma kwa Ufahamu: Kifungu cha Simulizi",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2.1 Kusoma kwa Mapana: Matini ya kujichagulia",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.2.1 Kusoma kwa Kina: Novela",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.2.1 Kusoma kwa Ufasaha",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.2.1 Kusoma kwa Ufahamu",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.2.1 Kusoma kwa Kina: Maudhui na Dhamira",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.2.1 Ufupisho",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.2.1 Kusoma kwa Kina: Mandhari na Ploti",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.2.1 Kusoma kwa Ufahamu: Kifungu cha Kushawishi",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.2.1 Kusoma kwa Kina: Wahusika",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.2.1 Kusoma kwa Mapana: Matini ya kujichagulia",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.2.1 Kusoma kwa Ufasaha",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.2.1 Kusoma kwa Kina: Mbinu za Lugha",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.2.1 Kusoma kwa Ufahamu: Kifungu cha Mjadala",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.2.1 Ufupisho",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Kuandika",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.3.1 Viakifishi: Herufi kubwa na Kikomo",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.3.1 Barua ya Kirafiki ya Kutoa Mwaliko",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3.1 Insha za Kubuni",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.3.1 Insha ya Maelekezo",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.3.1 Insha za Kubuni: Picha",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.3.1 Insha za Kubuni: Maelezo",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.3.1 Viakifishi: Mabano na Kistari Kifupi",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.3.1 Barua ya Kuomba Msamaha",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.3.1 Insha za Kubuni: Maelezo",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.3.1 Hotuba ya Kupasha Habari",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.3.1 Insha za Kubuni: Maelezo",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.3.1 Insha ya Maelekezo",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.3.1 Kuandika Kidijitali: Baruapepe",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Sarufi",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.4.1 Aina za nomino: Nomino za Makundi na Nomino za Dhahania",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.4.1 Vihusishi: Vihusishi vya -a Unganifu na Vihusishi vya Sababu",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.4.1 Aina za nomino: Nomino za Wingi na Nomino za Vitenzi-jina",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4.1 Nyakati na Hali: Wakati uliopo, Wakati uliopita na Wakati ujao",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.4.1 Nyakati na Hali: Wakati uliopita hali ya kuendelea na Wakati ujao hali ya kuendelea",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.4.1 Vitenzi: Vitenzi Vikuu na Vitenzi Visaidizi",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.4.1 Vitenzi Vishirikishi",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya A-WA na Ngeli ya U-I",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya KI-VI na LI-YA",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.4.1 Vinyume vya Maneno",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.4.1 Mnyambuliko wa Vitenzi: Kauli ya Kutenda, Kutendea na Kutendwa",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.4.1 Aina za Sentensi: Sentensi Sahili",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.4.1 Ukanushaji kwa Kuzingatia Nyakati",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.4.1 Ukubwa wa Nomino",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.4.1 Usemi Halisi na Usemi wa Taarifa",
+                  "order": 15
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 4,
+          "sub_strand_count": 60,
+          "strands": [
+            {
+              "strand_name": "Kusikiliza na Kuzungumza",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1.1 Kusikiliza na Kujibu: Mahojiano",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.1.1 Kusikiliza kwa Kina: Sauti /g/ na /gh/",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.1.1 Hadithi: Mighani",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.1.1 Hadithi: Visasili",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.1.1 Kusikiliza Maagizo",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.1.1 Kusikiliza kwa Kufasiri",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.1.1 Usikilizaji Husishi",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.1.1 Uzungumzaji wa Papo kwa Hapo",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.1.1 Kusikiliza kwa Kina: Sauti /ch/ na /sh/",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.1.1 Hadithi: Hurafa na Hekaya",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.1.1 Kuzungumza kwa Kutumia Vidokezo vya Hoja",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.1.1 Kusikiliza kwa Makini",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.1.1 Hadithi: Wahusika",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.1.1 Hadithi: Matumizi ya Lugha",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.1.1 Usikilizaji Husishi",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Kusoma",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.2.1 Kusoma kwa Ufahamu: Simulizi",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2.1 Kusoma kwa Mapana: Matini ya kujichagulia",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.2.1 Kusoma kwa Kina: Tamthilia",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.2.1 Kusoma kwa Ufasaha",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.2.1 Kusoma kwa Ufahamu",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.2.1 Kusoma kwa Kina: Maudhui na Dhamira",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.2.1 Ufupisho",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.2.1 Kusoma kwa Kina: Mandhari na Ploti",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.2.1 Kusoma kwa Ufahamu: Kifungu cha Kushawishi",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.2.1 Kusoma kwa Kina: Wahusika katika Tamthilia",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.2.1 Kusoma kwa Mapana: Matini ya kujichagulia",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.2.1 Kusoma kwa Ufasaha",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.2.1 Kusoma kwa Kina: Mbinu za Lugha",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.2.1 Kusoma kwa Ufahamu",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.2.1 Ufupisho",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Kuandika",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.3.1 Viakifishi: Alama ya hisi na Ritifaa",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.3.1 Barua ya Kirafiki: Barua ya kirafiki ya kutoa shukrani",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.3.1 Insha ya Maelekezo",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.3.1 Insha za Kubuni: Insha ya mdokezo",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.3.1 Insha za Kubuni: Maelezo",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.3.1 Viakifishi: Mtajo na mshazari",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.3.1 Barua ya Kuomba Msaada",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.3.1 Insha za Kubuni: Maelezo",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.3.1 Insha za Kiuamilifu: Hotuba ya kutoa ufafanuzi",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.3.1 Insha za Kubuni: Maelezo",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.3.1 Insha za Maelekezo",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.3.1 Baruapepe ya Kiofisi",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Sarufi",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.4.1 Viwakilishi: Viwakilishi vya Nafsi, Viwalikishi Vionyeshi na Viwakilishi vya Idadi",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.4.1 Viwakilishi: Viwalikishi vya Sifa, Viwalikishi vya Pekee na Viwalikishi Viulizi",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.4.1 Viwakilishi: Vimilikishi na Visisitizi",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4.1 Nyakati na Hali: Hali ya mazoea na Hali timilifu",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.4.1 Nyakati na Hali: Wakati uliopita hali timilifu na Wakati ujao hali timilifu",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.4.1 Vivumishi vya Sifa na Viashiria",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.4.1 Vivumishi Vimilikishi na vya Idadi",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya I-ZI, na I-I",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya U-U na U-YA",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.4.1 Vinyume vya Vitenzi na Vielezi",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.4.1 Mnyambuliko wa Vitenzi: Kauli ya: Kutendeka, Kutendewa na Kutendatenda",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.4.1 Aina za Sentensi: Sentensi changamano",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.4.1 Ukanushaji kwa Kuzingatia Hali: Hali ya mazoea na Hali timilifu",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.4.1 Udogo wa Nomino",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.4.1 Usemi Halisi na Usemi wa Taarifa",
+                  "order": 15
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 4,
+          "sub_strand_count": 60,
+          "strands": [
+            {
+              "strand_name": "Kusikiliza na Kuzungumza",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1.1 Kusikiliza na Kujibu: Mjadala",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.1.1 Kusikiliza kwa Kina: Sauti /b/ na /mb/",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.1.1 Semi: tashbihi, sitiari na methali",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.1.1 Semi: Vitendawili na nahau",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.1.1 Ufahamu wa Kusikiliza",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.1.1 Kusikiliza kwa Kufasiri",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.1.1 Kusikiliza kwa Kutathmini",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.1.1 Uzungumzaji wa Kushawishi",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.1.1 Kusikiliza kwa Kina: Sauti /j/ na /nj/",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.1.1 Mazungumzo: Malumbano ya Utani",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.1.1 Uzungumzaji katika Sherehe",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.1.1 Ufahamu wa Kusikiliza",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.1.1 Mazungumzo: Mawaidha",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.1.1 Mazungumzo: Mawaidha",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.1.1 Kusikiliza kwa Kutathmini",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Kusoma",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.2.1 Kusoma kwa Ufahamu: Simulizi",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2.1 Kusoma kwa Mapana: Matini ya kujichagulia",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.2.1 Kusoma kwa Kina: Ushairi",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.2.1 Kusoma kwa Ufasaha",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.2.1 Kusoma kwa Ufahamu",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.2.1 Kusoma kwa Kina: Ushairi",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.2.1 Ufupisho",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.2.1 Kusoma kwa Kina: Ushairi",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.2.1 Kusoma kwa Ufahamu: Kifungu cha Kushawishi",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.2.1 Kusoma kwa Kina: Ushairi",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.2.1 Kusoma kwa Mapana: Matini ya kujichagulia",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.2.1 Kusoma kwa Ufasaha",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.2.1 Kusoma kwa Kina: Ushairi",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.2.1 Kusoma kwa Ufahamu",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.2.1 Ufupisho",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Kuandika",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.3.1 Viakifishi: Koloni na Semi koloni",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.3.1 Insha za Kiuamilifu: Barua ya Kirafiki",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.3.1 Insha za Kiuamilifu: Shajara",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.3.1 Insha za Kubuni: Methali",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.3.1 Insha za Kubuni: Maelezo",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.3.1 Viakifishi: Mabano na Kistari Kifupi",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.3.1 Insha za Kubuni: Masimulizi",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.3.1 Barua ya Kuomba Kazi",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.3.1 Insha za Kubuni: Maelezo",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.3.1 Hotuba ya Kushawishi",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.3.1 Insha za Kubuni: Maelezo",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.3.1 Insha za Kiuamilifu: Shajara",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.3.1 Kujibu Baruapepe",
+                  "order": 15
+                }
+              ]
+            },
+            {
+              "strand_name": "Sarufi",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.4.1 Vihusishi: Vihusishi vya Mahali na Vihusishi vya Wakati",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.4.1 Vihusishi: Vihusishi vya -a Unganifu na Vihusishi vya Sababu",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.4.1 Vihusishi: Vihusishi Vilinganishi na Kihusishi na",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4.1 Nyakati na Hali: -ki- ya masharti na -ka- ya kufuatana kwa vitendo",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.4.1 Hali za Masharti: Hali ya masharti -nge- na Hali ya masharti - ngali-",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "6.4.1 Vielezi: Vielezi vya Namna na Vielezi vya Wakati",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "7.4.1 Vielezi: Vielezi vya Mahali na Vielezi vya Idadi",
+                  "order": 7
+                },
+                {
+                  "sub_strand_name": "8.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya U-ZI na Ngeli ya YA-YA",
+                  "order": 8
+                },
+                {
+                  "sub_strand_name": "9.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya LI, KU, PA-KU-MU",
+                  "order": 9
+                },
+                {
+                  "sub_strand_name": "10.4.1 Vinyume vya Vihusishi",
+                  "order": 10
+                },
+                {
+                  "sub_strand_name": "11.4.1 Mnyambuliko wa Vitenzi: Kauli ya: Kutendana, Kutendeana na Kutendesha",
+                  "order": 11
+                },
+                {
+                  "sub_strand_name": "12.4.1 Aina za Sentensi: Sentensi tata",
+                  "order": 12
+                },
+                {
+                  "sub_strand_name": "13.4.1 Ukanushaji: Hali ya masharti -nge-, -ngali- na -ki-",
+                  "order": 13
+                },
+                {
+                  "sub_strand_name": "14.4.1 Udogo na Ukubwa wa Nomino",
+                  "order": 14
+                },
+                {
+                  "sub_strand_name": "15.4.1 Usemi Halisi na Usemi wa Taarifa",
+                  "order": 15
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Mathematics",
+      "research_status": "complete",
+      "evidence_level": "high",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/12Vb6W1_Vzn9BEH2MsM2WmUwWL5OKoucK/preview",
+        "https://drive.google.com/file/d/1ttNvzuQbHUnABVcP-TAoix8-TVmehYph/preview",
+        "https://drive.google.com/file/d/1HgntYl8nS1zydy8k00KrjEt_zJiMqISL/preview",
+        "https://easylearn.co.ke/curriculum-design",
+        "https://easylearn.co.ke/images/document/11752159/Mathematics-Grade-7-July-2024-Revised.pdf",
+        "https://easylearn.co.ke/images/document/11752301/Mathematics-Grade-8-July-2024.pdf",
+        "https://easylearn.co.ke/images/document/11752376/Mathematics-Grade-9-July-2024-Revised.pdf"
+      ],
+      "notes": [
+        "Detailed cited report written with official KICD landing pages, official Google Drive preview URLs, independent Easylearn mirror URLs, local PDF paths, printed page numbers, exact counts, hashes, limitations, and disagreements resolved.",
+        "All three grades were independently extracted with pdftotext -layout from direct PDF downloads; no OCR was needed. Local PDFs are 66, 64, and 69 pages for Grades 7, 8, and 9 respectively.",
+        "Official Google Drive previews were accessible, but direct official download requests returned an owner-download restriction; the locally saved evidence PDFs are the independent Easylearn KICD-labelled mirror copies.",
+        "Resolved extraction/display issues: Grade 8 summary artefact 'L Area' is verified as 3.2 Area from the body heading; Grade 8 retains lower-case 'graphs' in 4.2 Coordinates and graphs; Grade 7 strand 5.0 is taken from the explicit TOC and section heading."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 5,
+          "sub_strand_count": 18,
+          "strands": [
+            {
+              "strand_name": "1.0 Numbers",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Whole Numbers",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Factors",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Fractions",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4 Decimals",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "1.5 Squares and Square Roots",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Algebra",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Algebraic Expressions",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Linear Equations",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Linear Inequalities",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Measurements",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Pythagorean Relationship",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Length",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Area",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4 Volume and Capacity",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5 Time, Distance, and Speed",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "3.6 Temperature",
+                  "order": 6
+                },
+                {
+                  "sub_strand_name": "3.7 Money",
+                  "order": 7
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Geometry",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Angles",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Geometrical Constructions",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Data Handling and Probability",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Data Handling",
+                  "order": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 5,
+          "sub_strand_count": 16,
+          "strands": [
+            {
+              "strand_name": "1.0 Numbers",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Integers",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Fractions",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Decimals",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4 Squares and Square Roots",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "1.5 Rates, Ratio, Proportions and Percentages",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Algebra",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Algebraic Expressions",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Linear Equations",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Measurements",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Circles",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Area",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Money",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Geometry",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Geometrical Constructions",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Coordinates and graphs",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Scale Drawing",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4 Common Solids",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Data Handling and Probability",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Data Presentation and Interpretation",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Probability",
+                  "order": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 5,
+          "sub_strand_count": 19,
+          "strands": [
+            {
+              "strand_name": "1.0 Numbers",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Integers",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Cubes and Cube Roots",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Indices and Logarithms",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "1.4 Compound Proportions and Rates of Work",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Algebra",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Matrices",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Equation of a Straight Line",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Linear Inequalities",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Measurements",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Area",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Volume of Solids",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Mass, Volume, Weight, and Density",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4 Time, Distance, and Speed",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5 Money",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "3.6 Approximations and Errors",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Geometry",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Coordinates and Graphs",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Scale Drawing",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Similarity and Enlargement",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4 Trigonometry",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Data Handling and Probability",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Data Interpretation (Grouped Data)",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Probability",
+                  "order": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Pre-Technical Studies",
+      "research_status": "complete",
+      "evidence_level": "high: official KICD landing pages and embedded KICD viewers cross-checked against accessible education-resource mirror PDFs",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1vBIF-5Z0-hpYxr2YWJIrg1ATzO9f4YRH/view",
+        "https://drive.google.com/file/d/1Cvh2JSBlrHU4z4FKt7uVMgTMXEWq9jdu/view",
+        "https://drive.google.com/file/d/1sHIe4eN9oE8ojrjBPojqHj7YIdYdFWzP/view",
+        "https://www.teacherspalace.co.ke/uploads/documents/pre-technical-studies-grade-7-july-2024-revised-unlocked-2025-01-05-4vCaJI6HMl.pdf",
+        "https://doyenpublishers.com/wp-content/uploads/2025/04/Grade-7-Pretechnical-Studies-Curriculum-Design.pdf",
+        "https://doyenpublishers.com/wp-content/uploads/2025/04/Grade-8-Pretechnical-Studies-Curriculum-Design.pdf",
+        "https://doyenpublishers.com/wp-content/uploads/2025/04/Grade-9-Pretechnical-Studies-Curriculum-Design.pdf",
+        "https://doyenpublishers.com/junior-school/grade-7-resources/",
+        "https://doyenpublishers.com/junior-school/grade-9-resources/"
+      ],
+      "notes": [
+        "Detailed cited report includes official landing URLs, embedded viewer URLs, mirror URLs, local paths, PDF page counts, printed and local physical page references, exact counts, and limitations.",
+        "The official KICD embedded viewers were accessible and identify KICD publication metadata, but direct Google Drive download attempts were blocked by an owner/editor-only permission message; local PDFs are therefore accessible mirror copies.",
+        "Grade 7 hierarchy was extracted from the Teachers Palace mirror and cross-checked with an independent Doyen mirror; Grade 8 and Grade 9 were extracted from Doyen mirror PDFs and cross-checked against the official KICD viewers and landing-page embeds.",
+        "Grade 7 summary uses 1.0/2.0/3.0/4.0/5.0 even though its table of contents prints STRAND 2:, STRAND 3:, STRAND 4: and STRAND 5: without .0.",
+        "Grade 8 summary says 3.2 Ceramics while the detailed row says 3.2 Ceramic Materials; the summary-table wording is used and the disagreement is documented in the report.",
+        "Grade 9 summary preserves the extra punctuation in 4.0. Tools and Production.",
+        "No database, app files, credentials, or protected systems were modified."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 5,
+          "sub_strand_count": 14,
+          "strands": [
+            {
+              "strand_name": "1.0 Foundations of Pre -Technical Studies",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Introduction to Pre-Technical Studies",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Safety in the Immediate Environment",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Computer Concepts",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Communication in Pre-Technical Studies",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Introduction to Drawing",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Free-hand sketching",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 ICT Tools in Communication",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Materials for Production",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Introduction to Materials",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Metallic Materials",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Non-Metallic Materials",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Tools and Production",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Measuring and Marking Out Tools",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Computer Hardware",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Entrepreneurship",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Introduction to Entrepreneurship",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Production Unit",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Financial Goals",
+                  "order": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 5,
+          "sub_strand_count": 14,
+          "strands": [
+            {
+              "strand_name": "1.0 Foundations of Pre-Technical studies",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Fire Safety",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Data Safety",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Communication",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Plane Geometry",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Dimensioning",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Plain scale drawing",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Visual programming",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Materials for production",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Composite Materials",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Ceramics",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Tools and Production",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Cutting Tools",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Computer Software",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Entrepreneurship",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Bookkeeping",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Income and Budgeting",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Marketing goods and Services",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4 Distribution of Goods and Services",
+                  "order": 4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 5,
+          "sub_strand_count": 13,
+          "strands": [
+            {
+              "strand_name": "1.0 Foundations of Pre-Technical Studies",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Safety on Raised Platforms",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Handling Hazardous Substances",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "1.3 Self-Exploration and Career Development",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Communication in Pre-Technical Studies",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Oblique Projection",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Visual Programming",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Materials for Production",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Wood",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Handling Waste Materials",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0. Tools and Production",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Holding Tools",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Driving Tools",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Project",
+                  "order": 3
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Entrepreneurship",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Financial Services",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Government and Business",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Business Plan",
+                  "order": 3
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "Social Studies",
+      "research_status": "complete",
+      "evidence_level": "high_with_first_party_download_limitation",
+      "source_urls": [
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+        "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/",
+        "https://drive.google.com/file/d/1nr9z0Z11ue76h2odpYQJNeUU4jFJWbbB/preview",
+        "https://drive.google.com/file/d/1yx30v28nVLKYSByRB9G2Omalh76-ZL6h/preview",
+        "https://drive.google.com/file/d/1gMXIzQnV-F1a7n_dJ82QU2-BTtw3B-NW/preview",
+        "https://easylearn.co.ke/curriculum-design",
+        "https://easylearn.co.ke/images/document/11752154/Social-Studies-Grade-7-Revised-1.pdf",
+        "https://www.teacherspalace.co.ke/uploads/documents/social-studies-grade-8-revised-1-unlocked-2025-01-05-Up5cUrwpuP.pdf",
+        "https://www.teacherspalace.co.ke/uploads/documents/social-studies-grade-9-revised-1-unlocked-2024-12-02-QzcK6QzeMT.pdf"
+      ],
+      "notes": [
+        "The detailed cited report includes source URLs, local PDF paths, PDF page numbers, exact counts, extraction method, limitations, and disagreements resolved.",
+        "The KICD landing pages currently expose Social Studies through Google Drive previews. Direct unauthenticated download attempts returned an HTML permission message, so only independently hosted but KICD-labelled mirror PDFs are retained as valid local PDFs.",
+        "Grade 7 mirror is the Easylearn KICD-revised copy; Grades 8 and 9 are Teachers Palace KICD-labelled copies. All three were downloaded directly and processed with pdftotext -layout.",
+        "Summary-table wording is preserved exactly, including Grade 7 omissions of ‘and’/‘in Africa’, Grade 8 ‘Self- Esteem Assessment’, ‘Trans Saharan Slave Trade’, lowercase ‘skills’ and ‘sites’, and Grade 9 capitalization/spelling. No cross-grade merging or inferred progression was performed.",
+        "No credentials were used; database and app files were not modified."
+      ],
+      "grades": [
+        {
+          "grade": 7,
+          "strand_count": 5,
+          "sub_strand_count": 20,
+          "strands": [
+            {
+              "strand_name": "1.0 Social Studies Personal Development",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Self-Exploration",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Social Entrepreneurial Opportunities",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 People and Relationships",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Human Origin",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "2.2 Early Civilisation",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "2.3 Slavery and Servitude",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "2.4 Developments in Medium of Trade",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "2.5 Diversity and Interpersonal Relationships",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "2.6 Peaceful Coexistence",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 Community Service-Learning",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Community Service-Learning Project",
+                  "order": 1
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Natural and Historic Built Environments",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Historical Information",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Historical Development of Agriculture",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Maps and Map Work",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4 Earth and the Solar System",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "4.5 Weather",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "4.6 Fieldwork",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Political Development and Governance",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 Political Development in Africa",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 The Constitution of Kenya",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Human Rights",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4 African Diasporas",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "5.5 Citizenship",
+                  "order": 5
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 8,
+          "strand_count": 5,
+          "sub_strand_count": 16,
+          "strands": [
+            {
+              "strand_name": "1.0 Social Studies and Personal Management",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Self-Improvement",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Self- Esteem Assessment",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Community Service Learning",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Community Service-Learning Project",
+                  "order": 1
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 People and Relationships",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Scientific Theory about Human Origin",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Early Civilisations",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Trans Saharan Slave Trade",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4 Population Growth in Africa",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5 Diversity and Interpersonal skills",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "3.6 Peaceful Conflict Resolutions",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Natural and Historic Built Environments",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Map Reading and Interpretation",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Weather and Climate",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Vegetation in Africa",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4 Historical sites and monuments in Africa",
+                  "order": 4
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Political Developments and Governance",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 The Constitution of Kenya",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Human Rights",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Citizenship",
+                  "order": 3
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "grade": 9,
+          "strand_count": 5,
+          "sub_strand_count": 18,
+          "strands": [
+            {
+              "strand_name": "1.0 Social Studies and Career Development",
+              "order": 1,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "1.1 Pathway Choices",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "1.2 Pre-career Support Systems",
+                  "order": 2
+                }
+              ]
+            },
+            {
+              "strand_name": "2.0 Community Service-Learning",
+              "order": 2,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "2.1 Community Service-Learning Project",
+                  "order": 1
+                }
+              ]
+            },
+            {
+              "strand_name": "3.0 People and Relationships",
+              "order": 3,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "3.1 Socio-economic practices of early humans",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "3.2 Indigenous knowledge systems in African Societies",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "3.3 Poverty Reduction",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "3.4 Population Structure",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "3.5 Peaceful Conflict Resolution",
+                  "order": 5
+                },
+                {
+                  "sub_strand_name": "3.6 Healthy Relationships",
+                  "order": 6
+                }
+              ]
+            },
+            {
+              "strand_name": "4.0 Natural and Historic Built Environments",
+              "order": 4,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "4.1 Topographical maps",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "4.2 Internal Land Forming Processes",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "4.3 Multipurpose River Projects in Africa",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "4.4 Management and Conservation of the Environment",
+                  "order": 4
+                },
+                {
+                  "sub_strand_name": "4.5 World Heritage Sites in Africa",
+                  "order": 5
+                }
+              ]
+            },
+            {
+              "strand_name": "5.0 Political Developments and Governance",
+              "order": 5,
+              "sub_strands": [
+                {
+                  "sub_strand_name": "5.1 The Constitution of Kenya",
+                  "order": 1
+                },
+                {
+                  "sub_strand_name": "5.2 Civic Engagement in Governance",
+                  "order": 2
+                },
+                {
+                  "sub_strand_name": "5.3 Kenya’s Bill of Rights",
+                  "order": 3
+                },
+                {
+                  "sub_strand_name": "5.4 Cultural Globalisation",
+                  "order": 4
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

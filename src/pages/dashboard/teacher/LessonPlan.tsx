@@ -32,7 +32,6 @@ function detectLevel(grade: string): string {
 
 // Issue 19: CBE KICD format fields
 interface LessonPlanContent {
-  topic: string;
   grade: string;
   duration: string;
   strand: string;
@@ -61,7 +60,6 @@ export default function TeacherLessonPlan() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({
-    topic: '',
     grade: '',
     strand: '',
     subStrand: '',
@@ -109,7 +107,7 @@ export default function TeacherLessonPlan() {
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-    if (!form.topic.trim()) errors.topic = 'Topic is required';
+    if (!form.subStrand.trim()) errors.subStrand = 'Sub-strand is required';
     if (!form.grade.trim()) errors.grade = 'Grade/Class is required';
     if (!form.strand.trim()) errors.strand = 'Strand is required';
     if (!form.duration) errors.duration = 'Duration is required';
@@ -125,21 +123,19 @@ export default function TeacherLessonPlan() {
     setGenerating(true);
     try {
       const prompt = `Create a detailed CBE (Competency Based Education) lesson plan following KICD guidelines for Kenyan schools.
-Topic: ${form.topic}
 Strand: ${form.strand}
-Sub-Strand: ${form.subStrand || 'Appropriate sub-strand for this topic'}
+Sub-strand: ${form.subStrand}
 Grade/Class: ${form.grade}
 Duration: ${form.duration}
 Key Inquiry Question: ${form.keyInquiryQuestion || 'Auto-generate appropriate inquiry question'}
-Specific Learning Outcomes: ${form.objectives || 'Standard CBE outcomes for this topic'}
+Specific Learning Outcomes: ${form.objectives || 'Standard CBE outcomes for this sub-strand'}
 
 Respond ONLY with a valid JSON object (no markdown, no code blocks) with these exact keys:
 {
-  "topic": "${form.topic}",
+  "subStrand": "${form.subStrand}",
   "grade": "${form.grade}",
   "duration": "${form.duration}",
   "strand": "${form.strand}",
-  "subStrand": "sub-strand name",
   "keyInquiryQuestion": "key inquiry question",
   "specificLearningOutcomes": ["By end of lesson learner should be able to..."],
   "coreCompetencies": ["Communication and Collaboration", "Critical Thinking"],
@@ -185,7 +181,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
         plan = JSON.parse(content);
       } catch {
         // Fallback: generate a structured plan manually
-        plan = generateFallbackPlan(form.topic, form.grade, form.duration, form.objectives, form.strand);
+        plan = generateFallbackPlan(form.subStrand, form.grade, form.duration, form.objectives, form.strand);
       }
 
       setGeneratedPlan(plan);
@@ -193,7 +189,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
       toast.success('Lesson plan generated!');
     } catch (err) {
       // Use fallback plan if API fails
-      const plan = generateFallbackPlan(form.topic, form.grade, form.duration, form.objectives, form.strand);
+      const plan = generateFallbackPlan(form.subStrand, form.grade, form.duration, form.objectives, form.strand);
       setGeneratedPlan(plan);
       setEditedPlan(plan);
       toast.success('Lesson plan generated!');
@@ -202,23 +198,22 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
   };
 
   const generateFallbackPlan = (
-    topic: string,
+    subStrandName: string,
     grade: string,
     duration: string,
     objectives: string,
     strand: string
   ): LessonPlanContent => {
     return {
-      topic,
+      subStrand: subStrandName,
       grade,
       duration,
-      strand: strand || `Strand related to ${topic}`,
-      subStrand: `Sub-strand of ${topic}`,
-      keyInquiryQuestion: `How does ${topic} relate to our everyday lives?`,
+      strand: strand || `Strand related to ${subStrandName}`,
+      keyInquiryQuestion: `How does ${subStrandName} relate to our everyday lives?`,
       specificLearningOutcomes: [
-        `By the end of the lesson, the learner should be able to explain key concepts of ${topic}`,
-        `By the end of the lesson, the learner should be able to demonstrate understanding of ${topic} through practical activities`,
-        `By the end of the lesson, the learner should be able to apply knowledge of ${topic} in real-life situations`,
+        `By the end of the lesson, the learner should be able to explain key concepts of ${subStrandName}`,
+        `By the end of the lesson, the learner should be able to demonstrate understanding of ${subStrandName} through practical activities`,
+        `By the end of the lesson, the learner should be able to apply knowledge of ${subStrandName} in real-life situations`,
       ],
       coreCompetencies: ['Communication and Collaboration', 'Critical Thinking and Problem Solving', 'Creativity and Imagination'],
       pertinentAndContemporaryIssues: ['Environmental Education', 'Life Skills Education'],
@@ -226,9 +221,9 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
       objectives: objectives
         ? objectives.split('\n').filter(Boolean)
         : [
-            `By the end of the lesson, learners should be able to explain key concepts of ${topic}`,
+            `By the end of the lesson, learners should be able to explain key concepts of ${subStrandName}`,
             `Learners should demonstrate understanding through practical activities`,
-            `Learners should apply knowledge of ${topic} in real-life situations`,
+            `Learners should apply knowledge of ${subStrandName} in real-life situations`,
           ],
       materials: [
         'Textbooks and reference materials',
@@ -241,18 +236,18 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
         'Digital learning resources',
         'Community resources',
       ],
-      organizationOfLearning: `Learners are organized into groups of 4-5 for collaborative activities. Learning stations are set up with relevant materials for the lesson on ${topic}.`,
-      introduction: `Begin with a 5-minute review of previous knowledge related to ${topic}. Ask learners questions to activate prior knowledge and introduce the lesson objectives.`,
+      organizationOfLearning: `Learners are organized into groups of 4-5 for collaborative activities. Learning stations are set up with relevant materials for the lesson on ${subStrandName}.`,
+      introduction: `Begin with a 5-minute review of previous knowledge related to ${subStrandName}. Ask learners questions to activate prior knowledge and introduce the lesson objectives.`,
       mainActivities: [
-        `Activity 1 (${duration.split(' ')[0]} min): Teacher introduces ${topic} using visual aids and examples. Learners take notes and ask questions.`,
-        `Activity 2 (${duration.split(' ')[0]} min): Group work - learners discuss and solve problems related to ${topic} in groups of 4-5.`,
+        `Activity 1 (${duration.split(' ')[0]} min): Teacher introduces ${subStrandName} using visual aids and examples. Learners take notes and ask questions.`,
+        `Activity 2 (${duration.split(' ')[0]} min): Group work - learners discuss and solve problems related to ${subStrandName} in groups of 4-5.`,
         `Activity 3 (${duration.split(' ')[0]} min): Groups present their findings to the class. Teacher provides feedback and clarification.`,
       ],
-      assessment: `Formative assessment through observation during group work and questioning. Learners complete a short worksheet to check understanding of ${topic}.`,
-      extendedActivities: `Fast learners can research additional examples of ${topic} and create a poster or presentation for the class.`,
-      homework: `Research and write a one-page summary on how ${topic} applies in everyday life. Bring examples to share in the next lesson.`,
+      assessment: `Formative assessment through observation during group work and questioning. Learners complete a short worksheet to check understanding of ${subStrandName}.`,
+      extendedActivities: `Fast learners can research additional examples of ${subStrandName} and create a poster or presentation for the class.`,
+      homework: `Research and write a one-page summary on how ${subStrandName} applies in everyday life. Bring examples to share in the next lesson.`,
       teacherSelfEvaluation: `1. Were the learning outcomes achieved?\n2. What would I do differently next time?\n3. Which learners need additional support?\n4. Was the time allocation appropriate?`,
-      reflection: `The lesson was engaging and learners showed interest in ${topic}. Most learners achieved the set objectives. A few learners may need additional support in applying the concepts practically.`,
+      reflection: `The lesson was engaging and learners showed interest in ${subStrandName}. Most learners achieved the set objectives. A few learners may need additional support in applying the concepts practically.`,
     };
   };
 
@@ -269,7 +264,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
       const { error } = await supabaseUntyped.from('lesson_plans').insert({
         school_id: user?.schoolId,
         teacher_id: teacher.id,
-        topic: editedPlan.topic,
+        topic: editedPlan.subStrand,
         grade: editedPlan.grade,
         duration: editedPlan.duration,
         learning_objectives: editedPlan.objectives.join('\n'),
@@ -296,7 +291,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
     doc.setFont('helvetica', 'bold');
     doc.text('LESSON PLAN — KICD / CBE FORMAT', 105, 12, { align: 'center' });
     doc.setFontSize(11);
-    doc.text(`${plan.topic} | Grade: ${plan.grade} | Duration: ${plan.duration}`, 105, 22, { align: 'center' });
+    doc.text(`${plan.subStrand} | Grade: ${plan.grade} | Duration: ${plan.duration}`, 105, 22, { align: 'center' });
 
     doc.setTextColor(0, 0, 0);
     let y = 38;
@@ -350,7 +345,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
     doc.setTextColor(150, 150, 150);
     doc.text(`Generated by Zamifu Analytics | ${new Date().toLocaleDateString()}`, 105, 290, { align: 'center' });
 
-    doc.save(`lesson_plan_${plan.topic.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`lesson_plan_${plan.subStrand.replace(/\s+/g, '_')}.pdf`);
     toast.success('PDF exported!');
   };
 
@@ -361,11 +356,11 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
   };
 
   const loadPlan = (plan: any) => {
-    const content = plan.content as LessonPlanContent;
+    const legacyContent = plan.content as LessonPlanContent & { topic?: string };
+    const content: LessonPlanContent = { ...legacyContent, subStrand: legacyContent.subStrand || legacyContent.topic || '' };
     setGeneratedPlan(content);
     setEditedPlan(content);
     setForm({
-      topic: content.topic,
       grade: content.grade,
       strand: content.strand || '',
       subStrand: content.subStrand || '',
@@ -409,16 +404,6 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Topic *</label>
-            <input
-              value={form.topic}
-              onChange={e => setForm({ ...form, topic: e.target.value })}
-              placeholder="e.g. Photosynthesis, Fractions, Kenyan History"
-              className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] ${formErrors.topic ? 'border-red-300' : 'border-gray-200'}`}
-            />
-            {formErrors.topic && <p className="text-xs text-red-500 mt-1">{formErrors.topic}</p>}
-          </div>
-          <div>
             <label className="block text-xs text-gray-500 mb-1">Grade/Class *</label>
             <input
               value={form.grade}
@@ -449,13 +434,14 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
             {formErrors.strand && <p className="text-xs text-red-500 mt-1">{formErrors.strand}</p>}
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Sub-Strand (optional)</label>
+            <label className="block text-xs text-gray-500 mb-1">Sub-strand *</label>
             <input
               value={form.subStrand}
               onChange={e => setForm({ ...form, subStrand: e.target.value })}
-              placeholder="e.g. Plants, Addition, Colonial Period"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+              placeholder="Enter the curriculum sub-strand"
+              className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] ${formErrors.subStrand ? 'border-red-300' : 'border-gray-200'}`}
             />
+            {formErrors.subStrand && <p className="text-xs text-red-500 mt-1">{formErrors.subStrand}</p>}
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Key Inquiry Question (optional)</label>
@@ -514,7 +500,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
         <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold text-[#111111]">
-              {editedPlan.topic} — {editedPlan.grade} ({editedPlan.duration})
+              {editedPlan.subStrand} — {editedPlan.grade} ({editedPlan.duration})
             </h3>
             <div className="flex gap-2">
               <button
@@ -599,7 +585,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks) with these e
             {savedPlans.map(plan => (
               <div key={plan.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100">
                 <div>
-                  <p className="text-sm font-medium text-[#111111]">{plan.topic}</p>
+                  <p className="text-sm font-medium text-[#111111]">{plan.content?.subStrand || plan.topic}</p>
                   <p className="text-xs text-[#666666]">{plan.grade} · {plan.duration} · {new Date(plan.created_at).toLocaleDateString()}</p>
                 </div>
                 <div className="flex gap-2">

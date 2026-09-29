@@ -338,14 +338,17 @@ export async function repairGeneratedExam(
 
 /** Human-readable description of what the teacher actually selected. */
 export function describeRequestScope(request: ExamGenerationRequest): string {
+  const juniorSchool = /^(?:grade\s*)?[789]$/i.test(request.gradeLevel.trim());
   const lines: string[] = [
     `Subject: ${request.subject}; Grade: ${request.gradeLevel}; Format: ${request.format}; Difficulty: ${request.difficulty}.`,
   ];
   if (request.strands.length) lines.push(`Selected strands: ${request.strands.join('; ')}.`);
   if (request.subStrands.length) lines.push(`Selected sub-strands: ${request.subStrands.join('; ')}.`);
-  if (request.topics.length) lines.push(`Selected topics: ${request.topics.join('; ')}.`);
+  if (!juniorSchool && request.topics.length) lines.push(`Selected topics: ${request.topics.join('; ')}.`);
   for (const node of request.curriculumScope || []) {
-    lines.push(`"${node.strand}" owns sub-strands [${node.subStrands.join(', ') || 'any'}] and topics [${node.topics.join(', ') || 'any'}].`);
+    lines.push(juniorSchool
+      ? `"${node.strand}" owns selected sub-strands [${node.subStrands.join(', ') || 'none'}].`
+      : `"${node.strand}" owns sub-strands [${node.subStrands.join(', ') || 'any'}] and topics [${node.topics.join(', ') || 'any'}].`);
   }
   return lines.join('\n');
 }
@@ -364,15 +367,33 @@ export function buildQuestionRewritePrompt(
   issues: ExamValidationIssue[],
   attempt: number,
 ): string {
+  const juniorSchool = /^(?:grade\s*)?[789]$/i.test(request.gradeLevel.trim());
+  const hierarchyConstraint = juniorSchool
+    ? '- Use only a strand and its selected sub-strand. Do not add a separate topic label.'
+    : '- Its strand, sub-strand and topic must come from this selection, and the topic must belong to the stated sub-strand:';
+  const topicConstraint = juniorSchool ? '' : '- Never reuse a strand, sub-strand, or topic that is not listed above.';
+  const outputKeys = juniorSchool
+    ? 'question_type, question_text, options, correct_answer, marking_scheme, marks, difficulty, strand, sub_strand, learning_outcome, competency, cognitive_level, sub_parts, visual_spec'
+    : 'question_type, question_text, options, correct_answer, marking_scheme, marks, difficulty, strand, sub_strand, topic, learning_outcome, competency, cognitive_level, sub_parts, visual_spec';
+  const rejectedQuestion = {
+    question_type: question.question_type,
+    question_text: question.question_text,
+    options: question.options || [],
+    marks: question.marks,
+    strand: question.strand,
+    sub_strand: question.sub_strand,
+    ...(!juniorSchool ? { topic: question.topic } : {}),
+    visual_spec: question.visual_spec || null,
+  };
   return `You are repairing one question from a Kenyan CBC/CBE assessment paper. Rewrite ONLY this question. Do not add commentary.
 
 Why the current question was rejected (repair attempt ${attempt}):
 ${issueList(issues)}
 
 Hard constraints for the replacement:
-- Its strand, sub-strand and topic must come from this selection, and the topic must belong to the stated sub-strand:
+- ${hierarchyConstraint}
 ${describeRequestScope(request)}
-- Never reuse a strand, sub-strand, or topic that is not listed above.
+${topicConstraint}
 - Keep the same question_type ("${question.question_type}") and exactly ${question.marks} mark(s).
 - Keep it age-appropriate for ${request.gradeLevel} ${request.subject}, original, and self-contained.
 - Provide a real correct_answer and marking_scheme; never write marking instructions instead of the actual answer.
@@ -381,19 +402,10 @@ ${question.question_type === 'multiple_choice' ? '- Provide exactly four options
 ${question.visual_spec ? '- If you keep a visual, every label and value it needs must be present and readable.' : '- Set visual_spec to null.'}
 
 The rejected question was:
-${JSON.stringify({
-    question_type: question.question_type,
-    question_text: question.question_text,
-    options: question.options || [],
-    marks: question.marks,
-    strand: question.strand,
-    sub_strand: question.sub_strand,
-    topic: question.topic,
-    visual_spec: question.visual_spec || null,
-  })}
+${JSON.stringify(rejectedQuestion)}
 
 Return json only, as {"question": { ...one question object... }} using these keys:
-question_type, question_text, options, correct_answer, marking_scheme, marks, difficulty, strand, sub_strand, topic, learning_outcome, competency, cognitive_level, sub_parts, visual_spec.`;
+${outputKeys}.`;
 }
 
 /**

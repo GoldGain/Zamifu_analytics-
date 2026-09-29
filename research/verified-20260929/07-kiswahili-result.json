@@ -1,0 +1,1214 @@
+{
+  "subject": "Kiswahili",
+  "evidence_level": "high: current official KICD Google Drive previews; the KICD-revised October 2024 edition title, page count, and numbered summary table were extracted from the publicly rendered previews",
+  "landing_pages": {
+    "grade_7": "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-seven-designs/",
+    "grade_8": "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-eight-designs/",
+    "grade_9": "https://kicd.ac.ke/cbc-materials/curriculum-designs/grade-nine-designs/"
+  },
+  "grades": [
+    {
+      "grade": 7,
+      "source_title": "Kiswahili Grade 7 - July 2024 - Revised Oct.pdf",
+      "source_id": "1pZ3Q6EwKhyBSfpmbYCjF8yTDrJifUrJJ",
+      "preview_url": "https://drive.google.com/file/d/1pZ3Q6EwKhyBSfpmbYCjF8yTDrJifUrJJ/preview",
+      "summary_pdf_pages": [
+        13,
+        14,
+        15,
+        16
+      ],
+      "hierarchy_note": "Transcribed from the official KICD summary table 'Muhtasari wa Mada na Mada Ndogo'. The four Mada skill areas are the strand labels; the 60 numbered Mada Ndogo entries are the terminal sub-strands. Theme headings are not added as a third hierarchy level.",
+      "strand_count": 4,
+      "sub_strand_count": 60,
+      "strands": [
+        {
+          "name": "Kusikiliza na Kuzungumza",
+          "order": 1,
+          "sub_strands": [
+            {
+              "code": "1.1.1",
+              "name": "Kusikiliza na Kujibu: Mazungumzo",
+              "order": 1,
+              "sub_strand_name": "1.1.1 Kusikiliza na Kujibu: Mazungumzo"
+            },
+            {
+              "code": "2.1.1",
+              "name": "Kusikiliza kwa Kina: Sauti /dh/ na /th/",
+              "order": 2,
+              "sub_strand_name": "2.1.1 Kusikiliza kwa Kina: Sauti /dh/ na /th/"
+            },
+            {
+              "code": "3.1.1",
+              "name": "Tanzu za Fasihi: Fasihi andishi na simulizi",
+              "order": 3,
+              "sub_strand_name": "3.1.1 Tanzu za Fasihi: Fasihi andishi na simulizi"
+            },
+            {
+              "code": "4.1.1",
+              "name": "Nyimbo: Nyimbo za Watoto na Bembelezi",
+              "order": 4,
+              "sub_strand_name": "4.1.1 Nyimbo: Nyimbo za Watoto na Bembelezi"
+            },
+            {
+              "code": "5.1.1",
+              "name": "Mazungumzo Mahususi",
+              "order": 5,
+              "sub_strand_name": "5.1.1 Mazungumzo Mahususi"
+            },
+            {
+              "code": "6.1.1",
+              "name": "Kusikiliza kwa Kufasiri",
+              "order": 6,
+              "sub_strand_name": "6.1.1 Kusikiliza kwa Kufasiri"
+            },
+            {
+              "code": "7.1.1",
+              "name": "Kusikiliza kwa Ufahamu: Ufahamu wa kusikiliza",
+              "order": 7,
+              "sub_strand_name": "7.1.1 Kusikiliza kwa Ufahamu: Ufahamu wa kusikiliza"
+            },
+            {
+              "code": "8.1.1",
+              "name": "Kuzungumza ili Kupasha Habari",
+              "order": 8,
+              "sub_strand_name": "8.1.1 Kuzungumza ili Kupasha Habari"
+            },
+            {
+              "code": "9.1.1",
+              "name": "Kusikiliza kwa Kina: Sauti /d/ na /nd/",
+              "order": 9,
+              "sub_strand_name": "9.1.1 Kusikiliza kwa Kina: Sauti /d/ na /nd/"
+            },
+            {
+              "code": "10.1.1",
+              "name": "Nyimbo: Nyimbo za Kazi na Nyimbo za Dini",
+              "order": 10,
+              "sub_strand_name": "10.1.1 Nyimbo: Nyimbo za Kazi na Nyimbo za Dini"
+            },
+            {
+              "code": "11.1.1",
+              "name": "Kuzungumza kwa Kuambatanisha na Vitendo/Ishara",
+              "order": 11,
+              "sub_strand_name": "11.1.1 Kuzungumza kwa Kuambatanisha na Vitendo/Ishara"
+            },
+            {
+              "code": "12.1.1",
+              "name": "Kusikiliza kwa Makini",
+              "order": 12,
+              "sub_strand_name": "12.1.1 Kusikiliza kwa Makini"
+            },
+            {
+              "code": "13.1.1",
+              "name": "Wahusika katika Nyimbo",
+              "order": 13,
+              "sub_strand_name": "13.1.1 Wahusika katika Nyimbo"
+            },
+            {
+              "code": "14.1.1",
+              "name": "Lugha katika Nyimbo",
+              "order": 14,
+              "sub_strand_name": "14.1.1 Lugha katika Nyimbo"
+            },
+            {
+              "code": "15.1.1",
+              "name": "Kusikiliza Habari na Kujibu",
+              "order": 15,
+              "sub_strand_name": "15.1.1 Kusikiliza Habari na Kujibu"
+            }
+          ]
+        },
+        {
+          "name": "Kusoma",
+          "order": 2,
+          "sub_strands": [
+            {
+              "code": "1.2.1",
+              "name": "Kusoma kwa Ufahamu: Kifungu cha Simulizi",
+              "order": 1,
+              "sub_strand_name": "1.2.1 Kusoma kwa Ufahamu: Kifungu cha Simulizi"
+            },
+            {
+              "code": "2.2.1",
+              "name": "Kusoma kwa Mapana: Matini ya kujichagulia",
+              "order": 2,
+              "sub_strand_name": "2.2.1 Kusoma kwa Mapana: Matini ya kujichagulia"
+            },
+            {
+              "code": "3.2.1",
+              "name": "Kusoma kwa Kina: Novela",
+              "order": 3,
+              "sub_strand_name": "3.2.1 Kusoma kwa Kina: Novela"
+            },
+            {
+              "code": "4.2.1",
+              "name": "Kusoma kwa Ufasaha",
+              "order": 4,
+              "sub_strand_name": "4.2.1 Kusoma kwa Ufasaha"
+            },
+            {
+              "code": "5.2.1",
+              "name": "Kusoma kwa Ufahamu",
+              "order": 5,
+              "sub_strand_name": "5.2.1 Kusoma kwa Ufahamu"
+            },
+            {
+              "code": "6.2.1",
+              "name": "Kusoma kwa Kina: Maudhui na Dhamira",
+              "order": 6,
+              "sub_strand_name": "6.2.1 Kusoma kwa Kina: Maudhui na Dhamira"
+            },
+            {
+              "code": "7.2.1",
+              "name": "Ufupisho",
+              "order": 7,
+              "sub_strand_name": "7.2.1 Ufupisho"
+            },
+            {
+              "code": "8.2.1",
+              "name": "Kusoma kwa Kina: Mandhari na Ploti",
+              "order": 8,
+              "sub_strand_name": "8.2.1 Kusoma kwa Kina: Mandhari na Ploti"
+            },
+            {
+              "code": "9.2.1",
+              "name": "Kusoma kwa Ufahamu: Kifungu cha Kushawishi",
+              "order": 9,
+              "sub_strand_name": "9.2.1 Kusoma kwa Ufahamu: Kifungu cha Kushawishi"
+            },
+            {
+              "code": "10.2.1",
+              "name": "Kusoma kwa Kina: Wahusika",
+              "order": 10,
+              "sub_strand_name": "10.2.1 Kusoma kwa Kina: Wahusika"
+            },
+            {
+              "code": "11.2.1",
+              "name": "Kusoma kwa Mapana: Matini ya kujichagulia",
+              "order": 11,
+              "sub_strand_name": "11.2.1 Kusoma kwa Mapana: Matini ya kujichagulia"
+            },
+            {
+              "code": "12.2.1",
+              "name": "Kusoma kwa Ufasaha",
+              "order": 12,
+              "sub_strand_name": "12.2.1 Kusoma kwa Ufasaha"
+            },
+            {
+              "code": "13.2.1",
+              "name": "Kusoma kwa Kina: Mbinu za Lugha",
+              "order": 13,
+              "sub_strand_name": "13.2.1 Kusoma kwa Kina: Mbinu za Lugha"
+            },
+            {
+              "code": "14.2.1",
+              "name": "Kusoma kwa Ufahamu: Kifungu cha Mjadala",
+              "order": 14,
+              "sub_strand_name": "14.2.1 Kusoma kwa Ufahamu: Kifungu cha Mjadala"
+            },
+            {
+              "code": "15.2.1",
+              "name": "Ufupisho",
+              "order": 15,
+              "sub_strand_name": "15.2.1 Ufupisho"
+            }
+          ]
+        },
+        {
+          "name": "Kuandika",
+          "order": 3,
+          "sub_strands": [
+            {
+              "code": "1.3.1",
+              "name": "Viakifishi: Herufi kubwa na Kikomo",
+              "order": 1,
+              "sub_strand_name": "1.3.1 Viakifishi: Herufi kubwa na Kikomo"
+            },
+            {
+              "code": "2.3.1",
+              "name": "Barua ya Kirafiki ya Kutoa Mwaliko",
+              "order": 2,
+              "sub_strand_name": "2.3.1 Barua ya Kirafiki ya Kutoa Mwaliko"
+            },
+            {
+              "code": "3.3.1",
+              "name": "Insha za Kubuni",
+              "order": 3,
+              "sub_strand_name": "3.3.1 Insha za Kubuni"
+            },
+            {
+              "code": "4.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 4,
+              "sub_strand_name": "4.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "5.3.1",
+              "name": "Insha ya Maelekezo",
+              "order": 5,
+              "sub_strand_name": "5.3.1 Insha ya Maelekezo"
+            },
+            {
+              "code": "6.3.1",
+              "name": "Insha za Kubuni: Picha",
+              "order": 6,
+              "sub_strand_name": "6.3.1 Insha za Kubuni: Picha"
+            },
+            {
+              "code": "7.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 7,
+              "sub_strand_name": "7.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "8.3.1",
+              "name": "Viakifishi: Mabano na Kistari Kifupi",
+              "order": 8,
+              "sub_strand_name": "8.3.1 Viakifishi: Mabano na Kistari Kifupi"
+            },
+            {
+              "code": "9.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 9,
+              "sub_strand_name": "9.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "10.3.1",
+              "name": "Barua ya Kuomba Msamaha",
+              "order": 10,
+              "sub_strand_name": "10.3.1 Barua ya Kuomba Msamaha"
+            },
+            {
+              "code": "11.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 11,
+              "sub_strand_name": "11.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "12.3.1",
+              "name": "Hotuba ya Kupasha Habari",
+              "order": 12,
+              "sub_strand_name": "12.3.1 Hotuba ya Kupasha Habari"
+            },
+            {
+              "code": "13.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 13,
+              "sub_strand_name": "13.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "14.3.1",
+              "name": "Insha ya Maelekezo",
+              "order": 14,
+              "sub_strand_name": "14.3.1 Insha ya Maelekezo"
+            },
+            {
+              "code": "15.3.1",
+              "name": "Kuandika Kidijitali: Baruapepe",
+              "order": 15,
+              "sub_strand_name": "15.3.1 Kuandika Kidijitali: Baruapepe"
+            }
+          ]
+        },
+        {
+          "name": "Sarufi",
+          "order": 4,
+          "sub_strands": [
+            {
+              "code": "1.4.1",
+              "name": "Aina za nomino: Nomino za Makundi na Nomino za Dhahania",
+              "order": 1,
+              "sub_strand_name": "1.4.1 Aina za nomino: Nomino za Makundi na Nomino za Dhahania"
+            },
+            {
+              "code": "2.4.1",
+              "name": "Vihusishi: Vihusishi vya -a Unganifu na Vihusishi vya Sababu",
+              "order": 2,
+              "sub_strand_name": "2.4.1 Vihusishi: Vihusishi vya -a Unganifu na Vihusishi vya Sababu"
+            },
+            {
+              "code": "3.4.1",
+              "name": "Aina za nomino: Nomino za Wingi na Nomino za Vitenzi-jina",
+              "order": 3,
+              "sub_strand_name": "3.4.1 Aina za nomino: Nomino za Wingi na Nomino za Vitenzi-jina"
+            },
+            {
+              "code": "4.4.1",
+              "name": "Nyakati na Hali: Wakati uliopo, Wakati uliopita na Wakati ujao",
+              "order": 4,
+              "sub_strand_name": "4.4.1 Nyakati na Hali: Wakati uliopo, Wakati uliopita na Wakati ujao"
+            },
+            {
+              "code": "5.4.1",
+              "name": "Nyakati na Hali: Wakati uliopita hali ya kuendelea na Wakati ujao hali ya kuendelea",
+              "order": 5,
+              "sub_strand_name": "5.4.1 Nyakati na Hali: Wakati uliopita hali ya kuendelea na Wakati ujao hali ya kuendelea"
+            },
+            {
+              "code": "6.4.1",
+              "name": "Vitenzi: Vitenzi Vikuu na Vitenzi Visaidizi",
+              "order": 6,
+              "sub_strand_name": "6.4.1 Vitenzi: Vitenzi Vikuu na Vitenzi Visaidizi"
+            },
+            {
+              "code": "7.4.1",
+              "name": "Vitenzi Vishirikishi",
+              "order": 7,
+              "sub_strand_name": "7.4.1 Vitenzi Vishirikishi"
+            },
+            {
+              "code": "8.4.1",
+              "name": "Ngeli na Upatanisho wa Kisarufi: Ngeli ya A-WA na Ngeli ya U-I",
+              "order": 8,
+              "sub_strand_name": "8.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya A-WA na Ngeli ya U-I"
+            },
+            {
+              "code": "9.4.1",
+              "name": "Ngeli na Upatanisho wa Kisarufi: Ngeli ya KI-VI na LI-YA",
+              "order": 9,
+              "sub_strand_name": "9.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya KI-VI na LI-YA"
+            },
+            {
+              "code": "10.4.1",
+              "name": "Vinyume vya Maneno",
+              "order": 10,
+              "sub_strand_name": "10.4.1 Vinyume vya Maneno"
+            },
+            {
+              "code": "11.4.1",
+              "name": "Mnyambuliko wa Vitenzi: Kauli ya Kutenda, Kutendea na Kutendwa",
+              "order": 11,
+              "sub_strand_name": "11.4.1 Mnyambuliko wa Vitenzi: Kauli ya Kutenda, Kutendea na Kutendwa"
+            },
+            {
+              "code": "12.4.1",
+              "name": "Aina za Sentensi: Sentensi Sahili",
+              "order": 12,
+              "sub_strand_name": "12.4.1 Aina za Sentensi: Sentensi Sahili"
+            },
+            {
+              "code": "13.4.1",
+              "name": "Ukanushaji kwa Kuzingatia Nyakati",
+              "order": 13,
+              "sub_strand_name": "13.4.1 Ukanushaji kwa Kuzingatia Nyakati"
+            },
+            {
+              "code": "14.4.1",
+              "name": "Ukubwa wa Nomino",
+              "order": 14,
+              "sub_strand_name": "14.4.1 Ukubwa wa Nomino"
+            },
+            {
+              "code": "15.4.1",
+              "name": "Usemi Halisi na Usemi wa Taarifa",
+              "order": 15,
+              "sub_strand_name": "15.4.1 Usemi Halisi na Usemi wa Taarifa"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "grade": 8,
+      "source_title": "Kiswahili Grade 8 - July 2024 - Revised Oct.pdf",
+      "source_id": "1l-TPHn7cSCasqwb7auMUX2Cbtcu2cWoI",
+      "preview_url": "https://drive.google.com/file/d/1l-TPHn7cSCasqwb7auMUX2Cbtcu2cWoI/preview",
+      "summary_pdf_pages": [
+        13,
+        14,
+        15,
+        16
+      ],
+      "hierarchy_note": "Transcribed from the official KICD summary table 'Muhtasari wa Mada na Mada Ndogo'. The four Mada skill areas are the strand labels; the 60 numbered Mada Ndogo entries are the terminal sub-strands. Theme headings are not added as a third hierarchy level.",
+      "strand_count": 4,
+      "sub_strand_count": 60,
+      "strands": [
+        {
+          "name": "Kusikiliza na Kuzungumza",
+          "order": 1,
+          "sub_strands": [
+            {
+              "code": "1.1.1",
+              "name": "Kusikiliza na Kujibu: Mahojiano",
+              "order": 1,
+              "sub_strand_name": "1.1.1 Kusikiliza na Kujibu: Mahojiano"
+            },
+            {
+              "code": "2.1.1",
+              "name": "Kusikiliza kwa Kina: Sauti /g/ na /gh/",
+              "order": 2,
+              "sub_strand_name": "2.1.1 Kusikiliza kwa Kina: Sauti /g/ na /gh/"
+            },
+            {
+              "code": "3.1.1",
+              "name": "Hadithi: Mighani",
+              "order": 3,
+              "sub_strand_name": "3.1.1 Hadithi: Mighani"
+            },
+            {
+              "code": "4.1.1",
+              "name": "Hadithi: Visasili",
+              "order": 4,
+              "sub_strand_name": "4.1.1 Hadithi: Visasili"
+            },
+            {
+              "code": "5.1.1",
+              "name": "Kusikiliza Maagizo",
+              "order": 5,
+              "sub_strand_name": "5.1.1 Kusikiliza Maagizo"
+            },
+            {
+              "code": "6.1.1",
+              "name": "Kusikiliza kwa Kufasiri",
+              "order": 6,
+              "sub_strand_name": "6.1.1 Kusikiliza kwa Kufasiri"
+            },
+            {
+              "code": "7.1.1",
+              "name": "Usikilizaji Husishi",
+              "order": 7,
+              "sub_strand_name": "7.1.1 Usikilizaji Husishi"
+            },
+            {
+              "code": "8.1.1",
+              "name": "Uzungumzaji wa Papo kwa Hapo",
+              "order": 8,
+              "sub_strand_name": "8.1.1 Uzungumzaji wa Papo kwa Hapo"
+            },
+            {
+              "code": "9.1.1",
+              "name": "Kusikiliza kwa Kina: Sauti /ch/ na /sh/",
+              "order": 9,
+              "sub_strand_name": "9.1.1 Kusikiliza kwa Kina: Sauti /ch/ na /sh/"
+            },
+            {
+              "code": "10.1.1",
+              "name": "Hadithi: Hurafa na Hekaya",
+              "order": 10,
+              "sub_strand_name": "10.1.1 Hadithi: Hurafa na Hekaya"
+            },
+            {
+              "code": "11.1.1",
+              "name": "Kuzungumza kwa Kutumia Vidokezo vya Hoja",
+              "order": 11,
+              "sub_strand_name": "11.1.1 Kuzungumza kwa Kutumia Vidokezo vya Hoja"
+            },
+            {
+              "code": "12.1.1",
+              "name": "Kusikiliza kwa Makini",
+              "order": 12,
+              "sub_strand_name": "12.1.1 Kusikiliza kwa Makini"
+            },
+            {
+              "code": "13.1.1",
+              "name": "Hadithi: Wahusika",
+              "order": 13,
+              "sub_strand_name": "13.1.1 Hadithi: Wahusika"
+            },
+            {
+              "code": "14.1.1",
+              "name": "Hadithi: Matumizi ya Lugha",
+              "order": 14,
+              "sub_strand_name": "14.1.1 Hadithi: Matumizi ya Lugha"
+            },
+            {
+              "code": "15.1.1",
+              "name": "Usikilizaji Husishi",
+              "order": 15,
+              "sub_strand_name": "15.1.1 Usikilizaji Husishi"
+            }
+          ]
+        },
+        {
+          "name": "Kusoma",
+          "order": 2,
+          "sub_strands": [
+            {
+              "code": "1.2.1",
+              "name": "Kusoma kwa Ufahamu: Simulizi",
+              "order": 1,
+              "sub_strand_name": "1.2.1 Kusoma kwa Ufahamu: Simulizi"
+            },
+            {
+              "code": "2.2.1",
+              "name": "Kusoma kwa Mapana: Matini ya kujichagulia",
+              "order": 2,
+              "sub_strand_name": "2.2.1 Kusoma kwa Mapana: Matini ya kujichagulia"
+            },
+            {
+              "code": "3.2.1",
+              "name": "Kusoma kwa Kina: Tamthilia",
+              "order": 3,
+              "sub_strand_name": "3.2.1 Kusoma kwa Kina: Tamthilia"
+            },
+            {
+              "code": "4.2.1",
+              "name": "Kusoma kwa Ufasaha",
+              "order": 4,
+              "sub_strand_name": "4.2.1 Kusoma kwa Ufasaha"
+            },
+            {
+              "code": "5.2.1",
+              "name": "Kusoma kwa Ufahamu",
+              "order": 5,
+              "sub_strand_name": "5.2.1 Kusoma kwa Ufahamu"
+            },
+            {
+              "code": "6.2.1",
+              "name": "Kusoma kwa Kina: Maudhui na Dhamira",
+              "order": 6,
+              "sub_strand_name": "6.2.1 Kusoma kwa Kina: Maudhui na Dhamira"
+            },
+            {
+              "code": "7.2.1",
+              "name": "Ufupisho",
+              "order": 7,
+              "sub_strand_name": "7.2.1 Ufupisho"
+            },
+            {
+              "code": "8.2.1",
+              "name": "Kusoma kwa Kina: Mandhari na Ploti",
+              "order": 8,
+              "sub_strand_name": "8.2.1 Kusoma kwa Kina: Mandhari na Ploti"
+            },
+            {
+              "code": "9.2.1",
+              "name": "Kusoma kwa Ufahamu: Kifungu cha Kushawishi",
+              "order": 9,
+              "sub_strand_name": "9.2.1 Kusoma kwa Ufahamu: Kifungu cha Kushawishi"
+            },
+            {
+              "code": "10.2.1",
+              "name": "Kusoma kwa Kina: Wahusika katika Tamthilia",
+              "order": 10,
+              "sub_strand_name": "10.2.1 Kusoma kwa Kina: Wahusika katika Tamthilia"
+            },
+            {
+              "code": "11.2.1",
+              "name": "Kusoma kwa Mapana: Matini ya kujichagulia",
+              "order": 11,
+              "sub_strand_name": "11.2.1 Kusoma kwa Mapana: Matini ya kujichagulia"
+            },
+            {
+              "code": "12.2.1",
+              "name": "Kusoma kwa Ufasaha",
+              "order": 12,
+              "sub_strand_name": "12.2.1 Kusoma kwa Ufasaha"
+            },
+            {
+              "code": "13.2.1",
+              "name": "Kusoma kwa Kina: Mbinu za Lugha",
+              "order": 13,
+              "sub_strand_name": "13.2.1 Kusoma kwa Kina: Mbinu za Lugha"
+            },
+            {
+              "code": "14.2.1",
+              "name": "Kusoma kwa Ufahamu",
+              "order": 14,
+              "sub_strand_name": "14.2.1 Kusoma kwa Ufahamu"
+            },
+            {
+              "code": "15.2.1",
+              "name": "Ufupisho",
+              "order": 15,
+              "sub_strand_name": "15.2.1 Ufupisho"
+            }
+          ]
+        },
+        {
+          "name": "Kuandika",
+          "order": 3,
+          "sub_strands": [
+            {
+              "code": "1.3.1",
+              "name": "Viakifishi: Alama ya hisi na Ritifaa",
+              "order": 1,
+              "sub_strand_name": "1.3.1 Viakifishi: Alama ya hisi na Ritifaa"
+            },
+            {
+              "code": "2.3.1",
+              "name": "Barua ya Kirafiki: Barua ya kirafiki ya kutoa shukrani",
+              "order": 2,
+              "sub_strand_name": "2.3.1 Barua ya Kirafiki: Barua ya kirafiki ya kutoa shukrani"
+            },
+            {
+              "code": "3.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 3,
+              "sub_strand_name": "3.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "4.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 4,
+              "sub_strand_name": "4.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "5.3.1",
+              "name": "Insha ya Maelekezo",
+              "order": 5,
+              "sub_strand_name": "5.3.1 Insha ya Maelekezo"
+            },
+            {
+              "code": "6.3.1",
+              "name": "Insha za Kubuni: Insha ya mdokezo",
+              "order": 6,
+              "sub_strand_name": "6.3.1 Insha za Kubuni: Insha ya mdokezo"
+            },
+            {
+              "code": "7.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 7,
+              "sub_strand_name": "7.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "8.3.1",
+              "name": "Viakifishi: Mtajo na mshazari",
+              "order": 8,
+              "sub_strand_name": "8.3.1 Viakifishi: Mtajo na mshazari"
+            },
+            {
+              "code": "9.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 9,
+              "sub_strand_name": "9.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "10.3.1",
+              "name": "Barua ya Kuomba Msaada",
+              "order": 10,
+              "sub_strand_name": "10.3.1 Barua ya Kuomba Msaada"
+            },
+            {
+              "code": "11.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 11,
+              "sub_strand_name": "11.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "12.3.1",
+              "name": "Insha za Kiuamilifu: Hotuba ya kutoa ufafanuzi",
+              "order": 12,
+              "sub_strand_name": "12.3.1 Insha za Kiuamilifu: Hotuba ya kutoa ufafanuzi"
+            },
+            {
+              "code": "13.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 13,
+              "sub_strand_name": "13.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "14.3.1",
+              "name": "Insha za Maelekezo",
+              "order": 14,
+              "sub_strand_name": "14.3.1 Insha za Maelekezo"
+            },
+            {
+              "code": "15.3.1",
+              "name": "Baruapepe ya Kiofisi",
+              "order": 15,
+              "sub_strand_name": "15.3.1 Baruapepe ya Kiofisi"
+            }
+          ]
+        },
+        {
+          "name": "Sarufi",
+          "order": 4,
+          "sub_strands": [
+            {
+              "code": "1.4.1",
+              "name": "Viwakilishi: Viwakilishi vya Nafsi, Viwalikishi Vionyeshi na Viwakilishi vya Idadi",
+              "order": 1,
+              "sub_strand_name": "1.4.1 Viwakilishi: Viwakilishi vya Nafsi, Viwalikishi Vionyeshi na Viwakilishi vya Idadi"
+            },
+            {
+              "code": "2.4.1",
+              "name": "Viwakilishi: Viwalikishi vya Sifa, Viwalikishi vya Pekee na Viwalikishi Viulizi",
+              "order": 2,
+              "sub_strand_name": "2.4.1 Viwakilishi: Viwalikishi vya Sifa, Viwalikishi vya Pekee na Viwalikishi Viulizi"
+            },
+            {
+              "code": "3.4.1",
+              "name": "Viwakilishi: Vimilikishi na Visisitizi",
+              "order": 3,
+              "sub_strand_name": "3.4.1 Viwakilishi: Vimilikishi na Visisitizi"
+            },
+            {
+              "code": "4.4.1",
+              "name": "Nyakati na Hali: Hali ya mazoea na Hali timilifu",
+              "order": 4,
+              "sub_strand_name": "4.4.1 Nyakati na Hali: Hali ya mazoea na Hali timilifu"
+            },
+            {
+              "code": "5.4.1",
+              "name": "Nyakati na Hali: Wakati uliopita hali timilifu na Wakati ujao hali timilifu",
+              "order": 5,
+              "sub_strand_name": "5.4.1 Nyakati na Hali: Wakati uliopita hali timilifu na Wakati ujao hali timilifu"
+            },
+            {
+              "code": "6.4.1",
+              "name": "Vivumishi vya Sifa na Viashiria",
+              "order": 6,
+              "sub_strand_name": "6.4.1 Vivumishi vya Sifa na Viashiria"
+            },
+            {
+              "code": "7.4.1",
+              "name": "Vivumishi Vimilikishi na vya Idadi",
+              "order": 7,
+              "sub_strand_name": "7.4.1 Vivumishi Vimilikishi na vya Idadi"
+            },
+            {
+              "code": "8.4.1",
+              "name": "Ngeli na Upatanisho wa Kisarufi: Ngeli ya I-ZI, na I-I",
+              "order": 8,
+              "sub_strand_name": "8.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya I-ZI, na I-I"
+            },
+            {
+              "code": "9.4.1",
+              "name": "Ngeli na Upatanisho wa Kisarufi: Ngeli ya U-U na U-YA",
+              "order": 9,
+              "sub_strand_name": "9.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya U-U na U-YA"
+            },
+            {
+              "code": "10.4.1",
+              "name": "Vinyume vya Vitenzi na Vielezi",
+              "order": 10,
+              "sub_strand_name": "10.4.1 Vinyume vya Vitenzi na Vielezi"
+            },
+            {
+              "code": "11.4.1",
+              "name": "Mnyambuliko wa Vitenzi: Kauli ya: Kutendeka, Kutendewa na Kutendatenda",
+              "order": 11,
+              "sub_strand_name": "11.4.1 Mnyambuliko wa Vitenzi: Kauli ya: Kutendeka, Kutendewa na Kutendatenda"
+            },
+            {
+              "code": "12.4.1",
+              "name": "Aina za Sentensi: Sentensi changamano",
+              "order": 12,
+              "sub_strand_name": "12.4.1 Aina za Sentensi: Sentensi changamano"
+            },
+            {
+              "code": "13.4.1",
+              "name": "Ukanushaji kwa Kuzingatia Hali: Hali ya mazoea na Hali timilifu",
+              "order": 13,
+              "sub_strand_name": "13.4.1 Ukanushaji kwa Kuzingatia Hali: Hali ya mazoea na Hali timilifu"
+            },
+            {
+              "code": "14.4.1",
+              "name": "Udogo wa Nomino",
+              "order": 14,
+              "sub_strand_name": "14.4.1 Udogo wa Nomino"
+            },
+            {
+              "code": "15.4.1",
+              "name": "Usemi Halisi na Usemi wa Taarifa",
+              "order": 15,
+              "sub_strand_name": "15.4.1 Usemi Halisi na Usemi wa Taarifa"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "grade": 9,
+      "source_title": "Kiswahili Gredi 9 -2024 - Revised Oct.pdf",
+      "source_id": "14r0D5u2jy79nZdcixJ2Gu3qTattpY0_Y",
+      "preview_url": "https://drive.google.com/file/d/14r0D5u2jy79nZdcixJ2Gu3qTattpY0_Y/preview",
+      "summary_pdf_pages": [
+        13,
+        14,
+        15
+      ],
+      "hierarchy_note": "Transcribed from the official KICD summary table 'Muhtasari wa Mada na Mada Ndogo'. The four Mada skill areas are the strand labels; the 60 numbered Mada Ndogo entries are the terminal sub-strands. Theme headings are not added as a third hierarchy level.",
+      "strand_count": 4,
+      "sub_strand_count": 60,
+      "strands": [
+        {
+          "name": "Kusikiliza na Kuzungumza",
+          "order": 1,
+          "sub_strands": [
+            {
+              "code": "1.1.1",
+              "name": "Kusikiliza na Kujibu: Mjadala",
+              "order": 1,
+              "sub_strand_name": "1.1.1 Kusikiliza na Kujibu: Mjadala"
+            },
+            {
+              "code": "2.1.1",
+              "name": "Kusikiliza kwa Kina: Sauti /b/ na /mb/",
+              "order": 2,
+              "sub_strand_name": "2.1.1 Kusikiliza kwa Kina: Sauti /b/ na /mb/"
+            },
+            {
+              "code": "3.1.1",
+              "name": "Semi: tashbihi, sitiari na methali",
+              "order": 3,
+              "sub_strand_name": "3.1.1 Semi: tashbihi, sitiari na methali"
+            },
+            {
+              "code": "4.1.1",
+              "name": "Semi: Vitendawili na nahau",
+              "order": 4,
+              "sub_strand_name": "4.1.1 Semi: Vitendawili na nahau"
+            },
+            {
+              "code": "5.1.1",
+              "name": "Ufahamu wa Kusikiliza",
+              "order": 5,
+              "sub_strand_name": "5.1.1 Ufahamu wa Kusikiliza"
+            },
+            {
+              "code": "6.1.1",
+              "name": "Kusikiliza kwa Kufasiri",
+              "order": 6,
+              "sub_strand_name": "6.1.1 Kusikiliza kwa Kufasiri"
+            },
+            {
+              "code": "7.1.1",
+              "name": "Kusikiliza kwa Kutathmini",
+              "order": 7,
+              "sub_strand_name": "7.1.1 Kusikiliza kwa Kutathmini"
+            },
+            {
+              "code": "8.1.1",
+              "name": "Uzungumzaji wa Kushawishi",
+              "order": 8,
+              "sub_strand_name": "8.1.1 Uzungumzaji wa Kushawishi"
+            },
+            {
+              "code": "9.1.1",
+              "name": "Kusikiliza kwa Kina: Sauti /j/ na /nj/",
+              "order": 9,
+              "sub_strand_name": "9.1.1 Kusikiliza kwa Kina: Sauti /j/ na /nj/"
+            },
+            {
+              "code": "10.1.1",
+              "name": "Mazungumzo: Malumbano ya Utani",
+              "order": 10,
+              "sub_strand_name": "10.1.1 Mazungumzo: Malumbano ya Utani"
+            },
+            {
+              "code": "11.1.1",
+              "name": "Uzungumzaji katika Sherehe",
+              "order": 11,
+              "sub_strand_name": "11.1.1 Uzungumzaji katika Sherehe"
+            },
+            {
+              "code": "12.1.1",
+              "name": "Ufahamu wa Kusikiliza",
+              "order": 12,
+              "sub_strand_name": "12.1.1 Ufahamu wa Kusikiliza"
+            },
+            {
+              "code": "13.1.1",
+              "name": "Mazungumzo: Mawaidha",
+              "order": 13,
+              "sub_strand_name": "13.1.1 Mazungumzo: Mawaidha"
+            },
+            {
+              "code": "14.1.1",
+              "name": "Mazungumzo: Mawaidha",
+              "order": 14,
+              "sub_strand_name": "14.1.1 Mazungumzo: Mawaidha"
+            },
+            {
+              "code": "15.1.1",
+              "name": "Kusikiliza kwa Kutathmini",
+              "order": 15,
+              "sub_strand_name": "15.1.1 Kusikiliza kwa Kutathmini"
+            }
+          ]
+        },
+        {
+          "name": "Kusoma",
+          "order": 2,
+          "sub_strands": [
+            {
+              "code": "1.2.1",
+              "name": "Kusoma kwa Ufahamu: Simulizi",
+              "order": 1,
+              "sub_strand_name": "1.2.1 Kusoma kwa Ufahamu: Simulizi"
+            },
+            {
+              "code": "2.2.1",
+              "name": "Kusoma kwa Mapana: Matini ya kujichagulia",
+              "order": 2,
+              "sub_strand_name": "2.2.1 Kusoma kwa Mapana: Matini ya kujichagulia"
+            },
+            {
+              "code": "3.2.1",
+              "name": "Kusoma kwa Kina: Ushairi",
+              "order": 3,
+              "sub_strand_name": "3.2.1 Kusoma kwa Kina: Ushairi"
+            },
+            {
+              "code": "4.2.1",
+              "name": "Kusoma kwa Ufasaha",
+              "order": 4,
+              "sub_strand_name": "4.2.1 Kusoma kwa Ufasaha"
+            },
+            {
+              "code": "5.2.1",
+              "name": "Kusoma kwa Ufahamu",
+              "order": 5,
+              "sub_strand_name": "5.2.1 Kusoma kwa Ufahamu"
+            },
+            {
+              "code": "6.2.1",
+              "name": "Kusoma kwa Kina: Ushairi",
+              "order": 6,
+              "sub_strand_name": "6.2.1 Kusoma kwa Kina: Ushairi"
+            },
+            {
+              "code": "7.2.1",
+              "name": "Ufupisho",
+              "order": 7,
+              "sub_strand_name": "7.2.1 Ufupisho"
+            },
+            {
+              "code": "8.2.1",
+              "name": "Kusoma kwa Kina: Ushairi",
+              "order": 8,
+              "sub_strand_name": "8.2.1 Kusoma kwa Kina: Ushairi"
+            },
+            {
+              "code": "9.2.1",
+              "name": "Kusoma kwa Ufahamu: Kifungu cha Kushawishi",
+              "order": 9,
+              "sub_strand_name": "9.2.1 Kusoma kwa Ufahamu: Kifungu cha Kushawishi"
+            },
+            {
+              "code": "10.2.1",
+              "name": "Kusoma kwa Kina: Ushairi",
+              "order": 10,
+              "sub_strand_name": "10.2.1 Kusoma kwa Kina: Ushairi"
+            },
+            {
+              "code": "11.2.1",
+              "name": "Kusoma kwa Mapana: Matini ya kujichagulia",
+              "order": 11,
+              "sub_strand_name": "11.2.1 Kusoma kwa Mapana: Matini ya kujichagulia"
+            },
+            {
+              "code": "12.2.1",
+              "name": "Kusoma kwa Ufasaha",
+              "order": 12,
+              "sub_strand_name": "12.2.1 Kusoma kwa Ufasaha"
+            },
+            {
+              "code": "13.2.1",
+              "name": "Kusoma kwa Kina: Ushairi",
+              "order": 13,
+              "sub_strand_name": "13.2.1 Kusoma kwa Kina: Ushairi"
+            },
+            {
+              "code": "14.2.1",
+              "name": "Kusoma kwa Ufahamu",
+              "order": 14,
+              "sub_strand_name": "14.2.1 Kusoma kwa Ufahamu"
+            },
+            {
+              "code": "15.2.1",
+              "name": "Ufupisho",
+              "order": 15,
+              "sub_strand_name": "15.2.1 Ufupisho"
+            }
+          ]
+        },
+        {
+          "name": "Kuandika",
+          "order": 3,
+          "sub_strands": [
+            {
+              "code": "1.3.1",
+              "name": "Viakifishi: Koloni na Semi koloni",
+              "order": 1,
+              "sub_strand_name": "1.3.1 Viakifishi: Koloni na Semi koloni"
+            },
+            {
+              "code": "2.3.1",
+              "name": "Insha za Kiuamilifu: Barua ya Kirafiki",
+              "order": 2,
+              "sub_strand_name": "2.3.1 Insha za Kiuamilifu: Barua ya Kirafiki"
+            },
+            {
+              "code": "3.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 3,
+              "sub_strand_name": "3.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "4.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 4,
+              "sub_strand_name": "4.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "5.3.1",
+              "name": "Insha za Kiuamilifu: Shajara",
+              "order": 5,
+              "sub_strand_name": "5.3.1 Insha za Kiuamilifu: Shajara"
+            },
+            {
+              "code": "6.3.1",
+              "name": "Insha za Kubuni: Methali",
+              "order": 6,
+              "sub_strand_name": "6.3.1 Insha za Kubuni: Methali"
+            },
+            {
+              "code": "7.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 7,
+              "sub_strand_name": "7.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "8.3.1",
+              "name": "Viakifishi: Mabano na Kistari Kifupi",
+              "order": 8,
+              "sub_strand_name": "8.3.1 Viakifishi: Mabano na Kistari Kifupi"
+            },
+            {
+              "code": "9.3.1",
+              "name": "Insha za Kubuni: Masimulizi",
+              "order": 9,
+              "sub_strand_name": "9.3.1 Insha za Kubuni: Masimulizi"
+            },
+            {
+              "code": "10.3.1",
+              "name": "Barua ya Kuomba Kazi",
+              "order": 10,
+              "sub_strand_name": "10.3.1 Barua ya Kuomba Kazi"
+            },
+            {
+              "code": "11.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 11,
+              "sub_strand_name": "11.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "12.3.1",
+              "name": "Hotuba ya Kushawishi",
+              "order": 12,
+              "sub_strand_name": "12.3.1 Hotuba ya Kushawishi"
+            },
+            {
+              "code": "13.3.1",
+              "name": "Insha za Kubuni: Maelezo",
+              "order": 13,
+              "sub_strand_name": "13.3.1 Insha za Kubuni: Maelezo"
+            },
+            {
+              "code": "14.3.1",
+              "name": "Insha za Kiuamilifu: Shajara",
+              "order": 14,
+              "sub_strand_name": "14.3.1 Insha za Kiuamilifu: Shajara"
+            },
+            {
+              "code": "15.3.1",
+              "name": "Kujibu Baruapepe",
+              "order": 15,
+              "sub_strand_name": "15.3.1 Kujibu Baruapepe"
+            }
+          ]
+        },
+        {
+          "name": "Sarufi",
+          "order": 4,
+          "sub_strands": [
+            {
+              "code": "1.4.1",
+              "name": "Vihusishi: Vihusishi vya Mahali na Vihusishi vya Wakati",
+              "order": 1,
+              "sub_strand_name": "1.4.1 Vihusishi: Vihusishi vya Mahali na Vihusishi vya Wakati"
+            },
+            {
+              "code": "2.4.1",
+              "name": "Vihusishi: Vihusishi vya -a Unganifu na Vihusishi vya Sababu",
+              "order": 2,
+              "sub_strand_name": "2.4.1 Vihusishi: Vihusishi vya -a Unganifu na Vihusishi vya Sababu"
+            },
+            {
+              "code": "3.4.1",
+              "name": "Vihusishi: Vihusishi Vilinganishi na Kihusishi na",
+              "order": 3,
+              "sub_strand_name": "3.4.1 Vihusishi: Vihusishi Vilinganishi na Kihusishi na"
+            },
+            {
+              "code": "4.4.1",
+              "name": "Nyakati na Hali: -ki- ya masharti na -ka- ya kufuatana kwa vitendo",
+              "order": 4,
+              "sub_strand_name": "4.4.1 Nyakati na Hali: -ki- ya masharti na -ka- ya kufuatana kwa vitendo"
+            },
+            {
+              "code": "5.4.1",
+              "name": "Hali za Masharti: Hali ya masharti -nge- na Hali ya masharti - ngali-",
+              "order": 5,
+              "sub_strand_name": "5.4.1 Hali za Masharti: Hali ya masharti -nge- na Hali ya masharti - ngali-"
+            },
+            {
+              "code": "6.4.1",
+              "name": "Vielezi: Vielezi vya Namna na Vielezi vya Wakati",
+              "order": 6,
+              "sub_strand_name": "6.4.1 Vielezi: Vielezi vya Namna na Vielezi vya Wakati"
+            },
+            {
+              "code": "7.4.1",
+              "name": "Vielezi: Vielezi vya Mahali na Vielezi vya Idadi",
+              "order": 7,
+              "sub_strand_name": "7.4.1 Vielezi: Vielezi vya Mahali na Vielezi vya Idadi"
+            },
+            {
+              "code": "8.4.1",
+              "name": "Ngeli na Upatanisho wa Kisarufi: Ngeli ya U-ZI na Ngeli ya YA-YA",
+              "order": 8,
+              "sub_strand_name": "8.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya U-ZI na Ngeli ya YA-YA"
+            },
+            {
+              "code": "9.4.1",
+              "name": "Ngeli na Upatanisho wa Kisarufi: Ngeli ya LI, KU, PA-KU-MU",
+              "order": 9,
+              "sub_strand_name": "9.4.1 Ngeli na Upatanisho wa Kisarufi: Ngeli ya LI, KU, PA-KU-MU"
+            },
+            {
+              "code": "10.4.1",
+              "name": "Vinyume vya Vihusishi",
+              "order": 10,
+              "sub_strand_name": "10.4.1 Vinyume vya Vihusishi"
+            },
+            {
+              "code": "11.4.1",
+              "name": "Mnyambuliko wa Vitenzi: Kauli ya: Kutendana, Kutendeana na Kutendesha",
+              "order": 11,
+              "sub_strand_name": "11.4.1 Mnyambuliko wa Vitenzi: Kauli ya: Kutendana, Kutendeana na Kutendesha"
+            },
+            {
+              "code": "12.4.1",
+              "name": "Aina za Sentensi: Sentensi tata",
+              "order": 12,
+              "sub_strand_name": "12.4.1 Aina za Sentensi: Sentensi tata"
+            },
+            {
+              "code": "13.4.1",
+              "name": "Ukanushaji: Hali ya masharti -nge-, -ngali- na -ki-",
+              "order": 13,
+              "sub_strand_name": "13.4.1 Ukanushaji: Hali ya masharti -nge-, -ngali- na -ki-"
+            },
+            {
+              "code": "14.4.1",
+              "name": "Udogo na Ukubwa wa Nomino",
+              "order": 14,
+              "sub_strand_name": "14.4.1 Udogo na Ukubwa wa Nomino"
+            },
+            {
+              "code": "15.4.1",
+              "name": "Usemi Halisi na Usemi wa Taarifa",
+              "order": 15,
+              "sub_strand_name": "15.4.1 Usemi Halisi na Usemi wa Taarifa"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "important_caveat": "Older Grade 7/8 mirror extracts were excluded; Grade 7 and 8 official current viewer titles identify July 2024, Revised Oct, and Grade 9 identifies 2024, Revised Oct."
+}

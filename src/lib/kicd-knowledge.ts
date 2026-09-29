@@ -44,39 +44,32 @@ export const PCIS = [
   'Disaster Risk Reduction',
 ] as const;
 
-/** Official Junior School learning areas (Grade 7-9) — 9 core + optional languages */
+/** Official Junior School learning areas in scope for the Grade 7-9 catalog. */
 export const JUNIOR_SCHOOL_SUBJECTS = [
-  'Mathematics',
   'English',
   'Kiswahili',
+  'Mathematics',
   'Integrated Science',
   'Pre-Technical Studies',
+  'Agriculture and Nutrition',
   'Social Studies',
-  'Agriculture',
+  'Christian Religious Education',
+  'Islamic Religious Education',
   'Creative Arts and Sports',
-  'Religious Education',
 ] as const;
 
-/** Official KICD Grade 9 learning areas (from kicd.ac.ke grade-nine-designs) */
+/** Grade 9 catalog scope matches the ten core learning areas in this rebuild. */
 export const GRADE_NINE_SUBJECTS = [
-  'Mathematics',
   'English',
   'Kiswahili',
+  'Mathematics',
   'Integrated Science',
   'Pre-Technical Studies',
+  'Agriculture and Nutrition',
   'Social Studies',
-  'Agriculture',
-  'Creative Arts and Sports',
-  'Religious Education',
-  'Agriculture',
-  'Arabic',
   'Christian Religious Education',
-  'French',
-  'German',
-  'Hindu Religious Education',
-  'Indigenous Language',
   'Islamic Religious Education',
-  'Mandarin',
+  'Creative Arts and Sports',
 ] as const;
 
 export const JUNIOR_GRADES = ['Grade 7', 'Grade 8', 'Grade 9'] as const;
@@ -717,51 +710,44 @@ export function buildTermScheme(params: {
   term?: string;
   weeks?: number;
   lessonsPerWeek?: number;
-  topics?: string[];
+  subStrands?: Array<{ name: string; strand: string; learningObjectives?: string[] }>;
 }): SchemeRow[] {
   const weeks = params.weeks || 10;
   const lpw = params.lessonsPerWeek || 1;
-  const packs = getStrandPacks(params.subject);
-  const topicPool: { topic: string; strand: string; sub: string; slos: string[] }[] = [];
-  for (const p of packs) {
-    for (const ss of p.subStrands) {
-      for (const t of ss.topics) {
-        topicPool.push({ topic: t, strand: p.strand, sub: ss.name, slos: ss.slos });
-      }
-    }
-  }
-  if (params.topics?.length) {
-    params.topics.forEach((t) => {
-      const ctx = findStrandContext(params.subject, t);
-      topicPool.unshift({ topic: t, strand: ctx.strand, sub: ctx.subStrand, slos: ctx.slos });
-    });
-  }
-  if (!topicPool.length) {
-    topicPool.push({
-      topic: params.subject || 'Core topic',
-      strand: 'Core',
-      sub: 'Introduction',
-      slos: ['explain key ideas', 'apply knowledge', 'demonstrate values'],
-    });
-  }
+  const curriculumSubStrands = params.subStrands?.length
+    ? params.subStrands.map((subStrand) => ({
+      name: subStrand.name,
+      strand: subStrand.strand,
+      slos: subStrand.learningObjectives || [],
+    }))
+    : getStrandPacks(params.subject).flatMap((pack) => pack.subStrands.map((subStrand) => ({
+      name: subStrand.name,
+      strand: pack.strand,
+      slos: subStrand.slos,
+    })));
+  const subStrandPool = curriculumSubStrands.length ? curriculumSubStrands : [{
+    name: params.subject || 'Introduction',
+    strand: 'Core',
+    slos: ['explain key ideas', 'apply knowledge', 'demonstrate values'],
+  }];
 
   const rows: SchemeRow[] = [];
   let idx = 0;
   for (let w = 1; w <= weeks; w++) {
     for (let l = 1; l <= lpw; l++) {
-      const item = topicPool[idx % topicPool.length];
+      const item = subStrandPool[idx % subStrandPool.length];
       idx++;
       rows.push(
         buildSchemeRow({
           subject: params.subject,
           grade: params.grade,
-          topic: item.topic,
+          topic: item.name,
           week: w,
           lesson: l,
           term: params.term,
           learningObjectives: item.slos,
           strand: item.strand,
-          subStrand: item.sub,
+          subStrand: item.name,
         })
       );
     }
@@ -862,7 +848,7 @@ export interface ExamBlueprint {
       answer: string;
       marks: number;
       difficulty: string;
-      topic?: string;
+      sub_strand?: string;
     }[];
   }[];
   totalMarks: number;
@@ -871,13 +857,13 @@ export interface ExamBlueprint {
 export function buildExamBlueprint(params: {
   subject: string;
   grade: string;
-  topics: string[];
+  subStrands: string[];
   title?: string;
   totalMarks?: number;
   difficulty?: string;
 }): ExamBlueprint {
   const total = params.totalMarks || 50;
-  const topics = params.topics.length ? params.topics : getStrandPacks(params.subject).flatMap((p) => p.subStrands.flatMap((s) => s.topics)).slice(0, 5);
+  const subStrands = params.subStrands.length ? params.subStrands : getStrandPacks(params.subject).flatMap((pack) => pack.subStrands.map((subStrand) => subStrand.name)).slice(0, 5);
   const diff = params.difficulty || 'Medium';
   const subj = normalizeSubjectKey(params.subject);
 
@@ -892,32 +878,32 @@ export function buildExamBlueprint(params: {
   const eachStruct = Math.max(2, Math.round(structuredMarks / structuredCount));
 
   const mcqs = Array.from({ length: mcqCount }, (_, i) => {
-    const topic = topics[i % topics.length];
-    return makeMcq(subj, topic, i + 1, eachMcq, diff);
+    const subStrand = subStrands[i % subStrands.length];
+    return makeMcq(subj, subStrand, i + 1, eachMcq, diff);
   });
 
   const structured = Array.from({ length: structuredCount }, (_, i) => {
-    const topic = topics[i % topics.length];
+    const subStrand = subStrands[i % subStrands.length];
     return {
       number: i + 1,
-      text: makeStructuredStem(subj, topic, i + 1),
+      text: makeStructuredStem(subj, subStrand, i + 1),
       type: 'short_answer' as const,
-      answer: makeStructuredAnswer(subj, topic),
+      answer: makeStructuredAnswer(subj, subStrand),
       marks: eachStruct,
       difficulty: diff,
-      topic,
+      sub_strand: subStrand,
     };
   });
 
   const essays = [
     {
       number: 1,
-      text: makeEssayStem(subj, topics[0] || params.subject, params.grade),
+      text: makeEssayStem(subj, subStrands[0] || params.subject, params.grade),
       type: 'essay' as const,
-      answer: makeEssayAnswer(subj, topics[0] || params.subject),
+      answer: makeEssayAnswer(subj, subStrands[0] || params.subject),
       marks: essayMarks,
       difficulty: diff,
-      topic: topics[0],
+      sub_strand: subStrands[0],
     },
   ];
 
@@ -952,7 +938,7 @@ export function buildExamBlueprint(params: {
   };
 }
 
-function makeMcq(subject: string, topic: string, n: number, marks: number, difficulty: string) {
+function makeMcq(subject: string, subStrand: string, n: number, marks: number, difficulty: string) {
   const banks: Record<string, { q: string; opts: string[]; a: string }[]> = {
     Mathematics: [
       { q: `What is the place value of 7 in 3,752?`, opts: ['Ones', 'Tens', 'Hundreds', 'Thousands'], a: 'Hundreds' },
@@ -985,10 +971,10 @@ function makeMcq(subject: string, topic: string, n: number, marks: number, diffi
   };
   const list = banks[subject] || banks['Integrated Science'];
   const item = list[(n - 1) % list.length];
-  // Personalize with topic when generic bank used
+  // Keep the selected sub-strand as the sole curriculum focus.
   const text = subject === 'Mathematics' || subject === 'English' || subject === 'Integrated Science' || subject === 'Social Studies'
-    ? `${n}. ${item.q} (Topic focus: ${topic})`
-    : `${n}. Which statement best relates to ${topic}?`;
+    ? `${n}. ${item.q}`
+    : `${n}. Which statement best relates to ${subStrand}?`;
   const opts = item.opts || ['Option A', 'Option B', 'Option C', 'Option D'];
   return {
     number: n,
@@ -998,30 +984,30 @@ function makeMcq(subject: string, topic: string, n: number, marks: number, diffi
     answer: item.a,
     marks,
     difficulty,
-    topic,
+    sub_strand: subStrand,
   };
 }
 
-function makeStructuredStem(subject: string, topic: string, n: number): string {
+function makeStructuredStem(subject: string, subStrand: string, n: number): string {
   if (subject === 'Mathematics') {
-    return `${n}. (a) Define or state a key fact about ${topic}. (2 marks)\n(b) Work out a problem involving ${topic}. Show all steps. (3 marks)\n(c) Give one real-life application of ${topic}. (1 mark)`;
+    return `${n}. (a) Define or state a key fact about ${subStrand}. (2 marks)\n(b) Work out a problem involving ${subStrand}. Show all steps. (3 marks)\n(c) Give one real-life application of ${subStrand}. (1 mark)`;
   }
   if (subject === 'English' || subject === 'Kiswahili') {
-    return `${n}. Read the short context on ${topic} and:\n(a) Explain the main idea. (2 marks)\n(b) Give the meaning of two key words in context. (2 marks)\n(c) Write two sentences using the target structure. (2 marks)`;
+    return `${n}. Read the short context on ${subStrand} and:\n(a) Explain the main idea. (2 marks)\n(b) Give the meaning of two key words in context. (2 marks)\n(c) Write two sentences using the target structure. (2 marks)`;
   }
-  return `${n}. (a) Explain the meaning of ${topic}. (2 marks)\n(b) Describe two important points a learner should know about ${topic}. (4 marks)\n(c) State one way ${topic} is useful in daily life. (2 marks)`;
+  return `${n}. (a) Explain the meaning of ${subStrand}. (2 marks)\n(b) Describe two important points a learner should know about ${subStrand}. (4 marks)\n(c) State one way ${subStrand} is useful in daily life. (2 marks)`;
 }
 
-function makeStructuredAnswer(subject: string, topic: string): string {
-  return `(a) Correct definition/explanation of ${topic}.\n(b) Accurate worked steps or two valid points with examples.\n(c) Relevant real-life application.\nAward marks for clarity, accuracy and use of subject vocabulary.`;
+function makeStructuredAnswer(subject: string, subStrand: string): string {
+  return `(a) Correct definition/explanation of ${subStrand}.\n(b) Accurate worked steps or two valid points with examples.\n(c) Relevant real-life application.\nAward marks for clarity, accuracy and use of subject vocabulary.`;
 }
 
-function makeEssayStem(subject: string, topic: string, grade: string): string {
-  return `Discuss ${topic} as studied in ${grade} ${subject}. In your answer:\n• Explain the meaning/key ideas\n• Give examples\n• Show importance to the learner and community\n• Conclude clearly`;
+function makeEssayStem(subject: string, subStrand: string, grade: string): string {
+  return `Discuss ${subStrand} as studied in ${grade} ${subject}. In your answer:\n• Explain the meaning/key ideas\n• Give examples\n• Show importance to the learner and community\n• Conclude clearly`;
 }
 
-function makeEssayAnswer(subject: string, topic: string): string {
-  return `Introduction defining ${topic}; body with 3–4 well-explained points and examples; conclusion linking to values/competencies. Award for content, organisation, language and relevance.`;
+function makeEssayAnswer(subject: string, subStrand: string): string {
+  return `Introduction defining ${subStrand}; body with 3–4 well-explained points and examples; conclusion linking to values/competencies. Award for content, organisation, language and relevance.`;
 }
 
 
@@ -1076,7 +1062,7 @@ export const SAMPLE_PAPER_LIBRARY = [
     id: 'js-math-opener',
     title: 'Junior School Mathematics — Opener Sample',
     subject: 'Mathematics',
-    description: 'Section A MCQ, Section B structured, Section C problem-solving. KICD-aligned topics.',
+    description: 'Section A MCQ, Section B structured, Section C problem-solving. KICD-aligned sub-strands.',
     format: '50 marks · 1 hr 15 min',
   },
   {

@@ -194,6 +194,115 @@ function normalizeContextKey(value: unknown): string {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function normalizeCurriculumName(value: unknown): string {
+  return typeof value === 'string' ? value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase() : '';
+}
+
+function juniorGradeNumber(value: unknown): number | null {
+  const key = normalizeContextKey(value);
+  const match = key.match(/^(?:grade)?([789])$/);
+  return match ? Number(match[1]) : null;
+}
+
+function canonicalJuniorSubject(value: string): string {
+  const key = normalizeContextKey(value);
+  if (key === 'agriculture') return 'Agriculture and Nutrition';
+  if (key === 'cre') return 'Christian Religious Education';
+  if (key === 'ire') return 'Islamic Religious Education';
+  return value.trim();
+}
+
+async function verifyJuniorCatalogSelection(
+  supabase: ReturnType<typeof createClient>,
+  request: ExamGenerationRequest,
+): Promise<string | null> {
+  const gradeNumber = juniorGradeNumber(request.gradeLevel);
+  if (!gradeNumber) return null;
+  if (request.topics.length || (request.curriculumScope || []).some((node) => node.topics.length)) {
+    return 'Junior School papers use only the strand → sub-strand hierarchy; remove the separate topic selection.';
+  }
+  if (!request.strands.length || !request.subStrands.length || !request.curriculumScope?.length) {
+    return 'Select at least one active KICD strand and one of its sub-strands before generating a Grade 7–9 paper.';
+  }
+
+  const { data: grade, error: gradeError } = await supabase
+    .from('curriculum_grades')
+    .select('id')
+    .eq('curriculum_type', 'CBE')
+    .eq('grade_number', gradeNumber)
+    .maybeSingle();
+  if (gradeError || !grade?.id) return 'The active KICD grade catalog could not be verified. No paper was generated.';
+
+  const subjectName = canonicalJuniorSubject(request.subject);
+  const { data: subject, error: subjectError } = await supabase
+    .from('curriculum_subjects')
+    .select('id')
+    .eq('grade_id', grade.id)
+    .eq('subject_name', subjectName)
+    .eq('is_current', true)
+    .maybeSingle();
+  if (subjectError || !subject?.id) return 'This Grade 7–9 subject has no active source-verified KICD catalog. No paper was generated.';
+
+  const { data: strands, error: strandError } = await supabase
+    .from('curriculum_strands')
+    .select('id, strand_name')
+    .eq('subject_id', subject.id)
+    .eq('is_current', true)
+    .order('strand_order');
+  if (strandError || !strands?.length) return 'The active KICD strand list could not be verified. No paper was generated.';
+
+  const activeByName = new Map<string, { id: string; strand_name: string }>(
+    strands.map((strand: { id: string; strand_name: string }) => [normalizeCurriculumName(strand.strand_name), strand]),
+  );
+  const selectedStrandKeys = new Set(request.strands.map(normalizeCurriculumName).filter(Boolean));
+  if (selectedStrandKeys.size !== request.strands.length) return 'The selected strand list is invalid or contains duplicates.';
+  for (const strandKey of selectedStrandKeys) {
+    if (!activeByName.has(strandKey)) return 'A selected strand is not in the active KICD catalog for this grade and subject.';
+  }
+
+  const scopeByStrand = new Map<string, string[]>();
+  for (const node of request.curriculumScope) {
+    const strandKey = normalizeCurriculumName(node.strand);
+    if (!selectedStrandKeys.has(strandKey) || scopeByStrand.has(strandKey)) {
+      return 'The selected curriculum ancestry is inconsistent with the active KICD strand list.';
+    }
+    if (!node.subStrands.length) return 'Choose at least one sub-strand under every selected strand.';
+    scopeByStrand.set(strandKey, node.subStrands);
+  }
+  if (scopeByStrand.size !== selectedStrandKeys.size) return 'The selected curriculum ancestry is incomplete.';
+
+  const selectedStrandIds = Array.from(selectedStrandKeys).map((key) => activeByName.get(key)!.id);
+  const { data: subStrands, error: subStrandError } = await supabase
+    .from('curriculum_sub_strands')
+    .select('strand_id, sub_strand_name')
+    .in('strand_id', selectedStrandIds)
+    .eq('is_current', true);
+  if (subStrandError) return 'The active KICD sub-strand list could not be verified. No paper was generated.';
+
+  const activeSubStrandsByStrand = new Map<string, Set<string>>();
+  (subStrands || []).forEach((row: { strand_id: string; sub_strand_name: string }) => {
+    const values = activeSubStrandsByStrand.get(row.strand_id) || new Set<string>();
+    values.add(normalizeCurriculumName(row.sub_strand_name));
+    activeSubStrandsByStrand.set(row.strand_id, values);
+  });
+  const requestSubStrandKeys = new Set(request.subStrands.map(normalizeCurriculumName).filter(Boolean));
+  if (requestSubStrandKeys.size !== request.subStrands.length) return 'The selected sub-strand list is invalid or contains duplicates.';
+  const scopedSubStrandKeys = new Set<string>();
+  for (const [strandKey, subStrandNames] of scopeByStrand) {
+    const strandId = activeByName.get(strandKey)!.id;
+    const allowed = activeSubStrandsByStrand.get(strandId) || new Set<string>();
+    for (const name of subStrandNames) {
+      const subStrandKey = normalizeCurriculumName(name);
+      if (!allowed.has(subStrandKey)) return 'A selected sub-strand does not belong to its active KICD strand.';
+      scopedSubStrandKeys.add(subStrandKey);
+    }
+  }
+  if (scopedSubStrandKeys.size !== requestSubStrandKeys.size || [...requestSubStrandKeys].some((key) => !scopedSubStrandKeys.has(key))) {
+    return 'The selected sub-strands do not match the active KICD ancestry.';
+  }
+  return null;
+}
+
 function embeddedCurriculumContext(request: ExamGenerationRequest): { context: string; sourceSummary: string[] } {
   const packs = getStrandPacks(request.subject);
   const requestedStrands = new Set(request.strands.map(normalizeContextKey));
@@ -275,6 +384,10 @@ async function loadVettedContext(
   supabase: ReturnType<typeof createClient>,
   request: ExamGenerationRequest,
 ): Promise<{ context: string; sourceSummary: string[] }> {
+  // Until legacy knowledge chunks are linked to the new exact catalog, Grade 7-9
+  // generation uses only the active strand/sub-strand names supplied by the UI.
+  if (juniorGradeNumber(request.gradeLevel)) return { context: '', sourceSummary: [] };
+
   const { data, error } = await supabase
     .from('exam_knowledge_chunks')
     .select('content_summary, subject, grade_level, strand, sub_strand, source_name')
@@ -396,6 +509,11 @@ async function handleExamGeneration(
     jsonError(response, 400, validationErrors.join(' '));
     return;
   }
+  const catalogError = await verifyJuniorCatalogSelection(supabase, parsedRequest);
+  if (catalogError) {
+    jsonError(response, 400, catalogError);
+    return;
+  }
 
   let generationJobId: string | null = null;
   const configuredProvider = String(process.env.AI_EXAM_PROVIDER || '').trim().toLowerCase();
@@ -448,7 +566,9 @@ async function handleExamGeneration(
     const postProcess = (question: GeneratedExamQuestion): GeneratedExamQuestion => applyCuratedVisualFallback(
       repairQuestionAnswers(
         normalizeQuestionNotation(
-          withRenderedExamVisual(filterUnnecessaryExamVisual(question)),
+          withRenderedExamVisual(filterUnnecessaryExamVisual(
+            juniorGradeNumber(parsedRequest.gradeLevel) ? { ...question, topic: undefined } : question,
+          )),
           { division: mathsLike },
         ),
       ),

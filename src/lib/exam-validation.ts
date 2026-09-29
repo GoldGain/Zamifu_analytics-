@@ -37,6 +37,10 @@ function normalizeCurriculumLabel(value: unknown): string {
     : '';
 }
 
+function isJuniorSchoolGrade(value: string): boolean {
+  return /^(?:grade\s*)?[789]$/i.test(value.trim());
+}
+
 export interface ExamValidationOptions {
   previousStems?: string[];
 }
@@ -179,6 +183,9 @@ export function validateGeneratedExam(
     const strandKey = normalizeCurriculumLabel(question.strand);
     const subStrandKey = normalizeCurriculumLabel(question.sub_strand);
     const topicKey = normalizeCurriculumLabel(question.topic);
+    if (isJuniorSchoolGrade(request.gradeLevel) && topicKey) {
+      issues.push({ code: 'TOPIC_NOT_SUPPORTED', severity: 'critical', message: 'Junior School questions use only strand and sub-strand tags; remove the duplicate topic label.', questionIndex: index });
+    }
     if (!question.strand || !question.sub_strand) {
       issues.push({ code: 'MISSING_CURRICULUM_TAG', severity: curriculumSelected ? 'critical' : 'warning', message: curriculumSelected ? 'Every question must include a strand and sub-strand tag for the selected curriculum scope.' : 'Add a strand and sub-strand tag before approval.', questionIndex: index });
     }
@@ -189,7 +196,7 @@ export function validateGeneratedExam(
     if (request.curriculumScope?.length && strandKey && !strandScope) {
       issues.push({ code: 'CURRICULUM_ANCESTRY_MISMATCH', severity: 'critical', message: 'Question strand is not present in the selected curriculum ancestry.', questionIndex: index });
     }
-    const allowedSubStrands = selectedSubStrands.size ? selectedSubStrands : (strandScope?.subStrands || new Set<string>());
+    const allowedSubStrands = strandScope?.subStrands.size ? strandScope.subStrands : selectedSubStrands;
     if (allowedSubStrands.size && (!subStrandKey || !allowedSubStrands.has(subStrandKey))) {
       issues.push({ code: 'SUB_STRAND_OUT_OF_SCOPE', severity: 'critical', message: 'Question sub-strand is outside the selected strand/sub-strand scope.', questionIndex: index });
     }
