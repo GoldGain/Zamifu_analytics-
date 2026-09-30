@@ -42,7 +42,7 @@
  *     the built-in independent rule check is never returned.
  */
 
-import { classifySubject, strictSubjectAllowsLesson } from './timetable-generator.ts';
+import { classifySubject, isValidDoubleLessonStart, strictSubjectAllowsLesson } from './timetable-generator.ts';
 import { formatClassStream } from './class-label';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
@@ -448,15 +448,15 @@ function diagnoseClass(
           if (lessonNumberForIndex(start + 1) !== first + 1) continue;
           if (!strictSubjectAllowsLesson(need.subjectName, first)) continue;
           if (!strictSubjectAllowsLesson(need.subjectName, first + 1)) continue;
-          if (isCasName(need.subjectName) && first < 3) continue; // Rule 12
+          if (!isValidDoubleLessonStart(need.subjectName, first)) continue;
           pairExists = true;
           break;
         }
         if (pairExists) break;
       }
       if (!pairExists) {
-        const reason = isCasName(need.subjectName)
-          ? 'CAS doubles may not start at Lesson 1 or 2 (Rule 12) and must stay inside the subject window'
+        const reason = !isValidDoubleLessonStart(need.subjectName, 1)
+          ? `${isCasName(need.subjectName) ? 'CAS' : classifySubject(need.subjectName)} doubles must obey their subject-specific start/end rule and stay inside the subject window`
           : 'the double must sit on two consecutive lessons inside the subject window (Rules 3-7)';
         hard.push(makeIssue('double-window',
           `${plan.className} / ${need.subjectName} has a double lesson configured, but no legal pair of consecutive `
@@ -914,8 +914,8 @@ class LevelSearch {
    * Necessary window-band condition for a whole class.
    *
    * A learning area may only use the lesson numbers its Rules 4-7 window allows
-   * (Maths stops at Lesson 4, English at 5, Science and Pre-Technical at 6,
-   * Kiswahili at 7, others anywhere). So for every threshold k, the lessons of
+   * (Maths, English, and Science stop at Lesson 6; Pre-Tech and Kiswahili are
+   * unrestricted; others are unrestricted). So for every threshold k, the lessons of
    * learning areas whose window ends at or before k must fit into the free cells
    * whose lesson number is at most k. Violating this means the week has already
    * painted itself into a corner - for example an early Friday lesson consumed
@@ -993,8 +993,7 @@ class LevelSearch {
     if (session.window[slot] !== 1 || session.window[slot + 1] !== 1) return false;
     // Rule 3 — the pair must be two consecutive lesson numbers.
     if (this.lessonNumber(slot + 1) !== this.lessonNumber(slot) + 1) return false;
-    // Rule 12 — a CAS double may not start at Lesson 1 or 2.
-    if (isCasName(session.subjectNames[0]) && this.lessonNumber(slot) < 3) return false;
+    if (!isValidDoubleLessonStart(session.subjectNames[0], this.lessonNumber(slot))) return false;
     if (!(session.allowedDayMask & (1 << day))) return false;
     const dayBit = 1 << day;
     for (let position = 0; position < session.maskKeys.length; position += 1) {
@@ -1204,7 +1203,7 @@ class LevelSearch {
       for (let start = 0; start + 1 < this.slotsPerDay; start += 1) {
         if (session.window[start] !== 1 || session.window[start + 1] !== 1) continue;
         if (this.lessonNumber(start + 1) !== this.lessonNumber(start) + 1) continue;
-        if (isCasName(session.subjectNames[0]) && this.lessonNumber(start) < 3) continue;
+        if (!isValidDoubleLessonStart(session.subjectNames[0], this.lessonNumber(start))) continue;
         if (grid[base + start] || grid[base + start + 1]) continue;
         let free = true;
         for (const teacherIndex of session.teacherIndexes) {
@@ -1472,8 +1471,7 @@ class LevelSearch {
     for (let start = 0; start + 1 < this.slotsPerDay; start += 1) {
       if (session.window[start] !== 1 || session.window[start + 1] !== 1) continue;
       if (this.lessonNumber(start + 1) !== this.lessonNumber(start) + 1) continue;
-      // Rule 12 — a CAS double may not start at Lesson 1 or 2.
-      if (isCasName(session.subjectNames[0]) && this.lessonNumber(start) < 3) continue;
+      if (!isValidDoubleLessonStart(session.subjectNames[0], this.lessonNumber(start))) continue;
       return true;
     }
     return false;
@@ -1795,7 +1793,7 @@ class LevelSearch {
             if (used[start] || used[start + 1]) continue;
             if (session.window[start] !== 1 || session.window[start + 1] !== 1) continue;
             if (this.lessonNumber(start + 1) !== this.lessonNumber(start) + 1) continue;
-            if (isCasName(session.subjectNames[0]) && this.lessonNumber(start) < 3) continue;
+            if (!isValidDoubleLessonStart(session.subjectNames[0], this.lessonNumber(start))) continue;
             if (!this.fitsSlot(classIndex, day, start, unit.sessionIndex)) continue;
             if (!this.fitsSlot(classIndex, day, start + 1, unit.sessionIndex)) continue;
             slots.push(start);
@@ -2309,8 +2307,8 @@ class LevelSearch {
       if (this.lessonNumber(start + 1) !== first + 1) {
         return `${session.subjectNames.join(' + ')} has a double across a lesson break`;
       }
-      if (isCasName(session.subjectNames[0]) && first < 3) {
-        return `${session.subjectNames.join(' + ')} has a CAS double starting at Lesson ${first} (Rule 12)`;
+      if (!isValidDoubleLessonStart(session.subjectNames[0], first)) {
+        return `${session.subjectNames.join(' + ')} has an invalid subject-specific double starting at Lesson ${first}`;
       }
     }
 
@@ -2531,8 +2529,8 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
     `No valid ${options.levelKey} timetable exists for the current configuration. The solver could not complete the `
     + `${options.levelKey} grid past ${DAYS[day]} Lesson ${slot + 1} after applying the exact weekly counts, the Rule 4-7 `
     + 'placement windows, available weekdays and double-lesson days, Rule 8 (at most one appearance per learning area per '
-    + 'day), Rule 9 (Maths never immediately before Integrated Science), Rule 11 (shared teachers) and Rule 12 (CAS doubles '
-    + 'start at Lesson 3 or later). '
+    + 'day), Rule 9 (Maths never immediately before Integrated Science), Rule 11 (shared teachers) and Rule 12 '
+    + '(Creative Arts and Pre-Tech doubles start at Lesson 3 or later; Kiswahili doubles may not include Lesson 8). '
     + (outstanding.length ? `Still unscheduled: ${outstanding.join(', ')}. ` : '')
     + 'Free a teacher for that slot, widen the available weekdays, move a double day, or lower the weekly counts. '
     + `(${searchNodes.toLocaleString()} search nodes, ${restartCount} attempt(s).)`,

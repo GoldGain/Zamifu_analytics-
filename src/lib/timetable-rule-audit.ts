@@ -328,12 +328,21 @@ export function auditTimetable(options: {
           `${subjectName || subjectId} double occupies lessons ${first} and ${second} on day ${day}, which are not consecutive`,
         );
       }
-    } else if (isCasSubjectName(subjectName) && first < 3) {
+    } else if (
+      (isCasSubjectName(subjectName) || isPreTechSubjectName(subjectName)) && first < 3
+    ) {
       addViolation(
         12,
-        'cas-double-window',
+        'subject-double-window',
         classId,
-        `${subjectName} double starts at Lesson ${first} on day ${day}; CAS doubles may start only at Lesson 3 or later`,
+        `${subjectName} double starts at Lesson ${first} on day ${day}; this subject's double may start only at Lesson 3 or later`,
+      );
+    } else if (isKiswahiliSubjectName(subjectName) && first > 6) {
+      addViolation(
+        12,
+        'subject-double-window',
+        classId,
+        `${subjectName} double starts at Lesson ${first} on day ${day}; a Kiswahili double may not include Lesson 8`,
       );
     }
   }
@@ -365,17 +374,14 @@ export function auditTimetable(options: {
     const subjectName = nameOf(entry.subject_id);
     if (!subjectName.trim()) continue;
     const lesson = lessonNumberOf(slot, lessonSlots);
-    if (isMathSubjectName(subjectName) && lesson > 4) {
-      addViolation(4, 'maths-placement', classId, `Mathematics at Lesson ${lesson} exceeds the Lesson 1-4 window`);
+    if (isMathSubjectName(subjectName) && lesson > 6) {
+      addViolation(4, 'maths-placement', classId, `Mathematics at Lesson ${lesson} exceeds the Lesson 1-6 window`);
     }
-    if (isEnglishSubjectName(subjectName) && lesson > 5) {
-      addViolation(5, 'english-placement', classId, `English at Lesson ${lesson} exceeds the Lesson 1-5 window`);
+    if (isEnglishSubjectName(subjectName) && lesson > 6) {
+      addViolation(5, 'english-placement', classId, `English at Lesson ${lesson} exceeds the Lesson 1-6 window`);
     }
-    if ((isScienceSubjectName(subjectName) || isPreTechSubjectName(subjectName)) && lesson > 6) {
-      addViolation(6, 'science-pretech-placement', classId, `${subjectName} at Lesson ${lesson} exceeds the Lesson 1-6 window`);
-    }
-    if (isKiswahiliSubjectName(subjectName) && lesson > 7) {
-      addViolation(7, 'kiswahili-placement', classId, `Kiswahili at Lesson ${lesson} is not allowed (Lesson 8 is excluded)`);
+    if (isScienceSubjectName(subjectName) && lesson > 6) {
+      addViolation(6, 'science-placement', classId, `${subjectName} at Lesson ${lesson} exceeds the Lesson 1-6 window`);
     }
   }
 

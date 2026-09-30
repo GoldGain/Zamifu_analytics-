@@ -159,25 +159,42 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 /**
  * Final subject placement gate from the timetable requirements.
  *
- * Mathematics may use Lessons 1-4 only (a Maths double must finish at Lesson 4).
- * English may use Lessons 1-5, Integrated Science and Pre-Technical Studies
- * may use Lessons 1-6, Kiswahili may use Lessons 1-7, and other learning areas
- * may use any lesson.
+ * Mathematics, English, and Integrated Science may use Lessons 1-6.
+ * Pre-Technical Studies, Kiswahili, and all other learning areas may use any
+ * lesson slot in the generated day.
  */
 export function strictSubjectAllowsLesson(
   subjectName: string | null | undefined,
   lessonNumber: number,
 ): boolean {
   const fam = classifySubject(subjectName);
-  // Mathematics is capped at Lesson 4, so a Maths double may only sit in
-  // Lessons 3-4. English keeps its wider fallback up to Lesson 5 and
-  // Integrated Science up to Lesson 6; no core subject reaches the afternoon.
-  if (fam === 'math') return lessonNumber >= 1 && lessonNumber <= 4;
-  if (fam === 'english') return lessonNumber >= 1 && lessonNumber <= 5;
+  if (fam === 'math') return lessonNumber >= 1 && lessonNumber <= 6;
+  if (fam === 'english') return lessonNumber >= 1 && lessonNumber <= 6;
   if (fam === 'science') return lessonNumber >= 1 && lessonNumber <= 6;
-  if (fam === 'pretech') return lessonNumber >= 1 && lessonNumber <= 6;
-  if (fam === 'kiswahili') return lessonNumber >= 1 && lessonNumber <= 7;
+  if (fam === 'pretech') return lessonNumber >= 1;
+  if (fam === 'kiswahili') return lessonNumber >= 1;
   return lessonNumber >= 1;
+}
+
+/**
+ * Return true when the first lesson of a configured double is legal.
+ * Subject windows are checked separately for both cells; these are the two
+ * additional pair-specific restrictions from the timetable requirements.
+ */
+export function isValidDoubleLessonStart(
+  subjectName: string | null | undefined,
+  firstLessonNumber: number,
+): boolean {
+  const family = classifySubject(subjectName);
+  // Pre-Tech doubles may not occupy Lessons 1-2, so they must start at L3+.
+  if (family === 'pretech') return firstLessonNumber >= 3;
+  // Kiswahili singles may use L8, but a double may not include Lesson 8.
+  if (family === 'kiswahili') return firstLessonNumber <= 6;
+  // Creative Arts follows the same no-L1/L2 double rule as the legacy policy.
+  if (family === 'other' && /creative\s+arts?/i.test(String(subjectName || ''))) {
+    return firstLessonNumber >= 3;
+  }
+  return true;
 }
 
 export interface LessonUnitSlot {
@@ -203,6 +220,7 @@ export function isValidDoubleLessonPair(
   const secondLesson = Number(String(secondSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   if (!Number.isFinite(firstLesson) || !Number.isFinite(secondLesson)) return false;
   if (secondLesson !== firstLesson + 1) return false;
+  if (!isValidDoubleLessonStart(subjectName, firstLesson)) return false;
   return strictSubjectAllowsLesson(subjectName, firstLesson)
     && strictSubjectAllowsLesson(subjectName, secondLesson);
 }

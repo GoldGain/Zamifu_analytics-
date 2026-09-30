@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
-import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users } from 'lucide-react';
+import { Search, Award, Download, FileText, Loader2, TrendingUp, TrendingDown, Minus, Send, Bell, Trophy, Pencil, Trash2, X, Filter, Users, Printer } from 'lucide-react';
 import PdfFontSizeDialog from '@/components/PdfFontSizeDialog';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -275,6 +275,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary';
     student?: any;
   } | null>(null);
+  const metadataLoadedRef = useRef(false);
+  const resultRequestRef = useRef(0);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -306,40 +308,27 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     let sch: any = null;
     try {
       const resultsData = await Promise.all([
-        // Paged: this school-wide read is far larger than PostgREST's 1000-row
-        // cap (one term alone is ~6000 rows) and an unpaged read silently drops
-        // the tail. Rows arrive newest-first, so the dropped rows were the
-        // OLDEST — exactly the single-exam rows a learner needs for their
-        // learning-area totals, which is why learners whose rows fell past the
-        // cut lost learning areas and slid down the table.
-        fetchAllRows((from, to) => supabaseUntyped
-          .from('results')
-          .select('*, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
-          .eq('school_id', schoolId)
-          .order('created_at', { ascending: false })
-          .order('id')
-          .range(from, to)),
-        supabaseUntyped.from('classes').select('*').eq('school_id', schoolId).order('level'),
-        supabaseUntyped.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
+        supabaseUntyped.from('classes').select('id, school_id, name, level, grade_level, curriculum, stream, stream_name, class_teacher_id, academic_year, is_active').eq('school_id', schoolId).eq('is_active', true).order('level'),
+        supabaseUntyped.from('terms').select('id, name, academic_year, is_current').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
-        supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active, target_type, target_grade_level, target_class_id, created_at').eq('school_id', schoolId).order('created_at', { ascending: false }),
         supabaseUntyped.from('students').select('id, class_id').eq('school_id', schoolId).eq('is_active', true),
       ]);
-      setResults((resultsData[0] as any[]) || []);
-      const loadedClasses = (resultsData[1].data as any[]) || [];
+      const loadedClasses = (resultsData[0].data as any[]) || [];
       const visibleClasses = scope === 'class_teacher' && resolvedScopedClassId
         ? loadedClasses.filter((c: any) => c.id === resolvedScopedClassId)
         : loadedClasses;
       setClasses(visibleClasses);
-      setTerms((resultsData[2].data as any[]) || []);
-      sch = resultsData[3].data;
-      setExams((resultsData[4].data as any[]) || []);
+      setTerms((resultsData[1].data as any[]) || []);
+      sch = resultsData[2].data;
+      setExams((resultsData[3].data as any[]) || []);
       const learnerCounts: Record<string, number> = {};
-      ((resultsData[5].data as any[]) || []).forEach((student: any) => {
+      ((resultsData[4].data as any[]) || []).forEach((student: any) => {
         if (student.class_id) learnerCounts[student.class_id] = (learnerCounts[student.class_id] || 0) + 1;
       });
       setActiveLearnerCounts(learnerCounts);
       if (scope === 'class_teacher' && resolvedScopedClassId) setSelectedClass(resolvedScopedClassId);
+      metadataLoadedRef.current = true;
     } catch (err: any) {
       console.error('Fetch error:', err);
     }
@@ -361,6 +350,57 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     }
     setLoading(false);
   };
+
+  /** Load only the current class/grade, term, and assessment scope. */
+  const loadScopedResults = async () => {
+    const schoolId = user?.schoolId ?? '';
+    if (!schoolId || !selectedClass || !selectedTerm) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    const selectedClassObj = classes.find((item: any) => item.id === selectedClass);
+    const selectedLevel = Number(selectedClassObj?.level ?? selectedClassObj?.grade_level);
+    const classIds = showAllStreams && scope === 'school'
+      ? classes
+        .filter((item: any) => {
+          const itemLevel = Number(item.level ?? item.grade_level);
+          if (Number.isFinite(selectedLevel) && Number.isFinite(itemLevel)) return itemLevel === selectedLevel;
+          return item.name === selectedClassObj?.name;
+        })
+        .map((item: any) => item.id)
+      : [selectedClass];
+    const requestId = ++resultRequestRef.current;
+    setLoading(true);
+    try {
+      const rows = await fetchAllRows((from, to) => {
+        let query = supabaseUntyped
+          .from('results')
+          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
+          .in('class_id', classIds)
+          .eq('term_id', selectedTerm)
+          .eq('school_id', schoolId)
+          .order('created_at')
+          .order('id')
+          .range(from, to);
+        if (selectedExam) query = query.eq('exam_id', selectedExam);
+        return query;
+      });
+      if (requestId === resultRequestRef.current) setResults(rows);
+    } catch (err: any) {
+      if (requestId === resultRequestRef.current) {
+        setResults([]);
+        toast.error(`Failed to load results: ${err.message || 'Please try again.'}`);
+      }
+    } finally {
+      if (requestId === resultRequestRef.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!metadataLoadedRef.current) return;
+    void loadScopedResults();
+  }, [selectedClass, selectedTerm, selectedExam, showAllStreams, classes.length]);
 
   const selectedClassObjForView = classes.find((c: any) => c.id === selectedClass);
   const allStreamClassIds = selectedClassObjForView
@@ -412,7 +452,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const { error: updateError } = await publishQuery;
       if (updateError) throw updateError;
       toast.success('Results published. Use Notify Parents when you are ready to share them.');
-      fetchAll();
+      void loadScopedResults();
     } catch (err: any) { toast.error('Failed to publish results: ' + err.message); console.error(err); }
     setPublishing(false);
   };
@@ -501,22 +541,26 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               ? Math.round(Number(result.percentage))
               : result.out_of > 0 ? Math.round((result.marks / result.out_of) * 100) : 0;
             const gradeInfo = calculateCompetencyGrade(percentage, band);
-            return { name: result.subjects?.name || 'Unknown', marks: percentage, grade: gradeInfo.subLevel || gradeInfo.grade || '' };
+            const outOf = Number(result.out_of) > 0 ? Number(result.out_of) : 100;
+            const rawMarks = Number.isFinite(Number(result.marks)) ? Number(result.marks) : percentage;
+            return { name: result.subjects?.name || 'Unknown', marks: percentage, rawMarks, outOf, grade: gradeInfo.subLevel || gradeInfo.grade || '' };
           });
           const isPrimaryBand = band === 'primary';
-          const totalPercentage = subjectList.reduce((sum: number, result: any) => sum + result.marks, 0);
+          const totalMarks = subjectList.reduce((sum: number, result: any) => sum + result.rawMarks, 0);
+          const totalPossibleMarks = subjectList.reduce((sum: number, result: any) => sum + result.outOf, 0);
           const totalPoints = subjectList.reduce((sum: number, result: any) => sum + (calculateCompetencyGrade(result.marks, band).points || 0), 0);
           const studentSummary = allStudentSummaries.find((summary: any) => summary.studentId === student.id);
           const smsMessage = SMS_TEMPLATES.resultsToParent(
               `${student.first_name} ${student.last_name}`,
               streamLabel(classData),
               subjectList,
-              isPrimaryBand ? totalPercentage : totalPoints,
-              isPrimaryBand ? subjectList.length * 100 : subjectList.length * 8,
+              isPrimaryBand ? totalMarks : totalPoints,
+              isPrimaryBand ? totalPossibleMarks : subjectList.length * 8,
               studentSummary?.position ?? 0,
               allStudentSummaries.length,
               '',
               classObj,
+              { totalMarks, totalPossibleMarks },
             );
           for (const parentPhone of parentPhones) {
             const smsResult = await sendSMS(parentPhone, smsMessage, undefined, user?.schoolId || undefined);
@@ -559,14 +603,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   useEffect(() => {
     if (selectedClass && selectedTerm) { fetchAndComputeBestPerSubject(); } else { setBestPerSubjectList([]); }
-  }, [selectedClass, selectedTerm, selectedExam]);
+  }, [selectedClass, selectedTerm, selectedExam, results]);
 
   const fetchAndComputeBestPerSubject = async () => {
     const classObj = classes.find(c => c.id === selectedClass);
-    let bestQuery = supabaseUntyped.from('results').select('*, students(id, first_name, last_name), subjects(name)').eq('class_id', selectedClass).eq('term_id', selectedTerm).eq('school_id', user?.schoolId);
-    if (selectedExam) bestQuery = bestQuery.eq('exam_id', selectedExam);
-    const { data } = await bestQuery;
-    if (data && data.length > 0) { setBestPerSubjectList(computeBestPerSubject(data, classObj)); } else { setBestPerSubjectList([]); }
+    const scopedRows = results.filter((result: any) => result.class_id === selectedClass && result.term_id === selectedTerm && (!selectedExam || result.exam_id === selectedExam));
+    if (scopedRows.length > 0) setBestPerSubjectList(computeBestPerSubject(scopedRows, classObj));
+    else setBestPerSubjectList([]);
   };
 
   const openEditResult = (r: any) => {
@@ -605,7 +648,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       if (error) throw new Error(error.message);
       toast.success('Result updated and grade recalculated!');
       setEditingResult(null);
-      fetchAll();
+      void loadScopedResults();
     } catch (err: any) {
       toast.error('Failed to update result: ' + err.message);
     } finally {
@@ -620,7 +663,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       await deleteResults({ schoolId: user?.schoolId || '', recordId: deletingResult.id });
       toast.success('Result deleted');
       setDeletingResult(null);
-      fetchAll();
+      void loadScopedResults();
     } catch (err: any) {
       toast.error('Failed to delete result: ' + err.message);
     } finally {
@@ -640,7 +683,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     try {
       const deleted = await deleteResults({ schoolId: user?.schoolId || '', classId: effectiveClassId, termId: selectedTerm, examId: selectedExam });
       toast.success(`Deleted ${deleted} result(s)`);
-      fetchAll();
+      void loadScopedResults();
     } catch (err: any) { toast.error('Failed to delete results: ' + err.message); }
     finally { setDeletingClassResults(false); }
   };
@@ -653,7 +696,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return fetchAllRows((from, to) => {
       let query = supabaseUntyped
         .from('results')
-        .select('*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
+        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
         .eq('class_id', effectiveClassId)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
@@ -665,14 +708,52 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     });
   };
 
-  const fetchPreviousTermAvg = async (studentId: string, currentTermId: string) => {
+  const fetchPreviousTermAverages = async (studentIds: string[], currentTermId: string) => {
     const currentTerm = terms.find(t => t.id === currentTermId);
-    if (!currentTerm) return null;
+    const averages: Record<string, number | null> = Object.fromEntries(studentIds.map((id) => [id, null]));
+    if (!currentTerm || studentIds.length === 0) return averages;
     const prevTerm = terms.find(t => t.academic_year === currentTerm.academic_year && t.name !== currentTerm.name);
-    if (!prevTerm) return null;
-    const { data } = await supabaseUntyped.from('results').select('percentage, marks, out_of').eq('student_id', studentId).eq('term_id', prevTerm.id).eq('school_id', user?.schoolId);
-    if (!data || data.length === 0) return null;
-    return data.reduce((s, r) => s + (r.percentage ?? (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0) / data.length;
+    if (!prevTerm) return averages;
+    const previousRows = await fetchAllRows((from, to) => supabaseUntyped
+      .from('results')
+      .select('student_id, percentage, marks, out_of')
+      .in('student_id', studentIds)
+      .eq('term_id', prevTerm.id)
+      .eq('school_id', user?.schoolId)
+      .order('student_id')
+      .order('id')
+      .range(from, to));
+    const totals = new Map<string, { sum: number; count: number }>();
+    previousRows.forEach((row: any) => {
+      const key = String(row.student_id);
+      const percentage = row.percentage ?? (row.out_of > 0 ? (row.marks / row.out_of) * 100 : 0);
+      const current = totals.get(key) || { sum: 0, count: 0 };
+      current.sum += Number(percentage) || 0;
+      current.count += 1;
+      totals.set(key, current);
+    });
+    totals.forEach((value, key) => { averages[key] = value.count > 0 ? value.sum / value.count : null; });
+    return averages;
+  };
+
+  const fetchPreviousTermAvg = async (studentId: string, currentTermId: string) =>
+    (await fetchPreviousTermAverages([studentId], currentTermId))[studentId] ?? null;
+
+  const fetchStudentTrends = async (studentIds: string[]) => {
+    const rows = await fetchAllRows((from, to) => supabaseUntyped
+      .from('results')
+      .select('student_id, percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+      .in('student_id', studentIds)
+      .eq('school_id', user?.schoolId)
+      .order('student_id')
+      .order('term_id')
+      .range(from, to));
+    const grouped: Record<string, PerformanceTrendRecord[]> = {};
+    rows.forEach((row: any) => {
+      const key = String(row.student_id);
+      (grouped[key] ||= []).push(row as PerformanceTrendRecord);
+    });
+    return Object.fromEntries(studentIds.map((studentId) => [studentId, buildPerformanceTrend(grouped[studentId] || [])]));
   };
 
   const buildStudentSummary = (rawResults: any[], classObj: any) => buildAssessmentLearnerSummaries(rawResults, classObj);
@@ -1493,23 +1574,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       }
       const signatures: SignatureInfo = { principal_signature_url: principalSignatureUrl, teacher_signature_url: teacherSigUrl };
 
-      const prevAvgMap: Record<string, number | null> = {};
-      for (const s of summaries) { prevAvgMap[s.studentId] = await fetchPreviousTermAvg(s.studentId, selectedTerm); }
+      const prevAvgMap = await fetchPreviousTermAverages(summaries.map((s) => s.studentId), selectedTerm);
 
       const bulkBestPerSubject = computeBestPerSubject(rawResults, classObj);
 
       // Pre-fetch all student trends in one pass so every learner PDF can show
       // distinct previous assessments, including legacy term-only results.
-      const studentTrends: Record<string, { term: string; avg: number }[]> = {};
-      for (const s of summaries) {
-        const { data: allResults } = await supabaseUntyped
-          .from('results')
-          .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
-          .eq('student_id', s.studentId)
-          .order('terms(academic_year)', { ascending: true })
-          .order('terms(name)', { ascending: true });
-        studentTrends[s.studentId] = buildPerformanceTrend((allResults || []) as PerformanceTrendRecord[]);
-      }
+      const studentTrends = await fetchStudentTrends(summaries.map((s) => s.studentId));
 
       // Generate a single optimized PDF for all learners
       const mainDoc = new jsPDF({ unit: 'mm', format: 'a4' });
@@ -1641,7 +1712,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchResultsAll = async (classIds: string[], termId: string, examId?: string, selectCols?: string): Promise<any[]> => {
     const pageSize = 1000;
-    const selected = selectCols || '*, students(id, first_name, last_name, admission_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)';
+    const selected = selectCols || 'id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)';
     const allResults: any[] = [];
     let from = 0;
     while (true) {
@@ -1649,7 +1720,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         .select(selected)
         .in('class_id', classIds)
         .eq('term_id', termId)
-        .eq('school_id', user?.schoolId);
+        .eq('school_id', user?.schoolId)
+        .order('created_at')
+        .order('id');
       if (examId) q = q.eq('exam_id', examId);
       const { data, error } = await q.range(from, from + pageSize - 1);
       if (error) throw error;
@@ -2129,8 +2202,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const totalStudents = summaries.length;
       const sigById: Record<string, SignatureInfo> = {};
       for (const sc of streamClasses) { sigById[sc.id] = await getSignatureInfo(sc); }
-      const prevAvgMap: Record<string, number | null> = {};
-      for (const s of summaries) { prevAvgMap[s.studentId] = await fetchPreviousTermAvg(s.studentId, selectedTerm); }
+      const prevAvgMap = await fetchPreviousTermAverages(summaries.map((s) => s.studentId), selectedTerm);
       const mainDoc = new jsPDF({ unit: 'mm', format: 'a4' }); configurePdfFontSize(mainDoc, fontSize);
       let addedFirst = false;
       for (const s of summaries) {
@@ -2260,6 +2332,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     } catch (error: any) { toast.error(error.message || 'Unable to generate comparison PDF.'); }
   };
 
+  const printCurrentReport = () => {
+    if (!selectedClass || !selectedTerm) {
+      toast.error('Select a class and term before printing.');
+      return;
+    }
+    window.print();
+  };
+
   const comparisonExamsForTerm = (termId: string) => {
     const matching = exams.filter((exam) => !termId || exam.term_id === termId);
     // Some legacy school_exams rows predate term_id consistency. Keep the
@@ -2296,7 +2376,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   return (
-    <div className="min-w-0 space-y-4 sm:space-y-6">
+    <div>
+      <div className="results-dashboard-shell min-w-0 space-y-4 sm:space-y-6">
       <div className="flex min-w-0 flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#111111]">{scope === 'dos' ? 'DoS Results Dashboard' : scope === 'class_teacher' ? 'Class Results Dashboard' : 'Results Dashboard'}</h1>
@@ -2365,6 +2446,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
           </button>
+          <button onClick={printCurrentReport} disabled={loading || !selectedClass || !selectedTerm}
+            className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-700 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-sm">
+            <Printer className="w-4 h-4" />
+            Print Current Report
+          </button>
 
           {scope === 'school' && (
             <>
@@ -2387,7 +2473,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {publishing ? 'Publishing...' : 'Publish Results'}
               </button>
-              <button onClick={notifyParents} disabled={publishing || notifyingParents || !selectedClass || !selectedTerm}
+              <button onClick={notifyParents} disabled={loading || publishing || notifyingParents || !selectedClass || !selectedTerm}
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-amber-500 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
                 {notifyingParents ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
                 {notifyingParents ? 'Notifying Parents...' : 'Notify Parents'}
@@ -2691,6 +2777,51 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           </div>
         </div>
       )}
+    </div>
+      <section className="zamifu-print-report" aria-label="Printable results report">
+        <header className="zamifu-print-report-header">
+          <div>
+            <h1>{schoolInfo.name || schoolName}</h1>
+            <p>{showAllStreams ? 'Class Summary — All Streams' : 'Class Results Summary'}</p>
+          </div>
+          {schoolInfo.logo_url && <img src={schoolInfo.logo_url} alt="" />}
+        </header>
+        <div className="zamifu-print-report-meta">
+          <span><strong>Class:</strong> {showAllStreams ? `${classObj?.name || 'Selected class'} — All Streams` : streamLabel(classObj)}</span>
+          <span><strong>Term:</strong> {terms.find((term: any) => term.id === selectedTerm)?.name || '—'} {terms.find((term: any) => term.id === selectedTerm)?.academic_year || ''}</span>
+          <span><strong>Assessment:</strong> {selectedExam ? (exams.find((exam: any) => exam.id === selectedExam)?.name || 'Selected assessment') : 'All assessments'}</span>
+          <span><strong>Printed:</strong> {new Date().toLocaleDateString()}</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Learner</th>
+              {showAllStreams && <th>Stream</th>}
+              {allSubjects.map((subject) => <th key={subject}>{shortName(subject)}</th>)}
+              <th>Mean %</th>
+              <th>Grade</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaries.map((summary: any) => {
+              const summaryClass = classes.find((item: any) => item.id === summary.classId);
+              const summaryGrade = isPrimary ? getDisplayGrade(summary.avgPct) : overallGradeWithBand(summary.avgPct, band).subLevel;
+              return (
+                <tr key={summary.studentId}>
+                  <td>{summary.position}</td>
+                  <td>{`${summary.student?.first_name || ''} ${summary.student?.last_name || ''}`.trim() || '—'}</td>
+                  {showAllStreams && <td>{streamLabel(summaryClass)}</td>}
+                  {allSubjects.map((subject) => <td key={subject}>{summary.subjects[subject] == null ? '—' : `${Number(summary.subjects[subject]).toFixed(0)}%`}</td>)}
+                  <td>{Number(summary.avgPct).toFixed(1)}%</td>
+                  <td>{summaryGrade}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {summaries.length === 0 && <p className="zamifu-print-empty">No results match the selected filters.</p>}
+      </section>
     </div>
   );
 }

@@ -499,18 +499,19 @@ export default function AssignTeachers() {
           <div className="rounded-lg bg-white border border-blue-100 p-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Junior (Grade 7-9)</p>
             <ul className="text-[11px] text-gray-600 mt-1 space-y-0.5">
-              <li>Lessons 1-2: Mathematics / English</li>
-              <li>Lessons 3-5: Integrated Science, Pre-Technical</li>
-              <li>Lessons 6-8: Kiswahili, Social Studies, RE, Agriculture, Creative Arts</li>
-              <li>Kiswahili never beyond Lesson 7</li>
+              <li>Lessons 1-6: Mathematics, English, Integrated Science</li>
+              <li>Pre-Technical, Kiswahili, and other areas: any lesson slot</li>
+              <li>Pre-Tech / Creative Arts doubles start at Lesson 3 or later</li>
+              <li>Kiswahili doubles may not include Lesson 8</li>
             </ul>
           </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Primary (Grade 1-6)</p>
             <ul className="text-[11px] text-gray-600 mt-1 space-y-0.5">
-              <li>Lessons 1-2: Mathematics / English</li>
-              <li>Lessons 3-4: Science, Kiswahili</li>
-              <li>Lessons 5-6: Social Studies, RE, Creative Arts, Agriculture</li>
+              <li>Lessons 1-6: Mathematics, English, Integrated Science</li>
+              <li>Pre-Technical, Kiswahili, and other areas: any lesson slot</li>
+              <li>Pre-Tech / Creative Arts doubles start at Lesson 3 or later</li>
+              <li>Kiswahili doubles may not include Lesson 8</li>
             </ul>
           </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
