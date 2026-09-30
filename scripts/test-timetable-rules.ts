@@ -32,6 +32,21 @@ if (!strictSubjectAllowsLesson('Mathematics', 6) || !strictSubjectAllowsLesson('
 if (!strictSubjectAllowsLesson('Pre-Technical Studies', 8) || !strictSubjectAllowsLesson('Kiswahili', 8)) throw new Error('Pre-Tech and Kiswahili singles must allow Lesson 8');
 if (isValidDoubleLessonStart('Pre-Technical Studies', 2) || !isValidDoubleLessonStart('Pre-Technical Studies', 3)) throw new Error('Pre-Tech doubles must start at Lesson 3 or later');
 if (isValidDoubleLessonStart('Kiswahili', 7) || !isValidDoubleLessonStart('Kiswahili', 6)) throw new Error('Kiswahili doubles must not include Lesson 8');
+const malformedJuniorSlots = generateSlots({
+  ...lowerConfig,
+  school_start: '08:20',
+  school_end: '16:40',
+  second_break_start: '11:20',
+  second_break_end: '23:40',
+  lunch_start: '13:00',
+  lunch_end: '14:00',
+  activities_start: '15:20',
+  activities_end: '16:40',
+}, 8, 'junior');
+const malformedLessons = malformedJuniorSlots.filter((slot) => slot.slot_type === 'lesson');
+if (malformedLessons.length !== 8) throw new Error(`Malformed-clock test expected 8 lessons, got ${malformedLessons.length}`);
+if (malformedJuniorSlots.find((slot) => slot.label === 'SECOND BREAK')?.end_time !== '12:00') throw new Error('Malformed 23:40 break was not normalized to 12:00');
+if (!malformedLessons.every((slot, index) => index === 0 || slot.start_time >= malformedLessons[index - 1].end_time)) throw new Error('Malformed-clock lessons are not chronological');
 const seniorTargets = resolveLessonTargets('senior', { lessons_per_day: 7, after_lunch_lessons: 1 });
 if (seniorTargets.totalLessons !== 8 || seniorTargets.afterLunch !== 2) throw new Error(`Senior canonical targets were overridden: ${JSON.stringify(seniorTargets)}`);
 console.log('Timetable rule test passed:', JSON.stringify({ targets, summary, lastLesson }));

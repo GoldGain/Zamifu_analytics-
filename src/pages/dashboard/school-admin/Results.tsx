@@ -2441,11 +2441,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {generatingPDF ? 'Generating...' : 'Class Summary PDF'}
           </button>
+          <button onClick={printCurrentReport} disabled={loading || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print Class Summary</button>
           <button onClick={() => openPdfFontSizeDialog('bulk-report-cards')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-green-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm">
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
           </button>
+          <button onClick={printCurrentReport} disabled={loading || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print Bulk Report Cards</button>
           <button onClick={printCurrentReport} disabled={loading || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-700 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-sm">
             <Printer className="w-4 h-4" />
@@ -2459,11 +2461,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                 Class Summary — All Streams
               </button>
+              <button onClick={printCurrentReport} disabled={loading || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print All-Streams Summary</button>
               <button onClick={() => openPdfFontSizeDialog('all-streams-bulk')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm}
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-teal-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors shadow-sm">
                 {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Download All Report Cards
               </button>
+              <button onClick={printCurrentReport} disabled={loading || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print All Report Cards</button>
             </>
           )}
           {scope === 'school' && (
@@ -2553,6 +2557,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               {downloadingLearner ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloadingLearner ? 'Preparing…' : 'Download Report Card'}
             </button>
+            <button type="button" onClick={printCurrentReport} disabled={!selectedLearner || loading} className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
           </div>
           {selectedLearner && (
             <p className="mt-3 text-xs font-medium text-blue-700">
