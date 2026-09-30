@@ -673,9 +673,7 @@ export default function TimetableGenerate() {
           const name = String(subject || '').trim().toLowerCase();
           if (name.includes('mathemat')) return 'early_morning';
           if (name.includes('english')) return 'early_morning';
-          if (name.includes('kiswahili')) return isPrimaryLevel ? 'mid_morning' : 'late_morning';
           if (name.includes('agricultur')) return 'afternoon';
-          if (name.includes('pre-tech') || name.includes('pretechnical') || name.includes('pre technical')) return 'mid_morning';
           if (name.includes('science') || name.includes('environment') || name.includes('chem') || name.includes('physic') || name.includes('biolog')) return 'mid_morning';
           if (name.includes('religious') || classifySubject(name) === 'religious') return 'afternoon';
           if (name.includes('creative')) return 'afternoon';
@@ -699,17 +697,13 @@ export default function TimetableGenerate() {
           const preferredIds = new Set(preferred.map((slot: any) => String(slot.id)));
           const remainder = lessonSlots.filter((slot: any) => !preferredIds.has(String(slot.id)));
           const combined = [...preferred, ...remainder];
-          return combined
-            .filter((slot: any) => band !== 'late_morning' || lessonNumberOf(slot) <= 7)
-            .sort((a: any, b: any) => lessonNumberOf(a) - lessonNumberOf(b));
+          return combined.sort((a: any, b: any) => lessonNumberOf(a) - lessonNumberOf(b));
         };
 
         // During backfill every free slot is eligible so the timetable is always
-        // complete. The only named cross-band cap is Kiswahili never beyond
-        // Lesson 7 (Junior). Mathematics/Science adjacency and once-per-day are
-        // enforced separately by the placement guards.
+        // complete. Subject windows and subject-specific double rules are
+        // enforced separately by the canonical placement guards.
         const bandAllowsSlot = (band: string, slot: any): boolean => {
-          if (band === 'late_morning' && lessonNumberOf(slot) > 7) return false;
           return true;
         };
         const classSubjectBySlot = new Map<string, string>();

@@ -76,6 +76,80 @@
 
 /* ── Results Table Print Styles ─────────────────────────────────────────── */
 @media print {
+  .results-dashboard-shell {
+    display: none !important;
+  }
+  .zamifu-print-report {
+    display: block !important;
+    width: 100%;
+    color: #111827;
+    background: #ffffff;
+    font-family: Arial, sans-serif;
+    font-size: 9px;
+  }
+  .zamifu-print-report-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid #111827;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+  }
+  .zamifu-print-report-header h1 {
+    margin: 0;
+    font-size: 18px;
+  }
+  .zamifu-print-report-header p {
+    margin: 3px 0 0;
+    color: #4b5563;
+    font-size: 11px;
+  }
+  .zamifu-print-report-header img {
+    width: 42px;
+    height: 42px;
+    object-fit: contain;
+  }
+  .zamifu-print-report-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 18px;
+    margin-bottom: 10px;
+    color: #374151;
+  }
+  .zamifu-print-report table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+    font-size: 8px;
+  }
+  .zamifu-print-report thead {
+    display: table-header-group;
+  }
+  .zamifu-print-report th,
+  .zamifu-print-report td {
+    border: 1px solid #9ca3af;
+    padding: 4px 3px;
+    text-align: center;
+    page-break-inside: avoid;
+  }
+  .zamifu-print-report th {
+    background: #e5e7eb !important;
+    font-weight: 700;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .zamifu-print-report th:nth-child(2),
+  .zamifu-print-report td:nth-child(2) {
+    min-width: 115px;
+    text-align: left;
+  }
+  .zamifu-print-report tbody tr {
+    page-break-inside: avoid;
+  }
+  .zamifu-print-empty {
+    margin-top: 18px;
+    color: #4b5563;
+  }
   .results-table {
     font-size: 10px !important;
     border-collapse: collapse !important;
@@ -98,5 +172,11 @@
     background-color: #f9fafb !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+}
+
+@media screen {
+  .zamifu-print-report {
+    display: none;
   }
 }

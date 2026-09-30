@@ -1,4 +1,4 @@
-import { generateSlots, isFillerSubject, resolveLessonTargets, summarizeSlots } from '../src/lib/timetable-generator.ts';
+import { generateSlots, isFillerSubject, isValidDoubleLessonStart, resolveLessonTargets, strictSubjectAllowsLesson, summarizeSlots } from '../src/lib/timetable-generator.ts';
 
 const lowerConfig = {
   lesson_duration: 40,
@@ -28,6 +28,10 @@ const lastLesson = slots.filter(s => s.slot_type === 'lesson').at(-1);
 const lunchSlot = slots.find(s => s.slot_type === 'lunch');
 if (!lunchSlot || lastLesson?.end_time !== lunchSlot.start_time) throw new Error(`Expected Lesson 6 to end at lunch start, got lesson=${lastLesson?.end_time}, lunch=${lunchSlot?.start_time}`);
 if (!isFillerSubject('Reading and Research') || !isFillerSubject('Study') || !isFillerSubject('Revision')) throw new Error('Filler-subject guard did not reject all prohibited names');
+if (!strictSubjectAllowsLesson('Mathematics', 6) || !strictSubjectAllowsLesson('English', 6) || !strictSubjectAllowsLesson('Integrated Science', 6)) throw new Error('Core subject windows must include Lesson 6');
+if (!strictSubjectAllowsLesson('Pre-Technical Studies', 8) || !strictSubjectAllowsLesson('Kiswahili', 8)) throw new Error('Pre-Tech and Kiswahili singles must allow Lesson 8');
+if (isValidDoubleLessonStart('Pre-Technical Studies', 2) || !isValidDoubleLessonStart('Pre-Technical Studies', 3)) throw new Error('Pre-Tech doubles must start at Lesson 3 or later');
+if (isValidDoubleLessonStart('Kiswahili', 7) || !isValidDoubleLessonStart('Kiswahili', 6)) throw new Error('Kiswahili doubles must not include Lesson 8');
 const seniorTargets = resolveLessonTargets('senior', { lessons_per_day: 7, after_lunch_lessons: 1 });
 if (seniorTargets.totalLessons !== 8 || seniorTargets.afterLunch !== 2) throw new Error(`Senior canonical targets were overridden: ${JSON.stringify(seniorTargets)}`);
 console.log('Timetable rule test passed:', JSON.stringify({ targets, summary, lastLesson }));

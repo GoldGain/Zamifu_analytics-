@@ -62,12 +62,37 @@ const duplicateSubjectIssues = validateTimetableRules({
 assert.equal(duplicateSubjectIssues.some((issue) => issue.rule === 'once-per-day'), true);
 
 const strictWindowIssues = validateTimetableRules({
-  entries: [entry('math', 'lesson-6'), entry('english', 'lesson-6'), entry('science', 'lesson-7'), entry('pretech', 'lesson-7')],
+  entries: [entry('math', 'lesson-7'), entry('english', 'lesson-7'), entry('science', 'lesson-7'), entry('pretech', 'lesson-8'), entry('kiswahili', 'lesson-8')],
   slots,
   subjectNames,
   levelGroup: 'junior',
 });
-assert.equal(strictWindowIssues.filter((issue) => issue.rule === 'subject-window').length, 4);
+assert.equal(strictWindowIssues.filter((issue) => issue.rule === 'subject-window').length, 3);
+
+const pretechEarlyDoubleIssues = validateTimetableRules({
+  entries: [entry('pretech', 'lesson-2', 1, 'lesson_double'), entry('pretech', 'lesson-3', 1, 'lesson_double')],
+  slots,
+  subjectNames,
+  levelGroup: 'junior',
+});
+assert.equal(pretechEarlyDoubleIssues.some((issue) => issue.rule === 'subject-double-window'), true);
+
+const kiswahiliLessonEightDoubleIssues = validateTimetableRules({
+  entries: [entry('kiswahili', 'lesson-7', 1, 'lesson_double'), entry('kiswahili', 'lesson-8', 1, 'lesson_double')],
+  slots,
+  subjectNames,
+  levelGroup: 'junior',
+});
+assert.equal(kiswahiliLessonEightDoubleIssues.some((issue) => issue.rule === 'subject-double-window'), true);
+
+assert.doesNotThrow(() => assertTimetableRules({
+  entries: [entry('pretech', 'lesson-3', 1, 'lesson_double'), entry('pretech', 'lesson-4', 1, 'lesson_double')],
+  slots,
+  subjectNames,
+  classes: [{ id: 'class-1' }],
+  days: [1],
+  levelGroup: 'junior',
+}));
 
 const adjacencyIssues = validateTimetableRules({
   entries: [entry('math', 'lesson-1'), entry('science', 'lesson-2')],

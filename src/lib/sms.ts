@@ -364,17 +364,20 @@ export const SMS_TEMPLATES = {
   resultsToParent: (
     studentName: string,
     className: string,
-    subjects: Array<{ name: string; marks: number; grade: string }>,
+    subjects: Array<{ name: string; marks: number; grade: string; rawMarks?: number; outOf?: number }>,
     totalPoints: number,
     totalPossible: number,
     rank: number,
     totalStudents: number,
     comment: string,
     classData?: ResultsSmsClassData,
+    marksSummary?: { totalMarks?: number; totalPossibleMarks?: number },
   ) => {
     const subjectLines = subjects.map(s => `${s.name}: ${s.marks}% - ${s.grade}`).join('\n');
-    const averagePercentage = totalPossible > 0
-      ? Math.round((totalPoints / totalPossible) * 100)
+    const totalMarks = marksSummary?.totalMarks ?? subjects.reduce((sum, subject) => sum + Number(subject.rawMarks ?? subject.marks), 0);
+    const totalPossibleMarks = marksSummary?.totalPossibleMarks ?? subjects.reduce((sum, subject) => sum + Number(subject.outOf ?? 100), 0);
+    const averagePercentage = totalPossibleMarks > 0
+      ? Math.round((totalMarks / totalPossibleMarks) * 100)
       : subjects.length > 0
         ? Math.round(subjects.reduce((sum, subject) => sum + subject.marks, 0) / subjects.length)
         : 0;
@@ -382,7 +385,7 @@ export const SMS_TEMPLATES = {
     const gradeInfo = is844Curriculum(classData)
       ? calculate844Grade(averagePercentage)
       : calculateCompetencyGrade(averagePercentage, band);
-    const averageGrade = gradeInfo.grade === 'EE' || gradeInfo.grade === 'ME' || gradeInfo.grade === 'AE' || gradeInfo.grade === 'BE'
+    const averageGrade = 'subLevel' in gradeInfo && gradeInfo.subLevel
       ? gradeInfo.subLevel
       : gradeInfo.grade;
     const learnerLevel = getLearnerLevelLabel(classData, className);
@@ -394,7 +397,7 @@ export const SMS_TEMPLATES = {
     const rankLine = rank > 0 && totalStudents > 0 ? `Class Rank: ${rank}/${totalStudents}\n` : '';
     const commentLine = comment.trim() ? `\n${comment.trim()}\n` : '';
 
-    return `Zamifu Analytics\n\nResults for ${studentName} - ${learnerLevel}\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nAverage Marks: ${averagePercentage}%\nAverage Grade: ${averageGrade} (${gradeInfo.descriptor})\n${pointsLine}${rankLine}${commentLine}\nView Full Results:\nhttps://zamifu.company`;
+    return `Zamifu Analytics\n\nResults for ${studentName} - ${learnerLevel}\n\nLearning Areas:\n${subjectLines}\n\nSummary:\nTotal Marks: ${totalMarks}/${totalPossibleMarks}\nMean: ${averagePercentage}%\nMean Grade: ${averageGrade} (${gradeInfo.descriptor})\n${pointsLine}${rankLine}${commentLine}\nView Full Results:\nhttps://zamifu.company`;
   },
 
   announcement: (schoolName: string, message: string) =>
