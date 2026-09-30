@@ -92,6 +92,20 @@ const minutesToTime = (minutes: number): string => {
 };
 
 /**
+ * Setup rows occasionally contain a 12-hour clock value written as 23:xx
+ * (for example 23:40 instead of 11:40). Treat that as a same-school-day
+ * value when it is the only value that can fit between the surrounding
+ * anchors; never let it create a 12-hour break or a lesson that wraps past
+ * midnight.
+ */
+function schoolDayClock(value: string, lowerBound: number, upperBound: number): number {
+  const raw = timeToMinutes(value);
+  const candidates = [raw, raw - 12 * 60, raw - 24 * 60]
+    .filter((candidate) => candidate >= lowerBound && candidate <= upperBound);
+  return candidates.length ? Math.min(...candidates) : raw;
+}
+
+/**
  * Normalize any time-like input to Postgres-friendly HH:MM:SS.
  * Returns null for empty/invalid values.
  */
@@ -493,10 +507,10 @@ export function generateSlots(
   const firstBreakStart = (config?.first_break_start || '').toString().slice(0, 5);
   const firstBreakEnd = (config?.first_break_end || '').toString().slice(0, 5);
   const secondBreakStart = (config?.second_break_start || '').toString().slice(0, 5);
-  const secondBreakEnd = (config?.second_break_end || '').toString().slice(0, 5);
+  const rawSecondBreakEnd = (config?.second_break_end || '').toString().slice(0, 5);
   let lunchStart = (config?.lunch_start || '').toString().slice(0, 5);
   let lunchEnd = (config?.lunch_end || '').toString().slice(0, 5);
-  if (!schoolStart || !firstBreakStart || !firstBreakEnd || !secondBreakStart || !secondBreakEnd || !lunchStart || !lunchEnd) {
+  if (!schoolStart || !firstBreakStart || !firstBreakEnd || !secondBreakStart || !rawSecondBreakEnd || !lunchStart || !lunchEnd) {
     throw new Error(
       'Missing timetable times for this school level. Save Timetable Setup (start, breaks, lunch) before generating.'
     );
@@ -541,7 +555,10 @@ export function generateSlots(
 
   // SECOND BREAK. Keep the anchor after Lessons 3–4 when the saved time is
   // inconsistent with the selected level’s lesson duration.
-  const secondBreakDuration = Math.max(1, timeToMinutes(secondBreakEnd) - timeToMinutes(secondBreakStart));
+  const secondBreakStartMinutes = timeToMinutes(secondBreakStart);
+  const lunchStartMinutes = timeToMinutes(lunchStart);
+  const secondBreakEndMinutes = schoolDayClock(rawSecondBreakEnd, secondBreakStartMinutes + 1, Math.max(secondBreakStartMinutes + 1, lunchStartMinutes - 1));
+  const secondBreakDuration = Math.max(1, secondBreakEndMinutes - secondBreakStartMinutes);
   const normalizedSecondBreakStart = Math.max(currentMinutes, timeToMinutes(secondBreakStart));
   const normalizedSecondBreakEnd = normalizedSecondBreakStart + secondBreakDuration;
   slots.push({

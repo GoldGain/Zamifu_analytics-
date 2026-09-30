@@ -336,6 +336,11 @@ function buildDisplaySlotsForLevel(
   // Do NOT fall back to legacy "default" slots — they have wrong after-lunch counts
 
   const counts = countLessons(candidates);
+  const lessonCandidates = candidates.filter((slot) => slot.slot_type === 'lesson');
+  const hasChronologicalLessonClocks = lessonCandidates.every((slot, index) => {
+    if (index === 0) return true;
+    return timeToMinutesView(slot.start_time) >= timeToMinutesView(lessonCandidates[index - 1].end_time);
+  });
   const upperPrimaryConfigComplete = key !== 'upper-primary' || Boolean(
     levelConfig &&
     [
@@ -354,6 +359,7 @@ function buildDisplaySlotsForLevel(
     candidates.length > 0 &&
     counts.total === targets.total &&
     counts.afterLunch === targets.afterLunch &&
+    hasChronologicalLessonClocks &&
     upperPrimaryConfigComplete;
   const normalizeLegacyActivitySlots = (candidateSlots: TimeSlot[]): TimeSlot[] => {
     const lessonSlots = candidateSlots.filter((slot) => slot.slot_type === 'lesson');
