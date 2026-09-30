@@ -982,6 +982,22 @@ class LevelSearch {
     return lessonNumbers[slot] ?? slot + 1;
   }
 
+  /** Rule 9: Maths and Integrated Science may not occupy neighboring lessons. */
+  private hasMathScienceNeighbor(classIndex: number, day: number, slot: number, family: Family): boolean {
+    if (family !== 'math' && family !== 'science') return false;
+    const base = day * this.slotsPerDay;
+    const grid = this.cellValue[classIndex];
+    for (const neighborSlot of [slot - 1, slot + 1]) {
+      if (neighborSlot < 0 || neighborSlot >= this.slotsPerDay) continue;
+      const value = grid[base + neighborSlot];
+      if (!value) continue;
+      const neighborFamily = this.model.sessions[value - 1].family;
+      if ((family === 'math' && neighborFamily === 'science')
+        || (family === 'science' && neighborFamily === 'math')) return true;
+    }
+    return false;
+  }
+
   /* ── placement legality ────────────────────────────────────────────────── */
 
   /** May this learning area take a whole double starting at this lesson? */
@@ -995,6 +1011,8 @@ class LevelSearch {
     if (this.lessonNumber(slot + 1) !== this.lessonNumber(slot) + 1) return false;
     if (!isValidDoubleLessonStart(session.subjectNames[0], this.lessonNumber(slot))) return false;
     if (!(session.allowedDayMask & (1 << day))) return false;
+    if (this.hasMathScienceNeighbor(session.classIndex, day, slot, session.family)
+      || this.hasMathScienceNeighbor(session.classIndex, day, slot + 1, session.family)) return false;
     const dayBit = 1 << day;
     for (let position = 0; position < session.maskKeys.length; position += 1) {
       if (this.maskOf(session, position) & dayBit) return false; // Rule 8
@@ -1026,17 +1044,11 @@ class LevelSearch {
 
   /** Learning areas, and how many lessons, that may legally fill this cell. */
   private candidatesFor(classIndex: number, day: number, slot: number): CellOption[] {
-    const base = day * this.slotsPerDay;
     const out: CellOption[] = [];
     for (const sessionIndex of this.model.classSessions[classIndex]) {
       const session = this.model.sessions[sessionIndex];
       if (this.model.remaining[sessionIndex] <= 0) continue;
-      // Rule 9 — Integrated Science never immediately after Mathematics.
-      if (session.family === 'science' && slot > 0 && this.mathAt[classIndex][base + slot - 1]) continue;
-      if (session.family === 'math' && slot + 1 < this.slotsPerDay) {
-        const right = this.cellValue[classIndex][base + slot + 1];
-        if (right && this.model.sessions[right - 1].family === 'science') continue;
-      }
+      if (this.hasMathScienceNeighbor(classIndex, day, slot, session.family)) continue;
       const pressure = this.usableDays(session) - this.daysNeeded(session);
       if (pressure < 0) continue;
       if (this.canDouble(session, day, slot)) out.push({ sessionIndex, size: 2, pressure });
@@ -1144,14 +1156,7 @@ class LevelSearch {
     const canUse = (sessionIndex: number, slot: number): boolean => {
       const session = this.model.sessions[sessionIndex];
       if (session.window[slot] !== 1) return false;
-      // Rule 9 — Integrated Science never immediately after Mathematics, and
-      // Mathematics never immediately before it.
-      if (session.family === 'science' && slot - 1 >= 0
-        && this.mathAt[classIndex][base + slot - 1] === 1) return false;
-      if (session.family === 'math' && slot + 1 < slotsPerDay) {
-        const right = grid[base + slot + 1];
-        if (right && this.model.sessions[right - 1].family === 'science') return false;
-      }
+      if (this.hasMathScienceNeighbor(classIndex, day, slot, session.family)) return false;
       return true;
     };
 
@@ -1219,9 +1224,9 @@ class LevelSearch {
   /**
    * Order check for the learning areas chosen for one day: is there an assignment
    * of them to the free lessons that respects their Rules 4-7 windows and never
-   * places Integrated Science immediately after Mathematics?
+   * places Maths next to Integrated Science?
    *
-   * Memoized on (lesson, chosen mask, previous lesson was Maths); a day holds at
+   * Memoized on (lesson, chosen mask, previous lesson family); a day holds at
    * most eight lessons, so this stays cheap.
    */
   private layoutPossible(classIndex: number, day: number, chosen: number[]): boolean {
@@ -1230,20 +1235,21 @@ class LevelSearch {
     const grid = this.cellValue[classIndex];
     const memo = new Set<number>();
 
-    const step = (slot: number, usedMask: number, previousWasMath: boolean): boolean => {
+    const step = (slot: number, usedMask: number, previousWasMath: boolean, previousWasScience: boolean): boolean => {
       this.nodes += 1;
       if (this.nodes > this.budget) return false;
       if (usedMask === (1 << chosen.length) - 1) return true;
       if (slot >= slotsPerDay) return false;
 
-      const key = (slot << 20) | (usedMask << 1) | (previousWasMath ? 1 : 0);
+      const key = (slot << 20) | (usedMask << 2) | (previousWasMath ? 1 : 0) | (previousWasScience ? 2 : 0);
       if (memo.has(key)) return false;
 
       const occupant = grid[base + slot];
       if (occupant) {
         // This lesson is already filled: a double placed earlier, or a cell the
         // main loop has passed.
-        if (step(slot + 1, usedMask, this.model.sessions[occupant - 1].family === 'math')) return true;
+        const occupiedFamily = this.model.sessions[occupant - 1].family;
+        if (step(slot + 1, usedMask, occupiedFamily === 'math', occupiedFamily === 'science')) return true;
         memo.add(key);
         return false;
       }
@@ -1252,20 +1258,17 @@ class LevelSearch {
         if (usedMask & (1 << index)) continue;
         const session = this.model.sessions[chosen[index]];
         if (session.window[slot] !== 1) continue;
-        // Rule 9 — Integrated Science never immediately after Mathematics.
-        if (session.family === 'science' && previousWasMath) continue;
-        if (session.family === 'math' && slot + 1 < slotsPerDay) {
-          const right = grid[base + slot + 1];
-          if (right && this.model.sessions[right - 1].family === 'science') continue;
-        }
-        if (step(slot + 1, usedMask | (1 << index), session.family === 'math')) return true;
+        if ((session.family === 'science' && previousWasMath)
+          || (session.family === 'math' && previousWasScience)) continue;
+        if (this.hasMathScienceNeighbor(classIndex, day, slot, session.family)) continue;
+        if (step(slot + 1, usedMask | (1 << index), session.family === 'math', session.family === 'science')) return true;
       }
 
       memo.add(key);
       return false;
     };
 
-    return step(0, 0, false);
+    return step(0, 0, false, false);
   }
 
 /* ── per-day plan search ────────────────────────────────────────────────── */
@@ -1479,18 +1482,9 @@ class LevelSearch {
 
   /** Rules 4-7 and Rule 9 test for putting this learning area at this lesson. */
   private fitsSlot(classIndex: number, day: number, slot: number, sessionIndex: number): boolean {
-    const slotsPerDay = this.slotsPerDay;
-    const base = day * slotsPerDay;
     const session = this.model.sessions[sessionIndex];
     if (session.window[slot] !== 1) return false; // Rules 4-7
-    const grid = this.cellValue[classIndex];
-    // Rule 9 — Integrated Science is never immediately after Mathematics, and
-    // Mathematics is never immediately before Integrated Science.
-    if (session.family === 'science' && slot > 0 && this.mathAt[classIndex][base + slot - 1]) return false;
-    if (session.family === 'math' && slot + 1 < slotsPerDay) {
-      const right = grid[base + slot + 1];
-      if (right && this.model.sessions[right - 1].family === 'science') return false;
-    }
+    if (this.hasMathScienceNeighbor(classIndex, day, slot, session.family)) return false;
     // Rule 11 — a teacher already committed elsewhere cannot take this lesson.
     for (const teacherIndex of session.teacherIndexes) {
       if (!this.teacherFree(teacherIndex, day, slot)) return false;
@@ -2312,7 +2306,7 @@ class LevelSearch {
       }
     }
 
-    // Rules 4-7 — subject windows — and Rule 9 — Maths before Science.
+    // Rules 4-7 — subject windows — and Rule 9 — no Maths-Science adjacency.
     for (let classIndex = 0; classIndex < this.model.classes.length; classIndex += 1) {
       const grid = this.cellValue[classIndex];
       for (let day = 0; day < DAY_COUNT; day += 1) {
@@ -2323,12 +2317,8 @@ class LevelSearch {
           if (session.window[slot] !== 1) {
             return `${session.subjectNames.join(' + ')} sits at ${DAYS[day]} Lesson ${slot + 1}, outside its allowed window`;
           }
-          if (session.family === 'math' && slot + 1 < slotsPerDay) {
-            const rightValue = grid[day * slotsPerDay + slot + 1];
-            if (rightValue && this.model.sessions[rightValue - 1].family === 'science') {
-              return `Mathematics is immediately followed by ${this.model.sessions[rightValue - 1].subjectNames.join(' + ')} `
-                + `in ${formatClassStream(this.model.classes[classIndex])} on ${DAYS[day]}`;
-            }
+          if (this.hasMathScienceNeighbor(classIndex, day, slot, session.family)) {
+            return `Maths and Integrated Science are adjacent in ${formatClassStream(this.model.classes[classIndex])} on ${DAYS[day]}`;
           }
         }
       }
@@ -2529,7 +2519,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
     `No valid ${options.levelKey} timetable exists for the current configuration. The solver could not complete the `
     + `${options.levelKey} grid past ${DAYS[day]} Lesson ${slot + 1} after applying the exact weekly counts, the Rule 4-7 `
     + 'placement windows, available weekdays and double-lesson days, Rule 8 (at most one appearance per learning area per '
-    + 'day), Rule 9 (Maths never immediately before Integrated Science), Rule 11 (shared teachers) and Rule 12 '
+    + 'day), Rule 9 (Maths and Integrated Science are never adjacent), Rule 11 (shared teachers) and Rule 12 '
     + '(Creative Arts and Pre-Tech doubles start at Lesson 3 or later; Kiswahili doubles may not include Lesson 8). '
     + (outstanding.length ? `Still unscheduled: ${outstanding.join(', ')}. ` : '')
     + 'Free a teacher for that slot, widen the available weekdays, move a double day, or lower the weekly counts. '

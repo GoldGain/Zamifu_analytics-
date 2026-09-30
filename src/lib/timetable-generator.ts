@@ -253,8 +253,9 @@ export function violatesMathScienceSequence(
   const adjacent = String(adjacentSubject || '').trim().toLowerCase();
   const currentIsMath = /mathemat/.test(current);
   const currentIsScience = /integrated\s*science|\bscience\b|environment/.test(current);
+  const adjacentIsMath = /mathemat/.test(adjacent);
   const adjacentIsScience = /integrated\s*science|\bscience\b|environment/.test(adjacent);
-  return currentIsMath && adjacentIsScience;
+  return (currentIsMath && adjacentIsScience) || (currentIsScience && adjacentIsMath);
 }
 
 /**
