@@ -914,12 +914,12 @@ class LevelSearch {
    * Necessary window-band condition for a whole class.
    *
    * A learning area may only use the lesson numbers its Rules 4-7 window allows
-   * (Maths, English, and Science stop at Lesson 6; Pre-Tech and Kiswahili are
+   * (Maths and English stop at Lesson 3; Science stops at Lesson 6; Pre-Tech and Kiswahili are
    * unrestricted; others are unrestricted). So for every threshold k, the lessons of
    * learning areas whose window ends at or before k must fit into the free cells
    * whose lesson number is at most k. Violating this means the week has already
    * painted itself into a corner - for example an early Friday lesson consumed
-   * while Mathematics still needs one of Lessons 1-4.
+   * while Mathematics still needs one of Lessons 1-3.
    */
   private bandFeasible(classIndex: number): boolean {
     const list = this.model.classSessions[classIndex];
@@ -1754,7 +1754,7 @@ class LevelSearch {
    *
    * A weekday's units are fixed by the class's week pattern, so this only has to
    * choose slots: which lesson each learning area sits in, and where its double
-   * starts. Narrow windows (Maths is lessons 1-4) are satisfied by `fitsSlot`, and
+   * starts. Narrow windows (Maths and English are Lessons 1-3) are satisfied by `fitsSlot`, and
    * the least constrained lesson is tried last so an impossible weekday is detected
    * early. `cap` bounds the list, and the order is shuffled so restarts differ.
    */
@@ -1861,8 +1861,8 @@ class LevelSearch {
    * books its teachers, the next class already sees them, and a class with no legal
    * arrangement makes the search step back to the previous class and try its next
    * arrangement. Doing this per weekday - rather than building each class's whole
-   * week in isolation - is what lets a shared teacher's narrow window (Maths, lessons
-   * 1-4) be shared fairly between classes instead of being taken by whoever came
+   * week in isolation - is what lets a shared teacher's narrow window (Maths and English,
+   * Lessons 1-3) be shared fairly between classes instead of being taken by whoever came
    * first.
    */
   private assignDay(day: number, rng: () => number): boolean {
@@ -1870,7 +1870,7 @@ class LevelSearch {
     const arrangements: Unit[][][] = new Array(classCount);
     // The order classes are placed in decides who claims a shared teacher's narrow
     // window first. Shuffling it per weekday lets a class that would otherwise be
-    // starved (its Maths teacher already taken for lessons 1-4) go first instead.
+    // starved (its Maths/English teacher already taken for lessons 1-3) go first instead.
     const order = shuffle(this.model.classes.map((_, index) => index), rng);
 
     const step = (position: number): boolean => {
@@ -1951,7 +1951,7 @@ class LevelSearch {
    * full. Then each weekday is decided for the whole level at once: classes are
    * placed in turn against the shared teacher map, and a class that cannot fit
    * makes the search step back to the previous class. Working weekday by weekday
-   * is what lets a narrow window (Maths, lessons 1-4) be shared between classes
+   * is what lets a narrow window (Maths and English, Lessons 1-3) be shared between classes
    * instead of being consumed by whichever class was built first.
    *
    * Several independent attempts are made with different seeds, so a week shape

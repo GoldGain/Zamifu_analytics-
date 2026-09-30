@@ -173,7 +173,8 @@ export function isFillerSubject(subjectName: string | null | undefined): boolean
 /**
  * Final subject placement gate from the timetable requirements.
  *
- * Mathematics, English, and Integrated Science may use Lessons 1-6.
+ * Mathematics and English may use Lessons 1-3; Integrated Science may use
+ * Lessons 1-6.
  * Pre-Technical Studies, Kiswahili, and all other learning areas may use any
  * lesson slot in the generated day.
  */
@@ -182,8 +183,8 @@ export function strictSubjectAllowsLesson(
   lessonNumber: number,
 ): boolean {
   const fam = classifySubject(subjectName);
-  if (fam === 'math') return lessonNumber >= 1 && lessonNumber <= 6;
-  if (fam === 'english') return lessonNumber >= 1 && lessonNumber <= 6;
+  if (fam === 'math') return lessonNumber >= 1 && lessonNumber <= 3;
+  if (fam === 'english') return lessonNumber >= 1 && lessonNumber <= 3;
   if (fam === 'science') return lessonNumber >= 1 && lessonNumber <= 6;
   if (fam === 'pretech') return lessonNumber >= 1;
   if (fam === 'kiswahili') return lessonNumber >= 1;
@@ -200,6 +201,9 @@ export function isValidDoubleLessonStart(
   firstLessonNumber: number,
 ): boolean {
   const family = classifySubject(subjectName);
+  // Maths and English doubles are legal only as Lessons 1-2 or 2-3; a pair
+  // starting at Lesson 3 would place its second cell beyond the Lesson 1-3 window.
+  if (family === 'math' || family === 'english') return firstLessonNumber >= 1 && firstLessonNumber <= 2;
   // Pre-Tech doubles may not occupy Lessons 1-2, so they must start at L3+.
   if (family === 'pretech') return firstLessonNumber >= 3;
   // Kiswahili singles may use L8, but a double may not include Lesson 8.

@@ -32,10 +32,11 @@ const definitions = [
 const assignments = classes.flatMap((classItem) => definitions.map(([subjectId, subjectName, lessons, isDouble, teacherId]) => ({
   class_id: classItem.id,
   subject_id: subjectId,
-  // Math, English, and Social Studies deliberately share teachers across
-  // streams. Doubles use stream-local teachers so the fixture remains
-  // feasible while still exercising shared-teacher reservations.
-  teacher_id: ['math', 'english', 'social'].includes(subjectId)
+  // Social Studies deliberately shares a teacher across streams. Maths and
+  // English use stream-local teachers because the final Lesson 1-3 window plus
+  // the no-Maths-before-Science rule makes a shared early-window fixture
+  // intentionally over-constrained rather than a valid school configuration.
+  teacher_id: ['social'].includes(subjectId)
     ? teacherId
     : `${teacherId}-${subjectId}-${classItem.id}`,
   lessons_per_week: lessons,
@@ -88,10 +89,10 @@ for (const entry of result.entries) {
 }
 
 // Pin the exact subject-window edges used by the CSP pre-flight checks.
-assert.equal(strictSubjectAllowsLesson('Mathematics', 4), true);
-assert.equal(strictSubjectAllowsLesson('Mathematics', 5), false);
-assert.equal(strictSubjectAllowsLesson('English', 5), true);
-assert.equal(strictSubjectAllowsLesson('English', 6), false);
+assert.equal(strictSubjectAllowsLesson('Mathematics', 3), true);
+assert.equal(strictSubjectAllowsLesson('Mathematics', 4), false);
+assert.equal(strictSubjectAllowsLesson('English', 3), true);
+assert.equal(strictSubjectAllowsLesson('English', 4), false);
 assert.equal(strictSubjectAllowsLesson('Integrated Science', 6), true);
 assert.equal(strictSubjectAllowsLesson('Integrated Science', 7), false);
 

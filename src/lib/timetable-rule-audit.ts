@@ -374,11 +374,11 @@ export function auditTimetable(options: {
     const subjectName = nameOf(entry.subject_id);
     if (!subjectName.trim()) continue;
     const lesson = lessonNumberOf(slot, lessonSlots);
-    if (isMathSubjectName(subjectName) && lesson > 6) {
-      addViolation(4, 'maths-placement', classId, `Mathematics at Lesson ${lesson} exceeds the Lesson 1-6 window`);
+    if (isMathSubjectName(subjectName) && lesson > 3) {
+      addViolation(4, 'maths-placement', classId, `Mathematics at Lesson ${lesson} exceeds the Lesson 1-3 window`);
     }
-    if (isEnglishSubjectName(subjectName) && lesson > 6) {
-      addViolation(5, 'english-placement', classId, `English at Lesson ${lesson} exceeds the Lesson 1-6 window`);
+    if (isEnglishSubjectName(subjectName) && lesson > 3) {
+      addViolation(5, 'english-placement', classId, `English at Lesson ${lesson} exceeds the Lesson 1-3 window`);
     }
     if (isScienceSubjectName(subjectName) && lesson > 6) {
       addViolation(6, 'science-placement', classId, `${subjectName} at Lesson ${lesson} exceeds the Lesson 1-6 window`);

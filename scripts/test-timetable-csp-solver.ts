@@ -77,8 +77,8 @@ assert.deepEqual(activityShiftedIssues, [], activityShiftedIssues.map((issue) =>
 for (const entry of result.entries) {
   const name = subjectNames.get(String(entry.subject_id)) || '';
   const lesson = Number(String(slots.find((slot) => slot.id === entry.time_slot_id)?.label).match(/(\d+)/)?.[1]);
-  if (/mathemat/i.test(name)) assert.ok(lesson <= 6, `Maths was placed in Lesson ${lesson}`);
-  if (/english/i.test(name)) assert.ok(lesson <= 6, `English was placed in Lesson ${lesson}`);
+  if (/mathemat/i.test(name)) assert.ok(lesson <= 3, `Maths was placed in Lesson ${lesson}`);
+  if (/english/i.test(name)) assert.ok(lesson <= 3, `English was placed in Lesson ${lesson}`);
   if (/science/i.test(name)) assert.ok(lesson <= 6, `${name} was placed in Lesson ${lesson}`);
 }
 
