@@ -385,7 +385,7 @@ export function auditTimetable(options: {
     }
   }
 
-  // ── Rule 9: Maths never immediately followed by Integrated Science ───────
+  // ── Rule 9: Maths and Integrated Science may never be adjacent ────────────
   for (const classId of classIds) {
     for (const day of days) {
       for (let index = 0; index < orderedLessonSlots.length - 1; index += 1) {
@@ -393,16 +393,16 @@ export function auditTimetable(options: {
         const right = cellEntries.get(`${classId}|${day}|${String(orderedLessonSlots[index + 1].id)}`) || [];
         for (const leftEntry of left) {
           const leftName = nameOf(leftEntry.subject_id);
-          if (!isMathSubjectName(leftName)) continue;
           for (const rightEntry of right) {
             const rightName = nameOf(rightEntry.subject_id);
-            if (isScienceSubjectName(rightName)) {
+            const invalidPair = (isMathSubjectName(leftName) && isScienceSubjectName(rightName))
+              || (isScienceSubjectName(leftName) && isMathSubjectName(rightName));
+            if (invalidPair) {
               addViolation(
                 9,
-                'maths-not-followed-by-science',
+                'math-science-adjacency',
                 classId,
-                `Mathematics at Lesson ${index + 1} is immediately followed by ${rightName} `
-                + `at Lesson ${index + 2} on day ${day}`,
+                `${leftName} and ${rightName} are adjacent at Lessons ${index + 1}-${index + 2} on day ${day}`,
               );
             }
           }

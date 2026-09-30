@@ -241,7 +241,7 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
             if (violatesMathScienceSequence(leftName, rightName)) {
               issues.push({
                 rule: 'math-science-adjacency',
-                message: `${leftName} and ${rightName} are adjacent in class ${classId} on day ${day} (${current.label || 'lesson'} → ${next.label || 'lesson'}).`,
+                message: `${leftName} and ${rightName} are adjacent in class ${classId} on day ${day}; Maths and Integrated Science may not be neighboring lessons (${current.label || 'lesson'} → ${next.label || 'lesson'}).`,
               });
             }
           }

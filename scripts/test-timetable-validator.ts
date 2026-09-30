@@ -108,7 +108,7 @@ const reverseAdjacencyIssues = validateTimetableRules({
   subjectNames,
   levelGroup: 'junior',
 });
-assert.equal(reverseAdjacencyIssues.some((issue) => issue.rule === 'math-science-adjacency'), false);
+assert.equal(reverseAdjacencyIssues.some((issue) => issue.rule === 'math-science-adjacency'), true);
 
 const exactCountIssues = validateTimetableRules({
   entries: [entry('math', 'lesson-1'), entry('math', 'lesson-3')],
