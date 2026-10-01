@@ -53,7 +53,8 @@ function paperFocus(subject: string, variant: PaperVariant): string {
       ? 'Creative Arts and Sports Paper 1 is a 100-mark project assessed over three months.'
       : 'Creative Arts and Sports Paper 2 has 40 multiple-choice marks and 60 structured marks.';
   }
-    return variant === 'paper1'
+  if (key === 'hre') return 'Hindu Religious Education uses one 100-mark paper: 20 multiple-choice marks plus 80 structured marks, with a 90-minute duration.';
+  return variant === 'paper1'
       ? 'Integrated Science Paper 1 is a 70-mark theory paper: 30 objective marks plus 40 structured/essay marks.'
       : 'Integrated Science Paper 2 is a current 30-mark, 60-minute written practical-skills paper with three science tasks.';
 }

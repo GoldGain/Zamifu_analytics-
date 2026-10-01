@@ -154,7 +154,11 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   if (!cleanText(request.subject)) errors.push('Select a subject.');
   if (!request.questionTypes.length) errors.push('Select at least one question type.');
   if (request.totalMarks < 5 || request.totalMarks > 200) errors.push('Total marks must be between 5 and 200.');
-  if (request.durationMinutes < 10 || request.durationMinutes > 240) errors.push('Duration must be between 10 and 240 minutes.');
+  const kjseaProjectDuration = request.format === 'kjsea'
+    && getKjseaPaperSpec(request.subject, normalizePaperVariant(request.paperVariant))?.duration_minutes === 0;
+  if ((!kjseaProjectDuration && request.durationMinutes < 10) || request.durationMinutes > 240) {
+    errors.push('Duration must be between 10 and 240 minutes.');
+  }
   if (request.format === 'standard30' && request.totalMarks !== 30) errors.push('Standard Assessment papers must total exactly 30 marks.');
   if (request.format === 'kjsea') {
     const expectedMarks = getKjseaPaperSpec(request.subject, normalizePaperVariant(request.paperVariant))?.marks ?? 100;
