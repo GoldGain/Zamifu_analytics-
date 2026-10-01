@@ -1,5 +1,6 @@
 import { getKjseaPaperSpec, kjseaFormatInstruction, makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.ts';
 import { outputTokenBudget } from '../src/lib/deepseek-api.ts';
+import { validateExamRequest } from '../src/lib/exam-schema.ts';
 import { readFileSync } from 'node:fs';
 
 const expected = [
@@ -35,6 +36,22 @@ if (!mathematics || mathematics.code !== '903' || mathematics.marks !== 100 || m
 const creativeProject = getKjseaPaperSpec('Creative Arts and Sports', 'paper1');
 if (!creativeProject || creativeProject.code !== '911/1' || creativeProject.duration_minutes !== 0) {
   throw new Error(`Creative Arts and Sports Paper 1 must be the 911/1 project window: ${JSON.stringify(creativeProject)}`);
+}
+const hre = getKjseaPaperSpec('Hindu Religious Education', 'single');
+if (!hre || hre.code !== '910' || hre.marks !== 100 || hre.duration_minutes !== 90) {
+  throw new Error(`HRE must be supported as one 910 paper: ${JSON.stringify(hre)}`);
+}
+const projectRequestErrors = validateExamRequest({
+  gradeLevel: 'Grade 9', subject: 'Creative Arts and Sports', strands: [], subStrands: [], topics: [],
+  questionTypes: ['case_study'], totalMarks: 100, durationMinutes: 0, difficulty: 'mixed',
+  includeImages: false, includeMarkingScheme: true, format: 'kjsea', paperVariant: 'paper1',
+});
+if (projectRequestErrors.length) throw new Error(`A valid KJSEA project window must not fail duration validation: ${projectRequestErrors.join(' ')}`);
+for (const [subject, variant] of [['Creative Arts and Sports', 'paper1'], ['Pre-Technical Studies', 'paper2']] as const) {
+  const projectBlueprint = makeKjseaBlueprint(subject, variant, 'mixed');
+  if (!projectBlueprint || projectBlueprint.sections.some((section) => section.marks_per_question > 30)) {
+    throw new Error(`${subject} ${variant} project marks must use valid question-sized allocations: ${JSON.stringify(projectBlueprint)}`);
+  }
 }
 const sciencePaper2 = makeKjseaBlueprint('Integrated Science', 'paper2', 'mixed');
 if (!sciencePaper2 || sciencePaper2.sections.length !== 3 || sciencePaper2.total_marks !== 30 || sciencePaper2.estimated_minutes !== 60) {
