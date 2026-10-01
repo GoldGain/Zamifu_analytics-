@@ -10,6 +10,7 @@ interface PdfFontSizeDialogProps {
   open: boolean;
   title?: string;
   description?: string;
+  confirmLabel?: string;
   onCancel: () => void;
   onConfirm: (fontSize: PdfFontSize) => void | Promise<void>;
 }
@@ -18,6 +19,7 @@ export default function PdfFontSizeDialog({
   open,
   title = 'Download Options',
   description = 'Choose the font size for the downloaded PDF.',
+  confirmLabel = 'Download',
   onCancel,
   onConfirm,
 }: PdfFontSizeDialogProps) {
@@ -119,7 +121,7 @@ export default function PdfFontSizeDialog({
               disabled={confirming}
               className="flex-1 rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {confirming ? 'Preparing...' : 'Download'}
+              {confirming ? 'Preparing...' : confirmLabel}
             </button>
           </div>
         </div>
