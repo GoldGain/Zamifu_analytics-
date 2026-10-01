@@ -216,6 +216,24 @@ function shortName(name: string) {
 }
 
 type ResultsScope = 'school' | 'dos' | 'class_teacher';
+type PdfOutputMode = 'download' | 'print';
+
+function outputPdfDocument(doc: jsPDF, filename: string, mode: PdfOutputMode, printWindow?: Window | null) {
+  if (mode === 'download') {
+    doc.save(filename);
+    return;
+  }
+  // Keep Print distinct from Download: use jsPDF's print action and send the
+  // complete generated document to a dedicated browser tab/window. This
+  // preserves every page while allowing the browser's native print dialog and
+  // printer/PDF settings to handle the final output.
+  doc.autoPrint({ variant: 'javascript' });
+  const pdfUrl = doc.output('bloburl');
+  const target = printWindow && !printWindow.closed ? printWindow : window.open(pdfUrl, '_blank');
+  if (!target) throw new Error('The print window was blocked. Please allow pop-ups for Zamifu and try again.');
+  if (target !== printWindow) return;
+  target.location.href = pdfUrl;
+}
 
 export default function SchoolAdminResults({ scope = 'school' }: { scope?: ResultsScope }) {
   const { user } = useAuth();
@@ -274,6 +292,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [pendingPdfDownload, setPendingPdfDownload] = useState<{
     target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary';
     student?: any;
+    mode: PdfOutputMode;
   } | null>(null);
   const metadataLoadedRef = useRef(false);
   const resultRequestRef = useRef(0);
@@ -789,9 +808,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return names.length === 1 ? (names[0] as string) : '';
   };
 
-  const openPdfFontSizeDialog = (target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary', student?: any) => {
+  const openPdfFontSizeDialog = (target: 'class-results' | 'bulk-report-cards' | 'report-card' | 'all-streams-bulk' | 'all-streams-summary', student?: any, mode: PdfOutputMode = 'download') => {
     if (generatingPDF || generatingBulk) return;
-    setPendingPdfDownload({ target, student });
+    setPendingPdfDownload({ target, student, mode });
   };
 
   const closePdfFontSizeDialog = () => setPendingPdfDownload(null);
@@ -799,13 +818,23 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const confirmPdfFontSize = async (fontSize: PdfFontSize) => {
     const request = pendingPdfDownload;
     if (!request) return;
+    const printWindow = request.mode === 'print' ? window.open('', '_blank') : null;
+    if (request.mode === 'print' && !printWindow) {
+      toast.error('The print window was blocked. Please allow pop-ups for Zamifu and try again.');
+      return;
+    }
+    if (printWindow) {
+      printWindow.document.write('<title>Preparing print…</title><p style="font-family: sans-serif; padding: 24px">Preparing your complete document for printing…</p>');
+      printWindow.document.close();
+    }
     try {
-      if (request.target === 'class-results') await downloadClassResultsPDF(fontSize);
-      else if (request.target === 'bulk-report-cards') await downloadBulkReportCards(fontSize);
-      else if (request.target === 'all-streams-bulk') await downloadAllStreamsBulkReportCards(fontSize);
-      else if (request.target === 'all-streams-summary') await downloadAllStreamsSummary(fontSize);
-      else if (request.student) await downloadSingleReportCard(request.student, fontSize);
+      if (request.target === 'class-results') await downloadClassResultsPDF(fontSize, request.mode, printWindow);
+      else if (request.target === 'bulk-report-cards') await downloadBulkReportCards(fontSize, request.mode, printWindow);
+      else if (request.target === 'all-streams-bulk') await downloadAllStreamsBulkReportCards(fontSize, request.mode, printWindow);
+      else if (request.target === 'all-streams-summary') await downloadAllStreamsSummary(fontSize, request.mode, printWindow);
+      else if (request.student) await downloadSingleReportCard(request.student, fontSize, request.mode, printWindow);
     } finally {
+      if (request.mode === 'print' && printWindow && !printWindow.closed) printWindow.focus();
       setPendingPdfDownload(null);
     }
   };
@@ -1050,7 +1079,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     }
   };
 
-  const downloadClassResultsPDF = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
+  const downloadClassResultsPDF = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE, outputMode: PdfOutputMode = 'download', printWindow?: Window | null) => {
     if (!(scope === 'class_teacher' ? scopedClassId : selectedClass) || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingPDF(true);
     try {
@@ -1453,13 +1482,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       }
 
       const pdfName = `class_results_${streamLabel(classObj)}_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_');
-      doc.save(pdfName);
-      toast.success('Class results PDF generated!');
+      outputPdfDocument(doc, pdfName, outputMode, printWindow);
+      toast.success(outputMode === 'print' ? 'Class results are ready to print.' : 'Class results PDF generated!');
     } catch (err: any) { toast.error('Failed to generate PDF: ' + err.message); console.error(err); }
     setGeneratingPDF(false);
   };
 
-  const downloadSingleReportCard = async (s: any, fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
+  const downloadSingleReportCard = async (s: any, fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE, outputMode: PdfOutputMode = 'download', printWindow?: Window | null) => {
     try {
       const classObj = classes.find(c => c.id === (scope === 'class_teacher' ? scopedClassId : selectedClass));
       const band = getSchoolLevelBand(classObj);
@@ -1543,15 +1572,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       await addSignaturesToPDF(doc, signatures, currentY + 2, schoolInfo);
       drawReportFooter(doc);
 
-      doc.save(`report_card_${studentFullName.replace(/\s+/g, '_')}_${termObj?.name}.pdf`);
-      toast.success(`Report card for ${studentFullName} generated!`);
+      const filename = `report_card_${studentFullName.replace(/\s+/g, '_')}_${termObj?.name}.pdf`;
+      outputPdfDocument(doc, filename, outputMode, printWindow);
+      toast.success(outputMode === 'print' ? `Report card for ${studentFullName} is ready to print.` : `Report card for ${studentFullName} generated!`);
     } catch (err: any) {
       toast.error('Failed to generate report card: ' + err.message);
       console.error(err);
     }
   };
 
-  const downloadBulkReportCards = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE) => {
+  const downloadBulkReportCards = async (fontSize: PdfFontSize = DEFAULT_PDF_FONT_SIZE, outputMode: PdfOutputMode = 'download', printWindow?: Window | null) => {
     if (!(scope === 'class_teacher' ? scopedClassId : selectedClass) || !selectedTerm) { toast.error('Please select a class and term'); return; }
     setGeneratingBulk(true);
     try {
@@ -1677,8 +1707,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       }
 
       const pdfName = ['bulk_report_cards', streamLabel(classObj), termObj?.name, termObj?.academic_year, assessmentLabel || null].filter(Boolean).join('_').replace(/\s+/g, '_');
-      mainDoc.save(`${pdfName}.pdf`);
-      toast.success(assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);
+      outputPdfDocument(mainDoc, `${pdfName}.pdf`, outputMode, printWindow);
+      toast.success(outputMode === 'print' ? `Bulk report cards for ${totalStudents} learners are ready to print.` : assessmentLabel ? `Bulk report cards generated for ${totalStudents} learners (${assessmentLabel})!` : `Bulk report cards generated for ${totalStudents} learners!`);
     } catch (err: any) { toast.error('Failed to generate bulk report cards: ' + err.message); console.error(err); }
     setGeneratingBulk(false);
   };
@@ -2117,7 +2147,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   };
 
-  const downloadAllStreamsSummary = async (fontSize: PdfFontSize) => {
+  const downloadAllStreamsSummary = async (fontSize: PdfFontSize, outputMode: PdfOutputMode = 'download', printWindow?: Window | null) => {
     const seedClassObj = classes.find((c) => c.id === selectedClass);
     if (!seedClassObj || !selectedTerm) { toast.error('Select a class and term first'); return; }
     setGeneratingPDF(true);
@@ -2170,13 +2200,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       }
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' }); configurePdfFontSize(doc, fontSize);
       await renderCompactStreamSummary(doc, { classObj: seedClassObj, label: `${seedClassObj.name || 'Grade'} — All Streams`, rawResults, termObj, assessmentLabel, previousExam: previousComparison?.exam || null, previousSubjectStats, previousDistribution, previousTotalStudents, previousTotals, fontSize });
-      doc.save(`class_summary_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
-      toast.success(`Class summary generated for all ${streamClasses.length} stream(s)!`);
+      const filename = `class_summary_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_');
+      outputPdfDocument(doc, filename, outputMode, printWindow);
+      toast.success(outputMode === 'print' ? `Class summary for all ${streamClasses.length} stream(s) is ready to print.` : `Class summary generated for all ${streamClasses.length} stream(s)!`);
     } catch (err: any) { toast.error('Failed: ' + err.message); console.error(err); }
     finally { setGeneratingPDF(false); }
   };
 
-  const downloadAllStreamsBulkReportCards = async (fontSize: PdfFontSize) => {
+  const downloadAllStreamsBulkReportCards = async (fontSize: PdfFontSize, outputMode: PdfOutputMode = 'download', printWindow?: Window | null) => {
     const seedClassObj = classes.find((c) => c.id === selectedClass);
     if (!seedClassObj || !selectedTerm) { toast.error('Select a class and term first'); return; }
     setGeneratingBulk(true);
@@ -2231,8 +2262,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         drawReportFooter(mainDoc);
         await new Promise((res) => setTimeout(res, 0));
       }
-      mainDoc.save(`bulk_report_cards_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
-      toast.success(`Bulk report cards generated for ${totalStudents} learners across all streams!`);
+      const filename = `bulk_report_cards_${seedClassObj.name || 'grade'}_all_streams_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_');
+      outputPdfDocument(mainDoc, filename, outputMode, printWindow);
+      toast.success(outputMode === 'print' ? `Bulk report cards for ${totalStudents} learners are ready to print.` : `Bulk report cards generated for ${totalStudents} learners across all streams!`);
     } catch (err: any) { toast.error('Failed: ' + err.message); console.error(err); }
     finally { setGeneratingBulk(false); }
   };
@@ -2434,14 +2466,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {generatingPDF ? 'Generating...' : 'Class Summary PDF'}
           </button>
-          <button onClick={() => openPdfFontSizeDialog('class-results')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print Class Summary</button>
+          <button onClick={() => openPdfFontSizeDialog('class-results', undefined, 'print')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print Class Summary</button>
           <button onClick={() => openPdfFontSizeDialog('bulk-report-cards')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-green-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50 transition-colors shadow-sm">
             {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {generatingBulk ? 'Bulk Report Cards' : 'Bulk Report Cards'}
           </button>
-          <button onClick={() => openPdfFontSizeDialog('bulk-report-cards')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print Bulk Report Cards</button>
-          <button onClick={() => openPdfFontSizeDialog('class-results')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm}
+          <button onClick={() => openPdfFontSizeDialog('bulk-report-cards', undefined, 'print')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print Bulk Report Cards</button>
+          <button onClick={() => openPdfFontSizeDialog('class-results', undefined, 'print')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm}
             className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-700 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-sm">
             <Printer className="w-4 h-4" />
             Print Current Report
@@ -2454,13 +2486,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 {generatingPDF ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                 Class Summary — All Streams
               </button>
-              <button onClick={() => openPdfFontSizeDialog('all-streams-summary')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print All-Streams Summary</button>
+              <button onClick={() => openPdfFontSizeDialog('all-streams-summary', undefined, 'print')} disabled={generatingPDF || generatingBulk || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print All-Streams Summary</button>
               <button onClick={() => openPdfFontSizeDialog('all-streams-bulk')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm}
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-teal-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-teal-700 disabled:opacity-50 transition-colors shadow-sm">
                 {generatingBulk ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 Download All Report Cards
               </button>
-              <button onClick={() => openPdfFontSizeDialog('all-streams-bulk')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print All Report Cards</button>
+              <button onClick={() => openPdfFontSizeDialog('all-streams-bulk', undefined, 'print')} disabled={generatingBulk || generatingPDF || !selectedClass || !selectedTerm} className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-slate-100 text-slate-800 px-4 py-3 rounded-xl text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors border border-slate-200"><Printer className="w-4 h-4" /> Print All Report Cards</button>
             </>
           )}
           {scope === 'school' && (
@@ -2550,7 +2582,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               {downloadingLearner ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloadingLearner ? 'Preparing…' : 'Download Report Card'}
             </button>
-            <button type="button" onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner)} disabled={!selectedLearner || downloadingLearner || generatingPDF || generatingBulk} className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
+            <button type="button" onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner, 'print')} disabled={!selectedLearner || downloadingLearner || generatingPDF || generatingBulk} className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
           </div>
           {selectedLearner && (
             <p className="mt-3 text-xs font-medium text-blue-700">
@@ -2750,8 +2782,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       {pendingPdfDownload && (
         <PdfFontSizeDialog
           open
-          title={pendingPdfDownload.target === 'class-results' ? 'Download Class Results' : pendingPdfDownload.target === 'bulk-report-cards' ? 'Download Bulk Report Cards' : pendingPdfDownload.target === 'all-streams-bulk' ? 'Download All Report Cards' : pendingPdfDownload.target === 'all-streams-summary' ? 'Class Summary — All Streams' : 'Download Report Card'}
-          description="Choose the font size for the downloaded PDF. The default and recommended size is 14."
+          title={pendingPdfDownload.mode === 'print' ? 'Print Options' : pendingPdfDownload.target === 'class-results' ? 'Download Class Results' : pendingPdfDownload.target === 'bulk-report-cards' ? 'Download Bulk Report Cards' : pendingPdfDownload.target === 'all-streams-bulk' ? 'Download All Report Cards' : pendingPdfDownload.target === 'all-streams-summary' ? 'Class Summary — All Streams' : 'Download Report Card'}
+          description={`Choose the font size for the ${pendingPdfDownload.mode === 'print' ? 'document to print' : 'downloaded PDF'}. The default and recommended size is 14.`}
+          confirmLabel={pendingPdfDownload.mode === 'print' ? 'Print' : 'Download'}
           onCancel={closePdfFontSizeDialog}
           onConfirm={confirmPdfFontSize}
         />
