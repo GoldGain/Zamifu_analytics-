@@ -679,19 +679,18 @@ export async function drawReportHeader(
     doc.text('PHOTO', photoX + photoSize / 2, photoY + 14, { align: 'center' });
   }
 
-  // Center school identity between the two corner squares so long school contact
-  // text cannot collide with either the logo or the learner image.
-  const centerX = 136;
+  // Center the school identity in the clear space between the logo and passport box.
+  const centerX = 105;
   doc.setTextColor(26, 35, 126);
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 13 : 16));
   doc.setFont('helvetica', 'bold');
-  doc.text(school.name || 'School Name', 169, 10, { align: 'right', maxWidth: 125 });
+  doc.text(school.name || 'School Name', centerX, 10, { align: 'center', maxWidth: 125 });
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 10 : 12));
-  doc.text(school.address || '', 169, 16, { align: 'right', maxWidth: 125 });
+  doc.text(school.address || '', centerX, 16, { align: 'center', maxWidth: 125 });
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 8 : 9));
-  doc.text(school.report_assessment || 'CBC Termly Assessment Report', 169, 22, { align: 'right', maxWidth: 125 });
+  doc.text(school.report_assessment || 'CBC Termly Assessment Report', centerX, 22, { align: 'center', maxWidth: 125 });
   const reportLine = [school.report_class, school.report_term, school.report_year].filter(Boolean).join(' — ');
-  doc.text(reportLine || `${school.motto || ''}`, 169, 27, { align: 'right', maxWidth: 125 });
+  doc.text(reportLine || `${school.motto || ''}`, centerX, 27, { align: 'center', maxWidth: 125 });
   doc.setDrawColor(47, 157, 190); doc.setLineWidth(0.35); doc.line(6, HDR_H + 1, 204, HDR_H + 1);
 }
 
@@ -879,10 +878,15 @@ export function drawResultsTable(
     row.push(position, r.teacherName || '—', r.teacherComment || '—');
     return row;
   });
+  const totalMarks = sorted.reduce((sum, row) => sum + getPercentage(row), 0);
+  const totalMarksLabel = `${Math.round(totalMarks)} / ${sorted.length * 100}`;
   const totalPoints = sorted.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
   tableBody.push(showStream
-    ? ['', 'TOTAL POINTS', '', '', `${totalPoints || '—'} points`, '', '', '', '', '']
-    : ['', 'TOTAL POINTS', '', '', `${totalPoints || '—'} points`, '', '', '', '']);
+    ? ['', 'TOTAL MARKS', totalMarksLabel, '', '', '', '', '', '', '']
+    : ['', 'TOTAL MARKS', totalMarksLabel, '', '', '', '', '', '']);
+  tableBody.push(showStream
+    ? ['', 'TOTAL POINTS', '', '', `${totalPoints || '—'} / ${sorted.length * 8}`, '', '', '', '', '']
+    : ['', 'TOTAL POINTS', '', '', `${totalPoints || '—'} / ${sorted.length * 8}`, '', '', '', '']);
   doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
   doc.rect(9, startY - 6.5, 192, 6.5, 'FD');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 8)); doc.setTextColor(26, 75, 92);
@@ -893,11 +897,13 @@ export function drawResultsTable(
     body: tableBody,
     pageBreak: COMPACT_MODE ? 'avoid' : 'auto',
     rowPageBreak: 'avoid',
-    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.2 : 6.8), cellPadding: COMPACT_MODE ? 0.45 : 1, overflow: 'linebreak', valign: 'middle' },
+    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.2 : 6.8), cellPadding: COMPACT_MODE ? 0.45 : 1, overflow: 'linebreak', valign: 'middle', halign: 'center' },
     headStyles: { fillColor: [223, 242, 216], textColor: [26, 35, 126], fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.3 : 7), cellPadding: 0.55, halign: 'center' },
     alternateRowStyles: { fillColor: [244, 250, 239] }, margin: { left: 9, right: 9 },
     tableLineColor: [74, 112, 117], tableLineWidth: 0.45,
-    columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold' }, 2: { cellWidth: 15 }, 3: { cellWidth: 14 }, 4: { cellWidth: 13 }, 5: { cellWidth: 17 }, ...(showStream ? { 6: { cellWidth: 14 }, 7: { cellWidth: 14 }, 8: { cellWidth: 21 }, 9: { cellWidth: 30 } } : { 6: { cellWidth: 14 }, 7: { cellWidth: 21 }, 8: { cellWidth: 39 } }) },
+    columnStyles: showStream
+      ? { 0: { cellWidth: 7 }, 1: { cellWidth: 22, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 15 }, 3: { cellWidth: 14 }, 4: { cellWidth: 13 }, 5: { cellWidth: 16 }, 6: { cellWidth: 15 }, 7: { cellWidth: 15 }, 8: { cellWidth: 20 }, 9: { cellWidth: 55, halign: 'left' } }
+      : { 0: { cellWidth: 7 }, 1: { cellWidth: 23, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 17 }, 3: { cellWidth: 16 }, 4: { cellWidth: 15 }, 5: { cellWidth: 17 }, 6: { cellWidth: 15 }, 7: { cellWidth: 22 }, 8: { cellWidth: 60, halign: 'left' } },
     didParseCell: (data: any) => {
       if (data.section !== 'body') return;
       const value = String(data.cell.raw ?? '');
