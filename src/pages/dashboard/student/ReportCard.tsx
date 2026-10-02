@@ -341,6 +341,7 @@ export default function StudentReportCard() {
         48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
+        { showPoints: !isPrimary },
       );
 
       const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
@@ -524,9 +525,9 @@ export default function StudentReportCard() {
                         if (percentage >= 11) return { subLevel: 'BE1', grade: 'BE', points: 2 };
                         return { subLevel: 'BE2', grade: 'BE', points: 1 };
                       }
-                      if (percentage >= 75) return { subLevel: 'EE', grade: 'EE', points: 0 };
-                      if (percentage >= 41) return { subLevel: 'ME', grade: 'ME', points: 0 };
-                      if (percentage >= 21) return { subLevel: 'AE', grade: 'AE', points: 0 };
+                      if (percentage >= 80) return { subLevel: 'EE', grade: 'EE', points: 0 };
+                      if (percentage >= 65) return { subLevel: 'ME', grade: 'ME', points: 0 };
+                      if (percentage >= 50) return { subLevel: 'AE', grade: 'AE', points: 0 };
                       return { subLevel: 'BE', grade: 'BE', points: 0 };
                     })();
                     return { grade: g.subLevel, points: g.points, descriptor: g.grade === 'EE' ? 'Exceeding Expectation' : g.grade === 'ME' ? 'Meeting Expectation' : g.grade === 'AE' ? 'Approaching Expectation' : 'Below Expectation' };
@@ -561,7 +562,7 @@ export default function StudentReportCard() {
               </div>
               {classBestList.filter(b => b.studentId === student?.id).map((b, i) => (
                 <div key={i} className="text-sm text-yellow-900">
-                  You were the best in <strong>{b.subjectName}</strong>: {b.percentage}% — {b.gradeLabel}{b.points !== null ? ` (${b.points} pts)` : ''}
+                  You were the best in <strong>{b.subjectName}</strong>: {b.percentage}% — {b.gradeLabel}{!isPrimary && b.points !== null ? ` (${b.points} pts)` : ''}
                 </div>
               ))}
             </div>

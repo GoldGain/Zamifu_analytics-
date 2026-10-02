@@ -55,6 +55,7 @@ export async function activateAssessment(
     target_type?: string | null;
     target_class_id?: string | null;
     target_grade_level?: number | null;
+    sequence_order?: number | null;
   },
   actingUserId?: string | null
 ) {

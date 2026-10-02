@@ -58,6 +58,10 @@ type LearningAreaClass = {
   level?: number | string | null;
   name?: string | null;
 } | null | undefined;
+type CombinedAssessmentData = {
+  columns: { id: string; label: string }[];
+  values: Map<string, Record<string, number>>;
+};
 
 function sortSubjects(subjects: string[]) {
   return [...subjects].sort((a, b) => {
@@ -87,6 +91,7 @@ function createReportCardSubjectRows(
   summaries: any[],
   previousSubjectValues: Map<string, number>,
   teacherNames: Map<string, string>,
+  combinedAssessmentData?: CombinedAssessmentData,
 ) {
   const targetRows = currentResults.filter((row: any) => row.student_id === target.studentId);
   const names = sortSubjects(Object.keys(target.subjects || {}).filter((key) => !key.endsWith('_grade') && !key.endsWith('_points')));
@@ -106,6 +111,7 @@ function createReportCardSubjectRows(
       streamPosition: streamRank.position,
       streamTotal: streamRank.total,
       teacherName: teacherNames.get(`${target.classId}|${normalized}`) || '—',
+      assessmentValues: combinedAssessmentData?.values.get(`${target.studentId}|${normalized}`) || {},
       teacherComment: (() => {
         const pct = Number(target.subjects[subject] || 0);
         if (normalized.toLowerCase().includes('kiswahili')) {
@@ -123,13 +129,15 @@ function createReportCardSubjectRows(
   });
 }
 
-function reportCardTotals(rows: any[], totalPoints: number | null | undefined) {
+function reportCardTotals(rows: any[], totalPoints: number | null | undefined, classData?: any) {
+  const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = rows.reduce((sum, row) => sum + Number(row.percentage ?? 0), 0);
   const totalMarksOutOf = rows.length * 100;
   const totalPointsOutOf = rows.length * 8;
   return {
     marks: `${Math.round(totalMarks)} marks out of ${totalMarksOutOf}`,
-    points: `${totalPoints ?? '—'} points out of ${totalPointsOutOf}`,
+    points: isPrimary ? undefined : `${totalPoints ?? '—'} points out of ${totalPointsOutOf}`,
+    showPoints: !isPrimary,
   };
 }
 
@@ -328,6 +336,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [activeLearnerCounts, setActiveLearnerCounts] = useState<Record<string, number>>({});
   const [terms, setTerms] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
+  const [combinedAssessmentData, setCombinedAssessmentData] = useState<CombinedAssessmentData>({ columns: [], values: new Map() });
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
@@ -384,6 +393,42 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   useEffect(() => { fetchAll(); }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadCombinedAssessmentData = async () => {
+      const exam = exams.find(item => item.id === selectedExam);
+      if (!exam || exam.type !== 'combined' || !user?.schoolId) {
+        setCombinedAssessmentData({ columns: [], values: new Map() });
+        return;
+      }
+      const { data: components } = await supabaseUntyped
+        .from('school_exam_components')
+        .select('source_exam_id, weight, component_order, school_exams(name)')
+        .eq('school_id', user.schoolId)
+        .eq('combined_exam_id', exam.id)
+        .order('component_order', { ascending: true });
+      const sourceIds = (components || []).map((component: any) => component.source_exam_id).filter(Boolean);
+      if (!sourceIds.length) return;
+      const rows = await fetchAllRows((from, to) => supabaseUntyped
+        .from('results')
+        .select('student_id, exam_id, percentage, marks, out_of, subjects(name)')
+        .eq('school_id', user.schoolId)
+        .in('exam_id', sourceIds)
+        .range(from, to));
+      const values = new Map<string, Record<string, number>>();
+      rows.forEach((row: any) => {
+        const subject = normalizeLearningAreaName(row.subjects?.name || '');
+        const pct = row.percentage != null ? Number(row.percentage) : Number(row.out_of) > 0 ? Number(row.marks || 0) / Number(row.out_of) * 100 : 0;
+        const key = `${row.student_id}|${subject}`;
+        values.set(key, { ...(values.get(key) || {}), [String(row.exam_id)]: pct });
+      });
+      const columns = (components || []).map((component: any) => ({ id: String(component.source_exam_id), label: `${component.school_exams?.name || 'Assessment'} (${Number(component.weight || 0)}%)` }));
+      if (!cancelled) setCombinedAssessmentData({ columns, values });
+    };
+    void loadCombinedAssessmentData();
+    return () => { cancelled = true; };
+  }, [selectedExam, selectedTerm, exams, user?.schoolId]);
+
+  useEffect(() => {
     if (selectedTerm) {
       setComparisonTermA((current) => current || selectedTerm);
       setComparisonTermB((current) => current || selectedTerm);
@@ -414,7 +459,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         supabaseUntyped.from('classes').select('id, school_id, name, level, grade_level, curriculum, stream, stream_name, class_teacher_id, academic_year, is_active').eq('school_id', schoolId).eq('is_active', true).order('level'),
         supabaseUntyped.from('terms').select('id, name, academic_year, is_current').eq('school_id', schoolId).order('academic_year', { ascending: false }),
         supabaseUntyped.from('schools').select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on').eq('id', schoolId).maybeSingle(),
-        supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active, target_type, target_grade_level, target_class_id, created_at').eq('school_id', schoolId).order('created_at', { ascending: false }),
+        supabaseUntyped.from('school_exams').select('id, name, type, term_id, is_active, target_type, target_grade_level, target_class_id, sequence_order, created_at').eq('school_id', schoolId).order('sequence_order', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }),
         supabaseUntyped.from('students').select('id, class_id').eq('school_id', schoolId).eq('is_active', true),
       ]);
       const loadedClasses = (resultsData[0].data as any[]) || [];
@@ -845,7 +890,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const fetchStudentTrends = async (studentIds: string[]) => {
     const rows = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
-      .select('student_id, percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+      .select('student_id, percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type, is_active)')
       .in('student_id', studentIds)
       .eq('school_id', user?.schoolId)
       .order('student_id')
@@ -1185,12 +1230,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const cardAssessment = target.examName || assessmentLabel || '';
       const classPositionLabel = classPosition ? `${ordinal(classPosition)} out of ${totalStudents}` : 'N/A';
       const streamPositionLabel = streamPosition ? `${ordinal(streamPosition)} out of ${streamTotal}` : 'N/A';
-      const studentResultsForTable = createReportCardSubjectRows(target, rawResults, summaries, previousSubjectValues, teacherNames);
-      const totals = reportCardTotals(studentResultsForTable, target.totalPoints);
+      const studentResultsForTable = createReportCardSubjectRows(target, rawResults, summaries, previousSubjectValues, teacherNames, combinedAssessmentData);
+      const totals = reportCardTotals(studentResultsForTable, target.totalPoints, classObj);
       const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === target.studentId);
       const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
-      drawStudentInfo(doc, studentFullName, target.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', streamPositionLabel, 48, cardAssessment, target.student?.assessment_number || undefined, { classPosition: classPositionLabel, streamPosition: streamPositionLabel, totalMarks: totals.marks, totalPoints: totals.points, overallDeviation: examDeviation });
-      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1 });
+      drawStudentInfo(doc, studentFullName, target.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', streamPositionLabel, 48, cardAssessment, target.student?.assessment_number || undefined, { classPosition: classPositionLabel, streamPosition: streamPositionLabel, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation });
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, assessmentColumns: combinedAssessmentData.columns });
       currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4, streamPositionLabel);
       if (trendData.length >= 1) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
       currentY = drawAIComment(doc, aiComment, currentY + 2);
@@ -1315,8 +1360,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text('PERFORMANCE DISTRIBUTION', 14, gradeDistY); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
 
         const grades = isPrimary ? [
-          { label: 'EE (Exceeding)', min: 75, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 41, color: [33, 150, 243] },
-          { label: 'AE (Approaching)', min: 21, color: [255, 152, 0] }, { label: 'BE (Below)', min: 0, color: [244, 67, 54] },
+          { label: 'EE (Exceeding)', min: 80, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 65, color: [33, 150, 243] },
+          { label: 'AE (Approaching)', min: 50, color: [255, 152, 0] }, { label: 'BE (Below)', min: 0, color: [244, 67, 54] },
         ] : [
           { label: 'EE1 (8pts)', min: 90, color: [76, 175, 80] }, { label: 'EE2 (7pts)', min: 75, color: [139, 195, 74] },
           { label: 'ME1 (6pts)', min: 58, color: [33, 150, 243] }, { label: 'ME2 (5pts)', min: 41, color: [3, 169, 244] },
@@ -1329,8 +1374,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           const count = summaries.filter(s => {
             if (isPrimary) {
               const p = s.avgPct;
-              if (g.label.startsWith('EE')) return p >= 75; if (g.label.startsWith('ME')) return p >= 41 && p < 75;
-              if (g.label.startsWith('AE')) return p >= 21 && p < 41; return p < 21;
+              if (g.label.startsWith('EE')) return p >= 80; if (g.label.startsWith('ME')) return p >= 65 && p < 80;
+              if (g.label.startsWith('AE')) return p >= 50 && p < 65; return p < 50;
             } else {
               const gr = overallGradeWithBand(s.avgPct, band); return gr.subLevel === g.label.split(' ')[0];
             }
@@ -1661,7 +1706,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       
       const { data: allResults } = await supabaseUntyped
         .from('results')
-        .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+        .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type, is_active)')
         .eq('student_id', s.studentId)
         .order('terms(academic_year)', { ascending: true })
         .order('terms(name)', { ascending: true });
@@ -1685,14 +1730,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const cardAssessment = s.examName || assessmentLabel || '';
       const studentPosition = `${s.position}${s.position === 1 ? 'st' : s.position === 2 ? 'nd' : s.position === 3 ? 'rd' : 'th'} out of ${summaries.length}`;
       
-      const studentResultsForTable = createReportCardSubjectRows(targetSummary, gradeResults, gradeSummaries, previousSubjectValues, teacherNames);
-      const totals = reportCardTotals(studentResultsForTable, s.totalPoints);
+      const studentResultsForTable = createReportCardSubjectRows(targetSummary, gradeResults, gradeSummaries, previousSubjectValues, teacherNames, combinedAssessmentData);
+      const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj);
       const directStreamPosition = streamClasses.length > 1 ? `${rankInfo.streamPositionByStudent.get(s.studentId) || '—'}/${rankInfo.streamTotalByStudent.get(s.studentId) || '—'}` : undefined;
       const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === s.studentId);
       const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
-      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition: `${s.position || '—'}/${summaries.length}`, streamPosition: directStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, overallDeviation: examDeviation });
+      drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition: `${s.position || '—'}/${summaries.length}`, streamPosition: directStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation });
 
-      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1 });
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, assessmentColumns: combinedAssessmentData.columns });
       currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4, directStreamPosition);
       const classPosition = rankInfo.classPositionByStudent.get(s.studentId) || s.position || null;
       if (trendData.length >= 1) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
@@ -1795,8 +1840,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const classPosition = rankInfo.classPositionByStudent.get(s.studentId) || s.position || null;
         
         const enrichedTarget = { ...s, classId: s.classId || classObj?.id };
-        const studentResultsForTable = createReportCardSubjectRows(enrichedTarget, gradeResults, gradeSummaries, previousSubjectValues, teacherNames);
-        const totals = reportCardTotals(studentResultsForTable, s.totalPoints);
+        const studentResultsForTable = createReportCardSubjectRows(enrichedTarget, gradeResults, gradeSummaries, previousSubjectValues, teacherNames, combinedAssessmentData);
+        const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj);
         const bulkStreamPosition = streamClasses.length > 1 ? `${rankInfo.streamPositionByStudent.get(s.studentId) || '—'}/${rankInfo.streamTotalByStudent.get(s.studentId) || '—'}` : undefined;
         const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === s.studentId);
         const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
@@ -1811,10 +1856,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           48,
           cardAssessment,
           s.student?.assessment_number || undefined,
-          { classPosition: `${classPosition || '—'}/${rankInfo.classTotal}`, streamPosition: bulkStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, overallDeviation: examDeviation }
+          { classPosition: `${classPosition || '—'}/${rankInfo.classTotal}`, streamPosition: bulkStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation }
         );
 
-        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1 });
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, assessmentColumns: combinedAssessmentData.columns });
 
         currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4, bulkStreamPosition);
 
@@ -1901,9 +1946,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const currentExam = exams.find((exam) => exam.id === currentExamId);
     if (!currentExam) return null;
     const candidates = exams
-      .filter((exam) => exam.id !== currentExamId && exam.term_id === termId && exam.type !== 'combined')
+      .filter((exam) => exam.id !== currentExamId && exam.term_id === termId && exam.type !== 'combined' && !exam.is_active)
       .filter((exam) => !exam.target_type || exam.target_type === 'grade' || classIds.includes(exam.target_class_id))
-      .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+      .sort((a, b) => (Number(b.sequence_order || 0) - Number(a.sequence_order || 0)) || (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()));
     for (const exam of candidates) {
       const previousResults = await fetchResultsAll(classIds, termId, exam.id, 'student_id, marks, out_of, percentage, subjects(name)');
       if (previousResults.length > 0) return { exam, results: previousResults };
@@ -2385,12 +2430,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const cardAssessment = s.examName || assessmentLabel || '';
         const studentPosition = `${ordinal(s.streamPosition || 0)} out of ${s.streamTotal || 0}`;
         const classPosition = s.classPosition ? `${s.classPosition}${s.classPosition === 1 ? 'st' : s.classPosition === 2 ? 'nd' : s.classPosition === 3 ? 'rd' : 'th'} out of ${s.classTotal}` : 'N/A';
-        const studentResultsForTable = createReportCardSubjectRows(s, rawResults, streamSummaries, new Map(), allStreamTeacherNames);
-        const totals = reportCardTotals(studentResultsForTable, s.totalPoints);
+        const studentResultsForTable = createReportCardSubjectRows(s, rawResults, streamSummaries, new Map(), allStreamTeacherNames, combinedAssessmentData);
+        const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj);
         const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === s.studentId);
         const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
-        drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition, totalMarks: totals.marks, totalPoints: totals.points, overallDeviation: examDeviation });
-        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63);
+        drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation });
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { assessmentColumns: combinedAssessmentData.columns });
         const gradeLevelNum = Number(classObj?.grade_level || classObj?.level || 0);
         if (gradeLevelNum >= 6 && gradeLevelNum <= 9) currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4, studentPosition);
         currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${totalStudents}`, classObj, currentY + 4);

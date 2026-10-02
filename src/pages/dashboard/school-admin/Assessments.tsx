@@ -21,6 +21,7 @@ interface Exam {
   target_type?: AssessmentTargetType | null;
   target_class_id?: string | null;
   target_grade_level?: number | null;
+  sequence_order?: number | null;
   terms?: { name: string } | null;
 }
 
@@ -91,6 +92,8 @@ export default function Assessments() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingResultsId, setDeletingResultsId] = useState<string | null>(null);
+  const [arranging, setArranging] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   useEffect(() => {
     if (user?.schoolId) {
@@ -124,12 +127,14 @@ export default function Assessments() {
         .from('school_exams')
         .select('*, terms(name)')
         .eq('school_id', user?.schoolId)
+        .order('sequence_order', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: false });
       if (embedded.error) {
         const plain = await (supabase as any)
           .from('school_exams')
           .select('*')
           .eq('school_id', user?.schoolId)
+          .order('sequence_order', { ascending: true, nullsFirst: false })
           .order('created_at', { ascending: false });
         if (plain.error) throw plain.error;
         const termMap = Object.fromEntries((termsData || []).map((t: any) => [t.id, t.name]));
@@ -197,6 +202,7 @@ export default function Assessments() {
         target_type: form.target_type,
         target_class_id: form.target_type === 'class' ? form.target_class_id : null,
         target_grade_level: form.target_type === 'grade' ? parseInt(form.target_grade_level, 10) : null,
+        sequence_order: editingExam?.sequence_order ?? (exams.length + 1),
         is_active: editingExam ? editingExam.is_active : true,
         created_by: user?.id,
       };
@@ -244,6 +250,25 @@ export default function Assessments() {
       toast.error(err.message || 'Failed to save assessment');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveAssessmentOrder = async () => {
+    setSavingOrder(true);
+    try {
+      const ordered = [...exams].sort((a, b) => (Number(a.sequence_order || 999999) - Number(b.sequence_order || 999999)) || a.name.localeCompare(b.name));
+      const results = await Promise.all(ordered.map((exam, index) =>
+        (supabase as any).from('school_exams').update({ sequence_order: index + 1 }).eq('id', exam.id).eq('school_id', user?.schoolId)
+      ));
+      const failed = results.find((result: any) => result.error);
+      if (failed?.error) throw failed.error;
+      toast.success('Assessment order saved.');
+      setArranging(false);
+      await fetchData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save assessment order');
+    } finally {
+      setSavingOrder(false);
     }
   };
 
@@ -329,13 +354,10 @@ export default function Assessments() {
           <h1 className="text-2xl font-bold text-gray-900">Assessments</h1>
           <p className="text-sm text-gray-500 mt-1">Create and manage assessments for a specific class, grade, or the whole school</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Create Assessment
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setArranging(prev => !prev)} className="px-4 py-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-sm font-medium hover:bg-violet-100">{arranging ? 'Cancel Arrange' : 'Arrange Assessments'}</button>
+          <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors"><Plus className="w-4 h-4" />Create Assessment</button>
+        </div>
       </div>
 
       {/* Examples hint */}
@@ -409,6 +431,12 @@ export default function Assessments() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {arranging && (
+                  <label className="flex items-center gap-2 text-xs text-violet-700">
+                    Order
+                    <input type="number" min="1" value={exam.sequence_order ?? ''} onChange={(event) => setExams(prev => prev.map(item => item.id === exam.id ? { ...item, sequence_order: Number(event.target.value) || null } : item))} className="w-16 rounded-lg border border-violet-200 px-2 py-1 text-center" />
+                  </label>
+                )}
                 <button
                   onClick={() => toggleActive(exam)}
                   title={exam.is_active ? 'Deactivate' : 'Activate'}
@@ -448,6 +476,7 @@ export default function Assessments() {
               </div>
             </div>
           ))}
+          {arranging && <button type="button" onClick={() => void saveAssessmentOrder()} disabled={savingOrder} className="justify-self-start rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{savingOrder ? 'Saving order…' : 'Save Assessment Order'}</button>}
         </div>
       )}
 
