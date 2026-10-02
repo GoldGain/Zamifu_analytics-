@@ -1142,6 +1142,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const studentResultsForTable = createReportCardSubjectRows(target, rawResults, summaries, previousSubjectValues, teacherNames);
       let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1 });
       currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
+      if (trendData.length >= 1) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
+      currentY = drawAIComment(doc, aiComment, currentY + 2);
       await addSignaturesToPDF(doc, sig, currentY + 2, schoolInfo);
       drawReportFooter(doc);
       const safeName = studentFullName.replace(/[^a-z0-9]+/gi, '_') || 'learner';
@@ -1637,6 +1639,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1 });
       currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
       const classPosition = rankInfo.classPositionByStudent.get(s.studentId) || s.position || null;
+      if (trendData.length >= 1) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
+      currentY = drawAIComment(doc, aiComment, currentY + 2);
       await addSignaturesToPDF(doc, signatures, currentY + 2, schoolInfo);
       drawReportFooter(doc);
 
@@ -1757,6 +1761,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${classPosition}/${rankInfo.classTotal}`, classObj, currentY + 4);
         
         currentY = drawOverallDeviation(mainDoc, s.totalPct, prevAvg === null || prevAvg === undefined ? null : prevAvg * studentResultsForTable.length, currentY);
+        const studentTrend = studentTrends[s.studentId] || [];
+        if (studentTrend.length >= 1) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
+        currentY = drawAIComment(mainDoc, aiComment, currentY + 2);
         await addSignaturesToPDF(mainDoc, signatures, currentY + 2, schoolInfo);
         drawReportFooter(mainDoc);
 
@@ -2297,6 +2304,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const sigById: Record<string, SignatureInfo> = {};
       for (const sc of streamClasses) { sigById[sc.id] = await getSignatureInfo(sc); }
       const prevAvgMap = await fetchPreviousTermAverages(summaries.map((s) => s.studentId), selectedTerm);
+      const studentTrends = await fetchStudentTrends(summaries.map((s) => s.studentId));
       const mainDoc = new jsPDF({ unit: 'mm', format: 'a4' }); configurePdfFontSize(mainDoc, fontSize);
       let addedFirst = false;
       for (const s of summaries) {
@@ -2320,6 +2328,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         if (gradeLevelNum >= 6 && gradeLevelNum <= 9) currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4);
         currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${totalStudents}`, classObj, currentY + 4);
         currentY = drawDeviation(mainDoc, deviation, prevAvg, null, currentY);
+        const studentTrend = studentTrends[s.studentId] || [];
+        if (studentTrend.length >= 1) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
         currentY = drawAIComment(mainDoc, aiComment, currentY + 2);
         await addSignaturesToPDF(mainDoc, sigById[classObj.id] || { principal_signature_url: principalSignatureUrl, teacher_signature_url: null }, currentY + 2, schoolInfo);
         drawReportFooter(mainDoc);

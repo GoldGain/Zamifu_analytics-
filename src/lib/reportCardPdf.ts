@@ -886,7 +886,7 @@ export function drawResultsTable(
     styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.2 : 6.8), cellPadding: COMPACT_MODE ? 0.45 : 1, overflow: 'linebreak', valign: 'middle' },
     headStyles: { fillColor: [223, 242, 216], textColor: [26, 35, 126], fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.3 : 7), cellPadding: 0.55, halign: 'center' },
     alternateRowStyles: { fillColor: [244, 250, 239] }, margin: { left: 9, right: 9 },
-    tableLineColor: [137, 185, 142], tableLineWidth: 0.25,
+    tableLineColor: [74, 112, 117], tableLineWidth: 0.45,
     columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold' }, 2: { cellWidth: 14 }, 3: { cellWidth: 13 }, 4: { cellWidth: 14 }, 5: { cellWidth: 11 }, 6: { cellWidth: 17 }, ...(showStream ? { 7: { cellWidth: 14 }, 8: { cellWidth: 14 }, 9: { cellWidth: 30 } } : { 7: { cellWidth: 14 }, 8: { cellWidth: 39 } }) },
     didParseCell: (data: any) => {
       if (data.section !== 'body') return;
@@ -895,6 +895,13 @@ export function drawResultsTable(
       if (data.column.index === deviationIndex && value !== '—') {
         data.cell.styles.textColor = value.startsWith('+') ? [22, 128, 65] : value.startsWith('-') ? [190, 45, 45] : [100, 100, 100];
         data.cell.styles.fontStyle = 'bold';
+      }
+    },
+    didDrawCell: (data: any) => {
+      if (data.section === 'body') {
+        doc.setDrawColor(95, 125, 130);
+        doc.setLineWidth(0.28);
+        doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
       }
     },
   });
@@ -930,24 +937,10 @@ export function drawPathwayPerformance(
   const strongest = [...pathwayRows].sort((a, b) => b.percentage - a.percentage)[0];
   doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 8.5)); doc.setTextColor(26, 35, 126);
   doc.text(`Strongest Pathway: ${strongest?.pathway || '—'} (${strongest?.percentage.toFixed(1) || '0.0'}%)`, 14, tableEnd + 6);
-  const panelY = tableEnd + 9;
-  const panelH = COMPACT_MODE ? 31 : 42;
-  doc.setFillColor(245, 250, 253); doc.setDrawColor(47, 157, 190); doc.setLineWidth(0.35); doc.rect(14, panelY, 182, panelH, 'FD');
-  doc.setDrawColor(150, 190, 200); doc.line(86, panelY, 86, panelY + panelH);
   doc.setFont('helvetica', 'italic'); doc.setFontSize(pdfFontSize(doc, 7.2)); doc.setTextColor(26, 35, 90);
-  const narrative = doc.splitTextToSize(`The learner demonstrates a strong inclination towards the ${strongest?.pathway || 'selected'} pathway based on the assessed areas.`, 64);
-  doc.text(narrative, 18, panelY + 10);
-  const chartX = 96; const chartY = panelY + 7; const chartW = 94; const chartH = panelH - 15;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7.3)); doc.setTextColor(26, 35, 90); doc.text('Pathway Performance (%)', 143, panelY + 5, { align: 'center' });
-  doc.setDrawColor(190, 205, 215); doc.setLineWidth(0.2);
-  [0, 50, 100].forEach((tick) => { const gy = chartY + chartH - (tick / 100) * chartH; doc.line(chartX, gy, chartX + chartW, gy); doc.setFont('helvetica', 'normal'); doc.setTextColor(70, 80, 100); doc.text(String(tick), chartX - 3, gy + 1.5, { align: 'right' }); });
-  const slot = chartW / 3; const colors: [number, number, number][] = [[37, 149, 210], [245, 124, 35], [96, 170, 77]];
-  pathwayRows.forEach((row, index) => {
-    const barW = 15; const h = Math.max(0.8, (Math.min(100, row.percentage) / 100) * chartH); const bx = chartX + slot * index + (slot - barW) / 2; const by = chartY + chartH - h;
-    doc.setFillColor(...colors[index]); doc.rect(bx, by, barW, h, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 6.5)); doc.setTextColor(26, 35, 90); doc.text(`${row.percentage.toFixed(0)}%`, bx + barW / 2, by - 1.2, { align: 'center' });
-    doc.setFont('helvetica', 'normal'); doc.text(row.pathway, bx + barW / 2, panelY + panelH - 4, { align: 'center' });
-  });
-  return panelY + panelH;
+  const narrative = doc.splitTextToSize(`The learner demonstrates a strong inclination towards the ${strongest?.pathway || 'selected'} pathway based on the assessed areas.`, 182);
+  doc.text(narrative, 14, tableEnd + 12);
+  return tableEnd + 12 + narrative.length * 3.5;
 }
 
 // ── Draw Summary Box ─────────────────────────────────────────────────────────
