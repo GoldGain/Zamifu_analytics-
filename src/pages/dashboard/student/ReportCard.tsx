@@ -525,9 +525,9 @@ export default function StudentReportCard() {
                         if (percentage >= 11) return { subLevel: 'BE1', grade: 'BE', points: 2 };
                         return { subLevel: 'BE2', grade: 'BE', points: 1 };
                       }
-                      if (percentage >= 80) return { subLevel: 'EE', grade: 'EE', points: 0 };
-                      if (percentage >= 65) return { subLevel: 'ME', grade: 'ME', points: 0 };
-                      if (percentage >= 50) return { subLevel: 'AE', grade: 'AE', points: 0 };
+                      if (percentage >= 76) return { subLevel: 'EE', grade: 'EE', points: 0 };
+                      if (percentage >= 51) return { subLevel: 'ME', grade: 'ME', points: 0 };
+                      if (percentage >= 26) return { subLevel: 'AE', grade: 'AE', points: 0 };
                       return { subLevel: 'BE', grade: 'BE', points: 0 };
                     })();
                     return { grade: g.subLevel, points: g.points, descriptor: g.grade === 'EE' ? 'Exceeding Expectation' : g.grade === 'ME' ? 'Meeting Expectation' : g.grade === 'AE' ? 'Approaching Expectation' : 'Below Expectation' };
