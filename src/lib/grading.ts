@@ -58,7 +58,7 @@ export function getSchoolLevelBand(classData?: { curriculum?: Curriculum | strin
 
 /**
  * PRIMARY SCHOOL (PP1, PP2, Grades 1-6): MARKS ONLY — NO points shown to users.
- * EE: 75-100%, ME: 41-74%, AE: 21-40%, BE: 1-20%
+ * EE: 76-100%, ME: 51-75%, AE: 26-50%, BE: 0-25%
  *
  * JUNIOR SCHOOL (Grades 7-9): 8-level scale WITH points.
  * EE1=8, EE2=7, ME1=6, ME2=5, AE1=4, AE2=3, BE1=2, BE2=1
@@ -82,10 +82,10 @@ export function calculateCompetencyGrade(score: number, band: SchoolLevelBand = 
   }
 
   // Primary (PP1, PP2, Grades 1-6): MARKS ONLY — 4 competency descriptors, NO points shown.
-  // EE: 75-100%, ME: 41-74%, AE: 21-40%, BE: 1-20%
-  if (percentage >= 75) return { subLevel: 'EE', grade: 'EE', points: 0, descriptor: 'Exceeding Expectation', band };
-  if (percentage >= 41) return { subLevel: 'ME', grade: 'ME', points: 0, descriptor: 'Meeting Expectation', band };
-  if (percentage >= 21) return { subLevel: 'AE', grade: 'AE', points: 0, descriptor: 'Approaching Expectation', band };
+  // EE: 76-100%, ME: 51-75%, AE: 26-50%, BE: 0-25%
+  if (percentage >= 76) return { subLevel: 'EE', grade: 'EE', points: 0, descriptor: 'Exceeding Expectation', band };
+  if (percentage >= 51) return { subLevel: 'ME', grade: 'ME', points: 0, descriptor: 'Meeting Expectation', band };
+  if (percentage >= 26) return { subLevel: 'AE', grade: 'AE', points: 0, descriptor: 'Approaching Expectation', band };
   return { subLevel: 'BE', grade: 'BE', points: 0, descriptor: 'Below Expectation', band };
 }
 

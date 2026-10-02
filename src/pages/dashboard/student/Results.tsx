@@ -278,7 +278,7 @@ export default function StudentResults() {
                 deviation >= 0 ? 'text-emerald-700' : 'text-rose-700'
               }`}>
                 {deviation === null
-                  ? 'First Term — No previous data to compare'
+                  ? ''
                   : deviation >= 0
                     ? `You improved by ${deviation.toFixed(1)}% compared to last term!`
                     : `Your performance dropped by ${Math.abs(deviation).toFixed(1)}% compared to last term.`

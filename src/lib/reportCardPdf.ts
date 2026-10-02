@@ -17,6 +17,10 @@ export interface SchoolInfo {
   next_term_start_date?: string | null;
   school_closes_on?: string | null;
   school_opens_on?: string | null;
+  report_class?: string;
+  report_term?: string;
+  report_assessment?: string;
+  report_year?: string | number;
 }
 
 export interface SignatureInfo {
@@ -37,7 +41,28 @@ export interface StudentResult {
   [key: string]: any;
 }
 
-const REPORT_CONTENT_TOP = 18;
+export interface ReportCardSubjectRow {
+  subjects?: { name?: string } | null;
+  marks?: number;
+  out_of?: number;
+  percentage?: number | null;
+  previousPercentage?: number | null;
+  streamPosition?: number | null;
+  streamTotal?: number | null;
+  classPosition?: number | null;
+  classTotal?: number | null;
+  teacherComment?: string | null;
+  teacherName?: string | null;
+  assessmentValues?: Record<string, number | null>;
+}
+
+export interface ReportCardTableOptions {
+  showStreamPosition?: boolean;
+  previousAssessmentLabel?: string;
+  assessmentColumns?: { id: string; label: string }[];
+}
+
+const REPORT_CONTENT_TOP = 5;
 const REPORT_CONTENT_BOTTOM_MARGIN = 8;
 
 /**
@@ -49,7 +74,7 @@ const REPORT_CONTENT_BOTTOM_MARGIN = 8;
 // Readable multi-section layout: allow safe pagination instead of squeezing text into overlapping rows.
 export const COMPACT_MODE = true;
 const ROW = COMPACT_MODE ? 3.2 : 5;   // vertical row step for student info (further reduced)
-const HDR_H = COMPACT_MODE ? 40 : 42; // room for a centered logo and school identity
+const HDR_H = COMPACT_MODE ? 30 : 42; // reference-style white identity header
 
 export const REPORT_CARD_CORNER_SIZE = 22;
 export const REPORT_CARD_CORNER_Y = 3;
@@ -299,7 +324,7 @@ export interface PerformanceTrendRecord {
   term_id?: string | null;
   exam_id?: string | null;
   terms?: { name?: string | null; academic_year?: string | number | null } | null;
-  school_exams?: { name?: string | null; type?: string | null } | null;
+  school_exams?: { name?: string | null; type?: string | null; is_active?: boolean | null } | null;
   exam_name?: string | null;
 }
 
@@ -323,10 +348,15 @@ export function buildPerformanceTrend(records: PerformanceTrendRecord[]): { term
     term: number;
     firstIndex: number;
     total: number;
+    totalMarks: number;
+    totalOutOf: number;
     count: number;
   }>();
 
   records.forEach((record, index) => {
+    // The active assessment is still being entered in many schools. Do not
+    // let an incomplete/current assessment distort the exam comparison graph.
+    if (record.school_exams?.is_active === true) return;
     const termName = String(record.terms?.name || '').trim();
     const yearText = String(record.terms?.academic_year || '').trim();
     const year = Number(yearText) || 0;
@@ -344,9 +374,13 @@ export function buildPerformanceTrend(records: PerformanceTrendRecord[]): { term
         ? (Number(record.marks) || 0) / Number(record.out_of) * 100
         : 0;
     const safePercentage = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : 0;
+    const marks = Number(record.marks);
+    const outOf = Number(record.out_of);
     const existing = groups.get(key);
     if (existing) {
       existing.total += safePercentage;
+      existing.totalMarks += Number.isFinite(marks) ? marks : safePercentage;
+      existing.totalOutOf += Number.isFinite(outOf) && outOf > 0 ? outOf : 100;
       existing.count += 1;
       return;
     }
@@ -356,6 +390,8 @@ export function buildPerformanceTrend(records: PerformanceTrendRecord[]): { term
       term: termOrder(termName),
       firstIndex: index,
       total: safePercentage,
+      totalMarks: Number.isFinite(marks) ? marks : safePercentage,
+      totalOutOf: Number.isFinite(outOf) && outOf > 0 ? outOf : 100,
       count: 1,
     });
   });
@@ -365,6 +401,8 @@ export function buildPerformanceTrend(records: PerformanceTrendRecord[]): { term
     .map((group) => ({
       term: group.label,
       avg: group.count > 0 ? group.total / group.count : 0,
+      totalMarks: group.totalMarks,
+      maxTotalMarks: group.totalOutOf,
     }));
 }
 
@@ -382,8 +420,13 @@ export function drawTrendGraph(
   // the same A4 page. Move the chart into the safe area instead of letting it
   // render below the page or disappear behind the footer.
   const graphY = ensureReportCardSpace(doc, y, height + 1);
-  const safeValues = trendData.map((item) => Math.max(0, Math.min(100, Number(item.avg) || 0)));
-  const maxValue = 100;
+  const hasTotals = trendData.some((item: any) => Number.isFinite(Number(item.totalMarks)));
+  const safeValues = trendData.map((item: any) => hasTotals
+    ? Math.max(0, Number(item.totalMarks) || 0)
+    : Math.max(0, Math.min(100, Number(item.avg) || 0)));
+  const maxValue = hasTotals
+    ? Math.max(1, ...trendData.map((item: any) => Number(item.maxTotalMarks) || Number(item.totalMarks) || 0))
+    : 100;
   const left = x + 18;
   const top = graphY + 8;
   const graphWidth = Math.max(20, width - 24);
@@ -393,27 +436,33 @@ export function drawTrendGraph(
   doc.roundedRect(x, graphY, width, height, 2, 2, 'FD');
   doc.setFontSize(pdfFontSize(doc, 6.5));
   doc.setTextColor(90, 90, 90);
-  doc.text('Previous-exam performance (%)', x + 4, graphY + 6);
-  [0, 50, 100].forEach((value) => {
+  doc.setFont('helvetica', 'bold');
+  doc.text(hasTotals ? 'Exam Comparison — Total Marks' : 'Exam Comparison — Percentage', x + 4, graphY + 6);
+  doc.setFont('helvetica', 'normal');
+  const ticks = hasTotals ? [0, Math.round(maxValue / 2), Math.round(maxValue)] : [0, 50, 100];
+  ticks.forEach((value) => {
     const gridY = top + graphHeight - (value / maxValue) * graphHeight;
     doc.setDrawColor(232, 232, 232);
     doc.line(left, gridY, left + graphWidth, gridY);
     doc.setTextColor(120, 120, 120);
     doc.text(String(value), x + 3, gridY + 2);
   });
-  const step = safeValues.length > 1 ? graphWidth / (safeValues.length - 1) : graphWidth;
-  const points = safeValues.map((value, index) => ({
-    x: left + (safeValues.length > 1 ? index * step : graphWidth / 2),
-    y: top + graphHeight - (value / maxValue) * graphHeight,
-  }));
-  doc.setDrawColor(106, 27, 154);
-  doc.setFillColor(106, 27, 154);
-  points.forEach((point, index) => {
-    if (index > 0) doc.line(points[index - 1].x, points[index - 1].y, point.x, point.y);
-    doc.circle(point.x, point.y, 1.2, 'F');
-    const label = String(trendData[index].term || '').slice(0, 14);
+  const slot = graphWidth / Math.max(1, safeValues.length);
+  const colors = [[37, 99, 235], [245, 158, 11], [34, 197, 94], [168, 85, 247]];
+  safeValues.forEach((value, index) => {
+    const barWidth = Math.min(18, slot * 0.62);
+    const barHeight = (value / maxValue) * graphHeight;
+    const barX = left + slot * index + (slot - barWidth) / 2;
+    const barY = top + graphHeight - barHeight;
+    doc.setFillColor(...(colors[index % colors.length] as [number, number, number]));
+    doc.rect(barX, barY, barWidth, barHeight, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(pdfFontSize(doc, 6.5));
+    doc.setTextColor(35, 45, 65);
+    doc.text(hasTotals ? String(Math.round(value)) : `${value.toFixed(0)}%`, barX + barWidth / 2, Math.max(top + 4, barY - 1.5), { align: 'center' });
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(90, 90, 90);
-    doc.text(label, point.x, graphY + height - 5, { align: 'center' });
+    doc.text(String(trendData[index].term || '').slice(0, 14), barX + barWidth / 2, graphY + height - 5, { align: 'center' });
   });
   return graphY + height;
 }
@@ -602,40 +651,60 @@ export async function drawReportHeader(
   school: SchoolInfo,
   learner?: ReportCardLearnerIdentity,
 ) {
-  doc.setFillColor(245, 166, 35);
+  doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, 210, HDR_H, 'F');
+  doc.setDrawColor(47, 157, 190);
+  doc.setLineWidth(0.6);
+  doc.rect(2.5, 2.5, 205, 292, 'S');
 
   // Keep both identity images in matching 22mm squares at the same height.
   // The school logo is always on the left and the learner photo/initials on the right.
   const logoAdded = await addLogoToPDF(
     doc,
     school.logo_url || '/logo.png',
-    REPORT_CARD_LOGO_X,
-    2,
-    REPORT_CARD_CORNER_SIZE,
-    REPORT_CARD_CORNER_SIZE,
+    15,
+    5,
+    27,
+    22,
   );
-  if (!logoAdded) drawLogoPlaceholder(doc, 'ZA', REPORT_CARD_LOGO_X, 2, REPORT_CARD_CORNER_SIZE);
+  if (!logoAdded) drawLogoPlaceholder(doc, 'ZA', 15, 5, 22);
+  // Always reserve a clearly visible passport-photo space, even when no image
+  // has been uploaded yet. This prevents the learner identity area appearing
+  // incomplete and leaves a predictable place for a future passport photo.
+  const photoX = 174;
+  const photoY = 4;
+  const photoSize = 22;
   const photoAdded = learner?.photoUrl
-    ? await addStudentPhotoToPDF(doc, learner.photoUrl, REPORT_CARD_PHOTO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE)
+    ? await addStudentPhotoToPDF(doc, learner.photoUrl, photoX, photoY, photoSize)
     : false;
-  if (!photoAdded && learner?.name) {
-    drawStudentPhotoPlaceholder(doc, learner.name, REPORT_CARD_PHOTO_X, REPORT_CARD_CORNER_Y, REPORT_CARD_CORNER_SIZE);
+  if (!photoAdded) {
+    doc.setDrawColor(120, 145, 155); doc.setLineWidth(0.35); doc.rect(photoX, photoY, photoSize, photoSize, 'D');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 5.2)); doc.setTextColor(90, 105, 115);
+    doc.text('PASSPORT', photoX + photoSize / 2, photoY + 9, { align: 'center' });
+    doc.text('PHOTO', photoX + photoSize / 2, photoY + 14, { align: 'center' });
   }
 
-  // Center school identity between the two corner squares so long school contact
-  // text cannot collide with either the logo or the learner image.
+  // Center the school identity in the clear space between the logo and passport box.
   const centerX = 105;
   doc.setTextColor(26, 35, 126);
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 13 : 16));
   doc.setFont('helvetica', 'bold');
-  doc.text(school.name || 'School Name', centerX, 28, { align: 'center', maxWidth: 180 });
-  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.5 : 9));
-  doc.setFont('helvetica', 'normal');
-  doc.text(school.motto || '', centerX, 32, { align: 'center', maxWidth: 180 });
-  const contactLine = `${school.address || ''} | ${school.phone || ''} | ${school.email || ''}`;
-  const contactLines = doc.splitTextToSize(contactLine, 180);
-  doc.text(contactLines, centerX, 37, { align: 'center' });
+  doc.text(school.name || 'School Name', centerX, 10, { align: 'center', maxWidth: 125 });
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 10 : 12));
+  const contactLine = [school.phone, school.email].filter(Boolean).join(' | ');
+  if (contactLine) {
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 8 : 9));
+    doc.text(contactLine, centerX, 16, { align: 'center', maxWidth: 125 });
+  }
+  if (school.address) {
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8.5));
+    doc.text(school.address, centerX, 21, { align: 'center', maxWidth: 125 });
+  }
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8.5));
+  doc.text(school.report_assessment || 'CBC Termly Assessment Report', centerX, 25, { align: 'center', maxWidth: 125 });
+  const reportLine = [school.report_class, school.report_term, school.report_year].filter(Boolean).join(' — ');
+  doc.text(reportLine || `${school.motto || ''}`, centerX, 28.5, { align: 'center', maxWidth: 125 });
+  doc.setDrawColor(47, 157, 190); doc.setLineWidth(0.35); doc.line(6, HDR_H + 1, 204, HDR_H + 1);
 }
 
 // ── Add Signatures to PDF ────────────────────────────────────────────────────
@@ -749,7 +818,7 @@ export function drawReportFooter(doc: jsPDF) {
   doc.setFontSize(pdfFontSize(doc, 8));
   doc.setTextColor(150, 150, 150);
   doc.setFont('helvetica', 'normal');
-  doc.text('Zamifu Analytics School Management System | Support: tutorsultimate@gmail.com', 105, pageHeight - 6, { align: 'center' });
+  doc.text('Zamifu Analytics School Management System | Support: zamifu@zamifu.company', 105, pageHeight - 6, { align: 'center' });
 }
 
 // ── Draw Student Info ────────────────────────────────────────────────────────
@@ -764,29 +833,37 @@ export function drawStudentInfo(
   y: number = 38,
   assessmentName?: string,
   assessmentNumber?: string,
-  positionDetails?: { classPosition?: string; streamPosition?: string }
+  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean }
 ) {
-  // Compact: two-column grid, denser rows so the info block uses <= 14mm
-  const fs = pdfFontSize(doc, COMPACT_MODE ? 8 : 9);
-  doc.setTextColor(0, 0, 0); doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
-  doc.text(`Learner: ${studentName}`, 14, y);
-  doc.text(`Admission Number: ${admissionNo || 'N/A'}`, 14, y + ROW);
-  doc.text(`Assessment Number: ${assessmentNumber || 'N/A'}`, 14, y + ROW * 2);
-  doc.text(`Class: ${className}`, 14, y + ROW * 3);
-  doc.text(`Term: ${termName} ${academicYear}`, 120, y);
-  if (assessmentName) {
-    doc.text(`Assessment: ${assessmentName}`, 120, y + ROW);
-    doc.text(`Class Position: ${positionDetails?.classPosition || position}`, 120, y + ROW * 2);
-    doc.text(`Stream Position: ${positionDetails?.streamPosition || position}`, 120, y + ROW * 3);
-  } else if (positionDetails) {
-    doc.text(`Class Position: ${positionDetails.classPosition || position}`, 120, y + ROW);
-    doc.text(`Stream Position: ${positionDetails.streamPosition || position}`, 120, y + ROW * 2);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + ROW * 3);
-  } else {
-    doc.text(`Position: ${position}`, 120, y + ROW);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 120, y + ROW * 2);
+  const fs = pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8);
+  const showPoints = positionDetails?.showPoints !== false;
+  const rows: string[][] = [
+    ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
+    ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
+    ['Class Position', positionDetails?.classPosition || position || '—', ...(positionDetails?.streamPosition ? ['Stream Position', positionDetails.streamPosition, 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
+  ];
+  const widths = [27, 43, 27, 32, 27, 26];
+  doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
+  rows.forEach((row, rowIndex) => {
+    let cursor = 10;
+    const rowY = y - 7 + rowIndex * 5.8;
+    row.forEach((value, colIndex) => {
+      const w = widths[colIndex];
+      doc.setFillColor(colIndex % 2 === 0 ? 226 : 255, colIndex % 2 === 0 ? 239 : 255, colIndex % 2 === 0 ? 247 : 255);
+      doc.setDrawColor(130, 180, 190); doc.rect(cursor, rowY, w, 5.8, 'FD');
+      doc.setTextColor(colIndex % 2 === 0 ? 26 : 35, colIndex % 2 === 0 ? 55 : 45, colIndex % 2 === 0 ? 90 : 65);
+      doc.setFont('helvetica', colIndex % 2 === 0 ? 'bold' : 'normal');
+      doc.text(String(value).slice(0, 35), cursor + 1.3, rowY + 3.8);
+      cursor += w;
+    });
+  });
+  if (positionDetails?.overallDeviation) {
+    const value = positionDetails.overallDeviation;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7));
+    doc.setTextColor(value.startsWith('-') ? 190 : value === '—' ? 100 : 22, value.startsWith('-') ? 45 : value === '—' ? 100 : 128, value.startsWith('-') ? 45 : value === '—' ? 100 : 65);
+    doc.text(`Overall Deviation: ${value}`, 10, y + 12.8);
+    doc.setTextColor(0, 0, 0);
   }
-  doc.setDrawColor(106, 27, 154); doc.line(14, y + ROW * 3 + 3, 196, y + ROW * 3 + 3);
 }
 
 // ── Draw Results Table ───────────────────────────────────────────────────────
@@ -794,29 +871,104 @@ export function drawResultsTable(
   doc: jsPDF,
   results: any[],
   classData: any,
-  startY: number
+  startY: number,
+  options: ReportCardTableOptions = {}
 ): number {
   startY = ensureReportCardSpace(doc, startY, 24);
   const sorted = sortResultsBySubject(results);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
-  const tableHead = isPrimary ? ['#', 'Learning Area', 'Marks', 'Out Of', 'Score & Grade'] : ['#', 'Learning Area', 'Marks', 'Out Of', 'Score & Grade', 'Points'];
+  const showStream = options.showStreamPosition === true;
+  const assessmentColumns = options.assessmentColumns || [];
+  const tableHead = assessmentColumns.length
+    ? ['No.', 'Learning Area', ...assessmentColumns.map(column => column.label), 'Average (%)', 'Deviation (%)', ...(!isPrimary ? ['Points (Out of 8)'] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+    : ['No.', 'Learning Area', 'Marks (/100)', 'Deviation (%)', ...(!isPrimary ? ['Points (Out of 8)'] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const pct = getPercentage(r);
     const grading = gradeFromPercentage(pct, classData);
     const subjectName = r.subjects?.name === 'Creative Arts' ? 'C-Arts' : (r.subjects?.name || 'N/A');
-    const row: any[] = [i + 1, subjectName, String(r.marks || '0'), String(r.out_of || 100), `${pct}% ${grading.grade}`];
+    const previous = r.previousPercentage === null || r.previousPercentage === undefined ? null : Number(r.previousPercentage);
+    const deviation = previous === null ? '—' : `${pct - previous >= 0 ? '+' : ''}${(pct - previous).toFixed(1)}%`;
+    const position = r.classPosition ? `${r.classPosition}/${r.classTotal || '—'}` : '—';
+    const streamPosition = r.streamPosition ? `${r.streamPosition}/${r.streamTotal || '—'}` : '—';
+    const row: any[] = [i + 1, subjectName];
+    if (assessmentColumns.length) {
+      assessmentColumns.forEach(column => row.push(r.assessmentValues?.[column.id] == null ? '—' : `${Number(r.assessmentValues[column.id]).toFixed(0)}`));
+      row.push(`${pct.toFixed(0)}%`, deviation);
+    } else {
+      row.push(`${pct.toFixed(0)}/100`, deviation);
+    }
     if (!isPrimary) row.push(grading.points ?? '—');
+    row.push(grading.grade || '—');
+    if (showStream) row.push(streamPosition);
+    row.push(position, r.teacherName || '—', r.teacherComment || '—');
     return row;
   });
+  const totalMarks = sorted.reduce((sum, row) => sum + getPercentage(row), 0);
+  const totalMarksLabel = `${Math.round(totalMarks)} / ${sorted.length * 100}`;
+  const totalPoints = sorted.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
+  const totalMarksRow = new Array(tableHead.length).fill('');
+  totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? 2 + assessmentColumns.length : 2] = totalMarksLabel;
+  tableBody.push(totalMarksRow);
+  if (!isPrimary) {
+    const totalPointsRow = new Array(tableHead.length).fill('');
+    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? 4 + assessmentColumns.length : 4] = `${totalPoints || '—'} / ${sorted.length * 8}`;
+    tableBody.push(totalPointsRow);
+  }
+  doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
+  doc.rect(9, startY - 6.5, 192, 6.5, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 8)); doc.setTextColor(26, 75, 92);
+  doc.text('Learning Area Performance', 11, startY - 2.1);
+  const combinedColumnStyles: Record<number, any> = {};
+  if (assessmentColumns.length) {
+    combinedColumnStyles[0] = { cellWidth: 7 };
+    combinedColumnStyles[1] = { cellWidth: 23, fontStyle: 'bold', halign: 'left' };
+    assessmentColumns.forEach((_, index) => { combinedColumnStyles[index + 2] = { cellWidth: 12 }; });
+    const averageIndex = 2 + assessmentColumns.length;
+    combinedColumnStyles[averageIndex] = { cellWidth: 14 };
+    combinedColumnStyles[averageIndex + 1] = { cellWidth: 14 };
+    let nextIndex = averageIndex + 2;
+    if (!isPrimary) { combinedColumnStyles[nextIndex] = { cellWidth: 12 }; nextIndex += 1; }
+    combinedColumnStyles[nextIndex] = { cellWidth: 15 }; nextIndex += 1;
+    if (showStream) { combinedColumnStyles[nextIndex] = { cellWidth: 15 }; nextIndex += 1; }
+    combinedColumnStyles[nextIndex] = { cellWidth: 16 }; nextIndex += 1;
+    combinedColumnStyles[nextIndex] = { cellWidth: 18 }; nextIndex += 1;
+    combinedColumnStyles[nextIndex] = { cellWidth: Math.max(20, 192 - Object.values(combinedColumnStyles).reduce((sum: number, style: any) => sum + Number(style.cellWidth || 0), 0)), halign: 'left' };
+  }
   autoTable(doc, {
     startY,
     head: [tableHead],
     body: tableBody,
     pageBreak: COMPACT_MODE ? 'avoid' : 'auto',
     rowPageBreak: 'avoid',
-    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8), cellPadding: COMPACT_MODE ? 0.6 : 1.5 },
-    headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8), cellPadding: 0.8 },
-    alternateRowStyles: { fillColor: [232, 234, 246] }, margin: { left: 14, right: 14 },
+    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.2 : 6.8), cellPadding: COMPACT_MODE ? 0.45 : 1, overflow: 'linebreak', valign: 'middle', halign: 'center' },
+    headStyles: { fillColor: [223, 242, 216], textColor: [26, 35, 126], fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.3 : 7), cellPadding: 0.55, halign: 'center' },
+    alternateRowStyles: { fillColor: [244, 250, 239] }, margin: { left: 9, right: 9 },
+    tableLineColor: [74, 112, 117], tableLineWidth: 0.45,
+    columnStyles: assessmentColumns.length
+      ? combinedColumnStyles
+      : isPrimary
+      ? (showStream
+        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 16 }, 3: { cellWidth: 15 }, 4: { cellWidth: 17 }, 5: { cellWidth: 15 }, 6: { cellWidth: 15 }, 7: { cellWidth: 21 }, 8: { cellWidth: 62, halign: 'left' } }
+        : { 0: { cellWidth: 7 }, 1: { cellWidth: 25, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 18 }, 3: { cellWidth: 16 }, 4: { cellWidth: 17 }, 5: { cellWidth: 16 }, 6: { cellWidth: 22 }, 7: { cellWidth: 71, halign: 'left' } })
+      : (showStream
+        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 22, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 15 }, 3: { cellWidth: 14 }, 4: { cellWidth: 13 }, 5: { cellWidth: 16 }, 6: { cellWidth: 15 }, 7: { cellWidth: 15 }, 8: { cellWidth: 20 }, 9: { cellWidth: 55, halign: 'left' } }
+        : { 0: { cellWidth: 7 }, 1: { cellWidth: 23, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 17 }, 3: { cellWidth: 16 }, 4: { cellWidth: 15 }, 5: { cellWidth: 17 }, 6: { cellWidth: 15 }, 7: { cellWidth: 22 }, 8: { cellWidth: 60, halign: 'left' } }),
+    didParseCell: (data: any) => {
+      if (data.section !== 'body') return;
+      const value = String(data.cell.raw ?? '');
+      const deviationIndex = tableHead.indexOf('Deviation (%)');
+      if (data.column.index === deviationIndex && value !== '—') {
+        data.cell.styles.textColor = value.startsWith('+') ? [22, 128, 65] : value.startsWith('-') ? [190, 45, 45] : [100, 100, 100];
+        data.cell.styles.fontStyle = 'bold';
+      }
+    },
+    didDrawCell: (data: any) => {
+      if (data.section === 'body') {
+        doc.setDrawColor(95, 125, 130);
+        doc.setLineWidth(0.28);
+        doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+      }
+    },
   });
   return (doc as any).lastAutoTable.finalY;
 }
@@ -825,10 +977,11 @@ export function drawResultsTable(
 export function drawPathwayPerformance(
   doc: jsPDF,
   results: any[],
-  startY: number
+  startY: number,
+  streamPosition?: string,
 ): number {
   const pathways = ['STEM', 'Arts & Sports', 'Social Sciences'];
-  const pathwayData = pathways.map(pathway => {
+  const pathwayRows = pathways.map(pathway => {
     const relevantResults = results.filter(r => {
       const subjectName = r.subjects?.name || '';
       return PATHWAY_MAPPING[subjectName] === pathway;
@@ -837,16 +990,29 @@ export function drawPathwayPerformance(
     const score = relevantResults.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
     const outOf = relevantResults.reduce((sum, r) => sum + (Number(r.out_of) || 100), 0);
     const percentage = outOf > 0 ? (score / outOf) * 100 : 0;
-    return [pathway, areasUsed || 'None', `${score}/${outOf}`, `${percentage.toFixed(1)}%`];
+    return { pathway, areasUsed: areasUsed || 'None', score, outOf, percentage };
   });
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 9 : 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
   doc.text('Pathway Performance Profile', 14, startY + (COMPACT_MODE ? 5 : 6));
   autoTable(doc, {
-    startY: startY + (COMPACT_MODE ? 6 : 8), head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']], body: pathwayData,
-    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8), cellPadding: COMPACT_MODE ? 1 : 2 }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8) },
-    alternateRowStyles: { fillColor: [255, 248, 225] }, margin: { left: 14, right: 14 },
+    startY: startY + (COMPACT_MODE ? 6 : 8), head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']], body: pathwayRows.map((row) => [row.pathway, row.areasUsed, `${row.score}/${row.outOf}`, `${row.percentage.toFixed(1)}%`]),
+    styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8), cellPadding: COMPACT_MODE ? 0.8 : 2 }, headStyles: { fillColor: [226, 239, 247], textColor: [26, 35, 90], fontSize: pdfFontSize(doc, COMPACT_MODE ? 7 : 8) },
+    alternateRowStyles: { fillColor: [244, 250, 239] }, tableLineColor: [137, 185, 142], tableLineWidth: 0.25, margin: { left: 14, right: 14 },
   });
-  return (doc as any).lastAutoTable.finalY;
+  const tableEnd = (doc as any).lastAutoTable.finalY;
+  const strongest = [...pathwayRows].sort((a, b) => b.percentage - a.percentage)[0];
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 8.5)); doc.setTextColor(26, 35, 126);
+  doc.text(`Strongest Pathway: ${strongest?.pathway || '—'} (${strongest?.percentage.toFixed(1) || '0.0'}%)`, 14, tableEnd + 6);
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(pdfFontSize(doc, 7.2)); doc.setTextColor(26, 35, 90);
+  const narrative = doc.splitTextToSize(`The learner demonstrates a strong inclination towards the ${strongest?.pathway || 'selected'} pathway based on the assessed areas.`, 182);
+  doc.text(narrative, 14, tableEnd + 12);
+  const nextY = tableEnd + 12 + narrative.length * 3.5;
+  if (streamPosition) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7.5)); doc.setTextColor(26, 35, 126);
+    doc.text(`Stream Position: ${streamPosition}`, 14, nextY + 4);
+    return nextY + 8;
+  }
+  return nextY;
 }
 
 // ── Draw Summary Box ─────────────────────────────────────────────────────────
@@ -919,11 +1085,29 @@ export function drawDeviation(
     doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
     doc.text(`Previous performance: ${previousAvg.toFixed(1)}% - Position: ${previousPosition || 'N/A'}`, 14, startY);
     doc.setTextColor(0, 0, 0);
-  } else {
-    doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
-    doc.text('First Term — No previous data for comparison', 14, startY);
-    doc.setTextColor(0, 0, 0);
   }
+  return startY + (COMPACT_MODE ? 7 : 8);
+}
+
+export function drawOverallDeviation(
+  doc: jsPDF,
+  currentTotalMarks: number,
+  previousTotalMarks: number | null,
+  startY: number,
+): number {
+  startY = ensureReportCardSpace(doc, startY, COMPACT_MODE ? 8 : 10);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8));
+  if (previousTotalMarks === null || previousTotalMarks === undefined) {
+    // The exam comparison graph already communicates the absence of history.
+    return startY;
+  } else {
+    const difference = currentTotalMarks - previousTotalMarks;
+    const percent = previousTotalMarks === 0 ? 0 : (difference / previousTotalMarks) * 100;
+    doc.setTextColor(difference > 0 ? 22 : difference < 0 ? 190 : 100, difference > 0 ? 128 : difference < 0 ? 45 : 100, difference > 0 ? 65 : difference < 0 ? 45 : 100);
+    doc.text(`Overall Deviation: ${difference >= 0 ? '+' : ''}${difference.toFixed(0)} (${percent >= 0 ? '+' : ''}${percent.toFixed(1)}%)`, 14, startY);
+  }
+  doc.setTextColor(0, 0, 0);
   return startY + (COMPACT_MODE ? 7 : 8);
 }
 
@@ -942,7 +1126,7 @@ export function drawAchievements(
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6.5 : 7)); doc.setFont('helvetica', 'bold'); doc.setTextColor(245, 166, 35);
   doc.text('ACHIEVEMENT:', 18, startY + 3.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
   visibleBestSubjects.forEach((b, bi) => {
-    const pts = b.points !== null ? ` (${b.points} pts)` : '';
+    const pts = b.points > 0 ? ` (${b.points} pts)` : '';
     doc.text(`Best in ${b.subjectName}: ${b.studentName} (${b.percentage}% — ${b.gradeLabel}${pts})`, 18, startY + 8 + bi * rowH);
   });
   return startY + boxHeight + (COMPACT_MODE ? 1 : 5);

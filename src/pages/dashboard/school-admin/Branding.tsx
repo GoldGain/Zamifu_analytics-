@@ -442,17 +442,25 @@ export default function SchoolBranding() {
               <input value={form.principal_name} onChange={e => setForm({ ...form, principal_name: e.target.value })} placeholder="Principal's full name" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Address</label>
-              <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="School physical address" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+              <label className="block text-xs text-gray-500 mb-1">School Email</label>
+              <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="info@yourschool.ac.ke" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Phone Number</label>
+              <input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="0712 345 678" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">P.O. Box / Address</label>
+              <input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="P.O. Box 1234-00100, Nairobi" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Website</label>
               <input value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} placeholder="https://yourschool.ac.ke" className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
+            </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">Next Term Start Date</label>
               <input type="date" value={form.next_term_start_date} onChange={e => setForm({ ...form, next_term_start_date: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]" />
               <p className="text-xs text-gray-400 mt-1">This date will be displayed on all report cards</p>
-            </div>
             </div>
           </div>
 
