@@ -129,6 +129,73 @@ function createReportCardSubjectRows(
   });
 }
 
+async function materializeCombinedResults(schoolId: string, combinedExamId: string, termId: string, classIds: string[]) {
+  const { data: components, error: componentError } = await supabaseUntyped
+    .from('school_exam_components')
+    .select('source_exam_id, weight, component_order')
+    .eq('school_id', schoolId)
+    .eq('combined_exam_id', combinedExamId)
+    .order('component_order', { ascending: true });
+  if (componentError) throw componentError;
+  const orderedComponents = (components || []).filter((component: any) => component.source_exam_id);
+  if (orderedComponents.length < 2) throw new Error('This combined assessment has fewer than two saved source exams.');
+  const sourceIds = orderedComponents.map((component: any) => component.source_exam_id);
+  const sourceRows = await fetchAllRows((from, to) => supabaseUntyped
+    .from('results')
+    .select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum')
+    .eq('school_id', schoolId)
+    .eq('term_id', termId)
+    .in('class_id', classIds)
+    .in('exam_id', sourceIds)
+    .range(from, to));
+  if (!sourceRows.length) throw new Error('The source assessments do not have result rows for this class and term.');
+  const grouped = new Map<string, any[]>();
+  sourceRows.forEach((row: any) => {
+    if (!row.student_id || !row.subject_id) return;
+    const percentage = row.percentage != null
+      ? Number(row.percentage)
+      : Number(row.out_of || 0) > 0 ? Number(row.marks || 0) / Number(row.out_of) * 100 : 0;
+    const weight = Math.max(0.0001, Number(orderedComponents.find((component: any) => component.source_exam_id === row.exam_id)?.weight || 1));
+    const key = `${row.student_id}|${row.subject_id}`;
+    const values = grouped.get(key) || [];
+    values.push({ ...row, percentage, weight });
+    grouped.set(key, values);
+  });
+  const payload = Array.from(grouped.values()).map((values) => {
+    const first = values[0];
+    const totalWeight = values.reduce((sum, value) => sum + value.weight, 0);
+    const percentage = values.reduce((sum, value) => sum + value.percentage * value.weight, 0) / Math.max(totalWeight, 0.0001);
+    return {
+      school_id: schoolId,
+      student_id: first.student_id,
+      class_id: first.class_id,
+      subject_id: first.subject_id,
+      teacher_id: values.find((value) => value.teacher_id)?.teacher_id || null,
+      term_id: termId,
+      academic_year: first.academic_year || String(new Date().getFullYear()),
+      curriculum: first.curriculum || 'CBE',
+      marks: Number(percentage.toFixed(2)),
+      out_of: 100,
+      percentage: Number(percentage.toFixed(2)),
+      exam_id: combinedExamId,
+      status: 'submitted',
+    };
+  });
+  if (!payload.length) throw new Error('The source assessments contain no usable learner-subject rows.');
+  const { error: deleteError } = await supabaseUntyped
+    .from('results')
+    .delete()
+    .eq('school_id', schoolId)
+    .eq('exam_id', combinedExamId)
+    .in('class_id', classIds);
+  if (deleteError) throw deleteError;
+  for (let offset = 0; offset < payload.length; offset += 500) {
+    const { error } = await supabaseUntyped.from('results').insert(payload.slice(offset, offset + 500));
+    if (error) throw error;
+  }
+  return payload.length;
+}
+
 function reportCardTotals(rows: any[], totalPoints: number | null | undefined, classData?: any) {
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = rows.reduce((sum, row) => sum + Number(row.percentage ?? 0), 0);
@@ -521,6 +588,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const requestId = ++resultRequestRef.current;
     setLoading(true);
     try {
+      const selectedExamMeta = exams.find((exam: any) => exam.id === selectedExam);
+      if (selectedExamMeta?.type === 'combined') {
+        await materializeCombinedResults(schoolId, selectedExamMeta.id, selectedTerm, classIds);
+      }
       const rows = await fetchAllRows((from, to) => {
         let query = supabaseUntyped
           .from('results')
