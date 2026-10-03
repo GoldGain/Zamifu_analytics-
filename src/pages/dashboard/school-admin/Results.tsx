@@ -142,7 +142,10 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
   const sourceIds = orderedComponents.map((component: any) => component.source_exam_id);
   const sourceRows = await fetchAllRows((from, to) => supabaseUntyped
     .from('results')
-    .select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum')
+    // The configured weight is keyed by source exam id. Keep this column in
+    // the source read or every combined assessment silently becomes equal
+    // weighted during refreshes and PDF generation.
+    .select('student_id, class_id, subject_id, exam_id, marks, out_of, percentage, teacher_id, academic_year, curriculum')
     .eq('school_id', schoolId)
     .eq('term_id', termId)
     .in('class_id', classIds)
@@ -926,6 +929,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchClassResults = async () => {
     const effectiveClassId = scope === 'class_teacher' ? scopedClassId : selectedClass;
+    const selectedExamMeta = exams.find((exam: any) => exam.id === selectedExam);
+    if (selectedExamMeta?.type === 'combined') {
+      await materializeCombinedResults(user?.schoolId || '', selectedExamMeta.id, selectedTerm, [effectiveClassId]);
+    }
     // PostgREST caps one response at 1000 rows. A class x term x assessment
     // result set exceeds that at this school, so an unpaged read silently
     // truncated the class and every ranking built from it was wrong.
@@ -2030,7 +2037,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   const fetchResultsForClassIds = async (classIds: string[], termId: string, examId?: string): Promise<any[]> =>
-    fetchResultsAll(classIds, termId, examId);
+    (async () => {
+      const selectedExamMeta = exams.find((exam: any) => exam.id === examId);
+      if (selectedExamMeta?.type === 'combined') {
+        await materializeCombinedResults(user?.schoolId || '', selectedExamMeta.id, termId, classIds);
+      }
+      return fetchResultsAll(classIds, termId, examId);
+    })();
 
   const fetchPreviousAssessment = async (classIds: string[], termId: string, currentExamId: string) => {
     const currentExam = exams.find((exam) => exam.id === currentExamId);
