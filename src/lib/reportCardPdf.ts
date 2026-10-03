@@ -696,7 +696,7 @@ export async function drawReportHeader(
 export function getLearnerLoginUrl(assessmentNumber?: string | null, origin?: string): string {
   const baseOrigin = origin
     || (typeof window !== 'undefined' ? window.location.origin : 'https://zamifu.company');
-  const url = new URL('/login', baseOrigin);
+  const url = new URL('/auth/login', baseOrigin);
   const normalizedAssessment = String(assessmentNumber || '').trim().toUpperCase();
   if (normalizedAssessment) url.searchParams.set('assessment', normalizedAssessment);
   return url.toString();
