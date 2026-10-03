@@ -64,6 +64,8 @@ type CombinedAssessmentData = {
 };
 
 const EMPTY_COMBINED_ASSESSMENT_DATA: CombinedAssessmentData = { columns: [], values: new Map() };
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID_PATTERN.test(value);
 
 async function fetchCombinedAssessmentData(
   schoolId: string,
@@ -71,24 +73,34 @@ async function fetchCombinedAssessmentData(
   termId: string,
   classIds: string[],
 ): Promise<CombinedAssessmentData> {
-  if (!schoolId || !exam || exam.type !== 'combined' || !termId || !classIds.length) {
+  const safeClassIds = classIds.filter(isUuid);
+  if (!isUuid(schoolId) || !isUuid(exam?.id) || exam.type !== 'combined' || !isUuid(termId) || !safeClassIds.length) {
     return EMPTY_COMBINED_ASSESSMENT_DATA;
   }
   const { data: components, error: componentError } = await supabaseUntyped
     .from('school_exam_components')
-    .select('source_exam_id, weight, component_order, school_exams(name)')
+    // school_exam_components has both combined_exam_id and source_exam_id
+    // foreign keys to school_exams; embedding school_exams is ambiguous.
+    .select('source_exam_id, weight, component_order')
     .eq('school_id', schoolId)
     .eq('combined_exam_id', exam.id)
     .order('component_order', { ascending: true });
   if (componentError) throw componentError;
-  const sourceIds = (components || []).map((component: any) => component.source_exam_id).filter(Boolean);
+  const sourceIds = (components || []).map((component: any) => component.source_exam_id).filter(isUuid);
   if (!sourceIds.length) return EMPTY_COMBINED_ASSESSMENT_DATA;
+  const { data: sourceExams, error: sourceExamError } = await supabaseUntyped
+    .from('school_exams')
+    .select('id, name')
+    .eq('school_id', schoolId)
+    .in('id', sourceIds);
+  if (sourceExamError) throw sourceExamError;
+  const sourceExamNames = new Map((sourceExams || []).map((source: any) => [source.id, source.name]));
   const rows = await fetchAllRows((from, to) => supabaseUntyped
     .from('results')
     .select('student_id, exam_id, percentage, marks, out_of, subjects(name)')
     .eq('school_id', schoolId)
     .eq('term_id', termId)
-    .in('class_id', classIds)
+    .in('class_id', safeClassIds)
     .in('exam_id', sourceIds)
     .range(from, to));
   const values = new Map<string, Record<string, number>>();
@@ -103,7 +115,7 @@ async function fetchCombinedAssessmentData(
   });
   const columns = (components || []).map((component: any) => ({
     id: String(component.source_exam_id),
-    label: `${component.school_exams?.name || 'Assessment'} (${Number(component.weight || 0)}%)`,
+    label: `${sourceExamNames.get(component.source_exam_id) || 'Assessment'} (${Number(component.weight || 0)}%)`,
   }));
   return { columns, values };
 }
@@ -175,6 +187,10 @@ function createReportCardSubjectRows(
 }
 
 async function materializeCombinedResults(schoolId: string, combinedExamId: string, termId: string, classIds: string[]) {
+  const safeClassIds = classIds.filter(isUuid);
+  if (!isUuid(schoolId) || !isUuid(combinedExamId) || !isUuid(termId) || !safeClassIds.length) {
+    throw new Error('Combined assessment is missing a valid school, exam, term, or class identifier.');
+  }
   const { data: components, error: componentError } = await supabaseUntyped
     .from('school_exam_components')
     .select('source_exam_id, weight, component_order')
@@ -184,7 +200,8 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
   if (componentError) throw componentError;
   const orderedComponents = (components || []).filter((component: any) => component.source_exam_id);
   if (orderedComponents.length < 2) throw new Error('This combined assessment has fewer than two saved source exams.');
-  const sourceIds = orderedComponents.map((component: any) => component.source_exam_id);
+  const sourceIds = orderedComponents.map((component: any) => component.source_exam_id).filter(isUuid);
+  if (sourceIds.length < 2) throw new Error('This combined assessment has fewer than two valid source exams.');
   const sourceRows = await fetchAllRows((from, to) => supabaseUntyped
     .from('results')
     // The configured weight is keyed by source exam id. Keep this column in
@@ -193,7 +210,7 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     .select('student_id, class_id, subject_id, exam_id, marks, out_of, percentage, teacher_id, academic_year, curriculum')
     .eq('school_id', schoolId)
     .eq('term_id', termId)
-    .in('class_id', classIds)
+    .in('class_id', safeClassIds)
     .in('exam_id', sourceIds)
     .range(from, to));
   if (!sourceRows.length) throw new Error('The source assessments do not have result rows for this class and term.');
@@ -235,7 +252,7 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     .delete()
     .eq('school_id', schoolId)
     .eq('exam_id', combinedExamId)
-    .in('class_id', classIds);
+    .in('class_id', safeClassIds);
   if (deleteError) throw deleteError;
   for (let offset = 0; offset < payload.length; offset += 500) {
     const { error } = await supabaseUntyped.from('results').insert(payload.slice(offset, offset + 500));
