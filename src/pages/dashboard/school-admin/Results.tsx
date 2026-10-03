@@ -2040,10 +2040,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       .filter((exam) => !exam.target_type || exam.target_type === 'grade' || classIds.includes(exam.target_class_id))
       .sort((a, b) => (Number(b.sequence_order || 0) - Number(a.sequence_order || 0)) || (new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()));
     const currentSequence = Number(currentExam.sequence_order);
-    const candidates = Number.isFinite(currentSequence) && currentSequence > 0
-      ? allCandidates.filter((exam) => Number(exam.sequence_order || 0) < currentSequence)
-      : allCandidates;
-    for (const exam of (candidates.length ? candidates : allCandidates)) {
+    const currentCreatedAt = new Date(currentExam.created_at || 0).getTime();
+    const candidates = allCandidates.filter((exam) => {
+      const examSequence = Number(exam.sequence_order);
+      if (Number.isFinite(currentSequence) && currentSequence > 0 && Number.isFinite(examSequence) && examSequence > 0) {
+        return examSequence < currentSequence;
+      }
+      const examCreatedAt = new Date(exam.created_at || 0).getTime();
+      return currentCreatedAt === 0 || examCreatedAt === 0 ? false : examCreatedAt < currentCreatedAt;
+    });
+    for (const exam of candidates) {
       const previousResults = await fetchResultsAll(classIds, termId, exam.id, 'student_id, marks, out_of, percentage, subjects(name)');
       if (previousResults.length > 0) return { exam, results: previousResults };
     }
