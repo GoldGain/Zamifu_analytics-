@@ -58,6 +58,7 @@ export interface ReportCardSubjectRow {
 
 export interface ReportCardTableOptions {
   showStreamPosition?: boolean;
+  showDeviation?: boolean;
   previousAssessmentLabel?: string;
   assessmentColumns?: { id: string; label: string }[];
 }
@@ -701,9 +702,9 @@ export async function drawReportHeader(
     doc.text(school.address, centerX, 21, { align: 'center', maxWidth: 125 });
   }
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7.5 : 8.5));
-  doc.text(school.report_assessment || 'CBC Termly Assessment Report', centerX, 25, { align: 'center', maxWidth: 125 });
+  if (school.motto) doc.text(school.motto, centerX, 25, { align: 'center', maxWidth: 125 });
   const reportLine = [school.report_class, school.report_term, school.report_year].filter(Boolean).join(' — ');
-  doc.text(reportLine || `${school.motto || ''}`, centerX, 28.5, { align: 'center', maxWidth: 125 });
+  if (reportLine) doc.text(reportLine, centerX, 28.5, { align: 'center', maxWidth: 125 });
   doc.setDrawColor(47, 157, 190); doc.setLineWidth(0.35); doc.line(6, HDR_H + 1, 204, HDR_H + 1);
 }
 
@@ -878,10 +879,12 @@ export function drawResultsTable(
   const sorted = sortResultsBySubject(results);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const showStream = options.showStreamPosition === true;
+  const showDeviation = options.showDeviation !== false;
   const assessmentColumns = options.assessmentColumns || [];
+  const deviationHead = showDeviation ? ['Deviation (%)'] : [];
   const tableHead = assessmentColumns.length
-    ? ['No.', 'Learning Area', ...assessmentColumns.map(column => column.label), 'Average (%)', 'Deviation (%)', ...(!isPrimary ? ['Points (Out of 8)'] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
-    : ['No.', 'Learning Area', 'Marks (/100)', 'Deviation (%)', ...(!isPrimary ? ['Points (Out of 8)'] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
+    ? ['No.', 'Learning Area', ...assessmentColumns.map(column => column.label), 'Average (%)', ...deviationHead, ...(!isPrimary ? ['Points (Out of 8)'] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+    : ['No.', 'Learning Area', 'Marks (/100)', ...deviationHead, ...(!isPrimary ? ['Points (Out of 8)'] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const pct = getPercentage(r);
     const grading = gradeFromPercentage(pct, classData);
@@ -893,9 +896,11 @@ export function drawResultsTable(
     const row: any[] = [i + 1, subjectName];
     if (assessmentColumns.length) {
       assessmentColumns.forEach(column => row.push(r.assessmentValues?.[column.id] == null ? '—' : `${Number(r.assessmentValues[column.id]).toFixed(0)}`));
-      row.push(`${pct.toFixed(0)}%`, deviation);
+      row.push(`${pct.toFixed(0)}%`);
+      if (showDeviation) row.push(deviation);
     } else {
-      row.push(`${pct.toFixed(0)}/100`, deviation);
+      row.push(`${pct.toFixed(0)}/100`);
+      if (showDeviation) row.push(deviation);
     }
     if (!isPrimary) row.push(grading.points ?? '—');
     row.push(grading.grade || '—');
@@ -911,7 +916,7 @@ export function drawResultsTable(
   tableBody.push(totalMarksRow);
   if (!isPrimary) {
     const totalPointsRow = new Array(tableHead.length).fill('');
-    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? 4 + assessmentColumns.length : 4] = `${totalPoints || '—'} / ${sorted.length * 8}`;
+    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? 3 + assessmentColumns.length + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sorted.length * 8}`;
     tableBody.push(totalPointsRow);
   }
   doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
@@ -925,13 +930,13 @@ export function drawResultsTable(
     assessmentColumns.forEach((_, index) => { combinedColumnStyles[index + 2] = { cellWidth: 12 }; });
     const averageIndex = 2 + assessmentColumns.length;
     combinedColumnStyles[averageIndex] = { cellWidth: 14 };
-    combinedColumnStyles[averageIndex + 1] = { cellWidth: 14 };
-    let nextIndex = averageIndex + 2;
+    let nextIndex = averageIndex + 1;
+    if (showDeviation) { combinedColumnStyles[nextIndex] = { cellWidth: 14 }; nextIndex += 1; }
     if (!isPrimary) { combinedColumnStyles[nextIndex] = { cellWidth: 12 }; nextIndex += 1; }
     combinedColumnStyles[nextIndex] = { cellWidth: 15 }; nextIndex += 1;
     if (showStream) { combinedColumnStyles[nextIndex] = { cellWidth: 15 }; nextIndex += 1; }
     combinedColumnStyles[nextIndex] = { cellWidth: 16 }; nextIndex += 1;
-    combinedColumnStyles[nextIndex] = { cellWidth: 18 }; nextIndex += 1;
+    combinedColumnStyles[nextIndex] = { cellWidth: 18, halign: 'left' }; nextIndex += 1;
     combinedColumnStyles[nextIndex] = { cellWidth: Math.max(20, 192 - Object.values(combinedColumnStyles).reduce((sum: number, style: any) => sum + Number(style.cellWidth || 0), 0)), halign: 'left' };
   }
   autoTable(doc, {
@@ -948,12 +953,14 @@ export function drawResultsTable(
       ? combinedColumnStyles
       : isPrimary
       ? (showStream
-        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 16 }, 3: { cellWidth: 15 }, 4: { cellWidth: 17 }, 5: { cellWidth: 15 }, 6: { cellWidth: 15 }, 7: { cellWidth: 21 }, 8: { cellWidth: 62, halign: 'left' } }
-        : { 0: { cellWidth: 7 }, 1: { cellWidth: 25, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 18 }, 3: { cellWidth: 16 }, 4: { cellWidth: 17 }, 5: { cellWidth: 16 }, 6: { cellWidth: 22 }, 7: { cellWidth: 71, halign: 'left' } })
+        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 16 }, ...(showDeviation ? { 3: { cellWidth: 15 } } : {}), 4: { cellWidth: 17 }, 5: { cellWidth: 15 }, 6: { cellWidth: 15 }, 7: { cellWidth: 21, halign: 'left' }, 8: { cellWidth: 62, halign: 'left' } }
+        : { 0: { cellWidth: 7 }, 1: { cellWidth: 25, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 18 }, ...(showDeviation ? { 3: { cellWidth: 16 } } : {}), 4: { cellWidth: 17 }, 5: { cellWidth: 16 }, 6: { cellWidth: 22, halign: 'left' }, 7: { cellWidth: 71, halign: 'left' } })
       : (showStream
-        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 22, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 15 }, 3: { cellWidth: 14 }, 4: { cellWidth: 13 }, 5: { cellWidth: 16 }, 6: { cellWidth: 15 }, 7: { cellWidth: 15 }, 8: { cellWidth: 20 }, 9: { cellWidth: 55, halign: 'left' } }
-        : { 0: { cellWidth: 7 }, 1: { cellWidth: 23, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 17 }, 3: { cellWidth: 16 }, 4: { cellWidth: 15 }, 5: { cellWidth: 17 }, 6: { cellWidth: 15 }, 7: { cellWidth: 22 }, 8: { cellWidth: 60, halign: 'left' } }),
+        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 22, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 15 }, ...(showDeviation ? { 3: { cellWidth: 14 } } : {}), 4: { cellWidth: 13 }, 5: { cellWidth: 16 }, 6: { cellWidth: 15 }, 7: { cellWidth: 15, halign: 'left' }, 8: { cellWidth: 20 }, 9: { cellWidth: 55, halign: 'left' } }
+        : { 0: { cellWidth: 7 }, 1: { cellWidth: 23, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 17 }, ...(showDeviation ? { 3: { cellWidth: 16 } } : {}), 4: { cellWidth: 15 }, 5: { cellWidth: 17 }, 6: { cellWidth: 15, halign: 'left' }, 7: { cellWidth: 22 }, 8: { cellWidth: 60, halign: 'left' } }),
     didParseCell: (data: any) => {
+      const teacherIndex = tableHead.indexOf("Teacher's Name");
+      if (data.column.index === teacherIndex) data.cell.styles.halign = 'left';
       if (data.section !== 'body') return;
       const value = String(data.cell.raw ?? '');
       const deviationIndex = tableHead.indexOf('Deviation (%)');
@@ -978,7 +985,6 @@ export function drawPathwayPerformance(
   doc: jsPDF,
   results: any[],
   startY: number,
-  streamPosition?: string,
 ): number {
   const pathways = ['STEM', 'Arts & Sports', 'Social Sciences'];
   const pathwayRows = pathways.map(pathway => {
@@ -1006,13 +1012,7 @@ export function drawPathwayPerformance(
   doc.setFont('helvetica', 'italic'); doc.setFontSize(pdfFontSize(doc, 7.2)); doc.setTextColor(26, 35, 90);
   const narrative = doc.splitTextToSize(`The learner demonstrates a strong inclination towards the ${strongest?.pathway || 'selected'} pathway based on the assessed areas.`, 182);
   doc.text(narrative, 14, tableEnd + 12);
-  const nextY = tableEnd + 12 + narrative.length * 3.5;
-  if (streamPosition) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7.5)); doc.setTextColor(26, 35, 126);
-    doc.text(`Stream Position: ${streamPosition}`, 14, nextY + 4);
-    return nextY + 8;
-  }
-  return nextY;
+  return tableEnd + 12 + narrative.length * 3.5;
 }
 
 // ── Draw Summary Box ─────────────────────────────────────────────────────────
@@ -1023,9 +1023,10 @@ export function drawSummaryBox(
   totalPoints: number | null,
   position: string,
   classData: any,
-  startY: number
+  startY: number,
+  streamPosition?: string,
 ): number {
-  const boxH = COMPACT_MODE ? 13 : 22;
+  const boxH = COMPACT_MODE ? 18 : 28;
   startY = ensureReportCardSpace(doc, startY, boxH + 2);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
@@ -1040,6 +1041,10 @@ export function drawSummaryBox(
   doc.text(`Position: ${position}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading.grade}`, 65, startY + gap * 2);
   if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
+  if (streamPosition) {
+    doc.text(`Stream Position: ${streamPosition}`, 20, startY + gap * 3);
+    doc.text(`Average: ${avgPercentage.toFixed(1)}%`, 130, startY + gap * 3);
+  }
   // Leave a clear baseline gap so the deviation line cannot be painted into the summary border.
   return startY + boxH + (COMPACT_MODE ? 3 : 4);
 }
