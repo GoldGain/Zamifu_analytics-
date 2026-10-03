@@ -735,7 +735,8 @@ export async function addSignaturesToPDF(
   schoolInfo?: SchoolInfo,
   qrOptions: ReportCardQrOptions = {},
 ) {
-  // Compact mode shrinks the signature block so it fits on page 1
+  // Compact mode keeps signatures small, but never sacrifices the preceding
+  // class-teacher comment to force the QR block onto the same page.
   const hasQr = Boolean(qrOptions.loginUrl || qrOptions.assessmentNumber || typeof window !== 'undefined');
   const sigBlockH = COMPACT_MODE ? (hasQr ? 38 : 14) : (hasQr ? 52 : 34);
   const sigImgH = COMPACT_MODE ? 8 : 16;
@@ -751,7 +752,15 @@ export async function addSignaturesToPDF(
     closingDate ? `School closes on: ${closingDate}` : '',
     openingDate ? `School opens on: ${openingDate}` : '',
   ].filter(Boolean);
-  y = ensureReportCardSpace(doc, y, sigBlockH + (calendarNoticeLines.length > 0 ? (COMPACT_MODE ? 12 : 15) : 5));
+  const requiredSignatureHeight = sigBlockH + (calendarNoticeLines.length > 0 ? (COMPACT_MODE ? 12 : 15) : 5);
+  const pageHeight = doc.internal.pageSize.getHeight();
+  if (COMPACT_MODE && y + requiredSignatureHeight > pageHeight - REPORT_CONTENT_BOTTOM_MARGIN) {
+    drawReportFooter(doc);
+    doc.addPage();
+    y = REPORT_CONTENT_TOP;
+  } else {
+    y = ensureReportCardSpace(doc, y, requiredSignatureHeight);
+  }
   const hasPrincipalSig = signatures.principal_signature_url && signatures.principal_signature_url.startsWith('data:');
   const hasTeacherSig = signatures.teacher_signature_url && signatures.teacher_signature_url.startsWith('data:');
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6 : 7));
