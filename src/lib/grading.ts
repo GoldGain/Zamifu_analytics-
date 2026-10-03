@@ -1,3 +1,5 @@
+import { calculatePathwayPerformance } from './pathwayPerformance';
+
 export type Curriculum = 'CBE' | '844';
 export type SchoolLevelBand = 'primary' | 'junior' | 'senior';
 
@@ -267,52 +269,13 @@ export function generateSubjectSpecificComment(
     });
   }
 
-  // FIX Issue 2: Add pathway performance sentence
-  // Group subjects by pathway and find the strongest pathway
-  const SUBJECT_PATHWAY_MAP: Record<string, string> = {
-    'Mathematics': 'STEM',
-    'Integrated Science': 'STEM',
-    'Pre-Technical Studies': 'STEM',
-    'Agriculture and Nutrition': 'STEM',
-    'Agriculture': 'STEM',
-    'Science and Technology': 'STEM',
-    'English': 'Social Sciences',
-    'Kiswahili': 'Social Sciences',
-    'Social Studies': 'Social Sciences',
-    'Religious Education': 'Social Sciences',
-    'CRE': 'Social Sciences',
-    'IRE': 'Social Sciences',
-    'HRE': 'Social Sciences',
-    'Creative Arts and Sports': 'Creative Arts and Sports',
-    'Creative Arts': 'Creative Arts and Sports',
-    'Physical and Health Education': 'Creative Arts and Sports',
-    'Music': 'Creative Arts and Sports',
-    'Art and Craft': 'Creative Arts and Sports',
-  };
-
-  const pathwayScores: Record<string, { total: number; count: number }> = {};
-  subjects.forEach(s => {
-    // Find matching pathway
-    const pathwayKey = Object.keys(SUBJECT_PATHWAY_MAP).find(k =>
-      s.name.toLowerCase().includes(k.toLowerCase()) ||
-      k.toLowerCase().includes(s.name.toLowerCase())
-    );
-    const pathway = pathwayKey ? SUBJECT_PATHWAY_MAP[pathwayKey] : null;
-    if (pathway) {
-      if (!pathwayScores[pathway]) pathwayScores[pathway] = { total: 0, count: 0 };
-      pathwayScores[pathway].total += s.percentage;
-      pathwayScores[pathway].count += 1;
-    }
-  });
-
-  const pathwayAverages = Object.entries(pathwayScores)
-    .filter(([, v]) => v.count > 0)
-    .map(([name, v]) => ({ name, avg: v.total / v.count }))
-    .sort((a, b) => b.avg - a.avg);
-
-  if (pathwayAverages.length > 0) {
-    const strongestPathway = pathwayAverages[0];
-    comment += `Your performance in the ${strongestPathway.name} pathway (${strongestPathway.avg.toFixed(1)}%) shows strong potential. `;
+  // Use the exact same pathway mapping and denominator as the report-card
+  // profile. The teacher comment intentionally quotes Social Sciences so the
+  // number can never diverge from that row in the profile table.
+  const pathwayPerformance = calculatePathwayPerformance(subjects);
+  const socialSciences = pathwayPerformance.find((entry) => entry.pathway === 'Social Sciences');
+  if (socialSciences && socialSciences.outOf > 0) {
+    comment += `Your performance in the Social Sciences pathway (${socialSciences.percentage.toFixed(1)}%) shows strong potential. `;
   }
 
   // Closing encouragement with position

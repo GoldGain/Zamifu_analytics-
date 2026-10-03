@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase/client';
 import { Eye, EyeOff, Loader2, User, Mail } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ import SEO from '@/components/SEO';
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const [loginMethod, setLoginMethod] = useState<'email' | 'assessment'>('email');
   const [identifier, setIdentifier] = useState('');
@@ -16,6 +17,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const qrAssessment = (searchParams.get('assessment') || '').trim().toUpperCase();
 
   // If already logged in, redirect to appropriate dashboard
   useEffect(() => {
@@ -23,6 +25,13 @@ export default function Login() {
       redirectByRole(user.role);
     }
   }, [user, authLoading]);
+
+  useEffect(() => {
+    if (!qrAssessment) return;
+    setLoginMethod('assessment');
+    setIdentifier(qrAssessment);
+    setPassword(qrAssessment);
+  }, [qrAssessment]);
 
   const redirectByRole = (role: string) => {
     if (role === 'master_super_admin') navigate('/master-admin', { replace: true });
@@ -49,16 +58,20 @@ export default function Login() {
     try {
       let email = identifier.trim();
       let assessmentCredential = '';
-      let legacyAdmissionCredential = '';
 
       // Learners use their assessment number as both the username lookup key
       // and the initial password. Admission numbers are display identifiers and
       // are intentionally never accepted as learner credentials.
       if (loginMethod === 'assessment') {
         assessmentCredential = identifier.trim().toUpperCase();
+        if (password.trim() !== assessmentCredential) {
+          setError('Learners must use their CAPITALIZED Assessment Number as both Username and Password.');
+          setLoading(false);
+          return;
+        }
         const { data: students, error: studentError } = await supabase
           .from('students')
-          .select('student_email, admission_number, assessment_number, is_active')
+          .select('student_email, assessment_number, is_active')
           .ilike('assessment_number', assessmentCredential)
           .eq('is_active', true)
           .limit(2);
@@ -75,7 +88,6 @@ export default function Login() {
         }
 
         const studentData = students[0] as unknown as any;
-        legacyAdmissionCredential = String(studentData.admission_number || '').trim();
         const emailToUse = studentData.student_email || studentData.email;
         if (!emailToUse) {
           setError('Learner account is not set up. Please contact your school administrator.');
@@ -86,27 +98,10 @@ export default function Login() {
         email = emailToUse;
       }
 
-      // Attempt the new assessment-number password first. Existing learner
-      // accounts may still have the former temporary password; a successful
-      // fallback is immediately upgraded to the new password.
-      let { error: loginError, data } = await supabase.auth.signInWithPassword({
+      const { error: loginError, data } = await supabase.auth.signInWithPassword({
         email: email,
         password: loginMethod === 'assessment' ? assessmentCredential : password,
       });
-
-      if (loginError && loginMethod === 'assessment') {
-        const legacyPasswords = Array.from(new Set([`${assessmentCredential}@2025`, legacyAdmissionCredential ? `${legacyAdmissionCredential}@2025` : ''].filter(Boolean)));
-        let legacyLogin = await supabase.auth.signInWithPassword({ email, password: legacyPasswords[0] });
-        if (legacyLogin.error && legacyPasswords[1]) {
-          legacyLogin = await supabase.auth.signInWithPassword({ email, password: legacyPasswords[1] });
-        }
-        loginError = legacyLogin.error;
-        data = legacyLogin.data;
-        if (!loginError && data.user) {
-          const { error: upgradeError } = await supabase.auth.updateUser({ password: assessmentCredential });
-          if (upgradeError) console.warn('Legacy learner password upgrade deferred:', upgradeError.message);
-        }
-      }
 
       if (loginError) {
         setError(loginMethod === 'assessment' ? 'Invalid assessment number or password. Learner passwords use the capitalized assessment number.' : 'Invalid email or password.');
@@ -204,6 +199,12 @@ export default function Login() {
             </div>
           )}
 
+          {qrAssessment && (
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              Welcome to Zamifu. Log in using your Assessment Number as both Username AND Password. The Assessment Number must be CAPITALIZED (e.g. ADM216).
+            </div>
+          )}
+
           {/* Login Method Toggle */}
           <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-xl">
             <button
@@ -245,7 +246,7 @@ export default function Login() {
                 autoFocus
               />
               {loginMethod === 'assessment' && (
-                <p className="text-xs text-gray-500 mt-1">Enter the assessment number given by your school. Your initial password is the same number in capitals.</p>
+                <p className="text-xs text-gray-500 mt-1">Use your Assessment Number as both Username AND Password. The Assessment Number must be CAPITALIZED (e.g. ADM216).</p>
               )}
             </div>
 

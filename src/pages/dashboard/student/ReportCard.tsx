@@ -13,6 +13,7 @@ import {
   drawReportHeader,
   drawStudentInfo,
   drawResultsTable,
+  drawPathwayPerformance,
   drawSummaryBox,
   drawDeviation,
   drawAchievements,
@@ -344,7 +345,8 @@ export default function StudentReportCard() {
         { showPoints: !isPrimary },
       );
 
-      const tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
+      let tableEndY = drawResultsTable(doc, results, classDataForGrading, 70);
+      if (band === 'junior') tableEndY = drawPathwayPerformance(doc, results, tableEndY + 4) + 6;
       const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
       const devEndY = drawDeviation(doc, deviation, previousAvg, null, summaryEndY);
       let trendEndY = devEndY;
@@ -354,7 +356,7 @@ export default function StudentReportCard() {
       const myBestSubjects = classBestList.filter(b => b.studentId === student.id);
       const achievementEndY = drawAchievements(doc, myBestSubjects, trendEndY);
       const commentEndY = drawAIComment(doc, aiComment, achievementEndY);
-      await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo);
+      await addSignaturesToPDF(doc, signatures, commentEndY, schoolInfo, { assessmentNumber: student.assessment_number });
 
       // Footer anchored to the bottom of the last page (never pushes content down)
       drawReportFooter(doc);

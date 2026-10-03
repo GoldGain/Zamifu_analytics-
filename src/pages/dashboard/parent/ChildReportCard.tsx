@@ -391,8 +391,7 @@ export default function ParentChildReportCard() {
       let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
-      const gradeLevelNum = Number(classDataForGrading?.grade_level || classDataForGrading?.level || 0);
-      if (gradeLevelNum >= 6 && gradeLevelNum <= 9) {
+      if (getSchoolLevelBand(classDataForGrading) === 'junior') {
         currentY = drawPathwayPerformance(doc, results, currentY) + 6;
       }
       
@@ -406,7 +405,7 @@ export default function ParentChildReportCard() {
         currentY = drawAchievements(doc, studentBests, currentY);
       }
       currentY = drawAIComment(doc, aiComment, currentY);
-      await addSignaturesToPDF(doc, signatures, currentY, schoolInfo);
+      await addSignaturesToPDF(doc, signatures, currentY, schoolInfo, { assessmentNumber: selectedChild.assessment_number });
       drawReportFooter(doc);
       doc.save(`Report_Card_${selectedChild.first_name}_${selectedChild.last_name}.pdf`);
     } catch (err: any) {

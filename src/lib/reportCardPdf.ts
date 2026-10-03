@@ -3,6 +3,8 @@ import autoTable from 'jspdf-autotable';
 import { getSchoolLevelBand, calculateCompetencyGrade, generateSubjectSpecificComment } from './grading';
 import type { SchoolLevelBand, SubjectResult } from './grading';
 import { pdfFontSize } from './pdfFontSize';
+import QRCode from 'qrcode';
+import { calculatePathwayPerformance, formatPathwayNumber, strongestPathway } from './pathwayPerformance';
 
 // ── Shared PDF Helper Functions for Report Cards ─────────────────────────────
 
@@ -26,6 +28,11 @@ export interface SchoolInfo {
 export interface SignatureInfo {
   principal_signature_url?: string | null;
   teacher_signature_url?: string | null;
+}
+
+export interface ReportCardQrOptions {
+  assessmentNumber?: string | null;
+  loginUrl?: string;
 }
 
 export interface ReportCardLearnerIdentity {
@@ -98,28 +105,6 @@ export function ensureReportCardSpace(doc: jsPDF, y: number, requiredHeight: num
   doc.addPage();
   return REPORT_CONTENT_TOP;
 }
-
-// Pathway Mapping based on Junior School Learning Areas
-export const PATHWAY_MAPPING: Record<string, string> = {
-  'Mathematics': 'STEM',
-  'Integrated Science': 'STEM',
-  'Pre-Technical Studies': 'STEM',
-  'Agriculture and Nutrition': 'STEM',
-  'Agriculture': 'STEM',
-  'Science and Technology': 'STEM',
-  'English': 'Social Sciences',
-  'Kiswahili': 'Social Sciences',
-  'Social Studies': 'Social Sciences',
-  'Religious Education': 'Social Sciences',
-  'CRE': 'Social Sciences',
-  'IRE': 'Social Sciences',
-  'HRE': 'Social Sciences',
-  'Creative Arts and Sports': 'Arts & Sports',
-  'Creative Arts': 'Arts & Sports',
-  'Physical and Health Education': 'Arts & Sports',
-  'Music': 'Arts & Sports',
-  'Art and Craft': 'Arts & Sports',
-};
 
 export const SUBJECT_ORDER = [
   'English',
@@ -708,15 +693,51 @@ export async function drawReportHeader(
   doc.setDrawColor(47, 157, 190); doc.setLineWidth(0.35); doc.line(6, HDR_H + 1, 204, HDR_H + 1);
 }
 
+export function getLearnerLoginUrl(assessmentNumber?: string | null, origin?: string): string {
+  const baseOrigin = origin
+    || (typeof window !== 'undefined' ? window.location.origin : 'https://zamifu.company');
+  const url = new URL('/login', baseOrigin);
+  const normalizedAssessment = String(assessmentNumber || '').trim().toUpperCase();
+  if (normalizedAssessment) url.searchParams.set('assessment', normalizedAssessment);
+  return url.toString();
+}
+
+async function addLearnerLoginQrToPDF(
+  doc: jsPDF,
+  y: number,
+  options: ReportCardQrOptions = {},
+): Promise<void> {
+  const qrSize = 20;
+  const qrX = 169;
+  const loginUrl = options.loginUrl || getLearnerLoginUrl(options.assessmentNumber);
+  const qrDataUrl = await QRCode.toDataURL(loginUrl, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 240,
+  });
+  doc.addImage(qrDataUrl, 'PNG', qrX, y, qrSize, qrSize, undefined, 'FAST');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5 : 5.5));
+  doc.setTextColor(70, 70, 80);
+  const caption = doc.splitTextToSize(
+    'Scan to view your results. Log in with your Assessment Number.',
+    32,
+  );
+  doc.text(caption, qrX + qrSize / 2, y + qrSize + 2.5, { align: 'center' });
+  doc.setTextColor(0, 0, 0);
+}
+
 // ── Add Signatures to PDF ────────────────────────────────────────────────────
 export async function addSignaturesToPDF(
   doc: jsPDF,
   signatures: SignatureInfo,
   y: number,
-  schoolInfo?: SchoolInfo
+  schoolInfo?: SchoolInfo,
+  qrOptions: ReportCardQrOptions = {},
 ) {
   // Compact mode shrinks the signature block so it fits on page 1
-  const sigBlockH = COMPACT_MODE ? 14 : 34;
+  const hasQr = Boolean(qrOptions.loginUrl || qrOptions.assessmentNumber || typeof window !== 'undefined');
+  const sigBlockH = COMPACT_MODE ? (hasQr ? 38 : 14) : (hasQr ? 52 : 34);
   const sigImgH = COMPACT_MODE ? 8 : 16;
   const sigImgY = COMPACT_MODE ? 0.5 : 3;
   const sigLabelY = COMPACT_MODE ? 9 : 22;
@@ -777,7 +798,7 @@ export async function addSignaturesToPDF(
     doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.5 : 6));
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 100, 110);
-    doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 118, y + sigLabelY);
+    doc.text('Principal Signature', 118, y + sigLabelY);
   } else {
     doc.setDrawColor(150, 150, 155);
     doc.line(14, y + (COMPACT_MODE ? 9 : 12), 75, y + (COMPACT_MODE ? 9 : 12));
@@ -786,7 +807,7 @@ export async function addSignaturesToPDF(
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(80, 80, 85);
     doc.text('Class Teacher Signature', 14, y + (COMPACT_MODE ? 15 : 18));
-    doc.text(`Principal Signature${schoolInfo?.principal_name ? ` (${schoolInfo.principal_name})` : ''}`, 118, y + (COMPACT_MODE ? 15 : 18));
+    doc.text('Principal Signature', 118, y + (COMPACT_MODE ? 15 : 18));
   }
   // Date
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 6 : 7));
@@ -800,6 +821,14 @@ export async function addSignaturesToPDF(
   doc.setFontSize(pdfFontSize(doc, 5.5));
   doc.setTextColor(150, 150, 155);
   doc.text('OFFICIAL STAMP', 134, y + sigImgY + sigImgH / 2, { align: 'center' });
+
+  if (hasQr) {
+    try {
+      await addLearnerLoginQrToPDF(doc, y, qrOptions);
+    } catch (error) {
+      console.warn('Learner login QR could not be added to report card:', error);
+    }
+  }
 
   if (calendarNoticeLines.length > 0) {
     doc.setTextColor(0, 102, 102);
@@ -986,27 +1015,16 @@ export function drawPathwayPerformance(
   results: any[],
   startY: number,
 ): number {
-  const pathways = ['STEM', 'Arts & Sports', 'Social Sciences'];
-  const pathwayRows = pathways.map(pathway => {
-    const relevantResults = results.filter(r => {
-      const subjectName = r.subjects?.name || '';
-      return PATHWAY_MAPPING[subjectName] === pathway;
-    });
-    const areasUsed = relevantResults.map(r => r.subjects?.name).join(', ');
-    const score = relevantResults.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
-    const outOf = relevantResults.reduce((sum, r) => sum + (Number(r.out_of) || 100), 0);
-    const percentage = outOf > 0 ? (score / outOf) * 100 : 0;
-    return { pathway, areasUsed: areasUsed || 'None', score, outOf, percentage };
-  });
+  const pathwayRows = calculatePathwayPerformance(results);
   doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 9 : 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
   doc.text('Pathway Performance Profile', 14, startY + (COMPACT_MODE ? 5 : 6));
   autoTable(doc, {
-    startY: startY + (COMPACT_MODE ? 6 : 8), head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']], body: pathwayRows.map((row) => [row.pathway, row.areasUsed, `${row.score}/${row.outOf}`, `${row.percentage.toFixed(1)}%`]),
+    startY: startY + (COMPACT_MODE ? 6 : 8), head: [['Pathway', 'Learning Areas Used', 'Score', 'Performance']], body: pathwayRows.map((row) => [row.pathway, row.learningAreas.join(', ') || 'None', `${formatPathwayNumber(row.score)}/${formatPathwayNumber(row.outOf)}`, `${row.percentage.toFixed(1)}%`]),
     styles: { fontSize: pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8), cellPadding: COMPACT_MODE ? 0.8 : 2 }, headStyles: { fillColor: [226, 239, 247], textColor: [26, 35, 90], fontSize: pdfFontSize(doc, COMPACT_MODE ? 7 : 8) },
     alternateRowStyles: { fillColor: [244, 250, 239] }, tableLineColor: [137, 185, 142], tableLineWidth: 0.25, margin: { left: 14, right: 14 },
   });
   const tableEnd = (doc as any).lastAutoTable.finalY;
-  const strongest = [...pathwayRows].sort((a, b) => b.percentage - a.percentage)[0];
+  const strongest = strongestPathway(pathwayRows);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 8.5)); doc.setTextColor(26, 35, 126);
   doc.text(`Strongest Pathway: ${strongest?.pathway || '—'} (${strongest?.percentage.toFixed(1) || '0.0'}%)`, 14, tableEnd + 6);
   doc.setFont('helvetica', 'italic'); doc.setFontSize(pdfFontSize(doc, 7.2)); doc.setTextColor(26, 35, 90);
@@ -1043,7 +1061,6 @@ export function drawSummaryBox(
   if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
   if (streamPosition) {
     doc.text(`Stream Position: ${streamPosition}`, 20, startY + gap * 3);
-    doc.text(`Average: ${avgPercentage.toFixed(1)}%`, 130, startY + gap * 3);
   }
   // Leave a clear baseline gap so the deviation line cannot be painted into the summary border.
   return startY + boxH + (COMPACT_MODE ? 3 : 4);
