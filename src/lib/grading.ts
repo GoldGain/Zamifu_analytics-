@@ -3,9 +3,59 @@ import { calculatePathwayPerformance } from './pathwayPerformance';
 export type Curriculum = 'CBE' | '844';
 export type SchoolLevelBand = 'primary' | 'junior' | 'senior';
 
-/** Returns true if the class uses the 8-4-4 curriculum */
-export function is844Curriculum(classData?: { curriculum?: string | null }): boolean {
-  return String(classData?.curriculum || '').toUpperCase() === '844';
+/**
+ * Returns true only for 8-4-4 Form 3/Form 4 classes.
+ *
+ * Traditional Form 3/Form 4 presets store an empty curriculum value in Kimatu,
+ * while CBE Grade 11/12 use an explicit CBE value. Use the canonical Form label
+ * to recognize legacy 8-4-4 classes without leaking that scale into CBE grades
+ * or Forms 1-2.
+ */
+export function is844Curriculum(classData?: {
+  curriculum?: string | null;
+  grade_level?: number | string | null;
+  level?: number | string | null;
+  name?: string | null;
+}): boolean {
+  const curriculum = String(classData?.curriculum || '').trim().toUpperCase();
+  const normalizedCurriculum = curriculum.replace(/[^A-Z0-9]/g, '');
+  const name = String(classData?.name || '').toLowerCase();
+  const isForm3Or4 = /\bform\s*(?:3|three|4|four)\b/i.test(name);
+
+  // Classes.tsx stores traditional Form 3/4 presets with curriculum: ''. An
+  // explicit CBE value always wins; blank or 8-4-4 values plus a Form label
+  // select the legacy A-E grading system.
+  if (isForm3Or4 && (normalizedCurriculum === '' || normalizedCurriculum === '844')) return true;
+  if (normalizedCurriculum !== '844') return false;
+
+  const rawLevel = classData?.grade_level ?? classData?.level;
+  const parsedLevel = typeof rawLevel === 'number'
+    ? rawLevel
+    : parseInt(String(rawLevel ?? '').replace(/[^0-9-]/g, ''), 10);
+
+  // Kimatu's 8-4-4 setup maps Form 3/Form 4 to grade levels 11/12, while
+  // older school records may store the form number directly as 3/4.
+  return parsedLevel === 3 || parsedLevel === 4 || parsedLevel === 11 || parsedLevel === 12;
+}
+
+/**
+ * Returns the grading/curriculum scope used when forming same-level cohorts.
+ * CBE and eligible 8-4-4 classes must never share an all-stream group merely
+ * because their stored numeric level happens to match.
+ */
+export function curriculumScopeKey(classData?: Parameters<typeof is844Curriculum>[0]): 'CBE' | '844' {
+  return is844Curriculum(classData) ? '844' : 'CBE';
+}
+
+/** Stable level + curriculum key for all-stream and comparison cohorts. */
+export function curriculumCohortKey(classData?: Parameters<typeof is844Curriculum>[0]): string {
+  const rawLevel = classData?.grade_level ?? classData?.level;
+  const parsedLevel = typeof rawLevel === 'number'
+    ? rawLevel
+    : parseInt(String(rawLevel ?? '').replace(/[^0-9-]/g, ''), 10);
+  const name = String(classData?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const levelKey = Number.isFinite(parsedLevel) ? String(parsedLevel) : `name:${name || 'unassigned'}`;
+  return `${curriculumScopeKey(classData)}:${levelKey}`;
 }
 
 export interface NumericGrade844 {
@@ -114,7 +164,51 @@ export function calculate844Grade(score: number): NumericGrade844 {
   return { grade: 'E', points: 1, descriptor: 'Poor', band: '844' };
 }
 
-export function gradeDisplayLabel(band: SchoolLevelBand): string {
+export type DisplayGrade = NumericGrade844 | CompetencyGrade;
+
+/** Calculate the grade used by a result surface for this exact class. */
+export function calculateGradeForClass(
+  score: number,
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): DisplayGrade {
+  return is844Curriculum(classData)
+    ? calculate844Grade(score)
+    : calculateCompetencyGrade(score, getSchoolLevelBand(classData));
+}
+
+/** Display label for either the Form 3/Form 4 8-4-4 scale or CBE. */
+export function gradeLabelForClass(
+  score: number,
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): string {
+  const grade = calculateGradeForClass(score, classData);
+  return 'subLevel' in grade ? grade.subLevel : grade.grade;
+}
+
+/** Points for ranking/tie-breaks on the class's active grading system. */
+export function gradePointsForClass(
+  score: number,
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): number {
+  return calculateGradeForClass(score, classData).points;
+}
+
+/** Maximum points available for one learning area on the class's scale. */
+export function gradePointsMaxForClass(
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): number {
+  if (is844Curriculum(classData)) return 12;
+  return getSchoolLevelBand(classData) === 'primary' ? 0 : 8;
+}
+
+// Descriptive alias for callers that prefer a getter-style helper name.
+export const getMaxPointsForClass = gradePointsMaxForClass;
+
+export function gradeDisplayLabel(
+  band: SchoolLevelBand,
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): string {
+  if (is844Curriculum(classData)) return '8-4-4 Grade';
   if (band === 'senior') return 'Senior CBE Grade';
   if (band === 'junior') return 'Junior CBE Grade';
   return 'Primary CBE Grade';
@@ -336,7 +430,11 @@ export function statusForGrade(subLevel?: string | null): 'STRONG' | 'AVERAGE' |
 }
 
 // ── Grade band labels for a school level band ────────────────────────────────
-export function gradeLabelsForBand(band: SchoolLevelBand): string[] {
+export function gradeLabelsForBand(
+  band: SchoolLevelBand,
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): string[] {
+  if (is844Curriculum(classData)) return ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'E'];
   if (band === 'primary') return ['EE', 'ME', 'AE', 'BE'];
   return ['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2'];
 }

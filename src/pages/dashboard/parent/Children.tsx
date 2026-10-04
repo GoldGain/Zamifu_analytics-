@@ -5,6 +5,7 @@ import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { Award, ClipboardList, Lock, CreditCard, CheckCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatClassStream } from '@/lib/class-label';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand } from '@/lib/grading';
 
 declare global {
   interface Window {
@@ -20,7 +21,7 @@ interface ChildRecord {
   last_name: string;
   admission_number: string;
   school_id: string;
-  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null; curriculum?: string | null; grade_level?: number | string | null; level?: number | string | null } | null;
   curriculum: string;
   gender: string | null;
   photo_url?: string | null;
@@ -29,10 +30,9 @@ interface ChildRecord {
 interface ResultRecord {
   id: string;
   marks: number | null;
-  cbc_grade: string | null;
-  cbc_points: number | null;
-  points_: number | null;
-  grade_: string | null;
+  out_of: number | null;
+  percentage: number | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null; curriculum?: string | null; grade_level?: number | string | null; level?: number | string | null } | null;
   subjects: { name: string } | null;
 }
 
@@ -85,7 +85,7 @@ export default function ParentChildren() {
     // Load children linked via parent_student_links
     const { data: linked } = await supabaseUntyped
       .from('parent_student_links')
-      .select('*, students(id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name), photo_url, curriculum, gender))')
+      .select('*, students(id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name, curriculum, grade_level, level), photo_url, curriculum, gender))')
       .eq('parent_id', user?.id);
     if (linked) {
       const kids = linked.map((l: any) => l.students as unknown as ChildRecord).filter(Boolean);
@@ -156,10 +156,27 @@ export default function ParentChildren() {
   const loadResults = async (childId: string) => {
     const { data: results } = await supabase
       .from('results')
-      .select('*, subjects(name)')
+      .select('*, subjects(name), classes(name, stream, stream_name, curriculum, grade_level, level)')
       .eq('student_id', childId)
       .order('created_at', { ascending: false });
     setChildResults((results || []) as unknown as ResultRecord[]);
+  };
+
+  const getResultPercentage = (result: ResultRecord): number => {
+    const explicit = Number(result.percentage);
+    if (result.percentage !== null && result.percentage !== undefined && Number.isFinite(explicit)) return explicit;
+    const outOf = Number(result.out_of);
+    return Number.isFinite(outOf) && outOf > 0 ? Number(result.marks || 0) / outOf * 100 : 0;
+  };
+
+  const getResultGrade = (result: ResultRecord): string => {
+    const grade = calculateGradeForClass(getResultPercentage(result), result.classes || selectedChild?.classes || undefined);
+    return 'subLevel' in grade ? grade.subLevel : grade.grade;
+  };
+
+  const getResultPoints = (result: ResultRecord): number | string => {
+    const classData = result.classes || selectedChild?.classes || undefined;
+    return getSchoolLevelBand(classData) === 'primary' ? '-' : gradePointsForClass(getResultPercentage(result), classData);
   };
 
   const selectChildDetails = async (child: ChildRecord) => {
@@ -360,11 +377,11 @@ export default function ParentChildren() {
                   <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                     <div>
                       <p className="text-sm font-medium">{r.subjects?.name}</p>
-                      <p className="text-xs text-[#666666]">{r.marks}%</p>
+                      <p className="text-xs text-[#666666]">{getResultPercentage(r).toFixed(0)}%</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(r.cbc_grade || r.grade_)}`}>{r.cbc_grade || r.grade_}</span>
-                      <span className="text-xs text-[#666666]">{r.cbc_points || r.points_} pts</span>
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getResultGrade(r))}`}>{getResultGrade(r)}</span>
+                      <span className="text-xs text-[#666666]">{getResultPoints(r)} pts</span>
                     </div>
                   </div>
                 ))}

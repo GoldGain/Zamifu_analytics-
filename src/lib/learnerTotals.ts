@@ -26,9 +26,11 @@
 
 import {
   calculateCompetencyGrade,
+  gradePointsForClass,
   getCanonicalLearningAreas,
   getRequiredLearningAreas,
   getSchoolLevelBand,
+  is844Curriculum,
   type SchoolLevelBand,
 } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
@@ -42,7 +44,7 @@ export interface LearnerTotals {
   subjects: Record<string, number>;
   /** Sum of the learning-area percentages. Primary ranking metric. */
   totalMarks: number;
-  /** Sum of CBE points across the counted learning areas. Tie-breaker. */
+  /** Sum of active grading-scale points across counted learning areas. Tie-breaker. */
   totalPoints: number;
   /** Number of learning areas counted. */
   count: number;
@@ -67,9 +69,14 @@ export function rowPercentage(result: any): number {
   return Number.isFinite(marks) ? marks : 0;
 }
 
-/** Points for one learning-area percentage, preferring the stored column. */
-function rowPoints(result: any, percentage: number, band: SchoolLevelBand): number {
+/** Points for one learning-area percentage, using the class's active scale. */
+function rowPoints(result: any, percentage: number, band: SchoolLevelBand, classObj: any): number {
   if (band === 'primary') return 0;
+  // Historical 8-4-4 rows may contain the old 8-point CBE value in cbc_points;
+  // recalculate them from the class so Forms 3/4 consistently use 12..1.
+  if (is844Curriculum(classObj)) {
+    return gradePointsForClass(percentage, classObj);
+  }
   const stored = Number(result?.cbc_points);
   if (Number.isFinite(stored) && stored > 0) return stored;
   return calculateCompetencyGrade(percentage, band).points || 0;
@@ -129,14 +136,14 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
     if (previous) {
       // Replace the row that previously won this learning area.
       entry.totalMarks -= entry.subjects[areaKey];
-      entry.totalPoints -= rowPoints(previous.row, entry.subjects[areaKey], band);
+      entry.totalPoints -= rowPoints(previous.row, entry.subjects[areaKey], band, classObj);
     } else {
       entry.count += 1;
     }
     winner[studentId][areaKey] = { createdAt, index, row: result };
     entry.subjects[areaKey] = percentage;
     entry.totalMarks += percentage;
-    entry.totalPoints += rowPoints(result, percentage, band);
+    entry.totalPoints += rowPoints(result, percentage, band, classObj);
   });
 
   const observedAreaCount = new Set(

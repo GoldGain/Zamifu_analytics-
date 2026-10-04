@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Upload, Download, FileText, Loader2, CheckCircle, AlertCircle, ClipboardEdit, BookOpen, ArrowLeft, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateResultGrades, gradeDisplayLabel, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
+import { calculateResultGrades, calculateGradeForClass, gradeDisplayLabel, gradeLabelForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
 import {
   fetchTeacherAssignments,
   verifyTeacherSubjectAssignment,
@@ -218,7 +218,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
   const currentClassData = classes.find((c: any) => c.id === selectedClass);
   const currentBand = getSchoolLevelBand(currentClassData);
-  const currentGradeLabel = gradeDisplayLabel(currentBand);
+  const currentGradeLabel = gradeDisplayLabel(currentBand, currentClassData);
 
   const assignedSubjectsForClass = useMemo(() => {
     if (!selectedClass) return [] as { id: string; name: string }[];
@@ -308,8 +308,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
   // ── Download helpers ─────────────────────────────────────────────────────────
   const is844Class = is844Curriculum(currentClassData);
-  const getMainGrade = (row: ProcessedRow) => is844Class && row.grade844 ? row.grade844.grade : row.cbcGrade.subLevel;
-  const getMainPoints = (row: ProcessedRow) => is844Class && row.grade844 ? row.grade844.points : row.cbcGrade.points;
+  const getMainGrade = (row: ProcessedRow) => gradeLabelForClass(row.percentage, currentClassData);
+  const getMainPoints = (row: ProcessedRow) => gradePointsForClass(row.percentage, currentClassData);
+  const getMainDescriptor = (row: ProcessedRow) => calculateGradeForClass(row.percentage, currentClassData).descriptor;
 
   const downloadManualPDF = () => {
     if (!manualPreview.length) return;
@@ -348,7 +349,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       'Percentage (%)': row.percentage,
       [currentGradeLabel]: getMainGrade(row),
       Points: getMainPoints(row),
-      Descriptor: row.cbcGrade.descriptor,
+      Descriptor: getMainDescriptor(row),
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Results');
@@ -438,9 +439,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         // For primary: sub-level is null (no EE1/ME1 etc.) and points are null
         cbc_sublevel: isPrimaryClass ? null : (row.cbcGrade.subLevel || null),
         cbc_grade: row.cbcGrade.grade,
-        cbc_points: isPrimaryClass ? null : row.cbcGrade.points,
-        cbc_descriptor: row.cbcGrade.descriptor,
-        grade_844: is844Class && row.grade844 ? row.grade844.grade : row.cbcGrade.grade,
+        cbc_points: isPrimaryClass ? null : (is844Class && row.grade844 ? row.grade844.points : row.cbcGrade.points),
+        cbc_descriptor: is844Class && row.grade844 ? row.grade844.descriptor : row.cbcGrade.descriptor,
+        grade_844: is844Class && row.grade844 ? row.grade844.grade : null,
         exam_id: selectedExam || null,
         position: row.position,
         status: asDraft ? 'draft' as const : 'submitted' as const,
@@ -481,7 +482,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
               const pct = r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0;
               if (!studentTotals[r.student_id]) studentTotals[r.student_id] = { totalPct: 0, totalPoints: 0, count: 0 };
               studentTotals[r.student_id].totalPct += pct;
-              studentTotals[r.student_id].totalPoints += Number(r.cbc_points) || 0;
+              studentTotals[r.student_id].totalPoints += gradePointsForClass(pct, currentClassData);
               studentTotals[r.student_id].count += 1;
             });
             // Unified ranking: total marks first, then points (Junior) or a
@@ -646,7 +647,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       'Percentage (%)': row.percentage,
       [currentGradeLabel]: getMainGrade(row),
       Points: getMainPoints(row),
-      Descriptor: row.cbcGrade.descriptor,
+      Descriptor: getMainDescriptor(row),
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Results');
@@ -662,7 +663,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
   // Band label for display
   const isPP = /playgroup|pp1|pp2|pre.?primary/i.test(currentClassData?.name || '');
-  const bandLabel = currentBand === '' ? ' (Form 3–4)' : currentBand === 'senior' ? 'Senior CBE (Gr 10–12)' : currentBand === 'junior' ? 'Junior CBE (Gr 7–9)' : (isPP ? 'Pre-Primary CBE (Playgroup, PP1–PP2)' : 'Primary CBE (Gr 1–6)');
+  const bandLabel = is844Class ? '8-4-4 (Forms 3–4)' : currentBand === 'senior' ? 'Senior CBE (Gr 10–12)' : currentBand === 'junior' ? 'Junior CBE (Gr 7–9)' : (isPP ? 'Pre-Primary CBE (Playgroup, PP1–PP2)' : 'Primary CBE (Gr 1–6)');
 
   return (
     <div className="space-y-6">

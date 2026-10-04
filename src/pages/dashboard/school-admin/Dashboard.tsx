@@ -2,15 +2,13 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { Link } from 'react-router';
-import { Users, CreditCard, Bell, BookOpen, AlertTriangle, ChevronRight, BarChart3, UserCheck } from 'lucide-react';
+import { Users, Bell, BookOpen, ChevronRight, BarChart3, UserCheck } from 'lucide-react';
 import TrialCountdown from '@/components/TrialCountdown';
 
 interface SchoolStats {
   totalStudents: number;
   totalTeachers: number;
   totalClasses: number;
-  feeCollection: number;
-  pendingFees: number;
 }
 
 interface AnnouncementRecord {
@@ -22,7 +20,7 @@ interface AnnouncementRecord {
 
 export default function SchoolAdminDashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<SchoolStats>({ totalStudents: 0, totalTeachers: 0, totalClasses: 0, feeCollection: 0, pendingFees: 0 });
+  const [stats, setStats] = useState<SchoolStats>({ totalStudents: 0, totalTeachers: 0, totalClasses: 0 });
   const [loading, setLoading] = useState(true);
   const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
 
@@ -41,47 +39,10 @@ export default function SchoolAdminDashboard() {
       const { count: teachersCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       const { count: classesCount } = await supabase.from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       
-      const [{ data: invoices, error: invoicesError }, { data: paymentRows, error: paymentsError }] = await Promise.all([
-        supabaseUntyped
-          .from('fee_invoices')
-          .select('id, total_amount, amount_paid')
-          .eq('school_id', schoolId)
-          .is('deleted_at', null),
-        supabaseUntyped
-          .from('fee_payments')
-          .select('invoice_id, amount')
-          .eq('school_id', schoolId),
-      ]);
-
-      if (invoicesError) throw invoicesError;
-      if (paymentsError) throw paymentsError;
-
-      // Payment rows are authoritative. Retain amount_paid only for legacy
-      // invoices that have no corresponding payment rows yet.
-      const paymentsByInvoice = new Map<string, number>();
-      (paymentRows || []).forEach((payment: any) => {
-        const invoiceId = String(payment.invoice_id || '');
-        if (!invoiceId) return;
-        paymentsByInvoice.set(invoiceId, (paymentsByInvoice.get(invoiceId) || 0) + Number(payment.amount || 0));
-      });
-
-      let totalPaid = 0;
-      let pendingFees = 0;
-      (invoices || []).forEach((invoice: any) => {
-        const invoiceId = String(invoice.id || '');
-        const paid = paymentsByInvoice.has(invoiceId)
-          ? paymentsByInvoice.get(invoiceId) || 0
-          : Number(invoice.amount_paid || 0);
-        totalPaid += paid;
-        pendingFees += Math.max(0, Number(invoice.total_amount || 0) - paid);
-      });
-      
       setStats({
         totalStudents: studentsCount || 0,
         totalTeachers: teachersCount || 0,
         totalClasses: classesCount || 0,
-        feeCollection: totalPaid,
-        pendingFees,
       });
 
       const { data: anns } = await supabaseUntyped.from('announcements').select('*').eq('school_id', schoolId).eq('is_published', true).order('created_at', { ascending: false }).limit(5);
@@ -97,7 +58,6 @@ export default function SchoolAdminDashboard() {
     { label: 'Learners', value: stats.totalStudents, icon: <Users className="w-5 h-5" />, color: 'bg-blue-500', link: '/school-admin/students' },
     { label: 'Teachers', value: stats.totalTeachers, icon: <Users className="w-5 h-5" />, color: 'bg-green-500', link: '/school-admin/teachers' },
     { label: 'Classes', value: stats.totalClasses, icon: <BookOpen className="w-5 h-5" />, color: 'bg-purple-500', link: '/school-admin/classes' },
-    { label: 'Fee Collection', value: `Ksh ${stats.feeCollection.toLocaleString()}`, icon: <CreditCard className="w-5 h-5" />, color: 'bg-orange-500', link: '/school-admin/fees' },
     { label: 'Assessments', value: 'Manage', icon: <BookOpen className="w-5 h-5" />, color: 'bg-indigo-500', link: '/school-admin/assessments' },
   ];
 
@@ -134,30 +94,13 @@ export default function SchoolAdminDashboard() {
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-[#111111]">Pending Fees</h3>
-              <p className="text-xs text-[#666666]">Outstanding fee balance</p>
-            </div>
-          </div>
-          <div className="text-3xl font-bold text-red-500">Ksh {stats.pendingFees.toLocaleString()}</div>
-          <div className="mt-3 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-red-400 rounded-full" style={{ width: `${stats.pendingFees > 0 ? (stats.pendingFees / (stats.feeCollection + stats.pendingFees)) * 100 : 0}%` }} />
-          </div>
-        </div>
-
+      <div className="grid lg:grid-cols-1 gap-4">
         <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
           <h3 className="font-semibold text-[#111111] mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: 'Add Learner', icon: <Users className="w-4 h-4" />, link: '/school-admin/students', color: 'bg-blue-50 text-blue-600' },
               { label: 'Add Teacher', icon: <Users className="w-4 h-4" />, link: '/school-admin/teachers', color: 'bg-green-50 text-green-600' },
-              { label: 'Record Payment', icon: <CreditCard className="w-4 h-4" />, link: '/school-admin/fees', color: 'bg-orange-50 text-orange-600' },
               { label: 'Post Announcement', icon: <Bell className="w-4 h-4" />, link: '/school-admin/announcements', color: 'bg-purple-50 text-purple-600' },
               { label: 'Assign Roles', icon: <UserCheck className="w-4 h-4" />, link: '/school-admin/assign-roles', color: 'bg-indigo-50 text-indigo-600' },
               { label: 'Assessment Progress', icon: <BarChart3 className="w-4 h-4" />, link: '/school-admin/assessment-progress', color: 'bg-green-50 text-green-600' },

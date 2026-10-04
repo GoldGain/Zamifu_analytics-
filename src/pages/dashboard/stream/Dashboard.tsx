@@ -14,7 +14,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, Cell,
 } from 'recharts';
-import { getSchoolLevelBand, is844Curriculum, calculateCompetencyGrade, calculate844Grade, getRequiredLearningAreas } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, curriculumCohortKey, is844Curriculum, getRequiredLearningAreas } from '@/lib/grading';
 import { addLogoToPDF } from '@/lib/reportCardPdf';
 import { configurePdfFontSize, pdfFontSize, type PdfFontSize } from '@/lib/pdfFontSize';
 import { fetchAllRows } from '@/lib/paginatedQuery';
@@ -159,7 +159,7 @@ function gradeGroupOf(c: any): { key: string; label: string } {
   const name = String(c?.name || '').trim();
   const lvl = gradeLevelOf(c);
   if (lvl != null && lvl >= 1) {
-    if (/^form\s*\d+/i.test(name)) return { key: `lvl:${lvl}`, label: name };
+    if (/^form\s*\d+/i.test(name)) return { key: curriculumCohortKey(c), label: name };
     let label = name;
     const stream = String(c?.stream_name || c?.stream || '').trim();
     if (stream) {
@@ -172,9 +172,9 @@ function gradeGroupOf(c: any): { key: string; label: string } {
       if (tail && !/^\d+$/.test(tail)) label = leading[1].trim();
     }
     if (!/\d/.test(label)) label = `Grade ${lvl}`;
-    return { key: `lvl:${lvl}`, label: label || `Grade ${lvl}` };
+    return { key: curriculumCohortKey(c), label: label || `Grade ${lvl}` };
   }
-  return { key: `name:${name || 'unassigned'}`, label: name || 'Unassigned' };
+  return { key: curriculumCohortKey(c), label: name || 'Unassigned' };
 }
 
 export default function StreamDashboard() {
@@ -362,19 +362,10 @@ export default function StreamDashboard() {
         return 0;
       };
 
-      const pointsOf = (r: ResultRow): number => {
-        const c = classById.get(r.class_id);
-        if (is844Curriculum(c)) return r.points_844 ?? calculate844Grade(pctOf(r)).points;
-        const band = getSchoolLevelBand(c);
-        if (band === 'primary') return 0;
-        return r.cbc_points ?? calculateCompetencyGrade(pctOf(r), band).points;
-      };
+      const pointsOf = (r: ResultRow): number => gradePointsForClass(pctOf(r), classById.get(r.class_id));
       const gradeOf = (r: ResultRow, percentage: number): string => {
-        const classInfo = classById.get(r.class_id);
-        if (is844Curriculum(classInfo)) return calculate844Grade(percentage).grade;
-        const band = getSchoolLevelBand(classInfo);
-        const grade = calculateCompetencyGrade(percentage, band);
-        return band === 'primary' ? grade.grade : grade.subLevel;
+        const grade = calculateGradeForClass(percentage, classById.get(r.class_id));
+        return 'subLevel' in grade ? grade.subLevel : grade.grade;
       };
 
       const statsByStudent: Record<string, StudentStats> = {};
@@ -424,10 +415,8 @@ export default function StreamDashboard() {
 
       const gradeFromAvg = (c: StreamClass | undefined, avg: number | null): string => {
         if (avg === null) return '';
-        if (is844Curriculum(c)) return calculate844Grade(avg).grade;
-        const band = getSchoolLevelBand(c);
-        const cg = calculateCompetencyGrade(avg, band);
-        return band === 'primary' ? cg.grade : cg.subLevel;
+        const grade = calculateGradeForClass(avg, c);
+        return 'subLevel' in grade ? grade.subLevel : grade.grade;
       };
 
       // ---- Stream overview ----
@@ -578,19 +567,18 @@ export default function StreamDashboard() {
       // ---- Class performance per stream (all subjects + totals) ----
       const perfRows: ClassPerfRow[] = streamClasses.map((c) => {
         const band = getSchoolLevelBand(c);
-        const is844 = is844Curriculum(c);
         const subjRows: { subject: string; avgMarks: number | null; outOf: number; grade: string; points: number | null }[] = [];
         Object.keys(subjectAgg).forEach((subId) => {
           const agg = subjectAgg[subId];
           const b = agg.byClass[c.id];
           if (!b || b.count === 0) return;
           const pct = Math.round(b.sum / b.count);
-          const cg = is844 ? calculate844Grade(pct) : calculateCompetencyGrade(pct, band);
+          const cg = calculateGradeForClass(pct, c);
           subjRows.push({
             subject: agg.name,
             avgMarks: b.marksCount > 0 ? Math.round(b.marksSum / b.marksCount) : null,
             outOf: b.outOfCount > 0 ? Math.round(b.outOfSum / b.outOfCount) : 100,
-            grade: band === 'primary' ? cg.grade : (is844 ? cg.grade : cg.subLevel),
+            grade: 'subLevel' in cg ? cg.subLevel : cg.grade,
             points: band === 'primary' ? null : cg.points,
           });
         });

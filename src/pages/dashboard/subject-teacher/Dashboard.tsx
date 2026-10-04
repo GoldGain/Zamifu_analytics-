@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { BookOpen, Users, Upload, Loader2, BarChart3, TrendingUp, ChevronDown, ChevronUp, Award } from 'lucide-react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
-import { getSchoolLevelBand } from '@/lib/grading';
+import { calculateGradeForClass, getSchoolLevelBand } from '@/lib/grading';
 import { formatClassStream } from '@/lib/class-label';
 
 interface Assignment {
@@ -150,9 +150,14 @@ export default function SubjectTeacherDashboard() {
   };
 
   const getDisplayGrade = (r: StudentResult, classData: any): string => {
-    const is = String(classData?.curriculum || '').toUpperCase() === '';
-    if (is) return r.grade_ || '—';
-    return r.cbc_sublevel || r.cbc_grade || '—';
+    if (r.percentage === null && r.marks === null) return '—';
+    const explicitPercentage = Number(r.percentage);
+    const outOf = Number(r.out_of);
+    const percentage = r.percentage !== null && Number.isFinite(explicitPercentage)
+      ? explicitPercentage
+      : Number.isFinite(outOf) && outOf > 0 ? Number(r.marks || 0) / outOf * 100 : 0;
+    const grade = calculateGradeForClass(percentage, classData);
+    return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
 
   const getClassAverage = (key: string): number | null => {

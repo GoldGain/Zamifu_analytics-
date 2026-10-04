@@ -9,16 +9,26 @@ import {
   juniorExamSubjects,
   getStrandPacks,
 } from '@/lib/kicd-knowledge';
+import type { AssessmentLevel } from '@/lib/exam-schema';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-interface Grade { id: string; grade_number: number; grade_name: string; }
+interface Grade {
+  id: string;
+  grade_number: number;
+  grade_name: string;
+  assessmentLevel?: AssessmentLevel;
+  seniorAvailable?: boolean;
+  seniorDisabledReason?: string;
+}
 interface Subject { id: string; subject_name: string; subject_code: string; }
 interface Strand { id: string; strand_name: string; strand_order: number; sub_strands?: SubStrand[]; }
 interface SubStrand { id: string; sub_strand_name: string; sub_strand_order: number; }
 function displaySubjectName(name: string): string {
   return /agriculture\s+and\s+nutrition/i.test(name) ? 'Agriculture' : name;
 }
+
+const SENIOR_ASSESSMENT_LEVEL: AssessmentLevel = 'senior_secondary';
 
 export default function ExamGeneratorPage() {
   const { user, schoolData } = useAuth();
@@ -33,8 +43,11 @@ export default function ExamGeneratorPage() {
   const [loadingGrades, setLoadingGrades] = useState(true);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [loadingTree, setLoadingTree] = useState(false);
+  const [subjectMessage, setSubjectMessage] = useState('');
+  const [curriculumMessage, setCurriculumMessage] = useState('');
 
   const gradeName = grades.find(g => g.id === selectedGrade)?.grade_name || '';
+  const selectedGradeMeta = grades.find(g => g.id === selectedGrade);
   const subjectName = subjects.find(s => s.id === selectedSubject)?.subject_name || '';
   const schoolName = schoolData?.name?.trim() || '';
   const backPath = user?.role === 'school_admin' ? '/school-admin' : '/teacher/curriculum';
@@ -50,13 +63,42 @@ export default function ExamGeneratorPage() {
       .from('curriculum_grades')
       .select('*')
       .order('grade_number');
-    const juniorGrades = (data || []).filter((grade: Grade) => grade.grade_number >= 7 && grade.grade_number <= 9);
+    const databaseGrades = (data || []) as Grade[];
+    const seniorDatabaseGrades = databaseGrades.filter((grade) => grade.grade_number >= 10 && grade.grade_number <= 12);
+    const seniorGradeIds = seniorDatabaseGrades.map((grade) => grade.id).filter(Boolean);
+    const { data: seniorSubjectRows } = seniorGradeIds.length
+      ? await supabaseUntyped
+        .from('curriculum_subjects')
+        .select('id, grade_id, subject_name, subject_code')
+        .in('grade_id', seniorGradeIds)
+      : { data: [] };
+    const seniorSubjectCounts = new Map<number, number>();
+    (seniorSubjectRows || []).forEach((subject: { grade_id?: string; subject_name?: string | null }) => {
+      const grade = seniorDatabaseGrades.find((candidate) => candidate.id === subject.grade_id);
+      if (grade && subject.subject_name?.trim()) seniorSubjectCounts.set(grade.grade_number, (seniorSubjectCounts.get(grade.grade_number) || 0) + 1);
+    });
+    const seniorGrades: Grade[] = [10, 11, 12].map((gradeNumber) => {
+      const databaseGrade = seniorDatabaseGrades.find((grade) => grade.grade_number === gradeNumber);
+      const hasSubjectCatalogue = Boolean(databaseGrade && (seniorSubjectCounts.get(gradeNumber) || 0) > 0);
+      return {
+        id: databaseGrade?.id || `senior-grade-${gradeNumber}`,
+        grade_number: gradeNumber,
+        grade_name: databaseGrade?.grade_name || `Grade ${gradeNumber}`,
+        assessmentLevel: SENIOR_ASSESSMENT_LEVEL,
+        seniorAvailable: hasSubjectCatalogue,
+        seniorDisabledReason: hasSubjectCatalogue
+          ? undefined
+          : 'No authoritative Senior School subject catalogue is configured for this grade.',
+      };
+    });
+    const juniorGrades = databaseGrades.filter((grade) => grade.grade_number >= 7 && grade.grade_number <= 9);
     const availableGrades = juniorGrades.length
-      ? [...juniorGrades].sort((a: Grade, b: Grade) => a.grade_number - b.grade_number)
+      ? [...juniorGrades, ...seniorGrades].sort((a: Grade, b: Grade) => a.grade_number - b.grade_number)
       : [
         { id: 'g7', grade_number: 7, grade_name: 'Grade 7' },
         { id: 'g8', grade_number: 8, grade_name: 'Grade 8' },
         { id: 'g9', grade_number: 9, grade_name: 'Grade 9' },
+        ...seniorGrades,
       ];
     setGrades(availableGrades);
     const requested = requestedGrade.toLowerCase().replace(/\s+/g, '');
@@ -64,15 +106,17 @@ export default function ExamGeneratorPage() {
       const match = availableGrades.find((grade) =>
         grade.id === requestedGrade || grade.grade_name.toLowerCase().replace(/\s+/g, '') === requested
       );
-      if (match) setSelectedGrade(match.id);
+      if (match && match.seniorAvailable !== false) setSelectedGrade(match.id);
     }
     setLoadingGrades(false);
   };
 
   // Load subjects when grade changes
   useEffect(() => {
-    if (!selectedGrade) { setSubjects([]); return; }
+    if (!selectedGrade) { setSubjects([]); setSubjectMessage(''); return; }
+    const isSenior = selectedGradeMeta?.assessmentLevel === SENIOR_ASSESSMENT_LEVEL;
     setLoadingSubjects(true);
+    setSubjectMessage('');
     supabaseUntyped
       .from('curriculum_subjects')
       .select('*')
@@ -81,9 +125,14 @@ export default function ExamGeneratorPage() {
       .then(({ data }) => {
         const juniorSubjectNames = new Set(juniorExamSubjects());
         const databaseSubjects = (data || [])
+          .filter((subject: Subject) => subject.subject_name?.trim())
           .filter((subject: Subject) => juniorSubjectNames.has(subject.subject_name) || /agriculture\s+and\s+nutrition/i.test(subject.subject_name))
           .map((subject: Subject) => ({ ...subject, subject_name: displaySubjectName(subject.subject_name) }));
-        const availableSubjects: Subject[] = databaseSubjects.length
+        const seniorSubjects = (data || [])
+          .filter((subject: Subject) => subject.subject_name?.trim()) as Subject[];
+        const availableSubjects: Subject[] = isSenior
+          ? seniorSubjects
+          : databaseSubjects.length
           ? databaseSubjects as Subject[]
           : juniorExamSubjects().map((name, idx) => ({
             id: `local-${selectedGrade}-${idx}`,
@@ -91,6 +140,9 @@ export default function ExamGeneratorPage() {
             subject_code: name.slice(0, 4).toUpperCase(),
           }));
         setSubjects(availableSubjects);
+        if (isSenior && !availableSubjects.length) {
+          setSubjectMessage('Senior School subject catalogue unavailable for this grade. Senior generation remains disabled; no Junior subjects are substituted.');
+        }
         const requested = requestedSubject.toLowerCase().replace(/\s+/g, '');
         if (requested) {
           const match = availableSubjects.find((subject: Subject) =>
@@ -102,12 +154,15 @@ export default function ExamGeneratorPage() {
       });
     setSelectedSubject('');
     setStrands([]);
-  }, [selectedGrade]);
+    setCurriculumMessage('');
+  }, [selectedGrade, selectedGradeMeta?.assessmentLevel]);
 
   // Load curriculum tree when subject changes
   const loadCurriculumTree = useCallback(async () => {
     if (!selectedSubject) return;
     setLoadingTree(true);
+    setCurriculumMessage('');
+    const isSenior = selectedGradeMeta?.assessmentLevel === SENIOR_ASSESSMENT_LEVEL;
 
     const { data: strandsData } = await supabaseUntyped
       .from('curriculum_strands')
@@ -121,9 +176,17 @@ export default function ExamGeneratorPage() {
     const sourceVerifiedStrands = (strandsData || []).filter((strand: { strand_description?: string | null }) =>
       /(?:official|source-verified)\s+kicd/i.test(strand.strand_description || '')
     );
-    const effectiveStrandsData = sourceVerifiedStrands.length > 0 ? sourceVerifiedStrands : (strandsData || []);
+    const effectiveStrandsData = isSenior
+      ? sourceVerifiedStrands
+      : sourceVerifiedStrands.length > 0 ? sourceVerifiedStrands : (strandsData || []);
 
     if (effectiveStrandsData.length === 0) {
+      if (isSenior) {
+        setStrands([]);
+        setCurriculumMessage(`Senior subject pack unavailable for ${subjectName || 'this subject'}; generation is disabled. No Junior or generic curriculum fallback is used.`);
+        setLoadingTree(false);
+        return;
+      }
       // Fallback to embedded KICD knowledge — build the strand and sub-strand tree.
       const packs = getStrandPacks(subjectName);
       const localStrands: CurriculumStrandOption[] = packs.map((pack, si) => {
@@ -165,9 +228,16 @@ export default function ExamGeneratorPage() {
 
     }
 
+    if (isSenior && !enriched.some((strand) => (strand.sub_strands || []).length > 0)) {
+      setStrands([]);
+      setCurriculumMessage(`Senior subject pack unavailable for ${subjectName || 'this subject'}; generation is disabled. No Junior or generic curriculum fallback is used.`);
+      setLoadingTree(false);
+      return;
+    }
+
     setStrands(enriched);
     setLoadingTree(false);
-  }, [selectedSubject, subjectName]);
+  }, [selectedGradeMeta?.assessmentLevel, selectedSubject, subjectName]);
 
   useEffect(() => { loadCurriculumTree(); }, [loadCurriculumTree]);
 
@@ -199,9 +269,14 @@ export default function ExamGeneratorPage() {
           >
             <option value="">Select a grade</option>
             {grades.map((g) => (
-              <option key={g.id} value={g.id}>{g.grade_name}</option>
+              <option key={g.id} value={g.id} disabled={g.seniorAvailable === false}>
+                {g.grade_name}{g.assessmentLevel === SENIOR_ASSESSMENT_LEVEL ? ' — Senior School' : ''}{g.seniorAvailable === false ? ' (unavailable)' : ''}
+              </option>
             ))}
           </select>
+          {grades.some((grade) => grade.assessmentLevel === SENIOR_ASSESSMENT_LEVEL && grade.seniorAvailable === false) && (
+            <p className="mt-1.5 text-[11px] leading-4 text-amber-700">Senior School Grades 10–12 are shown but disabled until an authoritative subject catalogue is configured. Junior subjects are never substituted.</p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1.5">Subject</label>
@@ -216,6 +291,7 @@ export default function ExamGeneratorPage() {
               <option key={s.id} value={s.id}>{s.subject_name}</option>
             ))}
           </select>
+          {subjectMessage && <p className="mt-1.5 text-[11px] leading-4 text-amber-700">{subjectMessage}</p>}
         </div>
       </div>
 
@@ -226,14 +302,19 @@ export default function ExamGeneratorPage() {
         </div>
       )}
 
-      {selectedGrade && selectedSubject && !loadingTree && (
+      {selectedGrade && selectedSubject && !loadingTree && !curriculumMessage && (
         <ExamGenerator
           gradeLevel={gradeName}
           subject={subjectName}
           schoolName={schoolName}
           schoolId={user?.schoolId || ''}
           strands={strands}
+          assessmentLevel={selectedGradeMeta?.assessmentLevel}
         />
+      )}
+
+      {curriculumMessage && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{curriculumMessage}</div>
       )}
 
       {!selectedGrade && (

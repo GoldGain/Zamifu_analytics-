@@ -13,11 +13,13 @@ import autoTable from 'jspdf-autotable';
 import { formatClassStream } from '@/lib/class-label';
 
 interface Student {
-  id: string;
-  first_name: string;
-  last_name: string;
-  admission_number: string;
-  class_id: string;
+	id: string;
+	first_name: string;
+	last_name: string;
+	admission_number: string;
+	class_id: string;
+	parent_name: string | null;
+	parent_phone: string | null;
 }
 
 interface ClassListColumn {
@@ -95,6 +97,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
   const [editValue, setEditValue] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [showPdfFontDialog, setShowPdfFontDialog] = useState(false);
+  const [includeParentDetails, setIncludeParentDetails] = useState(false);
 
   useEffect(() => {
     fetchClasses();
@@ -159,7 +162,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     try {
       const { data, error } = await supabaseUntyped
         .from('students')
-        .select('id, first_name, last_name, admission_number, class_id')
+        .select('id, first_name, last_name, admission_number, class_id, parent_name, parent_phone')
         .eq('school_id', schoolId)
         .eq('class_id', selectedClass)
         .or('status.eq.active,status.is.null')
@@ -280,10 +283,27 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     }
   };
 
+  const getExportHeaders = () => [
+    '#',
+    'Admission No.',
+    'Name',
+    ...(includeParentDetails ? ['Parent/Guardian Name', 'Parent/Guardian Contact'] : []),
+    ...columns.map((column) => column.column_name),
+  ];
+
+  const getExportColumnWidths = () => [
+    8,
+    18,
+    28,
+    ...(includeParentDetails ? [24, 20] : []),
+    ...columns.map(() => 18),
+  ];
+
   const exportRows = () => students.map((student, index) => [
     String(index + 1),
     student.admission_number || '',
     `${student.first_name || ''} ${student.last_name || ''}`.trim(),
+    ...(includeParentDetails ? [student.parent_name ?? '', student.parent_phone ?? ''] : []),
     ...columns.map((column) => cellData[student.id]?.[column.id] || ''),
   ]);
 
@@ -310,17 +330,19 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
       doc.setFontSize(pdfFontSize(doc, 9));
       doc.text(`Generated ${new Date().toLocaleString()}`, titleX, 27);
 
+      const exportHeaders = getExportHeaders();
+      const exportColumnCount = exportHeaders.length;
       autoTable(doc, {
         startY: 34,
         margin: { left: 8, right: 8 },
-        head: [['#', 'Admission No.', 'Name', ...columns.map((c) => c.column_name)]],
+        head: [exportHeaders],
         body: exportRows(),
         theme: 'grid',
         tableWidth: 'auto',
         showHead: 'everyPage',
         styles: {
-          fontSize: pdfFontSize(doc, columns.length > 6 ? 5.5 : columns.length > 3 ? 6.5 : 8),
-          cellPadding: columns.length > 6 ? 1 : 1.5,
+          fontSize: pdfFontSize(doc, exportColumnCount > 8 ? 5.5 : exportColumnCount > 5 ? 6.5 : 8),
+          cellPadding: exportColumnCount > 8 ? 1 : 1.5,
           overflow: 'linebreak',
           lineColor: [210, 214, 220],
           lineWidth: 0.1,
@@ -330,7 +352,7 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
         columnStyles: {
           0: { cellWidth: 9, halign: 'center' },
           1: { cellWidth: 25 },
-          2: { cellWidth: columns.length > 5 ? 38 : 48 },
+          2: { cellWidth: exportColumnCount > 8 ? 34 : 48 },
         },
         didParseCell: (data) => {
           if (data.section === 'head') data.cell.styles.minCellHeight = 8;
@@ -357,7 +379,9 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
       const logo = await loadLogoAsset(schoolData?.logo_url || user?.avatarUrl);
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Class List');
-      const totalColumns = 3 + columns.length;
+      const exportHeaders = getExportHeaders();
+      const exportColumnWidths = getExportColumnWidths();
+      const totalColumns = exportHeaders.length;
       sheet.mergeCells(1, 1, 1, totalColumns);
       sheet.getCell('A1').value = schoolData?.name || 'School';
       sheet.getCell('A1').font = { bold: true, size: 16, color: { argb: '1D4ED8' } };
@@ -375,19 +399,14 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
         const imageId = workbook.addImage({ base64: logo.dataUrl, extension: logo.extension });
         sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 96, height: 56 } });
       }
-      const headerRow = sheet.addRow(['#', 'Admission No.', 'Name', ...columns.map((c) => c.column_name)]);
+      const headerRow = sheet.addRow(exportHeaders);
       headerRow.eachCell((cell) => {
         cell.font = { bold: true, color: { argb: 'FFFFFF' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '2563EB' } };
         cell.alignment = { horizontal: 'center', vertical: 'middle' };
       });
       exportRows().forEach((row) => sheet.addRow(row));
-      sheet.columns = [
-        { width: 8 },
-        { width: 18 },
-        { width: 28 },
-        ...columns.map(() => ({ width: 18 })),
-      ];
+      sheet.columns = exportColumnWidths.map((width) => ({ width }));
       sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + students.length, column: totalColumns } };
       sheet.views = [{ state: 'frozen', ySplit: 4 }];
       const buffer = await workbook.xlsx.writeBuffer();
@@ -421,6 +440,10 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
               <button type="button" onClick={() => setShowAddColumn(true)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
                 <Plus className="w-4 h-4" /> Add Column
               </button>
+              <label className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700">
+                <input type="checkbox" checked={includeParentDetails} onChange={(event) => setIncludeParentDetails(event.target.checked)} className="h-4 w-4 accent-blue-600" />
+                <span>Include Parent/Guardian details</span>
+              </label>
               <button type="button" onClick={() => setShowPdfFontDialog(true)} disabled={downloading} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
                 {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PDF
               </button>

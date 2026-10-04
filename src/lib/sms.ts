@@ -1,7 +1,7 @@
 // ─── SMS API Integration ─────────────────────────────────────────────────────
 // Supports Olympus SMS (default, no config needed) and Africa's Talking (per-school)
 
-import { calculate844Grade, calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
+import { calculateGradeForClass, getSchoolLevelBand } from '@/lib/grading';
 import { supabaseUntyped } from '@/lib/supabase/client';
 
 const OLYMPUS_API_URL = 'https://sms.ots.co.ke/api/v3/sms/send';
@@ -382,9 +382,7 @@ export const SMS_TEMPLATES = {
         ? Math.round(subjects.reduce((sum, subject) => sum + subject.marks, 0) / subjects.length)
         : 0;
     const band = getSchoolLevelBand(classData || { name: className });
-    const gradeInfo = is844Curriculum(classData)
-      ? calculate844Grade(averagePercentage)
-      : calculateCompetencyGrade(averagePercentage, band);
+    const gradeInfo = calculateGradeForClass(averagePercentage, classData || { name: className });
     const averageGrade = 'subLevel' in gradeInfo && gradeInfo.subLevel
       ? gradeInfo.subLevel
       : gradeInfo.grade;

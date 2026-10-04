@@ -50,8 +50,8 @@ export function AddMarksModal({ target, onClose, onSaved, defaultOutOf = 100 }: 
         school_id: target.schoolId, student_id: target.studentId, class_id: target.classId, subject_id: target.subjectId,
         teacher_id: teacherId, term_id: target.termId, academic_year: new Date().getFullYear().toString(),
         curriculum: classObj?.curriculum || 'CBE', marks: marksVal, out_of: outOfVal, percentage, converted_marks: percentage,
-        cbc_sublevel: isPrimary ? null : (cbe.subLevel || null), cbc_grade: cbe.grade, cbc_points: isPrimary ? null : cbe.points,
-        cbc_descriptor: cbe.descriptor, grade_844: grade844 ? grade844.grade : cbe.grade, exam_id: target.examId || null,
+        cbc_sublevel: isPrimary ? null : (cbe.subLevel || null), cbc_grade: cbe.grade, cbc_points: isPrimary ? null : (grade844 ? grade844.points : cbe.points),
+        cbc_descriptor: grade844 ? grade844.descriptor : cbe.descriptor, grade_844: grade844 ? grade844.grade : null, exam_id: target.examId || null,
         status: 'submitted' as const, submitted_at: new Date().toISOString(),
       };
       const saved = await saveResultRecords({

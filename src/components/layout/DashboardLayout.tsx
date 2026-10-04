@@ -103,7 +103,6 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Timetable Setup', icon: <Settings className="w-5 h-5" />, path: '/school-admin/timetable/setup' },
     { label: 'Generate Timetable', icon: <Zap className="w-5 h-5" />, path: '/school-admin/timetable/generate' },
     { label: 'View Timetable', icon: <Calendar className="w-5 h-5" />, path: '/school-admin/timetable/view' },
-    { label: 'Fees', icon: <CreditCard className="w-5 h-5" />, path: '/school-admin/fees' },
     { label: 'Results', icon: <FileText className="w-5 h-5" />, path: '/school-admin/results' },
     { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, path: '/school-admin/upload-results' },
     { label: 'Combine Exams', icon: <FilePlus2 className="w-5 h-5" />, path: '/school-admin/combine-exams' },
@@ -119,6 +118,10 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'School Calendar Settings', icon: <Calendar className="w-5 h-5" />, path: '/school-admin/settings' },
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
+  ],
+  'bursar': [
+    { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/bursar' },
+    { label: 'Fee Management', icon: <CreditCard className="w-5 h-5" />, path: '/bursar/fees' },
   ],
   'teacher': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
@@ -173,6 +176,7 @@ const navConfig: Record<string, NavItem[]> = {
 
 const ROLE_DASHBOARDS: Record<string, string> = {
   'school_admin': '/school-admin',
+  'bursar': '/bursar',
   'teacher': '/teacher',
   'student': '/student',
   'parent': '/parent',

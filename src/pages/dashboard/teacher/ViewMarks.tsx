@@ -5,7 +5,7 @@ import { Search, Loader2, Pencil, Save, X, Eye, BookOpen, Filter, Send, Users, C
 import { toast } from 'sonner';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { formatClassStream } from '@/lib/class-label';
-import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
+import { calculateGradeForClass } from '@/lib/grading';
 import { deleteResults } from '@/lib/resultActions';
 
 interface MarkEntry {
@@ -25,7 +25,7 @@ interface MarkEntry {
   submitted_at: string;
   students: { first_name: string; last_name: string; admission_number: string; assessment_number?: string | null } | null;
   subjects: { name: string } | null;
-  classes: { name: string; stream?: string | null; stream_name?: string | null } | null;
+  classes: { name: string; stream?: string | null; stream_name?: string | null; curriculum?: string | null; grade_level?: number | string | null; level?: number | string | null } | null;
   terms: { name: string; academic_year: string } | null;
 }
 
@@ -62,6 +62,18 @@ const canonicalizeMarks = (rows: MarkEntry[]): MarkEntry[] => {
 
 const compareAdmissionNumber = (a: { students?: { admission_number?: string | null } | null }, b: { students?: { admission_number?: string | null } | null }): number =>
   String(a.students?.admission_number || '').localeCompare(String(b.students?.admission_number || ''), undefined, { numeric: true, sensitivity: 'base' });
+
+const markPercentage = (mark: Pick<MarkEntry, 'percentage' | 'marks' | 'out_of'>): number => {
+  const explicit = Number(mark.percentage);
+  if (mark.percentage !== null && mark.percentage !== undefined && Number.isFinite(explicit)) return explicit;
+  const outOf = Number(mark.out_of);
+  return Number.isFinite(outOf) && outOf > 0 ? Number(mark.marks || 0) / outOf * 100 : 0;
+};
+
+const displayGradeForMark = (mark: Pick<MarkEntry, 'percentage' | 'marks' | 'out_of' | 'classes'>): string => {
+  const grade = calculateGradeForClass(markPercentage(mark), mark.classes || undefined);
+  return 'subLevel' in grade ? grade.subLevel : grade.grade;
+};
 
 export default function ViewMarks() {
   const { user } = useAuth();
@@ -147,7 +159,7 @@ export default function ViewMarks() {
           *,
           students(first_name, last_name, admission_number),
           subjects(name),
-          classes(name, stream, stream_name),
+          classes(name, stream, stream_name, curriculum, grade_level, level),
           terms(name, academic_year)
         `)
         .eq('teacher_id', teacherId)
@@ -162,7 +174,7 @@ export default function ViewMarks() {
         marks: m.marks ?? 0,
         out_of: m.out_of ?? 0,
         percentage: m.percentage ?? 0,
-        cbc_sublevel: m.cbc_sublevel || m.cbc_grade || '-',
+        cbc_sublevel: m.cbc_sublevel || null,
         status: m.status || 'draft',
       }));
       
@@ -174,7 +186,7 @@ export default function ViewMarks() {
       // a "Missing" status instead of being omitted entirely.
       const { data: assignmentsData } = await supabaseUntyped
         .from('teacher_subject_assignments')
-        .select('class_id, subject_id, subjects(name), classes(name, stream, stream_name)')
+        .select('class_id, subject_id, subjects(name), classes(name, stream, stream_name, curriculum, grade_level, level)')
         .eq('teacher_id', teacherId)
         .eq('school_id', user?.schoolId)
         .eq('is_active', true);
@@ -448,9 +460,9 @@ export default function ViewMarks() {
 
   const gradeColor = (grade: string) => {
     if (!grade) return 'bg-gray-100 text-gray-600';
-    if (grade.startsWith('EE')) return 'bg-green-100 text-green-700';
-    if (grade.startsWith('ME')) return 'bg-blue-100 text-blue-700';
-    if (grade.startsWith('AE')) return 'bg-orange-100 text-orange-700';
+    if (grade.startsWith('EE') || grade === 'A' || grade === 'A-') return 'bg-green-100 text-green-700';
+    if (grade.startsWith('ME') || grade.startsWith('B')) return 'bg-blue-100 text-blue-700';
+    if (grade.startsWith('AE') || grade.startsWith('C')) return 'bg-orange-100 text-orange-700';
     return 'bg-red-100 text-red-700';
   };
 
@@ -606,8 +618,12 @@ export default function ViewMarks() {
                       const meanMarks = sortedMarks.length
                         ? sortedMarks.reduce((sum, mark) => sum + Number(mark.percentage ?? (mark.out_of ? (mark.marks / mark.out_of) * 100 : 0)), 0) / sortedMarks.length
                         : null;
-                      const subjectBand = getSchoolLevelBand(sortedMarks[0]?.classes || undefined);
-                      const meanGrade = meanMarks === null ? '-' : calculateCompetencyGrade(meanMarks, subjectBand).subLevel;
+                      const meanGrade = meanMarks === null ? '-' : displayGradeForMark({
+                        percentage: meanMarks,
+                        marks: meanMarks,
+                        out_of: 100,
+                        classes: sortedMarks[0]?.classes || null,
+                      });
                       
                       return (
                         <div key={subject.subjectId} className="border-b border-gray-50 last:border-0">
@@ -690,8 +706,8 @@ export default function ViewMarks() {
                                       </td>
                                       <td className="px-3 py-2 font-semibold">{m.percentage ?? 0}%</td>
                                       <td className="px-3 py-2">
-                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(m.cbc_sublevel || m.cbc_grade || '')}`}>
-                                          {m.cbc_sublevel || m.cbc_grade || '-'}
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(displayGradeForMark(m))}`}>
+                                          {displayGradeForMark(m)}
                                         </span>
                                       </td>
                                       <td className="px-3 py-2">

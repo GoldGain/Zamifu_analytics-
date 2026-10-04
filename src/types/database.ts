@@ -1,6 +1,6 @@
 
 export type CurriculumType = 'CBE' | '';
-export type UserRole = 'master_super_admin' | 'reseller_super_admin' | 'super_admin' | 'school_admin' | 'teacher' | 'student' | 'parent';
+export type UserRole = 'master_super_admin' | 'reseller_super_admin' | 'super_admin' | 'school_admin' | 'bursar' | 'teacher' | 'student' | 'parent';
 
 export interface Reseller {
   id: string;

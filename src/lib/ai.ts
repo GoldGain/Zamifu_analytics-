@@ -48,7 +48,7 @@ const PAGE_GUIDES: Record<string, string> = {
   '/auth/login':
     'Sign in with your school email and password to open the dashboard for your role. Use Forgot Password if you cannot access your account, then contact your school admin if you still need help.',
   '/school-admin':
-    'Welcome to the School Admin Dashboard. This is your central command center where you can manage your entire school. Here you can: 1. View real-time school statistics and performance metrics. 2. Manage students, teachers, and staff. 3. Create and manage timetables. 4. Oversee examinations and results. 5. Handle fee management and financial reports. 6. Send communications to parents and teachers. 7. Manage the curriculum and learning resources. 8. View and manage the Pathway Finder for students.',
+    'Welcome to the School Admin Dashboard. This is your central command center where you can manage your entire school. Here you can: 1. View real-time school statistics and performance metrics. 2. Manage students, teachers, and staff. 3. Create and manage timetables. 4. Oversee examinations and results. 5. Send communications to parents and teachers. 6. Manage the curriculum and learning resources. 7. View and manage the Pathway Finder for students. Fee management is handled by the school bursar.',
   '/school-admin/students':
     'Manage active learners: add, edit, search, and review class placement. Use Graduated Students for alumni after Grade 9 or Grade 12 / Form 4 graduation.',
   '/school-admin/graduated-students':
@@ -67,8 +67,8 @@ const PAGE_GUIDES: Record<string, string> = {
     'View and download the school timetable. Activities Start and Activities End appear with Break and Lunch so you can verify the full day structure. Select a class to see the correct columns for that level only.',
   '/school-admin/stream-dashboard':
     'Review stream performance with filters for class, term, and assessment. Use this page to compare cohorts and spot classes that need academic support.',
-  '/school-admin/fees':
-    'Manage fee structures, invoices, and payments. Track balances, record payments, and follow up with families who still owe fees.',
+  '/bursar/fees':
+    'Manage fee structures, invoices, and payments. Track balances, record payments, and follow up with families who still owe fees. Invoice retirement is a soft action that preserves the financial history.',
   '/school-admin/teachers':
     'Manage teacher profiles and teaching assignments. Keep subject and class assignments accurate so uploads and timetables stay correct.',
   '/school-admin/classes':

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
@@ -36,7 +36,7 @@ export default function StudentResults() {
         // students has two FKs to classes (class_id, stream_id); the embed must
         // name the class_id relationship explicitly or PostgREST returns
         // PGRST201 and the whole learner portal loses its student record.
-        .select('id, class_id, school_id, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name)')
+        .select('id, class_id, school_id, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name, curriculum, grade_level, level)')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .maybeSingle();
@@ -165,23 +165,35 @@ export default function StudentResults() {
     setPreviousAvg(totalPct / prevResults.length);
   };
 
+  const classData = student?.classes || student || {};
   const gradeColor = (grade: string) => {
-    if (grade?.startsWith('EE')) return 'bg-green-100 text-green-700';
-    if (grade?.startsWith('ME')) return 'bg-blue-100 text-blue-700';
-    if (grade?.startsWith('AE')) return 'bg-orange-100 text-orange-700';
+    if (grade?.startsWith('EE') || grade === 'A' || grade === 'A-') return 'bg-green-100 text-green-700';
+    if (grade?.startsWith('ME') || grade?.startsWith('B')) return 'bg-blue-100 text-blue-700';
+    if (grade?.startsWith('AE') || grade?.startsWith('C')) return 'bg-orange-100 text-orange-700';
     return 'bg-red-100 text-red-700';
   };
 
-  const getDisplayGrade = (r: any): string => {
-    const is = String(r.curriculum || '').toUpperCase() === '';
-    if (is) return r.grade_ || '';
-    return r.cbc_sublevel || r.cbc_grade || '';
+  const getPercentage = (r: any): number => {
+    const explicit = Number(r?.percentage);
+    if (r?.percentage !== null && r?.percentage !== undefined && Number.isFinite(explicit)) return explicit;
+    const outOf = Number(r?.out_of);
+    return Number.isFinite(outOf) && outOf > 0 ? (Number(r?.marks || 0) / outOf) * 100 : 0;
   };
 
-  const filtered = filter === 'all' ? results : results.filter(r => {
-    const grade = getDisplayGrade(r);
-    return grade.startsWith(filter);
-  });
+  const getDisplayGrade = (r: any): string => {
+    const grade = calculateGradeForClass(getPercentage(r), classData);
+    return 'subLevel' in grade ? grade.subLevel : grade.grade;
+  };
+
+  const getDisplayPoints = (r: any): number | string => {
+    if (getSchoolLevelBand(classData) === 'primary') return '-';
+    return gradePointsForClass(getPercentage(r), classData);
+  };
+
+  const gradeFilters = is844Curriculum(classData)
+    ? ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'E']
+    : ['EE', 'ME', 'AE', 'BE'];
+  const filtered = filter === 'all' ? results : results.filter(r => getDisplayGrade(r).startsWith(filter));
 
   // One entry per learning area (first recorded row wins), exactly like the
   // class summary and the report card, so the average, the points and the grade
@@ -198,10 +210,8 @@ export default function StudentResults() {
 
   const getOverallGrade = () => {
     if (!learnerTotal || learnerTotal.count === 0) return 'N/A';
-    return calculateCompetencyGrade(
-      learnerTotal.avgPct,
-      getSchoolLevelBand(student?.classes || student || {}),
-    ).subLevel;
+    const grade = calculateGradeForClass(learnerTotal.avgPct, classData);
+    return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
 
   const deviation = previousAvg !== null ? currentAvg - previousAvg : null;
@@ -300,7 +310,7 @@ export default function StudentResults() {
       {/* Filter */}
       <div className="flex items-center gap-2">
         <Filter className="w-4 h-4 text-[#666666]" />
-        {['all', 'EE', 'ME', 'AE', 'BE'].map(g => (
+        {['all', ...gradeFilters].map(g => (
           <button key={g} onClick={() => setFilter(g)} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${filter === g ? 'bg-[#6A1B9A] text-white' : 'bg-white text-[#666666] hover:bg-gray-100 border border-gray-200'}`}>
             {g === 'all' ? 'All Results' : `${g} Grade`}
           </button>
@@ -348,7 +358,7 @@ export default function StudentResults() {
                       {getDisplayGrade(r)}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium">{r.cbc_points || r.points_ || '-'}</td>
+                  <td className="px-6 py-4 text-sm font-medium">{getDisplayPoints(r)}</td>
                   <td className="px-6 py-4 text-sm text-[#666666]">{r.terms?.name} {r.terms?.academic_year}</td>
                 </tr>
               ))}

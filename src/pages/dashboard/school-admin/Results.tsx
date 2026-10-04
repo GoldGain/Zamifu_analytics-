@@ -8,7 +8,7 @@ import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { deleteResults } from '@/lib/resultActions';
 
-import { calculateCompetencyGrade, getSchoolLevelBand, is844Curriculum, calculate844Grade, getRequiredLearningAreas, getCanonicalLearningAreas, statusForGrade, gradeLabelsForBand } from '@/lib/grading';
+import { calculateCompetencyGrade, calculateGradeForClass, curriculumCohortKey, gradePointsForClass, gradePointsMaxForClass, getSchoolLevelBand, is844Curriculum, getRequiredLearningAreas, getCanonicalLearningAreas, statusForGrade, gradeLabelsForBand } from '@/lib/grading';
 import { normalizeLearningAreaName, normalizeLearningAreas } from '@/lib/learningAreas';
 import type { SchoolLevelBand, SubjectResult } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
@@ -16,6 +16,8 @@ import type { BestInSubject } from '@/lib/bestPerSubject';
 import {
   generateUniqueAIComment,
   drawAIComment,
+  canFitReportCardOptionalSection,
+  getReportCardCommentBottomY,
   drawTrendGraph,
   addSignaturesToPDF,
   drawReportHeader,
@@ -263,9 +265,10 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
 
 function reportCardTotals(rows: any[], totalPoints: number | null | undefined, classData?: any) {
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
+  const is844 = is844Curriculum(classData);
   const totalMarks = rows.reduce((sum, row) => sum + Number(row.percentage ?? 0), 0);
   const totalMarksOutOf = rows.length * 100;
-  const totalPointsOutOf = rows.length * 8;
+  const totalPointsOutOf = rows.length * (is844 ? 12 : 8);
   return {
     marks: `${Math.round(totalMarks)} marks out of ${totalMarksOutOf}`,
     points: isPrimary ? undefined : `${totalPoints ?? '—'} points out of ${totalPointsOutOf}`,
@@ -284,7 +287,7 @@ function totalPercentageMarks(rows: any[]) {
 }
 
 function formatExamDeviation(currentRows: any[], previousRows: any[], previousExamName?: string | null) {
-  if (!previousExamName) return 'No previous exam comparison';
+  if (!previousExamName) return '';
   if (!previousRows.length) return `vs ${previousExamName}: no matching learner result`;
   const currentTotal = totalPercentageMarks(currentRows);
   const previousTotal = totalPercentageMarks(previousRows);
@@ -546,9 +549,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const loadCombinedAssessmentData = async () => {
       const exam = exams.find(item => item.id === selectedExam);
       const selectedClassObj = classes.find((item: any) => item.id === selectedClass);
-      const selectedLevel = Number(selectedClassObj?.level ?? selectedClassObj?.grade_level);
       const classIds = showAllStreams && selectedClassObj
-        ? classes.filter((item: any) => Number(item.level ?? item.grade_level) === selectedLevel).map((item: any) => item.id)
+        ? classes.filter((item: any) => curriculumCohortKey(item) === curriculumCohortKey(selectedClassObj)).map((item: any) => item.id)
         : selectedClass ? [selectedClass] : [];
       try {
         const data = await fetchCombinedAssessmentData(user?.schoolId || '', exam, selectedTerm, classIds);
@@ -644,14 +646,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       return;
     }
     const selectedClassObj = classes.find((item: any) => item.id === selectedClass);
-    const selectedLevel = Number(selectedClassObj?.level ?? selectedClassObj?.grade_level);
     const classIds = showAllStreams && scope === 'school'
       ? classes
-        .filter((item: any) => {
-          const itemLevel = Number(item.level ?? item.grade_level);
-          if (Number.isFinite(selectedLevel) && Number.isFinite(itemLevel)) return itemLevel === selectedLevel;
-          return item.name === selectedClassObj?.name;
-        })
+        .filter((item: any) => curriculumCohortKey(item) === curriculumCohortKey(selectedClassObj))
         .map((item: any) => item.id)
       : [selectedClass];
     const requestId = ++resultRequestRef.current;
@@ -693,12 +690,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const selectedClassObjForView = classes.find((c: any) => c.id === selectedClass);
   const allStreamClassIds = selectedClassObjForView
     ? classes
-      .filter((c: any) => {
-        const selLevel = Number(selectedClassObjForView.level ?? selectedClassObjForView.grade_level);
-        const curLevel = Number(c.level ?? c.grade_level);
-        if (Number.isFinite(selLevel) && Number.isFinite(curLevel)) return curLevel === selLevel;
-        return c.name === selectedClassObjForView.name;
-      })
+      .filter((c: any) => curriculumCohortKey(c) === curriculumCohortKey(selectedClassObjForView))
       .map((c: any) => c.id)
     : [];
   const activeResultClassIds = showAllStreams && scope === 'school' && allStreamClassIds.length > 0
@@ -828,22 +820,22 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             const percentage = result.percentage !== undefined && result.percentage !== null
               ? Math.round(Number(result.percentage))
               : result.out_of > 0 ? Math.round((result.marks / result.out_of) * 100) : 0;
-            const gradeInfo = calculateCompetencyGrade(percentage, band);
+            const gradeInfo = calculateGradeForClass(percentage, classObj);
             const outOf = Number(result.out_of) > 0 ? Number(result.out_of) : 100;
             const rawMarks = Number.isFinite(Number(result.marks)) ? Number(result.marks) : percentage;
-            return { name: result.subjects?.name || 'Unknown', marks: percentage, rawMarks, outOf, grade: gradeInfo.subLevel || gradeInfo.grade || '' };
+            return { name: result.subjects?.name || 'Unknown', marks: percentage, rawMarks, outOf, grade: 'subLevel' in gradeInfo ? gradeInfo.subLevel : gradeInfo.grade };
           });
           const isPrimaryBand = band === 'primary';
           const totalMarks = subjectList.reduce((sum: number, result: any) => sum + result.rawMarks, 0);
           const totalPossibleMarks = subjectList.reduce((sum: number, result: any) => sum + result.outOf, 0);
-          const totalPoints = subjectList.reduce((sum: number, result: any) => sum + (calculateCompetencyGrade(result.marks, band).points || 0), 0);
+          const totalPoints = subjectList.reduce((sum: number, result: any) => sum + gradePointsForClass(result.marks, classObj), 0);
           const studentSummary = allStudentSummaries.find((summary: any) => summary.studentId === student.id);
           const smsMessage = SMS_TEMPLATES.resultsToParent(
               `${student.first_name} ${student.last_name}`,
               streamLabel(classData),
               subjectList,
               isPrimaryBand ? totalMarks : totalPoints,
-              isPrimaryBand ? totalPossibleMarks : subjectList.length * 8,
+              isPrimaryBand ? totalPossibleMarks : subjectList.length * gradePointsMaxForClass(classObj),
               studentSummary?.position ?? 0,
               allStudentSummaries.length,
               '',
@@ -1366,7 +1358,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
         name,
         percentage: pct,
-        grade: calculateCompetencyGrade(pct, band).subLevel,
+        grade: (() => { const grade = calculateGradeForClass(pct, classObj); return 'subLevel' in grade ? grade.subLevel : grade.grade; })(),
         previousPercentage: null,
       }));
       const aiComment = generateUniqueAIComment(studentFullName, target.avgPct, deviation, bestSubject, weakestSubject, classPosition, totalStudents, isNew, classObj, allSubjectResults);
@@ -1382,12 +1374,15 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const totals = reportCardTotals(studentResultsForTable, target.totalPoints, classObj);
       const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
       drawStudentInfo(doc, studentFullName, target.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', streamPositionLabel, 48, cardAssessment, target.student?.assessment_number || undefined, { classPosition: classPositionLabel, streamPosition: streamPositionLabel, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation });
-      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: Boolean(previousExamComparison), assessmentColumns: reportCombinedAssessmentData.columns });
+      const qrOptions = { assessmentNumber: target.student?.assessment_number };
+      const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
+      const hasComparison = Boolean(previousExamComparison?.results?.length);
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
       if (band === 'junior') currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
       currentY = drawSummaryBox(doc, studentResultsForTable, target.avgPct, target.totalPoints, classPositionLabel, classObj, currentY + 4, streamPositionLabel);
-      if (trendData.length >= 1) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
-      currentY = drawAIComment(doc, aiComment, currentY + 2);
-      await addSignaturesToPDF(doc, sig, currentY + 2, schoolInfo, { assessmentNumber: target.student?.assessment_number });
+      if (trendData.length >= 1 && canFitReportCardOptionalSection(doc, currentY + 3, 32, aiComment, schoolInfo, qrOptions)) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
+      currentY = drawAIComment(doc, aiComment, currentY + 2, { bottomY: commentBottomY });
+      await addSignaturesToPDF(doc, sig, currentY + 2, schoolInfo, qrOptions);
       drawReportFooter(doc);
       const safeName = studentFullName.replace(/[^a-z0-9]+/gi, '_') || 'learner';
       doc.save(`report_card_${safeName}_${termObj?.name || 'Term'}_${termObj?.academic_year || ''}.pdf`.replace(/\s+/g, '_'));
@@ -1867,7 +1862,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
         name,
         percentage: pct,
-        grade: calculateCompetencyGrade(pct, band).subLevel,
+        grade: (() => { const grade = calculateGradeForClass(pct, classObj); return 'subLevel' in grade ? grade.subLevel : grade.grade; })(),
         previousPercentage: trendData.slice(-2)[0]?.avg ?? null,
       }));
       const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, summaries.length, isNew, classObj, allSubjectResults);
@@ -1889,13 +1884,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
       drawStudentInfo(doc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition: `${s.position || '—'}/${summaries.length}`, streamPosition: directStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation });
 
-      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: Boolean(previousExamComparison), assessmentColumns: reportCombinedAssessmentData.columns });
+      const qrOptions = { assessmentNumber: s.student?.assessment_number };
+      const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
+      const hasComparison = Boolean(previousExamComparison?.results?.length);
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
       if (band === 'junior') currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
       currentY = drawSummaryBox(doc, studentResultsForTable, s.avgPct, s.totalPoints, `${rankInfo.classPositionByStudent.get(s.studentId) || s.position || '—'}/${rankInfo.classTotal}`, classObj, currentY + 4, directStreamPosition);
       const classPosition = rankInfo.classPositionByStudent.get(s.studentId) || s.position || null;
-      if (trendData.length >= 1) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
-      currentY = drawAIComment(doc, aiComment, currentY + 2);
-      await addSignaturesToPDF(doc, signatures, currentY + 2, schoolInfo, { assessmentNumber: s.student?.assessment_number });
+      if (trendData.length >= 1 && canFitReportCardOptionalSection(doc, currentY + 3, 32, aiComment, schoolInfo, qrOptions)) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
+      currentY = drawAIComment(doc, aiComment, currentY + 2, { bottomY: commentBottomY });
+      await addSignaturesToPDF(doc, signatures, currentY + 2, schoolInfo, qrOptions);
       drawReportFooter(doc);
 
       const filename = `report_card_${studentFullName.replace(/\s+/g, '_')}_${termObj?.name}.pdf`;
@@ -1979,7 +1977,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
           name,
           percentage: pct,
-          grade: calculateCompetencyGrade(pct, band).subLevel,
+          grade: (() => { const grade = calculateGradeForClass(pct, classObj); return 'subLevel' in grade ? grade.subLevel : grade.grade; })(),
           previousPercentage: studentTrends[s.studentId]?.slice(-2)[0]?.avg ?? null,
         }));
         const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, totalStudents, isNew, classObj, allSubjectResults);
@@ -2016,7 +2014,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           { classPosition: `${classPosition || '—'}/${rankInfo.classTotal}`, streamPosition: bulkStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation }
         );
 
-        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: Boolean(previousExamComparison), assessmentColumns: reportCombinedAssessmentData.columns });
+        const qrOptions = { assessmentNumber: s.student?.assessment_number };
+        const commentBottomY = getReportCardCommentBottomY(mainDoc, schoolInfo, qrOptions);
+        const hasComparison = Boolean(previousExamComparison?.results?.length);
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
 
         if (band === 'junior') currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4);
 
@@ -2024,9 +2025,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         currentY = drawOverallDeviation(mainDoc, s.totalPct, prevAvg === null || prevAvg === undefined ? null : prevAvg * studentResultsForTable.length, currentY);
         const studentTrend = studentTrends[s.studentId] || [];
-        if (studentTrend.length >= 1) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
-        currentY = drawAIComment(mainDoc, aiComment, currentY + 2);
-        await addSignaturesToPDF(mainDoc, signatures, currentY + 2, schoolInfo, { assessmentNumber: s.student?.assessment_number });
+        if (studentTrend.length >= 1 && canFitReportCardOptionalSection(mainDoc, currentY + 2, 32, aiComment, schoolInfo, qrOptions)) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
+        currentY = drawAIComment(mainDoc, aiComment, currentY + 2, { bottomY: commentBottomY });
+        await addSignaturesToPDF(mainDoc, signatures, currentY + 2, schoolInfo, qrOptions);
         drawReportFooter(mainDoc);
 
         // Yield to browser between learners to prevent freeze
@@ -2055,18 +2056,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   };
 
   const fetchGradeStreamClasses = async (seedClassObj: any): Promise<any[]> => {
-    const selLevel = Number(seedClassObj?.level ?? seedClassObj?.grade_level);
     const { data } = await supabaseUntyped
       .from('classes')
       .select('*')
       .eq('school_id', user?.schoolId)
       .eq('is_active', true);
     const classesForSchool = (data || []) as any[];
-    const streams = classesForSchool.filter((c: any) => {
-      const curLevel = Number(c.level ?? c.grade_level);
-      if (Number.isFinite(selLevel) && Number.isFinite(curLevel)) return curLevel === selLevel;
-      return c.name === seedClassObj?.name;
-    });
+    const streams = classesForSchool.filter((c: any) => curriculumCohortKey(c) === curriculumCohortKey(seedClassObj));
     return streams.sort((a, b) =>
       String(a.stream || a.stream_name || '').localeCompare(String(b.stream || b.stream_name || '')),
     );
@@ -2600,7 +2596,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const byScore = [...subjectEntries].sort((a, b) => b[1] - a[1]);
         const bestSubject = byScore[0]?.[0] || 'all learning areas'; const weakestSubject = byScore[byScore.length - 1]?.[0] || 'some learning areas';
         const studentFullName = `${s.student?.first_name || ''} ${s.student?.last_name || ''}`;
-        const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({ name, percentage: pct, grade: calculateCompetencyGrade(pct, band).subLevel, previousPercentage: null }));
+        const allSubjectResults: SubjectResult[] = subjectEntries.map(([name, pct]) => ({
+          name,
+          percentage: pct,
+          grade: (() => { const grade = calculateGradeForClass(pct, classObj); return 'subLevel' in grade ? grade.subLevel : grade.grade; })(),
+          previousPercentage: null,
+        }));
         const aiComment = generateUniqueAIComment(studentFullName, s.avgPct, deviation, bestSubject, weakestSubject, s.position, totalStudents, isNew, classObj, allSubjectResults);
         if (addedFirst) mainDoc.addPage(); addedFirst = true;
         await drawReportHeader(mainDoc, schoolInfo, { name: studentFullName, photoUrl: s.student?.photo_url });
@@ -2612,14 +2613,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj);
         const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
         drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation });
-        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showDeviation: Boolean(previousExamComparison), assessmentColumns: reportCombinedAssessmentData.columns });
+        const qrOptions = { assessmentNumber: s.student?.assessment_number };
+        const commentBottomY = getReportCardCommentBottomY(mainDoc, schoolInfo, qrOptions);
+        const hasComparison = Boolean(previousExamComparison?.results?.length);
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
         if (band === 'junior') currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4);
         currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${totalStudents}`, classObj, currentY + 4, studentPosition);
         currentY = drawDeviation(mainDoc, deviation, prevAvg, null, currentY);
         const studentTrend = studentTrends[s.studentId] || [];
-        if (studentTrend.length >= 1) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
-        currentY = drawAIComment(mainDoc, aiComment, currentY + 2);
-        await addSignaturesToPDF(mainDoc, sigById[classObj.id] || { principal_signature_url: principalSignatureUrl, teacher_signature_url: null }, currentY + 2, schoolInfo, { assessmentNumber: s.student?.assessment_number });
+        if (studentTrend.length >= 1 && canFitReportCardOptionalSection(mainDoc, currentY + 2, 32, aiComment, schoolInfo, qrOptions)) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
+        currentY = drawAIComment(mainDoc, aiComment, currentY + 2, { bottomY: commentBottomY });
+        await addSignaturesToPDF(mainDoc, sigById[classObj.id] || { principal_signature_url: principalSignatureUrl, teacher_signature_url: null }, currentY + 2, schoolInfo, qrOptions);
         drawReportFooter(mainDoc);
         await new Promise((res) => setTimeout(res, 0));
       }
@@ -2636,11 +2640,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const comparisonSeedClassId = comparisonIsAllStreams ? comparisonClassId.slice(comparisonAllStreamsValue.length) : comparisonClassId;
   const comparisonSeedClass = classes.find((item) => item.id === comparisonSeedClassId);
   const comparisonClassIds = comparisonIsAllStreams && comparisonSeedClass
-    ? classes.filter((item) => Number(item.level ?? item.grade_level) === Number(comparisonSeedClass.level ?? comparisonSeedClass.grade_level) || item.name === comparisonSeedClass.name).map((item) => item.id)
+    ? classes.filter((item) => curriculumCohortKey(item) === curriculumCohortKey(comparisonSeedClass)).map((item) => item.id)
     : comparisonClassId ? [comparisonClassId] : [];
   const comparisonClassOptions = classes.map((item) => {
-    const level = Number(item.level ?? item.grade_level);
-    const group = classes.filter((candidate) => Number(candidate.level ?? candidate.grade_level) === level || candidate.name === item.name);
+    const group = classes.filter((candidate) => curriculumCohortKey(candidate) === curriculumCohortKey(item));
     return { item, hasAllStreams: group.length > 1, isFirst: group[0]?.id === item.id };
   });
   const streamLabel = (classData: any) => {
@@ -2755,10 +2758,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const allSubjects = sortSubjects(normalizeLearningAreas(allSubjectsRaw));
   const band = getSchoolLevelBand(classObj);
   const isPrimary = band === 'primary';
-  const is844Class = is844Curriculum(classObj);
   const getDisplayGrade = (pct: number) => {
-    if (is844Class) { const g = calculate844Grade(pct); return g.grade; }
-    return overallGradeWithBand(pct, band).subLevel;
+    const grade = calculateGradeForClass(pct, classObj);
+    return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
 
   return (
@@ -3071,7 +3073,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500 italic">No records found matching your criteria.</td></tr>
               ) : filtered.map(r => {
                 const band = getSchoolLevelBand(r.classes);
-                const g = calculateCompetencyGrade(getPercentage(r), band);
+                const g = calculateGradeForClass(getPercentage(r), r.classes);
+                const gradeLabel = 'subLevel' in g ? g.subLevel : g.grade;
                 return (
                   <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -3082,11 +3085,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-bold">{r.marks} / {r.out_of}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-black text-blue-600">{getPercentage(r)}%</td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(g.subLevel)}`}>
-                        {g.subLevel}
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(gradeLabel)}`}>
+                        {gradeLabel}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-bold">{band === 'primary' ? '-' : g.points}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[#111111] text-center font-bold">{band === 'primary' ? '-' : gradePointsForClass(getPercentage(r), r.classes)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${r.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                         {r.status === 'published' ? 'Published' : 'Draft'}
@@ -3198,7 +3201,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           <tbody>
             {summaries.map((summary: any) => {
               const summaryClass = classes.find((item: any) => item.id === summary.classId);
-              const summaryGrade = isPrimary ? getDisplayGrade(summary.avgPct) : overallGradeWithBand(summary.avgPct, band).subLevel;
+              const summaryGrade = getDisplayGrade(summary.avgPct);
               return (
                 <tr key={summary.studentId}>
                   <td>{summary.position}</td>

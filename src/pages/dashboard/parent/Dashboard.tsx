@@ -144,7 +144,7 @@ export default function ParentDashboard() {
                 {childResults.slice(0, 3).map(r => (
                   <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                     <div><p className="text-sm font-medium">{r.subjects?.name}</p><p className="text-xs text-[#666666]">{r.percentage !== undefined && r.percentage !== null ? r.percentage : r.marks}%</p></div>
-                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(r.cbc_grade || r.grade_)}`}>{r.cbc_grade || r.grade_}</span>
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(r.grade_844 || r.cbc_grade || r.grade_)}`}>{r.grade_844 || r.cbc_grade || r.grade_}</span>
                   </div>
                 ))}
               </div>

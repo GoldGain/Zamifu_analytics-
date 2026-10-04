@@ -9,7 +9,7 @@ import autoTable from 'jspdf-autotable';
 import { sortByAdmissionNumber } from '@/lib/student-order';
 import { formatClassStream } from '@/lib/class-label';
 
-export default function SchoolAdminFees() {
+export default function FeeWorkspace() {
   const { user, schoolData } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -34,6 +34,7 @@ export default function SchoolAdminFees() {
   const [editPaymentData, setEditPaymentData] = useState({ amount: '', payment_method: 'cash' as 'cash' | 'mpesa' | 'bank' | 'cheque' | 'other', mpesa_reference: '', notes: '' });
   const [savingPayment, setSavingPayment] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
+  const [retiredInvoiceConfirmation, setRetiredInvoiceConfirmation] = useState<{ studentName: string; retiredAt: string } | null>(null);
 
   // Fee structure form: multiple fee types per class/term
   const [structureData, setStructureData] = useState({
@@ -404,46 +405,33 @@ export default function SchoolAdminFees() {
     fetchData();
   };
 
-  const handleDeleteInvoice = async (invoice: any) => {
+  const handleRetireInvoice = async (invoice: any) => {
     if (!user?.schoolId || !invoice?.id) return;
     const studentName = `${invoice.students?.first_name || ''} ${invoice.students?.last_name || ''}`.trim() || 'this learner';
-    const confirmed = window.confirm(`Delete the invoice for ${studentName}? This permanently deletes the invoice and all payments attached to it.`);
+    const confirmed = window.confirm(`Retire the invoice for ${studentName}? The invoice will be hidden from active fee views, while the invoice and payment history remain preserved.`);
     if (!confirmed) return;
     try {
-      // Delete child payments first so the invoice cannot leave orphaned history.
-      const { data: deletedPayments, error: paymentsError } = await supabaseUntyped
-        .from('fee_payments')
-        .delete()
-        .eq('invoice_id', invoice.id)
-        .eq('school_id', user.schoolId)
-        .select('id');
-      if (paymentsError) throw paymentsError;
-
-      const { data: remainingPayments, error: remainingPaymentsError } = await supabaseUntyped
-        .from('fee_payments')
-        .select('id')
-        .eq('invoice_id', invoice.id)
-        .eq('school_id', user.schoolId)
-        .limit(10);
-      if (remainingPaymentsError) throw remainingPaymentsError;
-      if ((remainingPayments || []).length > 0) {
-        throw new Error('The database did not remove all payment records attached to this invoice. The invoice was not deleted.');
-      }
-
-      const { data: deletedInvoices, error: invoiceError } = await supabaseUntyped
+      // Retire rather than delete so invoice and payment history remain auditable.
+      const { data: retiredInvoices, error: invoiceError } = await supabaseUntyped
         .from('fee_invoices')
-        .delete()
+        .update({
+          deleted_at: new Date().toISOString(),
+          deleted_by: user.id,
+          deletion_reason: 'Retired from the fee management workspace',
+        })
         .eq('id', invoice.id)
         .eq('school_id', user.schoolId)
+        .is('deleted_at', null)
         .select('id');
       if (invoiceError) throw invoiceError;
-      if ((deletedInvoices || []).length !== 1) {
-        throw new Error('The database did not remove the invoice. No financial record was reported as deleted.');
+      if ((retiredInvoices || []).length !== 1) {
+        throw new Error('The invoice was not retired. It may already be retired or unavailable to this school.');
       }
-      toast.success(`Invoice and ${deletedPayments?.length || 0} attached payment record(s) were permanently deleted.`);
+      setRetiredInvoiceConfirmation({ studentName, retiredAt: new Date().toLocaleString() });
+      toast.success('Invoice retired. Invoice and payment history were preserved.');
       await fetchData();
     } catch (error: any) {
-      toast.error(`Could not delete invoice: ${error.message}`);
+      toast.error(`Could not retire invoice: ${error.message}`);
     }
   };
 
@@ -623,6 +611,18 @@ export default function SchoolAdminFees() {
           </button>
         </div>
       </div>
+
+      {retiredInvoiceConfirmation && (
+        <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">Invoice retired — no financial data was deleted.</p>
+              <p className="mt-1">The invoice for {retiredInvoiceConfirmation.studentName} was hidden from active fee views at {retiredInvoiceConfirmation.retiredAt}. Its invoice and payment history remain preserved.</p>
+            </div>
+            <button type="button" onClick={() => setRetiredInvoiceConfirmation(null)} className="shrink-0 text-xs font-semibold text-amber-800 hover:text-amber-950">Dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Add Fee Structure Form */}
       {showStructure && (
@@ -815,7 +815,7 @@ export default function SchoolAdminFees() {
                           {statusIcon(inv.status)} {inv.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4"><div className="flex flex-wrap gap-1.5"><button onClick={() => { setPaymentData({ student_id: inv.student_id, invoice_id: inv.id, amount: '', payment_method: 'cash', mpesa_reference: '', notes: '' }); setShowRecord(true); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100" title="Record payment"><CreditCard className="w-3.5 h-3.5" /> Record</button><button onClick={() => handleDeleteInvoice(inv)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100" title="Delete invoice"><Trash2 className="w-3.5 h-3.5" /> Delete</button></div></td>
+                      <td className="px-6 py-4"><div className="flex flex-wrap gap-1.5"><button onClick={() => { setPaymentData({ student_id: inv.student_id, invoice_id: inv.id, amount: '', payment_method: 'cash', mpesa_reference: '', notes: '' }); setShowRecord(true); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100" title="Record payment"><CreditCard className="w-3.5 h-3.5" /> Record</button><button onClick={() => handleRetireInvoice(inv)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100" title="Retire invoice"><Trash2 className="w-3.5 h-3.5" /> Retire</button></div></td>
                     </tr>
                   ))
                 )}

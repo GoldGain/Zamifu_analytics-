@@ -6,7 +6,7 @@ import {
   Search, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Download, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateCompetencyGrade, getSchoolLevelBand, getRequiredLearningAreas } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, getRequiredLearningAreas } from '@/lib/grading';
 import { MarksProgress } from '@/components/MarksProgress';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { rankByUnifiedRule } from '@/lib/ranking';
@@ -25,7 +25,7 @@ interface StudentPerformance {
   totalOutOf: number | null;
   totalPoints: number | null;
   position: number | null;
-  subjectResults: Record<string, { pct: number; grade: string; marks: number | null; out_of: number | null }>;
+  subjectResults: Record<string, { pct: number; grade: string; points: number; marks: number | null; out_of: number | null }>;
   hasAllMarks: boolean;
 }
 
@@ -159,9 +159,12 @@ export default function ClassTeacherDashboard() {
       const resultsMap: Record<string, Record<string, any>> = {};
       (results || []).forEach((r: any) => {
         if (!resultsMap[r.student_id]) resultsMap[r.student_id] = {};
+        const percentage = r.percentage ?? (Number(r.out_of) > 0 ? Number(r.marks || 0) / Number(r.out_of) * 100 : 0);
+        const grade = calculateGradeForClass(percentage, assignedClass);
         resultsMap[r.student_id][r.subject_id] = {
-          pct: r.percentage ?? 0,
-          grade: r.cbc_grade || r.grade_844 || '—',
+          pct: percentage,
+          grade: 'subLevel' in grade ? grade.subLevel : grade.grade,
+          points: gradePointsForClass(percentage, assignedClass),
           marks: r.marks,
           out_of: r.out_of,
         };
@@ -242,10 +245,11 @@ export default function ClassTeacherDashboard() {
     ? analyzedLearners.reduce((sum, learner) => sum + (learner.avgPercentage || 0), 0) / analyzedLearners.length
     : 0;
   const classBand = getSchoolLevelBand(assignedClass || {});
-  const classMeanGrade = calculateCompetencyGrade(classAverage, classBand);
+  const classMeanGrade = calculateGradeForClass(classAverage, assignedClass || {});
   const gradeDistribution = analyzedLearners.reduce<Record<string, number>>((distribution, learner) => {
-    const grade = calculateCompetencyGrade(learner.avgPercentage || 0, classBand).subLevel;
-    distribution[grade] = (distribution[grade] || 0) + 1;
+    const grade = calculateGradeForClass(learner.avgPercentage || 0, assignedClass || {});
+    const label = 'subLevel' in grade ? grade.subLevel : grade.grade;
+    distribution[label] = (distribution[label] || 0) + 1;
     return distribution;
   }, {});
 
@@ -613,7 +617,7 @@ export default function ClassTeacherDashboard() {
             </div>
             <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
               <p className="text-xs font-medium text-violet-700">Class Mean Grade</p>
-              <p className="mt-1 text-2xl font-bold text-violet-900">{classMeanGrade.subLevel}</p>
+              <p className="mt-1 text-2xl font-bold text-violet-900">{'subLevel' in classMeanGrade ? classMeanGrade.subLevel : classMeanGrade.grade}</p>
               <p className="text-xs text-violet-700">{classMeanGrade.descriptor}</p>
             </div>
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
@@ -670,7 +674,7 @@ export default function ClassTeacherDashboard() {
                         <td className="px-4 py-3 text-center">
                           {student.avgPercentage !== null ? (
                             <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-700">
-                              {calculateCompetencyGrade(student.avgPercentage, classBand).subLevel}
+                              {(() => { const grade = calculateGradeForClass(student.avgPercentage, assignedClass || {}); return 'subLevel' in grade ? grade.subLevel : grade.grade; })()}
                             </span>
                           ) : <span className="text-gray-300">—</span>}
                         </td>

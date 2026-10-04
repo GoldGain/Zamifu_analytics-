@@ -21,6 +21,7 @@ import {
   type QuestionType,
   type ExamPdfMode,
 } from '@/lib/exam-generator';
+import type { AssessmentLevel } from '@/lib/exam-schema';
 import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
 import { filterSubStrands, retainVisibleIds } from '@/lib/curriculum-selection';
 import {
@@ -76,6 +77,7 @@ interface SavedPaperSummary {
 interface ExamGeneratorProps {
   gradeLevel: string;
   subject: string;
+  assessmentLevel?: AssessmentLevel;
   schoolName?: string;
   schoolId?: string;
   strands: CurriculumStrandOption[];
@@ -115,6 +117,7 @@ function kjseaDurationLabel(minutes: number): string {
 export default function ExamGenerator({
   gradeLevel,
   subject,
+  assessmentLevel,
   schoolName,
   schoolId,
   strands,
@@ -389,6 +392,7 @@ export default function ExamGenerator({
         format,
         term,
         schoolName,
+        level: assessmentLevel,
         paperVariant: variant === 'single' ? undefined : variant,
         blueprint: format === 'kjsea' && kjseaSpec
           ? makeKjseaBlueprint(subject, variant, difficulty)
@@ -494,6 +498,7 @@ export default function ExamGenerator({
           topics: [], curriculumScope: question.strand ? [{ strand: question.strand, subStrands: question.sub_strand ? [question.sub_strand] : [], topics: [] }] : [], questionTypes: [question.question_type],
           totalMarks: question.marks, durationMinutes: Math.max(10, Math.min(30, durationMinutes)), difficulty: question.difficulty,
           includeImages: Boolean(question.visual_spec), includeMarkingScheme: true, format, term, schoolName,
+          level: assessmentLevel,
           blueprint: { total_marks: question.marks, sections: [{ id: `replacement-${Date.now()}`, question_type: question.question_type, count: 1, marks_per_question: question.marks, difficulty: question.difficulty, strand: question.strand, sub_strand: question.sub_strand, topic: question.topic }] },
         }),
       });

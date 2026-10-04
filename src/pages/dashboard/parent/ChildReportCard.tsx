@@ -16,6 +16,8 @@ import {
   drawDeviation,
   drawAchievements,
   drawAIComment,
+  canFitReportCardOptionalSection,
+  getReportCardCommentBottomY,
   getPercentage,
   formatPosition,
   buildPerformanceTrend,
@@ -29,7 +31,7 @@ import {
   DEFAULT_PDF_FONT_SIZE,
   type PdfFontSize,
 } from '@/lib/pdfFontSize';
-import { getSchoolLevelBand } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
@@ -355,12 +357,7 @@ export default function ParentChildReportCard() {
       const avgPercentage = results.length
         ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length
         : 0;
-      const totalPoints = isPrimary ? null : results.reduce((s, r) => {
-            const pct = getPercentage(r);
-            if (pct >= 90) return s + 8; if (pct >= 75) return s + 7; if (pct >= 58) return s + 6;
-            if (pct >= 41) return s + 5; if (pct >= 31) return s + 4; if (pct >= 21) return s + 3;
-            if (pct >= 11) return s + 2; return s + 1;
-          }, 0);
+      const totalPoints = isPrimary ? null : results.reduce((s, r) => s + gradePointsForClass(getPercentage(r), classDataForGrading), 0);
       const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
       // Prefer the unified ranking position so the parent sees the same rank as
@@ -388,7 +385,9 @@ export default function ParentChildReportCard() {
         photoUrl: selectedChild.photo_url || null,
       });
       drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined);
-      let currentY = drawResultsTable(doc, results, classDataForGrading, 62) + 6;
+      const qrOptions = { assessmentNumber: selectedChild.assessment_number };
+      const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
+      let currentY = drawResultsTable(doc, results, classDataForGrading, 62, { showDeviation: previousAvg !== null }) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
       if (getSchoolLevelBand(classDataForGrading) === 'junior') {
@@ -397,15 +396,15 @@ export default function ParentChildReportCard() {
       
       currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
       currentY = drawDeviation(doc, deviation, previousAvg, position, currentY + 6);
-      if (trendData.length >= 2) {
+      if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, currentY, 38, aiComment, schoolInfo, qrOptions)) {
         currentY = drawTrendGraph(doc, trendData, 14, currentY, 182, 34, getSchoolLevelBand(classDataForGrading)) + 2;
       }
       const studentBests = classBestList.filter(b => b.studentId === selectedChild.id);
-      if (studentBests.length > 0) {
+      if (studentBests.length > 0 && canFitReportCardOptionalSection(doc, currentY, 20, aiComment, schoolInfo, qrOptions)) {
         currentY = drawAchievements(doc, studentBests, currentY);
       }
-      currentY = drawAIComment(doc, aiComment, currentY);
-      await addSignaturesToPDF(doc, signatures, currentY, schoolInfo, { assessmentNumber: selectedChild.assessment_number });
+      currentY = drawAIComment(doc, aiComment, currentY, { bottomY: commentBottomY });
+      await addSignaturesToPDF(doc, signatures, currentY, schoolInfo, qrOptions);
       drawReportFooter(doc);
       doc.save(`Report_Card_${selectedChild.first_name}_${selectedChild.last_name}.pdf`);
     } catch (err: any) {
@@ -569,7 +568,8 @@ export default function ParentChildReportCard() {
                   <span className="text-2xl font-black text-purple-600 uppercase">
                     {(() => {
                       const avg = results.reduce((s, r) => s + getPercentage(r), 0) / results.length;
-                      if (avg >= 75) return 'EE'; if (avg >= 41) return 'ME'; if (avg >= 21) return 'AE'; return 'BE';
+                      const activeGrade = calculateGradeForClass(avg, classDataForGrading);
+                      return 'subLevel' in activeGrade ? activeGrade.subLevel : activeGrade.grade;
                     })()}
                   </span>
                 </div>
@@ -601,7 +601,12 @@ export default function ParentChildReportCard() {
                     <tbody className="divide-y divide-gray-100">
                       {results.map(r => {
                         const pct = getPercentage(r);
-                        let g = 'BE'; if (pct >= 75) g = 'EE'; else if (pct >= 41) g = 'ME'; else if (pct >= 21) g = 'AE';
+                        const activeGrade = calculateGradeForClass(pct, classDataForGrading);
+                        const g = 'subLevel' in activeGrade ? activeGrade.subLevel : activeGrade.grade;
+                        const is844 = is844Curriculum(classDataForGrading);
+                        const strong = is844 ? activeGrade.points >= 7 : activeGrade.grade === 'EE';
+                        const meeting = is844 ? activeGrade.points >= 5 : activeGrade.grade === 'ME';
+                        const approaching = is844 ? activeGrade.points >= 3 : activeGrade.grade === 'AE';
                         return (
                           <tr key={r.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-[#111111]">{r.subjects?.name === 'Creative Arts' ? 'C-Arts' : r.subjects?.name}</td>
@@ -613,13 +618,13 @@ export default function ParentChildReportCard() {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
-                                g === 'EE' ? 'bg-green-100 text-green-700' : g === 'ME' ? 'bg-blue-100 text-blue-700' : g === 'AE' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
+                                  strong ? 'bg-green-100 text-green-700' : meeting ? 'bg-blue-100 text-blue-700' : approaching ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
                               }`}>{g}</span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-1.5 text-xs font-medium text-[#666666]">
-                                {pct >= 75 ? <TrendingUp className="w-3.5 h-3.5 text-green-500" /> : pct >= 41 ? <Minus className="w-3.5 h-3.5 text-blue-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />}
-                                {pct >= 75 ? 'Exceeding' : pct >= 41 ? 'Meeting' : pct >= 21 ? 'Approaching' : 'Below'}
+                                {strong ? <TrendingUp className="w-3.5 h-3.5 text-green-500" /> : meeting ? <Minus className="w-3.5 h-3.5 text-blue-500" /> : <TrendingDown className="w-3.5 h-3.5 text-red-500" />}
+                                {strong ? 'Exceeding' : meeting ? 'Meeting' : approaching ? 'Approaching' : 'Below'}
                               </div>
                             </td>
                           </tr>

@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { calculateCompetencyGrade, getSchoolLevelBand } from '@/lib/grading';
+import { calculateGradeForClass, curriculumScopeKey, getSchoolLevelBand } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
 import {
   buildAssessmentLearnerSummaries,
@@ -52,6 +52,7 @@ export type ComparisonData = {
   streamLabels: string[];
   gradeLabels: string[];
   band: ReturnType<typeof getSchoolLevelBand>;
+  classData?: any;
 };
 
 function displayName(row: any): string {
@@ -63,9 +64,9 @@ function streamName(row: any): string {
   return String(c.stream_name || c.stream || c.name || '—').trim() || '—';
 }
 
-function gradeLabel(value: number, band: ComparisonData['band']): string {
-  const grade = calculateCompetencyGrade(value, band);
-  return band === 'primary' ? grade.grade : grade.subLevel;
+function gradeLabel(value: number, classData?: any): string {
+  const grade = calculateGradeForClass(value, classData);
+  return 'subLevel' in grade ? grade.subLevel : grade.grade;
 }
 
 function mean(values: number[]): number | null {
@@ -131,7 +132,7 @@ function makeSide(
       total: summary.totalPct,
       outOf: requiredAreas * 100,
       average: summary.avgPct,
-      grade: gradeLabel(summary.avgPct, getSchoolLevelBand(classObj)),
+      grade: gradeLabel(summary.avgPct, classObj),
       totalPoints: summary.totalPoints,
       subjects: summary.subjects,
     };
@@ -150,10 +151,19 @@ export function buildComparisonData(args: {
   classObj?: any;
   learningAreas?: string[];
 }): ComparisonData {
-  const band = getSchoolLevelBand(args.classObj);
+  const rowClasses = [...args.rowsA, ...args.rowsB]
+    .map((row) => row.classes)
+    .filter(Boolean);
+  const classScopes = new Set(rowClasses.map((classData) => curriculumScopeKey(classData)));
+  if (args.classObj) classScopes.add(curriculumScopeKey(args.classObj));
+  if (classScopes.size > 1) {
+    throw new Error('Cannot compare mixed CBE and 8-4-4 curriculum results in one cohort. Select a single curriculum/form group.');
+  }
+  const classData = args.classObj || rowClasses[0];
+  const band = getSchoolLevelBand(classData);
   const subjectNames = learningAreaNames([...args.rowsA, ...args.rowsB], args.learningAreas || []);
-  const sideA = makeSide(args.rowsA, 'EXAM 1', args.termALabel, args.examALabel, args.classObj, subjectNames);
-  const sideB = makeSide(args.rowsB, 'EXAM 2', args.termBLabel, args.examBLabel, args.classObj, subjectNames);
+  const sideA = makeSide(args.rowsA, 'EXAM 1', args.termALabel, args.examALabel, classData, subjectNames);
+  const sideB = makeSide(args.rowsB, 'EXAM 2', args.termBLabel, args.examBLabel, classData, subjectNames);
   const learners = new Map<string, ComparisonRow>();
   [...args.rowsA.map((row) => ({ row, side: 'a' as const })), ...args.rowsB.map((row) => ({ row, side: 'b' as const }))].forEach(({ row, side }) => {
     if (!row.student_id) return;
@@ -164,7 +174,12 @@ export function buildComparisonData(args: {
     current.diff = current.a != null && current.b != null ? current.b - current.a : null;
     learners.set(key, current);
   });
-  const gradeLabels = band === 'primary' ? ['EE', 'ME', 'AE', 'BE'] : ['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2'];
+  const is844 = curriculumScopeKey(classData) === '844';
+  const gradeLabels = is844
+    ? ['A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'D-', 'E']
+    : band === 'primary'
+      ? ['EE', 'ME', 'AE', 'BE']
+      : ['EE1', 'EE2', 'ME1', 'ME2', 'AE1', 'AE2', 'BE1', 'BE2'];
   return {
     classLabel: args.classLabel,
     termLabel: args.termALabel === args.termBLabel ? args.termALabel : `${args.termALabel} vs ${args.termBLabel}`,
@@ -174,6 +189,7 @@ export function buildComparisonData(args: {
     streamLabels: Array.from(new Set([...sideA.learners, ...sideB.learners].map((learner) => learner.stream))).sort(),
     gradeLabels,
     band,
+    classData,
   };
 }
 
@@ -190,7 +206,7 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   addTable(doc, ['Metric', data.sideA.examLabel, data.sideB.examLabel, 'Change'], [
     ['Total Learners', ma.learners, mb.learners, signed(mb.learners - ma.learners, 0)],
     ['Class Mean Marks', ma.mean?.toFixed(1) || '—', mb.mean?.toFixed(1) || '—', signed((mb.mean ?? 0) - (ma.mean ?? 0))],
-    ['Class Mean Grade', ma.grade == null ? '—' : gradeLabel(ma.grade, data.band), mb.grade == null ? '—' : gradeLabel(mb.grade, data.band), '—'],
+    ['Class Mean Grade', ma.grade == null ? '—' : gradeLabel(ma.grade, data.classData), mb.grade == null ? '—' : gradeLabel(mb.grade, data.classData), '—'],
     ['Highest Mark', ma.high ?? '—', mb.high ?? '—', signed((mb.high ?? 0) - (ma.high ?? 0), 0)],
     ['Lowest Mark', ma.low ?? '—', mb.low ?? '—', signed((mb.low ?? 0) - (ma.low ?? 0), 0)],
   ], 32, fontSize, true);
@@ -215,14 +231,14 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
     const av = data.sideA.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null);
     const bv = data.sideB.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null);
     const a = mean(av); const b = mean(bv);
-    return [subject, a == null ? '—' : `${a.toFixed(1)} (${gradeLabel(a, data.band)})`, b == null ? '—' : `${b.toFixed(1)} (${gradeLabel(b, data.band)})`, signed(a != null && b != null ? b - a : null)];
+    return [subject, a == null ? '—' : `${a.toFixed(1)} (${gradeLabel(a, data.classData)})`, b == null ? '—' : `${b.toFixed(1)} (${gradeLabel(b, data.classData)})`, signed(a != null && b != null ? b - a : null)];
   });
   addTable(doc, ['Learning Area', data.sideA.examLabel + ' Mean (Grade)', data.sideB.examLabel + ' Mean (Grade)', 'Change'], subjectRows, 28, fontSize, true);
 
   nextPage(doc, 'COMPARE EXAMS — SECTION 5: SUBJECT GRADES', subtitle);
   const subjectGradeRows: any[][] = [];
   data.sideA.subjects.forEach((subject) => data.gradeLabels.forEach((grade) => {
-    const countFor = (side: ComparisonSide) => side.learners.filter((learner) => learner.subjects[subject] != null && gradeLabel(learner.subjects[subject], data.band) === grade).length;
+    const countFor = (side: ComparisonSide) => side.learners.filter((learner) => learner.subjects[subject] != null && gradeLabel(learner.subjects[subject], data.classData) === grade).length;
     const a = countFor(data.sideA); const b = countFor(data.sideB);
     subjectGradeRows.push([subject, grade, a, b, signed(b - a, 0)]);
   }));
@@ -248,8 +264,8 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   const streams = data.streamLabels.map((stream) => {
     const a = mean(data.sideA.learners.filter((learner) => learner.stream === stream).map((learner) => learner.total));
     const b = mean(data.sideB.learners.filter((learner) => learner.stream === stream).map((learner) => learner.total));
-    const aGrade = a == null ? '—' : gradeLabel((a / data.sideA.outOf) * 100, data.band);
-    const bGrade = b == null ? '—' : gradeLabel((b / data.sideB.outOf) * 100, data.band);
+    const aGrade = a == null ? '—' : gradeLabel((a / data.sideA.outOf) * 100, data.classData);
+    const bGrade = b == null ? '—' : gradeLabel((b / data.sideB.outOf) * 100, data.classData);
     return [stream, a == null ? '—' : a.toFixed(1), aGrade, b == null ? '—' : b.toFixed(1), bGrade, signed(a != null && b != null ? b - a : null)];
   });
   addTable(doc, ['Stream', data.sideA.examLabel + ' Mean', data.sideA.examLabel + ' Grade', data.sideB.examLabel + ' Mean', data.sideB.examLabel + ' Grade', 'Change'], streams, 28, fontSize, true);
@@ -271,7 +287,7 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   nextPage(doc, 'COMPARE EXAMS — SECTION 10: SUBJECT GRADE MEANS', subtitle);
   const gradeMeanRows: any[][] = [];
   data.sideA.subjects.forEach((subject) => data.gradeLabels.forEach((grade) => {
-    const valuesFor = (side: ComparisonSide) => side.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null && gradeLabel(value, data.band) === grade);
+    const valuesFor = (side: ComparisonSide) => side.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null && gradeLabel(value, data.classData) === grade);
     const a = mean(valuesFor(data.sideA)); const b = mean(valuesFor(data.sideB));
     gradeMeanRows.push([subject, grade, a == null ? '—' : a.toFixed(1), b == null ? '—' : b.toFixed(1), signed(a != null && b != null ? b - a : null)]);
   }));
