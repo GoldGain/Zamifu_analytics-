@@ -101,6 +101,7 @@ export default function SchoolAdminDashboard() {
             {[
               { label: 'Add Learner', icon: <Users className="w-4 h-4" />, link: '/school-admin/students', color: 'bg-blue-50 text-blue-600' },
               { label: 'Add Teacher', icon: <Users className="w-4 h-4" />, link: '/school-admin/teachers', color: 'bg-green-50 text-green-600' },
+              { label: 'Add Bursar', icon: <UserCheck className="w-4 h-4" />, link: '/school-admin/bursars', color: 'bg-emerald-50 text-emerald-600' },
               { label: 'Post Announcement', icon: <Bell className="w-4 h-4" />, link: '/school-admin/announcements', color: 'bg-purple-50 text-purple-600' },
               { label: 'Assign Roles', icon: <UserCheck className="w-4 h-4" />, link: '/school-admin/assign-roles', color: 'bg-indigo-50 text-indigo-600' },
               { label: 'Assessment Progress', icon: <BarChart3 className="w-4 h-4" />, link: '/school-admin/assessment-progress', color: 'bg-green-50 text-green-600' },

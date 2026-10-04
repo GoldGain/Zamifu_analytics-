@@ -46,6 +46,7 @@ import SchoolAdminStudents from '@/pages/dashboard/school-admin/Students';
 import SchoolAdminBulkStudentImport from '@/pages/dashboard/school-admin/BulkStudentImport';
 import SchoolAdminGraduatedStudents from '@/pages/dashboard/school-admin/GraduatedStudents';
 import SchoolAdminTeachers from '@/pages/dashboard/school-admin/Teachers';
+import SchoolAdminBursars from '@/pages/dashboard/school-admin/Bursars';
 import SchoolAdminClasses from '@/pages/dashboard/school-admin/Classes';
 import BursarFees from '@/pages/dashboard/bursar/Fees';
 import SchoolAdminResults from '@/pages/dashboard/school-admin/Results';
@@ -259,6 +260,7 @@ function AppRoutes() {
       <Route path="/school-admin/students/bulk-import" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBulkStudentImport /></ProtectedRoute>} />
       <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
       <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTeachers /></ProtectedRoute>} />
+      <Route path="/school-admin/bursars" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBursars /></ProtectedRoute>} />
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClasses /></ProtectedRoute>} />
       <Route path="/school-admin/results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminResults /></ProtectedRoute>} />
       <Route path="/school-admin/exam-generator" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><ExamGeneratorPage /></ProtectedRoute>} />
