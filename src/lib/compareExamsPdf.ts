@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { calculateGradeForClass, curriculumScopeKey, getSchoolLevelBand } from '@/lib/grading';
+import { calculateGradeForClass, curriculumScopeKey, getSchoolLevelBand, gradePointsForClass, gradePointsMaxForClass } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
 import {
   buildAssessmentLearnerSummaries,
@@ -20,6 +20,14 @@ export type ComparisonRow = {
   a: number | null;
   b: number | null;
   diff: number | null;
+  aMarks: number | null;
+  aOutOf: number | null;
+  aPoints: number | null;
+  aLevel: string | null;
+  bMarks: number | null;
+  bOutOf: number | null;
+  bPoints: number | null;
+  bLevel: string | null;
 };
 
 export type ComparisonLearner = {
@@ -31,6 +39,9 @@ export type ComparisonLearner = {
   average: number;
   grade: string;
   totalPoints: number;
+  rankingTotalMarks: number;
+  rankingTotalPoints: number;
+  rankingSubjects: string[];
   subjects: Record<string, number>;
 };
 
@@ -134,6 +145,9 @@ function makeSide(
       average: summary.avgPct,
       grade: gradeLabel(summary.avgPct, classObj),
       totalPoints: summary.totalPoints,
+      rankingTotalMarks: summary.rankingTotalMarks ?? summary.totalMarks ?? summary.totalPct,
+      rankingTotalPoints: summary.rankingTotalPoints ?? summary.totalPoints,
+      rankingSubjects: summary.rankingSubjects || [],
       subjects: summary.subjects,
     };
   });
@@ -169,8 +183,24 @@ export function buildComparisonData(args: {
     if (!row.student_id) return;
     const subject = normalizeLearningAreaName(row.subjects?.name || 'Learning Area');
     const key = `${row.student_id}:${subject}`;
-    const current = learners.get(key) || { student_id: row.student_id, name: displayName(row), stream: streamName(row), subject, a: null, b: null, diff: null };
-    current[side] = resultPercentage(row);
+    const current = learners.get(key) || { student_id: row.student_id, name: displayName(row), stream: streamName(row), subject, a: null, b: null, diff: null, aMarks: null, aOutOf: null, aPoints: null, aLevel: null, bMarks: null, bOutOf: null, bPoints: null, bLevel: null };
+    const outOf = Number(row.out_of) > 0 ? Number(row.out_of) : 100;
+    const percentage = resultPercentage(row);
+    const marks = row.marks != null ? Number(row.marks) : percentage * outOf / 100;
+    const prefix = side === 'a' ? 'a' : 'b';
+    const previousMarks = current[`${prefix}Marks` as 'aMarks' | 'bMarks'];
+    const previousOutOf = current[`${prefix}OutOf` as 'aOutOf' | 'bOutOf'];
+    const combinedMarks = (previousMarks || 0) + marks;
+    const combinedOutOf = (previousOutOf || 0) + outOf;
+    const combinedPercentage = combinedOutOf > 0 ? combinedMarks / combinedOutOf * 100 : percentage;
+    const combinedGrade = calculateGradeForClass(combinedPercentage, classData);
+    const combinedLevel = 'subLevel' in combinedGrade ? combinedGrade.subLevel : combinedGrade.grade;
+    const combinedPoints = gradePointsMaxForClass(classData) > 0 ? gradePointsForClass(combinedPercentage, classData) : null;
+    if (side === 'a') {
+      current.a = combinedPercentage; current.aMarks = combinedMarks; current.aOutOf = combinedOutOf; current.aPoints = combinedPoints; current.aLevel = combinedLevel;
+    } else {
+      current.b = combinedPercentage; current.bMarks = combinedMarks; current.bOutOf = combinedOutOf; current.bPoints = combinedPoints; current.bLevel = combinedLevel;
+    }
     current.diff = current.a != null && current.b != null ? current.b - current.a : null;
     learners.set(key, current);
   });
@@ -222,20 +252,38 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   nextPage(doc, 'COMPARE EXAMS — SECTION 3: TOP 10 LEARNERS', subtitle);
   const top = Array.from({ length: Math.max(10, data.sideA.learners.length, data.sideB.learners.length) }, (_, i) => {
     const a = data.sideA.learners[i]; const b = data.sideB.learners[i];
-    return [String(i + 1), a?.name || '—', a?.stream || '—', a?.total.toFixed(0) || '—', a?.average.toFixed(1) || '—', a?.grade || '—', a?.totalPoints ?? '—', b?.name || '—', b?.stream || '—', b?.total.toFixed(0) || '—', b?.average.toFixed(1) || '—', b?.grade || '—', b?.totalPoints ?? '—'];
+    const points = (learner?: ComparisonLearner) => data.band === 'primary' ? '—' : learner?.rankingTotalPoints ?? '—';
+    return [String(i + 1), a?.name || '—', a?.stream || '—', a ? a.rankingTotalMarks.toFixed(0) : '—', a?.average.toFixed(1) || '—', a?.grade || '—', points(a), b?.name || '—', b?.stream || '—', b ? b.rankingTotalMarks.toFixed(0) : '—', b?.average.toFixed(1) || '—', b?.grade || '—', points(b)];
   }).slice(0, 10);
-  addTable(doc, ['POS', `${data.sideA.examLabel} Learner`, 'Stream', 'Total Marks', 'Mean %', 'Mean Grade', 'Total Points', `${data.sideB.examLabel} Learner`, 'Stream', 'Total Marks', 'Mean %', 'Mean Grade', 'Total Points'], top, 28, fontSize);
+  addTable(doc, ['POS', `${data.sideA.examLabel} Learner`, 'Stream', 'Rank Marks', 'Mean %', 'Mean Grade', 'Rank Points', `${data.sideB.examLabel} Learner`, 'Stream', 'Rank Marks', 'Mean %', 'Mean Grade', 'Rank Points'], top, 28, fontSize);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 4: SUBJECT PERFORMANCE', subtitle);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 4: LEARNER SUBJECT MARKS, POINTS & LEVELS', subtitle);
+  const formatExamMarks = (marks: number | null, outOf: number | null) => marks == null
+    ? '—'
+    : Number(outOf || 100) === 100 ? marks.toFixed(0) : `${marks.toFixed(0)}/${Number(outOf).toFixed(0)}`;
+  const learnerSubjectRows = data.rows.map((row) => [
+    row.name,
+    row.stream,
+    row.subject,
+    formatExamMarks(row.aMarks, row.aOutOf), row.aPoints ?? '—', row.aLevel || '—',
+    formatExamMarks(row.bMarks, row.bOutOf), row.bPoints ?? '—', row.bLevel || '—',
+    signed(row.diff),
+  ]);
+  addTable(doc, ['Learner', 'Stream', 'Learning Area', `${data.sideA.examLabel} Marks`, 'Pts', 'Level', `${data.sideB.examLabel} Marks`, 'Pts', 'Level', 'Change %'], learnerSubjectRows, 28, fontSize, true);
+
+  nextPage(doc, 'COMPARE EXAMS — SECTION 5: SUBJECT PERFORMANCE', subtitle);
   const subjectRows = data.sideA.subjects.map((subject) => {
     const av = data.sideA.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null);
     const bv = data.sideB.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null);
     const a = mean(av); const b = mean(bv);
-    return [subject, a == null ? '—' : `${a.toFixed(1)} (${gradeLabel(a, data.classData)})`, b == null ? '—' : `${b.toFixed(1)} (${gradeLabel(b, data.classData)})`, signed(a != null && b != null ? b - a : null)];
+    const metric = (value: number | null) => value == null
+      ? '—'
+      : `${value.toFixed(1)}% · ${gradePointsMaxForClass(data.classData) > 0 ? `${gradePointsForClass(value, data.classData)} pts` : '—'} · ${gradeLabel(value, data.classData)}`;
+    return [subject, metric(a), metric(b), signed(a != null && b != null ? b - a : null)];
   });
-  addTable(doc, ['Learning Area', data.sideA.examLabel + ' Mean (Grade)', data.sideB.examLabel + ' Mean (Grade)', 'Change'], subjectRows, 28, fontSize, true);
+  addTable(doc, ['Learning Area', data.sideA.examLabel + ' Mean · Points · Level', data.sideB.examLabel + ' Mean · Points · Level', 'Change'], subjectRows, 28, fontSize, true);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 5: SUBJECT GRADES', subtitle);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 6: SUBJECT GRADES', subtitle);
   const subjectGradeRows: any[][] = [];
   data.sideA.subjects.forEach((subject) => data.gradeLabels.forEach((grade) => {
     const countFor = (side: ComparisonSide) => side.learners.filter((learner) => learner.subjects[subject] != null && gradeLabel(learner.subjects[subject], data.classData) === grade).length;
@@ -244,7 +292,7 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   }));
   addTable(doc, ['Learning Area', 'Grade', data.sideA.examLabel + ' Count', data.sideB.examLabel + ' Count', 'Change'], subjectGradeRows, 28, fontSize, true);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 6: LEARNER DEVIATION', subtitle);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 7: LEARNER DEVIATION', subtitle);
   const learnerIds = Array.from(new Set([...data.sideA.learners, ...data.sideB.learners].map((learner) => learner.student_id)));
   const learnerRows = learnerIds.map((id) => {
     const a = data.sideA.learners.find((learner) => learner.student_id === id);
@@ -260,7 +308,7 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   });
   addTable(doc, ['Learner', 'Stream', `${data.sideA.examLabel} Total`, `${data.sideA.examLabel} Points`, `${data.sideA.examLabel} Grade`, `${data.sideB.examLabel} Total`, `${data.sideB.examLabel} Points`, `${data.sideB.examLabel} Grade`, 'Dev (Marks)', 'Dev (Points)'], learnerRows, 28, fontSize, [8, 9]);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 7: STREAM PERFORMANCE', subtitle);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 8: STREAM PERFORMANCE', subtitle);
   const streams = data.streamLabels.map((stream) => {
     const a = mean(data.sideA.learners.filter((learner) => learner.stream === stream).map((learner) => learner.total));
     const b = mean(data.sideB.learners.filter((learner) => learner.stream === stream).map((learner) => learner.total));
@@ -270,7 +318,7 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   });
   addTable(doc, ['Stream', data.sideA.examLabel + ' Mean', data.sideA.examLabel + ' Grade', data.sideB.examLabel + ' Mean', data.sideB.examLabel + ' Grade', 'Change'], streams, 28, fontSize, true);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 8: TOTAL MEAN MARKS', subtitle);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 9: TOTAL MEAN MARKS', subtitle);
   const meanA = mean(data.sideA.learners.map((learner) => learner.total));
   const meanB = mean(data.sideB.learners.map((learner) => learner.total));
   const diff = meanA != null && meanB != null ? meanB - meanA : null;
@@ -280,11 +328,24 @@ export async function generateComparisonPdf(data: ComparisonData, schoolInfo: Sc
   doc.text(`${data.sideB.examLabel} Total Mean Marks: ${meanB?.toFixed(1) || '—'} / ${data.sideB.outOf}`, 20, 60);
   doc.setTextColor(...changeColor(diff)); doc.text(`Deviation: ${signed(diff)}`, 20, 75); doc.text(`Percent Change: ${signed(pct)}%`, 20, 90); doc.setTextColor(0, 0, 0);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 9: TOP 10 LISTINGS', subtitle);
-  addTable(doc, ['POS', data.sideA.examLabel, 'Stream', 'Total Marks', 'Mean %', 'Mean Grade', 'Total Points'], data.sideA.learners.slice(0, 10).map((learner, i) => [i + 1, learner.name, learner.stream, learner.total.toFixed(0), learner.average.toFixed(1), learner.grade, learner.totalPoints]), 28, fontSize);
-  addTable(doc, ['POS', data.sideB.examLabel, 'Stream', 'Total Marks', 'Mean %', 'Mean Grade', 'Total Points'], data.sideB.learners.slice(0, 10).map((learner, i) => [i + 1, learner.name, learner.stream, learner.total.toFixed(0), learner.average.toFixed(1), learner.grade, learner.totalPoints]), 145, fontSize);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 10: TOP 10 LISTINGS', subtitle);
+  const hasKnecSelection = data.sideA.learners.some((learner) => learner.rankingSubjects.length > 0)
+    || data.sideB.learners.some((learner) => learner.rankingSubjects.length > 0);
+  const rankedLearnerRows = (side: ComparisonSide) => side.learners.slice(0, 10).map((learner, i) => [
+    i + 1,
+    learner.name,
+    learner.stream,
+    learner.rankingTotalMarks.toFixed(0),
+    learner.average.toFixed(1),
+    learner.grade,
+    learner.rankingTotalPoints,
+    ...(hasKnecSelection ? [learner.rankingSubjects.join(', ') || '—'] : []),
+  ]);
+  const rankingHeaders = ['POS', 'Learner', 'Stream', 'Rank Marks', 'Mean %', 'Mean Grade', 'Rank Points', ...(hasKnecSelection ? ['KNEC 7 Subjects'] : [])];
+  addTable(doc, rankingHeaders, rankedLearnerRows(data.sideA), 28, fontSize);
+  addTable(doc, rankingHeaders, rankedLearnerRows(data.sideB), 145, fontSize);
 
-  nextPage(doc, 'COMPARE EXAMS — SECTION 10: SUBJECT GRADE MEANS', subtitle);
+  nextPage(doc, 'COMPARE EXAMS — SECTION 11: SUBJECT GRADE MEANS', subtitle);
   const gradeMeanRows: any[][] = [];
   data.sideA.subjects.forEach((subject) => data.gradeLabels.forEach((grade) => {
     const valuesFor = (side: ComparisonSide) => side.learners.map((learner) => learner.subjects[subject]).filter((value) => value != null && gradeLabel(value, data.classData) === grade);

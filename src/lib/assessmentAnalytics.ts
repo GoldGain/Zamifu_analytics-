@@ -20,6 +20,9 @@ export type AssessmentLearnerSummary = {
   count: number;
   avgPct: number;
   totalPoints: number;
+  rankingTotalMarks?: number;
+  rankingTotalPoints?: number;
+  rankingSubjects?: string[];
   gender: string | null;
   examName: string;
   position: number;
@@ -92,8 +95,9 @@ export function requiredLearningAreaCount(classObj: any, rawResults: any[], addi
 export function buildAssessmentLearnerSummaries(rawResults: any[], classObj: any): AssessmentLearnerSummary[] {
   const band: SchoolLevelBand = getSchoolLevelBand(classObj);
   // Shared aggregation (also used by the student/parent portals and report
-  // cards) so every surface ranks the same totals, then the shared rule orders
-  // them: total marks first, then the level-specific tie-breaker.
+  // cards) so every surface ranks the same totals. Junior/Senior use points
+  // first and marks as tie-break; Primary remains marks-only. Form 3/4 carries
+  // its KNEC seven-subject ranking metrics through this same path.
   const summaries = aggregateLearnerTotals(rawResults, classObj).map((entry) => {
     const grade = calculateGradeForClass(entry.avgPct, classObj);
     return {

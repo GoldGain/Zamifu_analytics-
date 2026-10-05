@@ -5,16 +5,15 @@ import { createScopedUser } from '@/lib/supabase/createUser';
 import { deleteScopedUser, syncParentAccounts } from '@/lib/supabase/accountActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudents } from '@/hooks/useSupabaseData';
-import { Search, Plus, Loader2, Filter, Camera, Pencil, Trash2, X, ArrowUpDown, ChevronUp, ChevronDown, Users, Download, ChevronUp as ChevronUpIcon } from 'lucide-react';
+import { Search, Plus, Loader2, Filter, Camera, Pencil, Trash2, X, ArrowUpDown, ChevronUp, ChevronDown, Users, Printer, ChevronUp as ChevronUpIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { sendSMS, generateWelcomeSMS } from '@/lib/sms';
 import type { GenderType } from '@/types/database';
 import PromoteStudentModal from '@/components/PromoteStudentModal';
 import PhotoUpload from '@/components/PhotoUpload';
 import { useTrial } from '@/contexts/TrialContext';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { formatClassStream } from '@/lib/class-label';
+import { curriculumCohortKey } from '@/lib/grading';
 
 type SortField = 'name' | 'admission_number' | 'assessment_number' | 'class' | 'gender';
 type SortDir = 'asc' | 'desc';
@@ -43,6 +42,10 @@ export default function SchoolAdminStudents() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedLevel, setSelectedLevel] = useState<string>('');
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
+  const [selectedMoveIds, setSelectedMoveIds] = useState<string[]>([]);
+  const [moveTargetStreamId, setMoveTargetStreamId] = useState('');
+  const [showMoveConfirmation, setShowMoveConfirmation] = useState(false);
+  const [movingLearners, setMovingLearners] = useState(false);
 
   const defaultForm = {
     admission_number: '',
@@ -108,7 +111,7 @@ export default function SchoolAdminStudents() {
       if (!user?.schoolId) return;
       const { data } = await supabase
         .from('classes')
-        .select('id, name, stream, stream_name')
+        .select('id, name, stream, stream_name, grade_level, level, curriculum, is_active')
         .eq('school_id', user.schoolId)
         .order('name', { ascending: true });
       setClasses(data || []);
@@ -400,7 +403,7 @@ export default function SchoolAdminStudents() {
       const matchesSearch = 
         (s.first_name + ' ' + (s.middle_name || '') + ' ' + s.last_name).toLowerCase().includes(search.toLowerCase()) ||
         [s.admission_number, s.assessment_number].filter(Boolean).some((value: string) => value.toLowerCase().includes(search.toLowerCase()));
-      const matchesClass = filterClassId ? s.class_id === filterClassId : true;
+      const matchesClass = filterClassId ? (s.stream_id || s.class_id) === filterClassId : true;
       return matchesSearch && matchesClass;
     })
     .sort((a: any, b: any) => {
@@ -451,6 +454,71 @@ export default function SchoolAdminStudents() {
 
   const uniqueLevels = Array.from(new Set(classGroups.map(g => g.level).filter(l => l !== null))).sort((a, b) => (a as number) - (b as number));
 
+  const classForLearner = (learner: any) =>
+    classes.find((classItem: any) => classItem.id === learner?.stream_id)
+    || classes.find((classItem: any) => classItem.id === learner?.class_id);
+  const selectedMoveStudents = students.filter((learner: any) => selectedMoveIds.includes(learner.id));
+  const selectedMoveGradeKey = selectedMoveStudents.length
+    ? curriculumCohortKey(classForLearner(selectedMoveStudents[0]))
+    : null;
+  const moveTargetStreams = selectedMoveGradeKey
+    ? classes.filter((classItem: any) => classItem.is_active !== false && curriculumCohortKey(classItem) === selectedMoveGradeKey)
+    : [];
+  const moveTargetClass = classes.find((classItem: any) => classItem.id === moveTargetStreamId && classItem.is_active !== false);
+
+  const toggleMoveLearner = (learner: any) => {
+    const learnerClass = classForLearner(learner);
+    if (!learnerClass) {
+      toast.error('This learner has no assigned class/stream. Assign a class before moving streams.');
+      return;
+    }
+    if (selectedMoveIds.includes(learner.id)) {
+      setSelectedMoveIds((current) => current.filter((id) => id !== learner.id));
+      return;
+    }
+    if (selectedMoveGradeKey && curriculumCohortKey(learnerClass) !== selectedMoveGradeKey) {
+      toast.error('Select learners from the same grade only.');
+      return;
+    }
+    setSelectedMoveIds((current) => [...current, learner.id]);
+  };
+
+  const confirmMoveLearners = async () => {
+    if (!user?.schoolId || !moveTargetClass || selectedMoveStudents.length === 0) return;
+    const sameGrade = selectedMoveStudents.every((learner: any) => {
+      const source = classForLearner(learner);
+      return source && curriculumCohortKey(source) === curriculumCohortKey(moveTargetClass);
+    });
+    if (!sameGrade) {
+      toast.error('A learner can only be moved to a stream in the same grade.');
+      setShowMoveConfirmation(false);
+      return;
+    }
+    setMovingLearners(true);
+    try {
+      const { data, error } = await supabaseUntyped
+        .from('students')
+        .update({ stream_id: moveTargetClass.id })
+        .eq('school_id', user.schoolId)
+        .in('id', selectedMoveIds)
+        .select('id');
+      if (error) throw error;
+      if ((data || []).length !== selectedMoveIds.length) {
+        throw new Error('Not all selected learners were updated. Check access and retry; no grade changes were made.');
+      }
+      await refetch();
+      setExpandedClass(moveTargetClass.id);
+      setSelectedMoveIds([]);
+      setMoveTargetStreamId('');
+      setShowMoveConfirmation(false);
+      toast.success(`Moved ${data.length} learner${data.length === 1 ? '' : 's'} to ${formatClassStream(moveTargetClass)}.`);
+    } catch (error: any) {
+      toast.error(error.message || 'Could not move learners to the selected stream.');
+    } finally {
+      setMovingLearners(false);
+    }
+  };
+
   const filteredGroups = classGroups.filter((group: ClassGroup) => {
     if (selectedLevel && String(group.level) !== selectedLevel) return false;
     return true;
@@ -461,24 +529,6 @@ export default function SchoolAdminStudents() {
   const totalGirls = students.filter((s: any) => s.gender?.toLowerCase() === 'female').length;
 
   const handlePrint = () => window.print();
-
-  const downloadClassList = () => {
-    if (!filterClassId) { toast.info('Select a class first to download its learner list.'); return; }
-    const selectedClass = classes.find((item: any) => item.id === filterClassId);
-    const rows = students.filter((student: any) => student.class_id === filterClassId);
-    if (!selectedClass || rows.length === 0) { toast.info('No learners found in the selected class.'); return; }
-    const doc = new jsPDF();
-    doc.setFontSize(16); doc.text(`${formatClassStream(selectedClass)} - Learner List`, 14, 16);
-    doc.setFontSize(11); doc.text(`Generated ${new Date().toLocaleDateString()}`, 14, 24);
-    autoTable(doc, {
-      startY: 32,
-      head: [['#', 'Admission No.', 'Assessment No.', 'Learner Name', 'Gender', 'Parent', 'Parent Phone']],
-      body: rows.map((student: any, index: number) => [index + 1, student.admission_number || '-', student.assessment_number || '-', `${student.first_name} ${student.middle_name || ''} ${student.last_name}`.replace(/\s+/g, ' ').trim(), student.gender || '-', student.parent_name || '-', student.parent_phone || '-']),
-      styles: { fontSize: 8 }, headStyles: { fillColor: [37, 99, 235] },
-    });
-    doc.save(`learner_list_${classLabelFilename(selectedClass)}.pdf`);
-    toast.success(`Downloaded all ${rows.length} learners in ${formatClassStream(selectedClass)}.`);
-  };
 
   // If trial is expired, show payment lock
   if (trialStatus?.isExpired) {
@@ -542,9 +592,6 @@ export default function SchoolAdminStudents() {
             ))}
           </select>
         </div>
-        <button type="button" onClick={downloadClassList} disabled={!filterClassId} className="inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-2xl text-sm font-medium disabled:opacity-50">
-          <Download className="w-4 h-4" /> Download Class PDF
-        </button>
       </div>
 
       {showAdd && (
@@ -781,9 +828,31 @@ export default function SchoolAdminStudents() {
               onClick={handlePrint}
               className="flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-3 rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors"
             >
-              <Download className="w-4 h-4" /> Print
+              <Printer className="w-4 h-4" /> Print
             </button>
           </div>
+
+          {selectedMoveIds.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-indigo-950">{selectedMoveIds.length} learner{selectedMoveIds.length === 1 ? '' : 's'} selected</p>
+                <p className="mt-1 text-xs text-indigo-800">Move only within the same grade; the learner's grade/class assignment will not be changed.</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={moveTargetStreamId}
+                  onChange={(event) => setMoveTargetStreamId(event.target.value)}
+                  className="min-w-48 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm"
+                  aria-label="Choose destination stream"
+                >
+                  <option value="">Choose destination stream</option>
+                  {moveTargetStreams.map((stream: any) => <option key={stream.id} value={stream.id}>{formatClassStream(stream)}</option>)}
+                </select>
+                <button type="button" onClick={() => setShowMoveConfirmation(true)} disabled={!moveTargetClass || movingLearners} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Move learners</button>
+                <button type="button" onClick={() => { setSelectedMoveIds([]); setMoveTargetStreamId(''); }} className="rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-900">Clear</button>
+              </div>
+            </div>
+          )}
 
           {/* Class Groups */}
           {loading ? (
@@ -838,6 +907,7 @@ export default function SchoolAdminStudents() {
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b bg-gray-50">
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Move</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">#</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Admission #</th>
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Assessment #</th>
@@ -849,10 +919,20 @@ export default function SchoolAdminStudents() {
                           </thead>
                           <tbody>
                             {group.students.length === 0 ? (
-                              <tr><td colSpan={7} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
+                              <tr><td colSpan={8} className="text-center py-4 text-gray-500">No learners in this class</td></tr>
                             ) : (
                               group.students.map((student: any, idx: number) => (
                                 <tr key={student.id} className="border-b hover:bg-gray-50">
+                                  <td className="px-4 py-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedMoveIds.includes(student.id)}
+                                      disabled={!classForLearner(student) || Boolean(selectedMoveGradeKey && curriculumCohortKey(classForLearner(student)) !== selectedMoveGradeKey)}
+                                      onChange={() => toggleMoveLearner(student)}
+                                      aria-label={`Select ${student.first_name} ${student.last_name} for a stream move`}
+                                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                  </td>
                                   <td className="px-4 py-3 text-gray-500">{idx + 1}</td>
                                   <td className="px-4 py-3 text-gray-600">{student.admission_number || '-'}</td>
                                   <td className="px-4 py-3 text-gray-600">{student.assessment_number || '-'}</td>
@@ -878,6 +958,23 @@ export default function SchoolAdminStudents() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {showMoveConfirmation && moveTargetClass && selectedMoveStudents.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="move-learners-title">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 id="move-learners-title" className="text-lg font-semibold text-gray-900">Confirm stream move</h2>
+            <p className="mt-3 text-sm text-gray-700">Move {selectedMoveStudents.length} learner{selectedMoveStudents.length === 1 ? '' : 's'} to {formatClassStream(moveTargetClass)}?</p>
+            <p className="mt-2 text-xs text-gray-500">This updates only stream assignment for learners in the same grade. Their grade and historical marks are not changed.</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowMoveConfirmation(false)} disabled={movingLearners} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700">Cancel</button>
+              <button type="button" onClick={() => void confirmMoveLearners()} disabled={movingLearners} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {movingLearners && <Loader2 className="h-4 w-4 animate-spin" />}
+                {movingLearners ? 'Moving…' : 'Confirm move'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

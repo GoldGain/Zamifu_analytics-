@@ -4,14 +4,14 @@ import { sendSMS } from '@/lib/sms';
 import { useAuth } from '@/contexts/AuthContext';
 import { CreditCard, Plus, Loader2, CheckCircle, Clock, AlertTriangle, Download, FileText, Trash2, Pencil, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { sortByAdmissionNumber } from '@/lib/student-order';
 import { formatClassStream } from '@/lib/class-label';
+import { calculateReceiptBalance, downloadFeeReceiptPdf } from '@/lib/feeReceiptPdf';
 
 export default function FeeWorkspace() {
   const { user, schoolData } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [receiptInvoices, setReceiptInvoices] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
@@ -62,9 +62,9 @@ export default function FeeWorkspace() {
     const schoolId = user?.schoolId;
     if (!schoolId) { setLoading(false); return; }
 
-    const [{ data: inv }, { data: paymentRows }, { data: stds }, { data: cls }, { data: trms }, { data: fs }] = await Promise.all([
+    const [{ data: inv }, { data: paymentRows }, { data: stds }, { data: cls }, { data: trms }, { data: fs }, { data: receiptInv }] = await Promise.all([
       supabaseUntyped.from('fee_invoices')
-        .select('*, students(first_name, last_name, admission_number, assessment_number, class_id), terms(name, academic_year)')
+        .select('*, students(first_name, last_name, admission_number, assessment_number, class_id, stream_id), terms(name, academic_year)')
         .eq('school_id', schoolId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false }),
@@ -72,15 +72,18 @@ export default function FeeWorkspace() {
         .select('id, invoice_id, student_id, amount, payment_method, mpesa_reference, receipt_number, payment_date, notes')
         .eq('school_id', schoolId),
       supabaseUntyped.from('students')
-        .select('id, first_name, last_name, admission_number, assessment_number, class_id, parent_name, parent_phone, parent2_name, parent2_phone')
+        .select('id, first_name, last_name, admission_number, assessment_number, class_id, stream_id, parent_name, parent_phone, parent2_name, parent2_phone')
         .eq('school_id', schoolId).eq('is_active', true),
       supabaseUntyped.from('classes')
-        .select('id, name, stream, stream_name, level').eq('school_id', schoolId).order('level'),
+        .select('id, name, stream, stream_name, level, grade_level, curriculum').eq('school_id', schoolId).order('level'),
       supabaseUntyped.from('terms')
         .select('id, name, academic_year').eq('school_id', schoolId).order('academic_year', { ascending: false }),
       supabaseUntyped.from('fee_structures')
         .select('*, classes(name, stream, stream_name), terms(name, academic_year)')
         .eq('school_id', schoolId).order('created_at', { ascending: false }),
+      supabaseUntyped.from('fee_invoices')
+        .select('id, student_id, total_amount, academic_year, term_id, students(first_name, last_name, admission_number, assessment_number, class_id, stream_id), terms(name, academic_year)')
+        .eq('school_id', schoolId),
     ]);
 
     const paymentsByInvoice = new Map<string, number>();
@@ -97,6 +100,7 @@ export default function FeeWorkspace() {
     });
 
     setInvoices(reconciledInvoices);
+    setReceiptInvoices(receiptInv || []);
     setPayments(paymentRows || []);
     setStudents(stds || []);
     setClasses(cls || []);
@@ -130,16 +134,49 @@ export default function FeeWorkspace() {
     .sort((a: any, b: any) => compareLearners(a.students, b.students));
 
   const studentById = new Map(students.map((student: any) => [student.id, student]));
-  const invoiceById = new Map(invoices.map((invoice: any) => [invoice.id, invoice]));
+  const invoiceById = new Map(receiptInvoices.map((invoice: any) => [invoice.id, invoice]));
   const filteredPaymentRows = payments
     .map((payment: any) => ({
       ...payment,
       student: studentById.get(payment.student_id) || invoiceById.get(payment.invoice_id)?.students,
       invoice: invoiceById.get(payment.invoice_id),
     }))
-    .filter((payment: any) => !selectedInvoiceClass || payment.student?.class_id === selectedInvoiceClass)
+    .filter((payment: any) => !selectedInvoiceClass || (payment.student?.stream_id || payment.student?.class_id) === selectedInvoiceClass)
     .filter((payment: any) => matchesFeeSearch(payment.student))
     .sort((a: any, b: any) => compareLearners(a.student, b.student) || String(b.payment_date || '').localeCompare(String(a.payment_date || '')));
+
+  const issueFeeReceipt = (payment: any, invoice: any, student: any, relatedPayments: any[] = payments) => {
+    if (!student) {
+      toast.error('Learner details are unavailable for this payment receipt.');
+      return;
+    }
+    const classData = classes.find((classItem: any) => classItem.id === student.stream_id)
+      || classes.find((classItem: any) => classItem.id === student.class_id);
+    const balance = calculateReceiptBalance(payment, Number(invoice?.total_amount || 0), relatedPayments);
+    const term = invoice?.terms || terms.find((termItem: any) => termItem.id === invoice?.term_id);
+    downloadFeeReceiptPdf({
+      schoolName: schoolData?.name,
+      learnerName: `${student.first_name || ''} ${student.last_name || ''}`.trim(),
+      admissionNumber: student.admission_number,
+      className: classData ? formatClassStream(classData) : '—',
+      termName: term?.name,
+      academicYear: term?.academic_year || invoice?.academic_year,
+      amountPaid: Number(payment.amount || 0),
+      paymentDate: payment.payment_date || payment.created_at,
+      receiptNumber: payment.receipt_number || `RCP-${String(payment.id || '').slice(0, 8)}`,
+      paymentMethod: payment.payment_method,
+      reference: payment.mpesa_reference || payment.bank_reference || payment.reference || payment.notes,
+      previousBalance: balance.previousBalance,
+      newBalance: balance.newBalance,
+    });
+  };
+
+  const downloadHistoricalReceipt = (payment: any) => {
+    const invoice = invoiceById.get(payment.invoice_id) || payment.invoice;
+    const student = payment.student || invoice?.students || studentById.get(payment.student_id);
+    const relatedPayments = payments.filter((row: any) => row.invoice_id === payment.invoice_id);
+    issueFeeReceipt(payment, invoice, student, relatedPayments);
+  };
 
   const invoiceStudents = students
     .filter((student: any) => !invoiceClassFilter || student.class_id === invoiceClassFilter)
@@ -499,7 +536,7 @@ export default function FeeWorkspace() {
       const receiptNumber = `RCP-${Date.now()}`;
 
       // Insert payment
-      const { error: payErr } = await supabaseUntyped.from('fee_payments').insert([{
+      const { data: recordedPayment, error: payErr } = await supabaseUntyped.from('fee_payments').insert([{
         student_id: paymentData.student_id,
         invoice_id: invoiceId,
         school_id: schoolId,
@@ -510,12 +547,12 @@ export default function FeeWorkspace() {
         payment_date: new Date().toISOString(),
         recorded_by: user?.id,
         notes: paymentData.notes || null,
-      }]);
+      }]).select('id, invoice_id, student_id, amount, payment_method, mpesa_reference, receipt_number, payment_date').single();
       if (payErr) throw payErr;
 
             // `balance` is a generated column (total_amount - amount_paid); update only its inputs.
-      const currentPaid = (invoice?.amount_paid || 0) + amount;
-      const currentTotal = invoice?.total_amount || amount;
+      const currentPaid = Number(invoice?.amount_paid || 0) + amount;
+      const currentTotal = Number(invoice?.total_amount || amount);
       const newBalance = Math.max(0, currentTotal - currentPaid);
       const newStatus = newBalance <= 0 ? 'paid' : currentPaid > 0 ? 'partial' : 'unpaid';
       const { error: invoiceUpdateError } = await supabaseUntyped.from('fee_invoices').update({
@@ -525,7 +562,11 @@ export default function FeeWorkspace() {
       if (invoiceUpdateError) throw invoiceUpdateError;
 
       toast.success(`✅ Payment of Ksh ${amount.toLocaleString()} recorded! Receipt: ${receiptNumber}`);
-      generateReceipt(paymentData.student_id, amount, paymentData.payment_method, paymentData.mpesa_reference, receiptNumber);
+      const student = students.find((item: any) => item.id === paymentData.student_id);
+      const term = invoice?.terms || terms.find((item: any) => item.id === invoice?.term_id);
+      const receiptInvoice = { ...invoice, total_amount: currentTotal, terms: term };
+      const priorPayments = payments.filter((item: any) => item.invoice_id === invoiceId);
+      issueFeeReceipt(recordedPayment, receiptInvoice, student, [...priorPayments, recordedPayment]);
       setShowRecord(false);
       setPaymentData({ student_id: '', invoice_id: '', amount: '', payment_method: 'cash', mpesa_reference: '', notes: '' });
       fetchData();
@@ -533,40 +574,6 @@ export default function FeeWorkspace() {
       toast.error('Failed to record payment: ' + err.message);
     }
     setRecording(false);
-  };
-
-  const generateReceipt = (studentId: string, amount: number, method: string, ref: string, receiptNum: string) => {
-    const student = students.find(s => s.id === studentId);
-    if (!student) return;
-    const doc = new jsPDF();
-    doc.setFillColor(37, 99, 235);
-    doc.rect(0, 0, 210, 35, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text(schoolData?.name || 'School', 105, 15, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('OFFICIAL PAYMENT RECEIPT', 105, 25, { align: 'center' });
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Receipt No: ${receiptNum}`, 14, 50);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 140, 50);
-    doc.text(`Student: ${student.first_name} ${student.last_name}`, 14, 62);
-    doc.text(`Admission No: ${student.admission_number}`, 14, 72);
-    doc.text(`Amount Paid: Ksh ${amount.toLocaleString()}`, 14, 82);
-    doc.text(`Payment Method: ${method.toUpperCase()}`, 14, 92);
-    if (ref) doc.text(`Reference: ${ref}`, 14, 102);
-    doc.setFillColor(240, 253, 244);
-    doc.rect(14, 115, 182, 20, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(22, 163, 74);
-    doc.text('PAYMENT CONFIRMED', 105, 128, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text('Zamifu Analytics School Management System | Thank you for your payment', 105, 280, { align: 'center' });
-    doc.save(`receipt_${student.admission_number}_${Date.now()}.pdf`);
   };
 
   const statusIcon = (status: string) => {
@@ -850,7 +857,7 @@ export default function FeeWorkspace() {
                     <td className="px-6 py-4 text-sm font-semibold text-green-600">Ksh {Number(payment.amount || 0).toLocaleString()}</td>
                     <td className="px-6 py-4 text-sm capitalize">{payment.payment_method || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '-'}</td>
-                    <td className="px-6 py-4"><button type="button" onClick={() => openEditPayment(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Pencil className="w-3.5 h-3.5" /> Edit</button></td>
+                    <td className="px-6 py-4"><div className="flex items-center gap-2"><button type="button" onClick={() => downloadHistoricalReceipt(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"><Download className="w-3.5 h-3.5" /> Receipt</button><button type="button" onClick={() => openEditPayment(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Pencil className="w-3.5 h-3.5" /> Edit</button></div></td>
                   </tr>
                 ))}
               </tbody>

@@ -258,10 +258,12 @@ export default function Assessments() {
     try {
       const ordered = [...exams].sort((a, b) => (Number(a.sequence_order || 999999) - Number(b.sequence_order || 999999)) || a.name.localeCompare(b.name));
       const results = await Promise.all(ordered.map((exam, index) =>
-        (supabase as any).from('school_exams').update({ sequence_order: index + 1 }).eq('id', exam.id).eq('school_id', user?.schoolId)
+        (supabase as any).from('school_exams').update({ sequence_order: index + 1 }).eq('id', exam.id).eq('school_id', user?.schoolId).select('id, sequence_order').maybeSingle()
       ));
       const failed = results.find((result: any) => result.error);
       if (failed?.error) throw failed.error;
+      const notPersisted = results.find((result: any, index: number) => !result.data || Number(result.data.sequence_order) !== index + 1);
+      if (notPersisted) throw new Error('The updated order was not returned by the database. Check the sequence_order migration and your school access, then retry.');
       toast.success('Assessment order saved.');
       setArranging(false);
       await fetchData();

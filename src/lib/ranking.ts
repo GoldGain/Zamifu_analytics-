@@ -6,12 +6,10 @@
  * Top-10 lists, teacher upload previews, stream dashboards) must come from
  * this module so the same learner always shows the same rank.
  *
- * RULE — PRIMARY SORT: TOTAL MARKS (descending).
+ * RULE — Junior/Senior: TOTAL POINTS first, TOTAL MARKS as tie-break.
  *
- * TIE-BREAKER (Junior/Senior School — Grades 7-12, points exist):
- *   1. Higher TOTAL POINTS wins.
- *   2. If total marks AND total points are identical, the learners share the
- *      same rank and the following rank is skipped (1, 1, 3).
+ * EXACT TIE (Junior/Senior): same total points AND total marks share the same
+ *   rank, and the following rank is skipped (1, 1, 3).
  *
  * TIE-BREAKER (Primary/Pre-Primary — no CBE points):
  *   1. Learners with identical total marks share the same rank and the next
@@ -20,10 +18,12 @@
 
 export type RankingBand = 'primary' | 'junior' | 'senior';
 
-/** A rankable entry: total marks are the primary metric. */
+/** A rankable entry. Form 3/4 may provide KNEC seven-subject metrics. */
 export interface RankableEntry {
   totalMarks?: number | null;
   totalPoints?: number | null;
+  rankingTotalMarks?: number | null;
+  rankingTotalPoints?: number | null;
   totalPct?: number | null;
   avgPct?: number | null;
   [key: string]: unknown;
@@ -34,15 +34,17 @@ const num = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/** Total marks used for ranking: marks first, then summed percentages. */
+/** Total marks used for ranking; Form 3/4 may rank on its selected seven. */
 export function rankingMarks(entry: RankableEntry): number {
+  if (entry?.rankingTotalMarks !== null && entry?.rankingTotalMarks !== undefined) return num(entry.rankingTotalMarks);
   if (entry?.totalMarks !== null && entry?.totalMarks !== undefined) return num(entry.totalMarks);
   if (entry?.totalPct !== null && entry?.totalPct !== undefined) return num(entry.totalPct);
   return 0;
 }
 
-/** Total CBE points used only as a Junior/Senior tie-breaker. */
+/** Total points used as the primary Junior/Senior ranking metric. */
 export function rankingPoints(entry: RankableEntry): number {
+  if (entry?.rankingTotalPoints !== null && entry?.rankingTotalPoints !== undefined) return num(entry.rankingTotalPoints);
   return num(entry?.totalPoints);
 }
 
@@ -59,20 +61,20 @@ function rankingTiebreakLabel(entry: any): string {
 }
 
 /**
- * Comparator implementing the unified rule. Junior/Senior compare total points
- * before declaring a tie; Primary declares a tie on equal marks.
+ * Comparator implementing the unified rule. Junior/Senior compare points,
+ * then marks; Primary compares marks only.
  */
 export function compareByUnifiedRanking(
   a: RankableEntry,
   b: RankableEntry,
   band: RankingBand | string | null | undefined = 'junior',
 ): number {
-  const marksDiff = rankingMarks(b) - rankingMarks(a);
-  if (marksDiff !== 0) return marksDiff;
   if (band === 'junior' || band === 'senior') {
     const pointsDiff = rankingPoints(b) - rankingPoints(a);
     if (pointsDiff !== 0) return pointsDiff;
   }
+  const marksDiff = rankingMarks(b) - rankingMarks(a);
+  if (marksDiff !== 0) return marksDiff;
   const avgDiff = num(b?.avgPct ?? b?.totalPct) - num(a?.avgPct ?? a?.totalPct);
   if (avgDiff !== 0) return avgDiff;
   // Final tie-break is by student id / name so the ORDER is deterministic even
@@ -85,7 +87,7 @@ export function compareByUnifiedRanking(
 /**
  * Competition ranking (1, 2, 2, 4). Two learners are "tied" only when the
  * metrics that the rule considers are identical — total marks for Primary,
- * total marks AND total points for Junior/Senior.
+ * total points AND total marks for Junior/Senior.
  */
 export function assignCompetitionRanks<T extends RankableEntry>(
   entries: T[],
@@ -98,8 +100,8 @@ export function assignCompetitionRanks<T extends RankableEntry>(
   return entries.map((entry, index) => {
     let rank = index + 1;
     if (previous) {
-      const sameMarks = rankingMarks(previous) === rankingMarks(entry);
       const samePoints = rankingPoints(previous) === rankingPoints(entry);
+      const sameMarks = rankingMarks(previous) === rankingMarks(entry);
       if (sameMarks && (!isJunior || samePoints)) rank = previousRank;
     }
     previous = entry;

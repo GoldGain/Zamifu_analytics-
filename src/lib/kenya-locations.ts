@@ -105,7 +105,7 @@ export const SCHOOL_LEVELS = [
   { value: 'primary', label: 'Primary School (PP1–Grade 6)' },
   { value: 'junior', label: 'Junior School (Grade 7–9)' },
   { value: 'primary_junior', label: 'Primary + Junior School' },
-  { value: 'senior', label: 'Senior School (Grade 10–12)' },
+  { value: 'senior', label: 'Senior School / 8-4-4 Form 3 and Form 4' },
   { value: 'all_through', label: 'All-through (Primary to Senior)' },
 ] as const;
 
@@ -115,4 +115,3 @@ export function subCountiesFor(county?: string): string[] {
   if (!county) return [];
   return KENYA_SUB_COUNTIES[county] || [];
 }
-
