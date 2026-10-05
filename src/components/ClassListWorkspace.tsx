@@ -162,9 +162,9 @@ export default function ClassListWorkspace({ admin = false }: { admin?: boolean 
     try {
       const { data, error } = await supabaseUntyped
         .from('students')
-        .select('id, first_name, last_name, admission_number, class_id, parent_name, parent_phone')
+        .select('id, first_name, last_name, admission_number, class_id, stream_id, parent_name, parent_phone')
         .eq('school_id', schoolId)
-        .eq('class_id', selectedClass)
+        .or(`class_id.eq.${selectedClass},stream_id.eq.${selectedClass}`)
         .or('status.eq.active,status.is.null')
         .eq('is_active', true);
       if (error) throw error;

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type LearningAreaLevel = 'pre_school' | 'lower_primary' | 'upper_primary' | 'junior' | 'senior';
+type LearningAreaLevel = 'pre_school' | 'lower_primary' | 'upper_primary' | 'junior' | 'senior' | 'senior_844';
 const CATEGORIES = ['Languages', 'Mathematics', 'Sciences', 'Humanities', 'Technical', 'Creative', 'Life Skills'] as const;
 type CategoryType = typeof CATEGORIES[number];
 
@@ -70,9 +70,23 @@ const LEVELS: LevelConfig[] = [
     shortLabel: 'Senior School',
     description: 'Core, elective, and additional KICD learning areas',
   },
+  {
+    key: 'senior_844',
+    label: '8-4-4 Form 3 and Form 4',
+    shortLabel: '8-4-4 Form 3/4',
+    description: 'KNEC 8-4-4 subjects for Form 3 and Form 4 only',
+  },
 ];
 
 const LEVEL_LABELS = Object.fromEntries(LEVELS.map((level) => [level.key, level.label])) as Record<LearningAreaLevel, string>;
+const SENIOR_MATHS_ALTERNATIVES = new Set(['Mathematics A', 'Mathematics B']);
+const EIGHT_FOUR_FOUR_GROUPS = [
+  { title: 'Group 1 — Compulsory', names: ['English', 'Kiswahili / Kenya Sign Language (KSL)', 'Mathematics A', 'Mathematics B'] },
+  { title: 'Group 2 — Sciences', names: ['Biology', 'Physics', 'Chemistry', 'General Science', 'Biological Science'] },
+  { title: 'Group 3 — Humanities', names: ['History and Government', 'Geography', 'CRE', 'IRE', 'HRE'] },
+  { title: 'Group 4 — Technical & Applied Sciences', names: ['Agriculture', 'Home Science', 'Computer Studies', 'Woodwork', 'Metalwork', 'Building Construction', 'Power Mechanics', 'Drawing and Design', 'Aviation Technology', 'Electricity'] },
+  { title: 'Group 5 — Foreign Languages & Other Electives', names: ['French', 'German', 'Arabic', 'Music', 'Art and Design', 'Business Studies'] },
+];
 
 function isLearningAreaLevel(value: unknown): value is LearningAreaLevel {
   return LEVELS.some((level) => level.key === value);
@@ -255,6 +269,29 @@ export default function SchoolAdminSubjects() {
     setBusyKey(null);
   };
 
+  const addAreasFor844Group = async (groupTitle: string, names: string[]) => {
+    if (!schoolId) return;
+    const groupAreas = (areasByLevel.get('senior_844') || []).filter((area) => names.includes(area.name));
+    if (!groupAreas.length) {
+      toast.error(`${groupTitle} is not available in the 8-4-4 catalogue yet.`);
+      return;
+    }
+    const key = `add-group:${groupTitle}`;
+    setBusyKey(key);
+    const { error } = await supabaseUntyped
+      .from('school_learning_areas')
+      .upsert(groupAreas.map((area) => ({ school_id: schoolId, learning_area_id: area.id, is_active: true })), {
+        onConflict: 'school_id,learning_area_id',
+      });
+    if (error) {
+      toast.error(`Could not add ${groupTitle}: ${error.message}`);
+    } else {
+      toast.success(`${groupAreas.length} learning areas in ${groupTitle} are now active for this school.`);
+      await fetchLearningAreas();
+    }
+    setBusyKey(null);
+  };
+
   const addManualLearningArea = async () => {
     if (!schoolId) return;
     const name = manualForm.name.trim();
@@ -287,13 +324,20 @@ export default function SchoolAdminSubjects() {
   const activeLevelAreas = areasByLevel.get(activeLevel) || [];
   const activeCount = activeLevelAreas.filter((area) => activeAreaIds.has(area.id)).length;
   const isSenior = activeLevel === 'senior';
-  const seniorSections = isSenior
+  const is844Senior = activeLevel === 'senior_844';
+  const seniorSections = is844Senior
+    ? EIGHT_FOUR_FOUR_GROUPS.map((group) => ({
+        title: group.title,
+        areas: activeLevelAreas.filter((area) => group.names.includes(area.name)),
+        groupNames: group.names,
+      }))
+    : isSenior
     ? [
-        { title: 'Core subjects', areas: activeLevelAreas.slice(0, 4) },
-        { title: 'Elective subjects', areas: activeLevelAreas.slice(4, 38) },
-        { title: 'Additional learning areas', areas: activeLevelAreas.slice(38) },
+        { title: 'Core subjects', areas: [...activeLevelAreas.slice(0, 4), ...activeLevelAreas.filter((area) => SENIOR_MATHS_ALTERNATIVES.has(area.name))], groupNames: [] as string[] },
+        { title: 'Elective subjects', areas: activeLevelAreas.slice(4, 38).filter((area) => !SENIOR_MATHS_ALTERNATIVES.has(area.name)), groupNames: [] as string[] },
+        { title: 'Additional learning areas', areas: activeLevelAreas.slice(38).filter((area) => !SENIOR_MATHS_ALTERNATIVES.has(area.name)), groupNames: [] as string[] },
       ]
-    : [{ title: `${activeLevelConfig.label} learning areas`, areas: activeLevelAreas }];
+    : [{ title: `${activeLevelConfig.label} learning areas`, areas: activeLevelAreas, groupNames: [] as string[] }];
 
   const renderArea = (area: CatalogArea) => {
     const active = activeAreaIds.has(area.id);
@@ -456,10 +500,27 @@ export default function SchoolAdminSubjects() {
           <div className="space-y-6">
             {seniorSections.map((section) => (
               <div key={section.title}>
-                {isSenior && (
-                  <div className="mb-3 flex items-center gap-2">
+              {isSenior && (
+                <div className="mb-3 flex items-center gap-2">
                     <Check className="h-4 w-4 text-blue-600" aria-hidden="true" />
                     <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{section.title}</h3>
+                </div>
+              )}
+                {is844Senior && (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{section.title}</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void addAreasFor844Group(section.title, section.groupNames || [])}
+                      disabled={loading || busyKey !== null || section.areas.length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {busyKey === `add-group:${section.title}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      Add this group
+                    </button>
                   </div>
                 )}
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">

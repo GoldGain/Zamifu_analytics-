@@ -60,7 +60,7 @@ export interface ReportCardSubjectRow {
   classTotal?: number | null;
   teacherComment?: string | null;
   teacherName?: string | null;
-  assessmentValues?: Record<string, number | null>;
+  assessmentValues?: Record<string, { marks: number; outOf: number; percentage: number } | number | null>;
 }
 
 export interface ReportCardTableOptions {
@@ -973,8 +973,9 @@ export function drawResultsTable(
   const showDeviation = options.showDeviation !== false;
   const assessmentColumns = options.assessmentColumns || [];
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
+  const assessmentCellCount = assessmentColumns.length * 3;
   const tableHead = assessmentColumns.length
-    ? ['No.', 'Learning Area', ...assessmentColumns.map(column => column.label), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+    ? ['No.', 'Learning Area', ...assessmentColumns.flatMap(column => [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\nLevel`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
     : ['No.', 'Learning Area', 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const pct = getPercentage(r);
@@ -986,7 +987,22 @@ export function drawResultsTable(
     const streamPosition = r.streamPosition ? `${r.streamPosition}/${r.streamTotal || '—'}` : '—';
     const row: any[] = [i + 1, subjectName];
     if (assessmentColumns.length) {
-      assessmentColumns.forEach(column => row.push(r.assessmentValues?.[column.id] == null ? '—' : `${Number(r.assessmentValues[column.id]).toFixed(0)}`));
+      assessmentColumns.forEach((column) => {
+        const value = r.assessmentValues?.[column.id];
+        if (value == null) {
+          row.push('—', '—', '—');
+          return;
+        }
+        const metric = typeof value === 'object'
+          ? value
+          : { marks: Number(value), outOf: 100, percentage: Number(value) };
+        const examGrade = calculateGradeForClass(Number(metric.percentage), classData);
+        const examLevel = 'subLevel' in examGrade ? examGrade.subLevel : examGrade.grade;
+        const marksLabel = Number(metric.outOf) === 100
+          ? Number(metric.marks).toFixed(0)
+          : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
+        row.push(marksLabel, pointsMax > 0 ? (examGrade.points ?? '—') : '—', examLevel || '—');
+      });
       row.push(`${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
@@ -1003,11 +1019,12 @@ export function drawResultsTable(
   const totalMarksLabel = `${Math.round(totalMarks)} / ${sorted.length * 100}`;
   const totalPoints = sorted.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
   const totalMarksRow = new Array(tableHead.length).fill('');
-  totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? 2 + assessmentColumns.length : 2] = totalMarksLabel;
+  const averageIndex = 2 + assessmentCellCount;
+  totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? averageIndex : 2] = totalMarksLabel;
   tableBody.push(totalMarksRow);
   if (pointsMax > 0) {
     const totalPointsRow = new Array(tableHead.length).fill('');
-    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? 3 + assessmentColumns.length + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sorted.length * pointsMax}`;
+    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? averageIndex + 1 + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sorted.length * pointsMax}`;
     tableBody.push(totalPointsRow);
   }
   doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
@@ -1018,17 +1035,18 @@ export function drawResultsTable(
   if (assessmentColumns.length) {
     combinedColumnStyles[0] = { cellWidth: 7 };
     combinedColumnStyles[1] = { cellWidth: 23, fontStyle: 'bold', halign: 'left' };
-    assessmentColumns.forEach((_, index) => { combinedColumnStyles[index + 2] = { cellWidth: 12 }; });
-    const averageIndex = 2 + assessmentColumns.length;
-    combinedColumnStyles[averageIndex] = { cellWidth: 14 };
-    let nextIndex = averageIndex + 1;
-    if (showDeviation) { combinedColumnStyles[nextIndex] = { cellWidth: 14 }; nextIndex += 1; }
-    if (!isPrimary) { combinedColumnStyles[nextIndex] = { cellWidth: 12 }; nextIndex += 1; }
-    combinedColumnStyles[nextIndex] = { cellWidth: 15 }; nextIndex += 1;
-    if (showStream) { combinedColumnStyles[nextIndex] = { cellWidth: 15 }; nextIndex += 1; }
-    combinedColumnStyles[nextIndex] = { cellWidth: 16 }; nextIndex += 1;
-    combinedColumnStyles[nextIndex] = { cellWidth: 18, halign: 'left' }; nextIndex += 1;
-    combinedColumnStyles[nextIndex] = { cellWidth: Math.max(20, 192 - Object.values(combinedColumnStyles).reduce((sum: number, style: any) => sum + Number(style.cellWidth || 0), 0)), halign: 'left' };
+    const metricWidth = Math.max(5, Math.min(10, 62 / assessmentCellCount));
+    for (let index = 0; index < assessmentCellCount; index += 1) combinedColumnStyles[index + 2] = { cellWidth: metricWidth };
+    let nextIndex = averageIndex;
+    combinedColumnStyles[nextIndex] = { cellWidth: 10 }; nextIndex += 1;
+    if (showDeviation) { combinedColumnStyles[nextIndex] = { cellWidth: 9 }; nextIndex += 1; }
+    if (!isPrimary) { combinedColumnStyles[nextIndex] = { cellWidth: 9 }; nextIndex += 1; }
+    combinedColumnStyles[nextIndex] = { cellWidth: 11 }; nextIndex += 1;
+    if (showStream) { combinedColumnStyles[nextIndex] = { cellWidth: 10 }; nextIndex += 1; }
+    combinedColumnStyles[nextIndex] = { cellWidth: 10 }; nextIndex += 1;
+    combinedColumnStyles[nextIndex] = { cellWidth: 14, halign: 'left' }; nextIndex += 1;
+    const assignedWidth = Object.values(combinedColumnStyles).reduce((sum: number, style: any) => sum + Number(style.cellWidth || 0), 0);
+    combinedColumnStyles[nextIndex] = { cellWidth: Math.max(20, 192 - assignedWidth), halign: 'left' };
   }
   autoTable(doc, {
     startY,
@@ -1105,8 +1123,10 @@ export function drawSummaryBox(
   classData: any,
   startY: number,
   streamPosition?: string,
+  rankingDetails?: { subjects: string[]; totalMarks: number; totalPoints: number },
 ): number {
-  const boxH = COMPACT_MODE ? 18 : 28;
+  const hasRankingDetails = Boolean(rankingDetails?.subjects?.length);
+  const boxH = hasRankingDetails ? (COMPACT_MODE ? 30 : 40) : (COMPACT_MODE ? 18 : 28);
   startY = ensureReportCardSpace(doc, startY, boxH + 2);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
@@ -1123,6 +1143,13 @@ export function drawSummaryBox(
   if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
   if (streamPosition) {
     doc.text(`Stream Position: ${streamPosition}`, 20, startY + gap * 3);
+  }
+  if (hasRankingDetails && rankingDetails) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.4 : 6.1));
+    const text = `KNEC 7-subject rank: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints} points; ${rankingDetails.totalMarks.toFixed(0)} marks`;
+    const lines = doc.splitTextToSize(text, 174);
+    doc.text(lines, 20, startY + (COMPACT_MODE ? 25 : 33));
   }
   // Leave a clear baseline gap so the deviation line cannot be painted into the summary border.
   return startY + boxH + (COMPACT_MODE ? 3 : 4);

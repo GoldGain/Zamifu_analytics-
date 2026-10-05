@@ -46,6 +46,12 @@ export interface LearnerTotals {
   totalMarks: number;
   /** Sum of active grading-scale points across counted learning areas. Tie-breaker. */
   totalPoints: number;
+  /** Points from the KNEC seven-subject set for 8-4-4 Forms 3/4. */
+  rankingTotalPoints?: number;
+  /** Marks from the KNEC seven-subject set for 8-4-4 Forms 3/4. */
+  rankingTotalMarks?: number;
+  /** Exact seven (or available subset) of learning areas used for Form 3/4 rank. */
+  rankingSubjects?: string[];
   /** Number of learning areas counted. */
   count: number;
   /** totalMarks / required learning areas. */
@@ -80,6 +86,48 @@ function rowPoints(result: any, percentage: number, band: SchoolLevelBand, class
   const stored = Number(result?.cbc_points);
   if (Number.isFinite(stored) && stored > 0) return stored;
   return calculateCompetencyGrade(percentage, band).points || 0;
+}
+
+export interface KnecSevenSubjectMetrics {
+  subjects: string[];
+  totalMarks: number;
+  totalPoints: number;
+}
+
+const isMathematicsSubject = (name: string): boolean =>
+  /^(?:mathematics|maths?)(?:\s+(?:alternative\s+)?[ab])?\b/i.test(name.trim());
+
+const isKnecLanguageSubject = (name: string): boolean =>
+  /\benglish\b|\bkiswahili\b|\bkenya sign language\b|\bksl\b/i.test(name);
+
+/**
+ * KNEC Form 3/4 ranking set: one Mathematics subject, the best of English,
+ * Kiswahili or KSL, then the five best remaining subjects. When Maths A/B or
+ * multiple language rows exist, the best points score is selected (marks break
+ * a points tie). All other subjects remain available in the report card.
+ */
+export function calculateKnecSevenSubjectMetrics(
+  subjects: Record<string, number>,
+  classObj: any,
+): KnecSevenSubjectMetrics {
+  const names = Object.keys(subjects);
+  const score = (name: string) => Number(subjects[name] || 0);
+  const points = (name: string) => gradePointsForClass(score(name), classObj);
+  const compareBest = (a: string, b: string) =>
+    points(b) - points(a) || score(b) - score(a) || a.localeCompare(b);
+
+  const maths = names.filter(isMathematicsSubject).sort(compareBest);
+  const languages = names.filter(isKnecLanguageSubject).sort(compareBest);
+  const otherSubjects = names
+    .filter((name) => !isMathematicsSubject(name) && !isKnecLanguageSubject(name))
+    .sort(compareBest);
+  const selected = [maths[0], languages[0], ...otherSubjects.slice(0, 5)].filter((name): name is string => Boolean(name));
+
+  return {
+    subjects: selected,
+    totalMarks: selected.reduce((sum, name) => sum + score(name), 0),
+    totalPoints: selected.reduce((sum, name) => sum + points(name), 0),
+  };
 }
 
 /**
@@ -152,11 +200,21 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
   const configuredAreaCount = getCanonicalLearningAreas(classObj).length || observedAreaCount;
   const requiredAreas = getRequiredLearningAreas(classObj, configuredAreaCount);
 
-  return Object.values(studentMap).map((entry) => ({
-    ...entry,
-    avgPct: requiredAreas
-      ? entry.totalMarks / requiredAreas
-      : entry.count > 0 ? entry.totalMarks / entry.count : 0,
-    gender: entry.gender || entry.student?.gender || null,
-  }));
+  return Object.values(studentMap).map((entry) => {
+    const knecMetrics = is844Curriculum(classObj)
+      ? calculateKnecSevenSubjectMetrics(entry.subjects, classObj)
+      : null;
+    return {
+      ...entry,
+      ...(knecMetrics ? {
+        rankingTotalMarks: knecMetrics.totalMarks,
+        rankingTotalPoints: knecMetrics.totalPoints,
+        rankingSubjects: knecMetrics.subjects,
+      } : {}),
+      avgPct: requiredAreas
+        ? entry.totalMarks / requiredAreas
+        : entry.count > 0 ? entry.totalMarks / entry.count : 0,
+      gender: entry.gender || entry.student?.gender || null,
+    };
+  });
 }

@@ -1,4 +1,4 @@
-import { calculatePathwayPerformance } from './pathwayPerformance';
+import { calculatePathwayPerformance, strongestPathway } from './pathwayPerformance';
 
 export type Curriculum = 'CBE' | '844';
 export type SchoolLevelBand = 'primary' | 'junior' | 'senior';
@@ -363,13 +363,12 @@ export function generateSubjectSpecificComment(
     });
   }
 
-  // Use the exact same pathway mapping and denominator as the report-card
-  // profile. The teacher comment intentionally quotes Social Sciences so the
-  // number can never diverge from that row in the profile table.
+  // Use the same pathway mapping, denominator and highest-score rule as the
+  // report-card profile so the advisory always matches the strongest flag.
   const pathwayPerformance = calculatePathwayPerformance(subjects);
-  const socialSciences = pathwayPerformance.find((entry) => entry.pathway === 'Social Sciences');
-  if (socialSciences && socialSciences.outOf > 0) {
-    comment += `Your performance in the Social Sciences pathway (${socialSciences.percentage.toFixed(1)}%) shows strong potential. `;
+  const bestPathway = strongestPathway(pathwayPerformance);
+  if (bestPathway && bestPathway.outOf > 0) {
+    comment += `Your best-performed pathway is ${bestPathway.pathway} (${bestPathway.percentage.toFixed(1)}%), showing strong potential. `;
   }
 
   // Closing encouragement with position
