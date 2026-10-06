@@ -624,6 +624,37 @@ export async function addLogoToPDF(
   }
 }
 
+/** Place the school's logo lightly behind the report-card body content. */
+export async function addLogoWatermarkToPDF(
+  doc: jsPDF,
+  logoUrl: string | null | undefined,
+  options: { opacity?: number; size?: number; y?: number } = {},
+): Promise<boolean> {
+  if (!logoUrl) return false;
+  try {
+    let dataUrl = imageCache[logoUrl];
+    if (!dataUrl) {
+      dataUrl = await compressImage(logoUrl, 500, 0.82);
+      imageCache[logoUrl] = dataUrl;
+    }
+    const size = options.size ?? 118;
+    const x = (doc.internal.pageSize.getWidth() - size) / 2;
+    const y = options.y ?? 88;
+    const opacity = Math.max(0.03, Math.min(0.18, options.opacity ?? 0.08));
+    const pdfDoc = doc as any;
+    if (typeof pdfDoc.saveGraphicsState === 'function') pdfDoc.saveGraphicsState();
+    if (typeof pdfDoc.setGState === 'function' && typeof pdfDoc.GState === 'function') {
+      pdfDoc.setGState(new pdfDoc.GState({ opacity }));
+    }
+    doc.addImage(dataUrl, 'JPEG', x, y, size, size, undefined, 'FAST');
+    if (typeof pdfDoc.restoreGraphicsState === 'function') pdfDoc.restoreGraphicsState();
+    return true;
+  } catch (err) {
+    console.error('Logo watermark error:', err);
+    return false;
+  }
+}
+
 // ── Corner identity fallbacks ──────────────────────────────────────────────────
 export function drawLogoPlaceholder(
   doc: jsPDF,
@@ -758,6 +789,7 @@ export async function drawReportHeader(
   const reportLine = [school.report_class, school.report_term, school.report_year].filter(Boolean).join(' — ');
   if (reportLine) doc.text(reportLine, centerX, 28.5, { align: 'center', maxWidth: 125 });
   doc.setDrawColor(47, 157, 190); doc.setLineWidth(0.35); doc.line(6, HDR_H + 1, 204, HDR_H + 1);
+  await addLogoWatermarkToPDF(doc, school.logo_url);
 }
 
 export function getLearnerLoginUrl(assessmentNumber?: string | null, origin?: string): string {
