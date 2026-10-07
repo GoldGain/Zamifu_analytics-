@@ -508,7 +508,28 @@ type PdfOutputMode = 'download' | 'print';
 
 function outputPdfDocument(doc: jsPDF, filename: string, mode: PdfOutputMode, printWindow?: Window | null) {
   if (mode === 'download') {
-    doc.save(filename);
+    // jsPDF's `save()` delegates to FileSaver/browser behavior that is
+    // unreliable on mobile Safari and some embedded Android browsers. Use a
+    // real Blob download link, with a blob-tab fallback where `download` is
+    // unsupported.
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    if (typeof anchor.download === 'string') {
+      anchor.click();
+    } else {
+      const downloadWindow = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!downloadWindow) window.location.href = url;
+    }
+    window.setTimeout(() => {
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    }, 1500);
     return;
   }
   // Keep Print distinct from Download: use jsPDF's print action and send the
@@ -1181,7 +1202,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       else if (request.target === 'bulk-report-cards') await downloadBulkReportCards(fontSize, request.mode, printWindow);
       else if (request.target === 'all-streams-bulk') await downloadAllStreamsBulkReportCards(fontSize, request.mode, printWindow);
       else if (request.target === 'all-streams-summary') await downloadAllStreamsSummary(fontSize, request.mode, printWindow);
-      else if (request.student) await downloadSingleReportCard(request.student, fontSize, request.mode, printWindow);
+      else if (request.student) {
+        if (request.mode === 'download') await downloadIndividualReportCard(request.student, fontSize);
+        else await downloadSingleReportCard(request.student, fontSize, request.mode, printWindow);
+      }
     } finally {
       if (request.mode === 'print' && printWindow && !printWindow.closed) printWindow.focus();
       setPendingPdfDownload(null);
@@ -2997,12 +3021,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
               type="button"
               onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner)}
               disabled={!selectedLearner || downloadingLearner}
-              className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1d4ed8] disabled:opacity-50"
+              className="min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1d4ed8] disabled:opacity-50"
             >
               {downloadingLearner ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloadingLearner ? 'Preparing…' : 'Download Report Card'}
             </button>
-            <button type="button" onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner, 'print')} disabled={!selectedLearner || downloadingLearner || generatingPDF || generatingBulk} className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
+            <button type="button" onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner, 'print')} disabled={!selectedLearner || downloadingLearner || generatingPDF || generatingBulk} className="min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
           </div>
           {selectedLearner && (
             <p className="mt-3 text-xs font-medium text-blue-700">
