@@ -38,7 +38,7 @@ export default function Login() {
     else if (role === 'reseller_super_admin') navigate('/reseller-admin', { replace: true });
     else if (role === 'super_admin') navigate('/super-admin', { replace: true });
     else if (role === 'school_admin') navigate('/school-admin', { replace: true });
-    else if (role === 'bursar') navigate('/bursar/fees', { replace: true });
+    else if (role === 'bursar') navigate('/bursar', { replace: true });
     else if (role === 'teacher') navigate('/teacher', { replace: true });
     else if (role === 'student') navigate('/student', { replace: true });
     else if (role === 'parent') navigate('/parent', { replace: true });
@@ -146,7 +146,7 @@ export default function Login() {
       } else if (role === 'school_admin') {
         navigate('/school-admin', { replace: true });
       } else if (role === 'bursar') {
-        navigate('/bursar/fees', { replace: true });
+        navigate('/bursar', { replace: true });
       } else if (role === 'teacher') {
         navigate('/teacher', { replace: true });
       } else if (role === 'student') {

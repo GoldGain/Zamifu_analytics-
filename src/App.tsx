@@ -48,6 +48,7 @@ import SchoolAdminGraduatedStudents from '@/pages/dashboard/school-admin/Graduat
 import SchoolAdminTeachers from '@/pages/dashboard/school-admin/Teachers';
 import SchoolAdminBursars from '@/pages/dashboard/school-admin/Bursars';
 import SchoolAdminClasses from '@/pages/dashboard/school-admin/Classes';
+import BursarDashboard from '@/pages/dashboard/bursar/Dashboard';
 import BursarFees from '@/pages/dashboard/bursar/Fees';
 import SchoolAdminResults from '@/pages/dashboard/school-admin/Results';
 import DoSResults from '@/pages/dashboard/dean-of-studies/Results';
@@ -292,7 +293,7 @@ function AppRoutes() {
       <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><TimetableView /></ProtectedRoute>} />
 
       {/* Bursar routes */}
-      <Route path="/bursar" element={<ProtectedRoute allowedRoles={['bursar']}><Navigate to="/bursar/fees" replace /></ProtectedRoute>} />
+      <Route path="/bursar" element={<ProtectedRoute allowedRoles={['bursar']}><BursarDashboard /></ProtectedRoute>} />
       <Route path="/bursar/fees" element={<ProtectedRoute allowedRoles={['bursar']}><BursarFees /></ProtectedRoute>} />
 
       {/* Teacher routes */}

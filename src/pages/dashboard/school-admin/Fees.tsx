@@ -626,6 +626,21 @@ export default function FeeWorkspace() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Total Invoiced</p>
+          <p className="mt-2 text-2xl font-bold text-blue-950">Ksh {feeTotals.invoiced.toLocaleString()}</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Total Paid</p>
+          <p className="mt-2 text-2xl font-bold text-emerald-950">Ksh {feeTotals.paid.toLocaleString()}</p>
+        </div>
+        <div className="rounded-2xl border border-rose-100 bg-rose-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Total Balance</p>
+          <p className="mt-2 text-2xl font-bold text-rose-950">Ksh {feeTotals.outstanding.toLocaleString()}</p>
+        </div>
+      </div>
+
       {retiredInvoiceConfirmation && (
         <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <div className="flex items-start justify-between gap-3">
