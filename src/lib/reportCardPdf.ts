@@ -205,6 +205,7 @@ export function sortResultsBySubject(results: any[]) {
 }
 
 export function getPercentage(result: any): number {
+  if (['X', 'Y'].includes(String(result?.mark_code || result?.markCode || '').toUpperCase())) return 0;
   if (result.percentage !== undefined && result.percentage !== null) return Number(result.percentage);
   const outOf = Number(result.out_of || 100);
   return outOf > 0 ? Math.round((Number(result.marks || 0) / outOf) * 100) : 0;
@@ -956,7 +957,7 @@ export function drawStudentInfo(
   y: number = 38,
   assessmentName?: string,
   assessmentNumber?: string,
-  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean }
+  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean; pathway?: string | null; track?: string | null }
 ) {
   const fs = pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8);
   const showPoints = positionDetails?.showPoints !== false;
@@ -980,6 +981,12 @@ export function drawStudentInfo(
       cursor += w;
     });
   });
+  if (positionDetails?.pathway || positionDetails?.track) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(26, 55, 90);
+    const pathwayLine = [`Pathway: ${positionDetails.pathway || '—'}`, `Track: ${positionDetails.track || '—'}`].join('   ');
+    doc.text(pathwayLine, 10, y + 12.8);
+    doc.setTextColor(0, 0, 0);
+  }
   if (positionDetails?.overallDeviation) {
     const value = positionDetails.overallDeviation;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7));
@@ -1011,7 +1018,8 @@ export function drawResultsTable(
     : ['No.', 'Learning Area', 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const pct = getPercentage(r);
-    const grading = gradeFromPercentage(pct, classData);
+    const exceptionalCode = String(r.mark_code || r.markCode || '').toUpperCase();
+    const grading = ['X', 'Y'].includes(exceptionalCode) ? { grade: exceptionalCode, points: 0 } : gradeFromPercentage(pct, classData);
     const subjectName = r.subjects?.name === 'Creative Arts' ? 'C-Arts' : (r.subjects?.name || 'N/A');
     const previous = r.previousPercentage === null || r.previousPercentage === undefined ? null : Number(r.previousPercentage);
     const deviation = previous === null ? '—' : `${pct - previous >= 0 ? '+' : ''}${(pct - previous).toFixed(1)}%`;
@@ -1038,7 +1046,7 @@ export function drawResultsTable(
       row.push(`${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
-      row.push(`${pct.toFixed(0)}/100`);
+      row.push(['X', 'Y'].includes(exceptionalCode) ? exceptionalCode : `${pct.toFixed(0)}/100`);
       if (showDeviation) row.push(deviation);
     }
     if (pointsMax > 0) row.push(grading.points ?? '—');
@@ -1118,7 +1126,14 @@ export function drawResultsTable(
       }
     },
   });
-  return (doc as any).lastAutoTable.finalY;
+  const finalY = (doc as any).lastAutoTable.finalY;
+  if (sorted.some((row: any) => ['X', 'Y'].includes(String(row.mark_code || row.markCode || '').toUpperCase()))) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 5.8)); doc.setTextColor(75, 75, 75);
+    doc.text('Key: X = Missing marks / absent; Y = Cheated examination. X and Y are awarded 0 and ranked last.', 10, finalY + 4.5);
+    doc.setTextColor(0, 0, 0);
+    return finalY + 6;
+  }
+  return finalY;
 }
 
 // ── Draw Pathway Performance ──────────────────────────────────────────────────

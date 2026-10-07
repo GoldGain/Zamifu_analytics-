@@ -53,11 +53,12 @@ export default function CombineExams() {
   }, [user?.schoolId]);
 
   const scopes = useMemo<Scope[]>(() => {
+    const wholeSchool = { id: 'school:all', label: 'Whole school', classIds: classes.map((item) => item.id), gradeLevel: null, allStreams: true };
     const individual = classes.map((item) => ({ id: `class:${item.id}`, label: formatClassStream(item), classIds: [item.id], gradeLevel: String(item.grade_level ?? item.level ?? ''), allStreams: false }));
     const byGrade = new Map<string, any[]>();
     classes.forEach((item) => { const grade = String(item.grade_level ?? item.level ?? ''); if (!byGrade.has(grade)) byGrade.set(grade, []); byGrade.get(grade)!.push(item); });
     const streams = Array.from(byGrade.entries()).filter(([, items]) => items.length > 1).map(([grade, items]) => ({ id: `grade:${grade}`, label: `All streams · Grade ${grade}`, classIds: items.map((item) => item.id), gradeLevel: grade, allStreams: true }));
-    return [...individual, ...streams];
+    return [wholeSchool, ...individual, ...streams];
   }, [classes]);
 
   const activeScope = scopes.find((item) => item.id === selectedScope);
@@ -66,6 +67,7 @@ export default function CombineExams() {
     if (selectedTerm && exam.term_id && exam.term_id !== selectedTerm) return false;
     if (selectedTerm && !exam.term_id && !linked.some((ref) => ref.term_id === selectedTerm)) return false;
     if (!activeScope) return true;
+    if (exam.target_type === 'school' || exam.target_type === 'school-wide' || !exam.target_type) return true;
     if (exam.target_type === 'class') return activeScope.classIds.includes(exam.target_class_id);
     if (exam.target_type === 'grade') return String(exam.target_grade_level) === String(activeScope.gradeLevel);
     return linked.length === 0 || linked.some((ref) => activeScope.classIds.includes(ref.class_id));
@@ -140,17 +142,17 @@ export default function CombineExams() {
     try {
       const rows = await buildCombinedRows();
       if (!rows.length) throw new Error('No marks were found in either selected exam.');
-      const targetType = activeScope.allStreams ? 'grade' : 'class';
-      const targetClassId = activeScope.allStreams ? null : activeScope.classIds[0];
-      const targetColumn = activeScope.allStreams ? 'target_grade_level' : 'target_class_id';
-      const targetValue = activeScope.allStreams ? activeScope.gradeLevel : targetClassId;
+      const targetType = activeScope.id === 'school:all' ? 'school' : activeScope.allStreams ? 'grade' : 'class';
+      const targetClassId = activeScope.id === 'school:all' || activeScope.allStreams ? null : activeScope.classIds[0];
+      const targetColumn = activeScope.id === 'school:all' ? 'target_type' : activeScope.allStreams ? 'target_grade_level' : 'target_class_id';
+      const targetValue = activeScope.id === 'school:all' ? 'school' : activeScope.allStreams ? activeScope.gradeLevel : targetClassId;
       const { data: existing, error: lookupError } = await db.from('school_exams').select('id').eq('school_id', user.schoolId).eq('name', name).eq('term_id', selectedTerm).eq('target_type', targetType).eq(targetColumn, targetValue).limit(1).maybeSingle();
       if (lookupError) throw lookupError;
       let examId = existing?.id as string | undefined;
       if (!examId) {
-        const deactResult = await deactivateSameScopeActives({ schoolId: user.schoolId, termId: selectedTerm, targetType, targetClassId: targetClassId || undefined, targetGradeLevel: activeScope.gradeLevel ? Number(activeScope.gradeLevel) || null : null, actingUserId: user.id });
+        const deactResult = await deactivateSameScopeActives({ schoolId: user.schoolId, termId: selectedTerm, targetType, targetClassId: targetClassId || undefined, targetGradeLevel: activeScope.id === 'school:all' ? null : activeScope.gradeLevel ? Number(activeScope.gradeLevel) || null : null, actingUserId: user.id });
         if (deactResult.error) throw deactResult.error;
-        const { data: exam, error: examError } = await db.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
+        const { data: exam, error: examError } = await db.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.id === 'school:all' ? null : activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
         if (examError) throw examError;
         examId = exam.id;
       } else {
@@ -184,7 +186,7 @@ export default function CombineExams() {
       <label className="text-sm font-medium text-gray-700">Term<select value={selectedTerm} onChange={(event) => { setSelectedTerm(event.target.value); resetSelection(); }} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Select term</option>{terms.map((item) => <option key={item.id} value={item.id}>{item.name} {item.academic_year}</option>)}</select></label>
       <label className="text-sm font-medium text-gray-700 md:col-span-2">Combined exam name<input value={combinedName} onChange={(event) => setCombinedName(event.target.value)} placeholder={defaultName(activeScope, selectedExamNames) || 'e.g. Term 2 Final Combined Assessment'} className="mt-2 w-full rounded-xl border px-3 py-2.5" /></label>
     </div>
-    <div className="bg-white rounded-2xl border p-5"><div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold text-gray-900">Available source exams</h2><p className="text-xs text-gray-500">Select two or more exams from the chosen term and scope. Set a positive weight for each source before saving.</p></div><span className="text-sm font-semibold text-violet-700">{selectedExams.length} selected</span></div>{availableExams.length === 0 ? <p className="text-sm text-gray-500">{activeScope && selectedTerm ? 'No source exams are available for this scope and term. Choose another term or scope, or add results to at least two source exams.' : 'Choose a class or all-streams scope and term to see available exams.'}</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{availableExams.map((exam) => <label key={exam.id} className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer ${selectedExams.includes(exam.id) ? 'border-violet-500 bg-violet-50' : 'border-gray-200'}`}><input type="checkbox" checked={selectedExams.includes(exam.id)} onChange={() => toggleExam(exam.id)} /><span className="flex-1"><span className="block font-medium">{exam.name}</span><span className="text-xs text-gray-500">{exam.type || 'Assessment'} · {new Date(exam.created_at).toLocaleDateString()}</span>{selectedExams.includes(exam.id) && <span className="mt-2 flex items-center gap-2 text-xs text-violet-700">Weight <input type="number" min="0.01" step="0.05" value={examWeights[exam.id] || 1} onClick={(event) => event.stopPropagation()} onChange={(event) => setExamWeights((weights) => ({ ...weights, [exam.id]: Math.max(0.01, Number(event.target.value) || 0.01) }))} className="w-20 rounded-lg border border-violet-200 bg-white px-2 py-1 text-sm text-gray-900" /></span>}</span>{selectedExams.includes(exam.id) && <Check className="w-5 h-5 text-violet-600" />}</label>)}</div>}<button type="button" onClick={saveCombinedExam} disabled={saving || selectedExams.length < 2} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-green-600 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save combined exam</button></div>
+    <div className="bg-white rounded-2xl border p-5"><div className="flex items-center justify-between mb-4"><div><h2 className="font-semibold text-gray-900">Available source exams</h2><p className="text-xs text-gray-500">Select two or more exams from the chosen term and scope, including assessments created for the whole school. Set a positive weight for each source before saving.</p></div><span className="text-sm font-semibold text-violet-700">{selectedExams.length} selected</span></div>{availableExams.length === 0 ? <p className="text-sm text-gray-500">{activeScope && selectedTerm ? 'No source exams are available for this scope and term. Choose another term or scope, or add results to at least two source exams.' : 'Choose a class or all-streams scope and term to see available exams.'}</p> : <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{availableExams.map((exam) => <label key={exam.id} className={`flex items-center gap-3 rounded-xl border p-4 cursor-pointer ${selectedExams.includes(exam.id) ? 'border-violet-500 bg-violet-50' : 'border-gray-200'}`}><input type="checkbox" checked={selectedExams.includes(exam.id)} onChange={() => toggleExam(exam.id)} /><span className="flex-1"><span className="block font-medium">{exam.name}</span><span className="text-xs text-gray-500">{exam.type || 'Assessment'} · {new Date(exam.created_at).toLocaleDateString()}</span>{selectedExams.includes(exam.id) && <span className="mt-2 flex items-center gap-2 text-xs text-violet-700">Weight <input type="number" min="0.01" step="0.05" value={examWeights[exam.id] || 1} onClick={(event) => event.stopPropagation()} onChange={(event) => setExamWeights((weights) => ({ ...weights, [exam.id]: Math.max(0.01, Number(event.target.value) || 0.01) }))} className="w-20 rounded-lg border border-violet-200 bg-white px-2 py-1 text-sm text-gray-900" /></span>}</span>{selectedExams.includes(exam.id) && <Check className="w-5 h-5 text-violet-600" />}</label>)}</div>}<button type="button" onClick={saveCombinedExam} disabled={saving || selectedExams.length < 2} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-green-600 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Save combined exam</button></div>
     <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-sm text-violet-900">After saving, Download Results opens with the stored combined assessment available for class summaries, all-stream summaries, and PDFs.</div>
   </div>;
 }

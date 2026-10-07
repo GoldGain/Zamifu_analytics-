@@ -96,11 +96,11 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
 const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; note: string }> = {
   'pre-primary': { total: 6, afterLunch: 0, note: 'School ends at lunch' },
   'lower-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
-  'upper-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
+  'upper-primary': { total: 7, afterLunch: 1, note: '7 lessons/day' },
   'combined-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'senior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'form-3-4': { total: 7, afterLunch: 1, note: '1 lesson after lunch' },
+  'form-3-4': { total: 8, afterLunch: 2, note: '8 lessons/day' },
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────

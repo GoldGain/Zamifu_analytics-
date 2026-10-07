@@ -588,6 +588,13 @@ export default function FeeWorkspace() {
     return 'bg-red-100 text-red-700';
   };
 
+  const feeTotals = invoices.reduce((totals: { invoiced: number; paid: number; outstanding: number }, invoice: any) => {
+    const total = Number(invoice.total_amount || 0);
+    const paid = Number(invoice.amount_paid || 0);
+    totals.invoiced += total; totals.paid += paid; totals.outstanding += invoiceBalance(invoice);
+    return totals;
+  }, { invoiced: 0, paid: 0, outstanding: 0 });
+
   // Group fee structures by class+term for display
   const groupedStructures = feeStructures.reduce((acc: any, fs: any) => {
     const key = `${fs.class_id}_${fs.term_id}`;

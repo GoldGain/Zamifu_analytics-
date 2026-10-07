@@ -28,6 +28,7 @@ interface ProcessedRow {
   marks: number;
   out_of: number;
   percentage: number;
+  markCode?: 'X' | 'Y';
   cbcGrade: ReturnType<typeof calculateResultGrades>['cbeGrade'];
   grade844?: ReturnType<typeof calculate844Grade>;
   position?: number;
@@ -199,7 +200,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         student_id: s.id,
         name: `${s.first_name} ${s.last_name}`,
         admission_number: s.admission_number || s.assessment_number || '—',
-        marks: existingByStudent.has(s.id) ? String(existingByStudent.get(s.id)?.marks ?? '') : '',
+        marks: existingByStudent.has(s.id) ? String(existingByStudent.get(s.id)?.mark_code || existingByStudent.get(s.id)?.marks || '') : '',
         status: existingByStudent.get(s.id)?.status || undefined,
       })));
       setSelectedManualStudentIds([]);
@@ -248,14 +249,16 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
   const updateManualMark = (idx: number, value: string) => {
     // Issue 24: Prevent marks above max
-    const numVal = parseFloat(value);
+    const normalized = value.trim().toUpperCase();
+    const numVal = parseFloat(normalized);
+    if (normalized && !/^(?:\d+(?:\.\d+)?|X|Y)$/.test(normalized)) return;
     if (value !== '' && !isNaN(numVal) && numVal > outOf) {
       toast.error(`Mark cannot exceed maximum of ${outOf}`);
       return;
     }
     setManualRows(prev => {
       const updated = [...prev];
-      updated[idx] = { ...updated[idx], marks: value };
+      updated[idx] = { ...updated[idx], marks: normalized };
       return updated;
     });
     setManualPreviewReady(false);
@@ -282,11 +285,12 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   };
 
   const calculateManualGrades = () => {
-    const filled = manualRows.filter(r => r.marks !== '' && !isNaN(parseFloat(r.marks)));
+    const filled = manualRows.filter(r => /^(?:\d+(?:\.\d+)?|X|Y)$/i.test(r.marks.trim()));
     if (filled.length === 0) { toast.error('Please enter marks for at least one student'); return; }
     const processed: ProcessedRow[] = filled.map(r => {
-      const marks = parseFloat(r.marks);
-      const percentage = Math.round((marks / outOf) * 100);
+      const markCode = /^(X|Y)$/i.test(r.marks.trim()) ? r.marks.trim().toUpperCase() as 'X' | 'Y' : undefined;
+      const marks = markCode ? 0 : parseFloat(r.marks);
+      const percentage = markCode ? 0 : Math.round((marks / outOf) * 100);
       const grades = calculateResultGrades(percentage, currentClassData);
       return {
         student_id: r.student_id,
@@ -295,11 +299,12 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         marks,
         out_of: outOf,
         percentage,
+        markCode,
         cbcGrade: grades.cbeGrade,
         grade844: grades.grade844,
       };
     });
-    const sorted = [...processed].sort((a, b) => b.percentage - a.percentage);
+    const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || b.percentage - a.percentage);
     sorted.forEach((row, i) => { row.position = i + 1; });
     setManualPreview(sorted);
     setManualPreviewReady(true);
@@ -433,6 +438,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         academic_year: new Date().getFullYear().toString(),
         curriculum: currentClassData?.curriculum || 'CBE',
         marks: row.marks,
+        mark_code: row.markCode || null,
         out_of: row.out_of,
         percentage: row.percentage,
         converted_marks: row.percentage,
@@ -589,9 +595,10 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         const valid = (results.data as any[]).filter((row: any) => row.student_id && row.marks !== '');
         if (!valid.length) { setError('No valid rows found. Ensure marks column is filled.'); return; }
         const processed: ProcessedRow[] = valid.map((row: any) => {
-          const marks = parseFloat(row.marks) || 0;
+          const markCode = /^(X|Y)$/i.test(String(row.marks).trim()) ? String(row.marks).trim().toUpperCase() as 'X' | 'Y' : undefined;
+          const marks = markCode ? 0 : (parseFloat(row.marks) || 0);
           const rowOutOf = parseFloat(row.out_of) || outOf;
-          const percentage = Math.round((marks / rowOutOf) * 100);
+          const percentage = markCode ? 0 : Math.round((marks / rowOutOf) * 100);
           const grades = calculateResultGrades(percentage, currentClassData);
           return {
             student_id: row.student_id,
@@ -600,11 +607,12 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
             marks,
             out_of: rowOutOf,
             percentage,
+            markCode,
             cbcGrade: grades.cbeGrade,
             grade844: grades.grade844,
           };
         });
-        const sorted = [...processed].sort((a, b) => b.percentage - a.percentage);
+        const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || b.percentage - a.percentage);
         sorted.forEach((row, i) => { row.position = i + 1; });
         setCsvData(sorted);
         setPreview(true);
@@ -867,14 +875,14 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                             </td>
                             <td className="py-2 px-3">
                               <input
-                                type="number"
+                                type="text"
                                 min={0}
                                 max={outOf}
                                 value={row.marks}
                                 onChange={e => updateManualMark(idx, e.target.value)}
                                 onKeyDown={e => handleMarkKeyDown(e, idx)}
                                 data-mark-idx={idx}
-                                placeholder={`0 - ${outOf}`}
+                                placeholder={`0 - ${outOf} or X/Y`}
                                 className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-center"
                                 title="Use Arrow Up/Down or Enter to navigate between students"
                               />

@@ -26,6 +26,7 @@ export interface RankableEntry {
   rankingTotalPoints?: number | null;
   totalPct?: number | null;
   avgPct?: number | null;
+  markCode?: string | null;
   [key: string]: unknown;
 }
 
@@ -69,6 +70,9 @@ export function compareByUnifiedRanking(
   b: RankableEntry,
   band: RankingBand | string | null | undefined = 'junior',
 ): number {
+  const aExceptional = ['X', 'Y'].includes(String(a?.markCode || '').toUpperCase());
+  const bExceptional = ['X', 'Y'].includes(String(b?.markCode || '').toUpperCase());
+  if (aExceptional !== bExceptional) return aExceptional ? 1 : -1;
   if (band === 'junior' || band === 'senior') {
     const pointsDiff = rankingPoints(b) - rankingPoints(a);
     if (pointsDiff !== 0) return pointsDiff;

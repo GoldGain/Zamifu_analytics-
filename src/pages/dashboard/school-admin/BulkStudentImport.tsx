@@ -16,7 +16,7 @@ const LEGACY_IDENTIFIER_HEADER = 'admission_no_assessment_no';
 const TEMPLATE_HEADERS = [
   ADMISSION_HEADER, ASSESSMENT_HEADER, 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
   'gender', 'date_of_birth', 'nationality', 'county', 'sub_county',
-  'boarding_status', 'disability_status', 'curriculum', 'parent_name', 'parent_phone', 'parent_email',
+  'boarding_status', 'disability_status', 'curriculum', 'pathway', 'track', 'parent_name', 'parent_phone', 'parent_email',
 ];
 
 function parseCsv(text: string): ImportRow[] {
@@ -184,6 +184,8 @@ export default function BulkStudentImport() {
             date_of_birth: row.date_of_birth || null,
             nationality: row.nationality || 'Kenyan',
             curriculum,
+            pathway: row.pathway?.trim() || null,
+            track: row.track?.trim() || null,
             county: row.county || null,
             sub_county: row.sub_county || null,
             boarding_status: row.boarding_status || 'day',
@@ -244,7 +246,7 @@ export default function BulkStudentImport() {
         <section className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
           <div className="flex flex-wrap gap-2 items-center justify-between">
             <h2 className="font-black text-gray-900 flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={18} /> Step 1: Prepare CSV</h2>
-            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS, ['ADM001', 'ASM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', '', '']
+            <button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS, ['ADM001', 'ASM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', '', 'Kenyan', '', '', 'day', '', 'CBE', 'STEM', 'Pure Sciences', '', '', '']
 ])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button>
           </div>
           <p className="text-xs text-gray-600">Required columns are <strong>admission_number or assessment_number, first_name, last_name, and class_name</strong>. Provide both identifiers whenever available; legacy merged headers remain supported.
