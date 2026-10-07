@@ -20,7 +20,7 @@ const normalizePriorityBand = (value: unknown, isPriority = false): PriorityBand
   return 'auto';
 };
 
-type LevelGroup = 'pre-primary' | 'lower-primary' | 'upper-primary' | 'combined-primary' | 'junior' | 'senior' | 'form-3-4';
+type LevelGroup = 'pre-primary' | 'lower-primary' | 'upper-primary' | 'junior' | 'senior' | 'form-3-4';
 const resolveLevelGroup = (grade: number | null | undefined): LevelGroup | null => {
   const g = Number(grade);
   if (Number.isNaN(g)) return null;

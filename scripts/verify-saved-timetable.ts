@@ -82,8 +82,8 @@ export async function verifySchool(schoolId: string): Promise<SavedVerification>
     const grade = Number(cls.grade_level ?? cls.level);
     const candidates = grade >= 7 && grade <= 9 ? ['junior']
       : grade >= 10 && grade <= 12 ? ['senior']
-      : grade >= 1 && grade <= 3 ? ['lower-primary', 'combined-primary']
-      : grade >= 4 && grade <= 6 ? ['upper-primary', 'combined-primary']
+      : grade >= 1 && grade <= 3 ? ['lower-primary']
+      : grade >= 4 && grade <= 6 ? ['upper-primary']
       : ['pre-primary'];
     const key = candidates.find((candidate) => byLevel.has(candidate)) || candidates[0];
     const group = byLevel.get(key) || { classes: [], entries: [], slots: [] };

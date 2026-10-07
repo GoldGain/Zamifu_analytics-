@@ -12,7 +12,6 @@ import { formatClassStream } from './class-label';
  * |------------------|-------|-------------|
  * | Pre-Primary      | 6     | 0           |
  * | Lower Primary    | 6     | 0           |
- * | Primary 1-6      | 6     | 0           |
  * | Junior School    | 8     | 2           |
  * | Senior 10-12     | 8     | 2           |
  * | 8-4-4            | 7     | 1           |
@@ -57,7 +56,6 @@ export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
   'pre-primary': { totalLessons: 6, afterLunch: 0 },
   'lower-primary': { totalLessons: 6, afterLunch: 0 },
   'upper-primary': { totalLessons: 7, afterLunch: 1 },
-  'combined-primary': { totalLessons: 6, afterLunch: 0 },
   junior: { totalLessons: 8, afterLunch: 2 },
   senior: { totalLessons: 8, afterLunch: 2 },
   'form-3-4': { totalLessons: 8, afterLunch: 2 },

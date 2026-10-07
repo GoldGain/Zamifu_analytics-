@@ -262,7 +262,6 @@ const LEVEL_LABELS: Record<string, string> = {
   'pre-primary': 'Pre-Primary (6 lessons, 0 after lunch)',
   'lower-primary': 'Lower Primary (6 lessons, 0 after lunch)',
   'upper-primary': 'Upper Primary (7 lessons, 1 after lunch)',
-  'combined-primary': 'Combined Primary (7 lessons, 1 after lunch)',
   'junior': 'Junior School (8 lessons, 2 after lunch)',
   'senior': 'Senior School (9 lessons, 3 after lunch)',
   'form-3-4': '8-4-4 Form 3-4 (9 lessons, 3 after lunch)',
@@ -274,7 +273,6 @@ const LEVEL_LESSON_TARGETS: Record<string, { total: number; afterLunch: number }
   'pre-primary': { total: 6, afterLunch: 0 },
   'lower-primary': { total: 6, afterLunch: 0 },
   'upper-primary': { total: 7, afterLunch: 1 },
-  'combined-primary': { total: 7, afterLunch: 1 },
   'junior': { total: 8, afterLunch: 2 },
   'senior': { total: 9, afterLunch: 3 },
   'form-3-4': { total: 9, afterLunch: 3 },
@@ -330,9 +328,6 @@ function buildDisplaySlotsForLevel(
     dedupeByOrder(all.filter((s) => (s.level_group || 'default') === lg));
 
   let candidates = byLevel(key);
-  if (!candidates.length && key === 'combined-primary') {
-    candidates = byLevel('lower-primary');
-  }
   // Do NOT fall back to legacy "default" slots — they have wrong after-lunch counts
 
   const counts = countLessons(candidates);

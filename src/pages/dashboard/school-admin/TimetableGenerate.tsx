@@ -168,7 +168,6 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
   'pre-primary': [-3, -2, -1, 0],
   'lower-primary': [1, 2, 3],
   'upper-primary': [4, 5, 6],
-  'combined-primary': [1, 2, 3, 4, 5, 6],
   'junior': [7, 8, 9],
   'senior': [10, 11, 12],
   'form-3-4': [11, 12], // Form 3=11, Form 4=12 in 8-4-4
@@ -181,7 +180,6 @@ const classMatchesLevel = (cls: any, levelKey: string): boolean => {
   if (levelKey === 'pre-primary' && /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return true;
   if (levelKey === 'lower-primary' && /grade\s*[123]\b/.test(name)) return true;
   if (levelKey === 'upper-primary' && /grade\s*[456]\b/.test(name)) return true;
-  if (levelKey === 'combined-primary' && /grade\s*[1-6]\b/.test(name)) return true;
   if (levelKey === 'junior' && /grade\s*[789]\b/.test(name)) return true;
   if (levelKey === 'senior' && /grade\s*(10|11|12)\b/.test(name)) return true;
   return levelKey === 'form-3-4' && /form\s*[34]\b/.test(name);
@@ -201,7 +199,6 @@ const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; n
   'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
   'lower-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'upper-primary': { lessons: 7, afterLunch: 1, note: '7 lessons/day' },
-  'combined-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'senior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
   'form-3-4': { lessons: 8, afterLunch: 2, note: '8 lessons/day' },
@@ -637,7 +634,7 @@ export default function TimetableGenerate() {
           return Number.isFinite(parsed) ? parsed : lessonSlots.indexOf(slot) + 1;
         };
         const isJuniorLevel = levelKey === 'junior';
-        const isPrimaryLevel = ['pre-primary', 'lower-primary', 'upper-primary', 'combined-primary'].includes(levelKey);
+        const isPrimaryLevel = ['pre-primary', 'lower-primary', 'upper-primary'].includes(levelKey);
         // Default lesson placement windows derived from subject name + level only.
         // No stored priority is read anywhere in the generator.
         const prioritySlots = {

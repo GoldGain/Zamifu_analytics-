@@ -41,7 +41,7 @@ const TARGET_EMAILS = [
 ];
 
 export const LEVEL_GROUPS = [
-  'pre-primary', 'lower-primary', 'upper-primary', 'combined-primary',
+  'pre-primary', 'lower-primary', 'upper-primary',
   'junior', 'senior', 'form-3-4',
 ] as const;
 
@@ -49,7 +49,6 @@ const LEVEL_GROUP_GRADE_RANGES: Record<string, number[]> = {
   'pre-primary': [-3, -2, -1, 0],
   'lower-primary': [1, 2, 3],
   'upper-primary': [4, 5, 6],
-  'combined-primary': [1, 2, 3, 4, 5, 6],
   'junior': [7, 8, 9],
   'senior': [10, 11, 12],
   'form-3-4': [11, 12],
@@ -62,7 +61,6 @@ export function classMatchesLevel(cls: any, levelKey: string): boolean {
   if (levelKey === 'pre-primary' && /(pp\s*[12]|pre[\s-]?primary|playgroup|baby)/.test(name)) return true;
   if (levelKey === 'lower-primary' && /grade\s*[123]\b/.test(name)) return true;
   if (levelKey === 'upper-primary' && /grade\s*[456]\b/.test(name)) return true;
-  if (levelKey === 'combined-primary' && /grade\s*[1-6]\b/.test(name)) return true;
   if (levelKey === 'junior' && /grade\s*[789]\b/.test(name)) return true;
   if (levelKey === 'senior' && /grade\s*(10|11|12)\b/.test(name)) return true;
   return levelKey === 'form-3-4' && /form\s*[34]\b/.test(name);
