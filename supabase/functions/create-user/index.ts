@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id } = body;
+    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id, student_id } = body;
 
     if (!email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields: email, password, role" }), {
@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (existingStudent) {
+      if (existingStudent && existingStudent.id !== student_id) {
         console.warn(`Duplicate assessment number found: ${effectiveAssessmentNumber}`);
         return new Response(
           JSON.stringify({ 

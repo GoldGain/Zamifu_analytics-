@@ -80,6 +80,7 @@ export default function SchoolAdminStudents() {
   const [editForm, setEditForm] = useState({
     admission_number: '',
     assessment_number: '',
+    student_email: '',
     first_name: '',
     middle_name: '',
     last_name: '',
@@ -274,6 +275,7 @@ export default function SchoolAdminStudents() {
     setEditForm({
       admission_number: s.admission_number || '',
       assessment_number: s.assessment_number || '',
+      student_email: s.student_email || '',
       first_name: s.first_name || '',
       middle_name: s.middle_name || '',
       last_name: s.last_name || '',
@@ -311,9 +313,15 @@ export default function SchoolAdminStudents() {
         .neq('id', editingStudent.id)
         .limit(1);
       if (duplicateAssessment?.length) throw new Error('Assessment number already exists in this school.');
+      const schoolPrefix = user?.schoolId ? user.schoolId.split('-')[0] : 'student';
+      const loginIdentifier = assessmentNumber.toUpperCase();
+      const studentEmail = editForm.student_email.trim().toLowerCase()
+        || String(editingStudent.student_email || '').trim().toLowerCase()
+        || `${loginIdentifier.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
       const { error } = await supabaseUntyped.from('students').update({
         admission_number: editForm.admission_number.trim() || null,
         assessment_number: assessmentNumber,
+        student_email: studentEmail,
         first_name: editForm.first_name.trim(),
         middle_name: editForm.middle_name.trim() || null,
         last_name: editForm.last_name.trim(),
@@ -329,6 +337,25 @@ export default function SchoolAdminStudents() {
         emergency_contact_phone: editForm.emergency_contact_phone.trim() || null,
       }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
       if (error) throw new Error(error.message);
+      let accountCreated = false;
+      if (!editingStudent.profile_id) {
+        const authData = await createScopedUser({
+          email: studentEmail,
+          password: loginIdentifier,
+          first_name: editForm.first_name,
+          last_name: editForm.last_name,
+          role: 'student',
+          school_id: user?.schoolId || null,
+          admission_number: editForm.admission_number.trim() || undefined,
+          assessment_number: assessmentNumber,
+          class_id: editForm.class_id || undefined,
+          student_id: editingStudent.id,
+          metadata: { admission_number: editForm.admission_number.trim() || null, assessment_number: assessmentNumber, class_id: editForm.class_id || null },
+        });
+        const { error: accountLinkError } = await supabaseUntyped.from('students').update({ profile_id: authData.user.id, student_email: studentEmail }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
+        if (accountLinkError) throw new Error(`Account was created but could not be linked: ${accountLinkError.message}`);
+        accountCreated = true;
+      }
       await syncParentAccounts({
         student_id: editingStudent.id,
         primary: {
@@ -342,7 +369,7 @@ export default function SchoolAdminStudents() {
           email: editForm.parent2_email,
         },
       });
-      toast.success('Learner updated successfully and parent account linked.');
+      toast.success(accountCreated ? 'Learner updated and student login account created successfully.' : 'Learner updated successfully and parent account linked.');
       setEditingStudent(null);
       refetch();
     } catch (err: any) {
@@ -1020,6 +1047,7 @@ export default function SchoolAdminStudents() {
               <button onClick={() => setEditingStudent(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <p className="text-xs text-gray-500 mb-4">Admission #: <strong>{editingStudent.admission_number || '-'}</strong> · Assessment #: <strong>{editingStudent.assessment_number || '-'}</strong></p>
+            {!editingStudent.profile_id && <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">This learner has no login account yet. Saving the edit will automatically create the learner account using the assessment number as the initial password.</div>}
             <form onSubmit={handleSaveEdit}>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Basic Information</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
@@ -1028,6 +1056,7 @@ export default function SchoolAdminStudents() {
                 <div><label className={labelCls}>First Name *</label><input value={editForm.first_name} onChange={e => setEditForm({...editForm, first_name: e.target.value})} className={inputCls} required /></div>
                 <div><label className={labelCls}>Middle Name</label><input value={editForm.middle_name} onChange={e => setEditForm({...editForm, middle_name: e.target.value})} className={inputCls} /></div>
                 <div><label className={labelCls}>Last Name *</label><input value={editForm.last_name} onChange={e => setEditForm({...editForm, last_name: e.target.value})} className={inputCls} required /></div>
+                <div><label className={labelCls}>Learner Email (optional)</label><input type="email" value={editForm.student_email} onChange={e => setEditForm({...editForm, student_email: e.target.value})} className={inputCls} placeholder="Auto-generated if blank" /></div>
                 <div><label className={labelCls}>Gender</label>
                   <select value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value as GenderType})} className={inputCls + " bg-white"}>
                     <option value="">Select Gender</option>
