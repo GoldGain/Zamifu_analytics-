@@ -337,26 +337,24 @@ export default function SchoolAdminStudents() {
         emergency_contact_phone: editForm.emergency_contact_phone.trim() || null,
       }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
       if (error) throw new Error(error.message);
-      let accountCreated = false;
-      if (!editingStudent.profile_id) {
-        const authData = await createScopedUser({
-          email: studentEmail,
-          password: loginIdentifier,
-          first_name: editForm.first_name,
-          last_name: editForm.last_name,
-          role: 'student',
-          school_id: user?.schoolId || null,
-          admission_number: editForm.admission_number.trim() || undefined,
-          assessment_number: assessmentNumber,
-          class_id: editForm.class_id || undefined,
-          student_id: editingStudent.id,
-          existing_user_id: editingStudent.profile_id || undefined,
-          metadata: { admission_number: editForm.admission_number.trim() || null, assessment_number: assessmentNumber, class_id: editForm.class_id || null },
-        });
-        const { error: accountLinkError } = await supabaseUntyped.from('students').update({ profile_id: authData.user.id, student_email: studentEmail }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
-        if (accountLinkError) throw new Error(`Account was created but could not be linked: ${accountLinkError.message}`);
-        accountCreated = !editingStudent.profile_id;
-      }
+      const hadExistingAccount = Boolean(editingStudent.profile_id);
+      const authData = await createScopedUser({
+        email: studentEmail,
+        password: loginIdentifier,
+        first_name: editForm.first_name,
+        last_name: editForm.last_name,
+        role: 'student',
+        school_id: user?.schoolId || null,
+        admission_number: editForm.admission_number.trim() || undefined,
+        assessment_number: assessmentNumber,
+        class_id: editForm.class_id || undefined,
+        student_id: editingStudent.id,
+        existing_user_id: editingStudent.profile_id || undefined,
+        legacy_email: editingStudent.student_email || undefined,
+        metadata: { admission_number: editForm.admission_number.trim() || null, assessment_number: assessmentNumber, class_id: editForm.class_id || null },
+      });
+      const { error: accountLinkError } = await supabaseUntyped.from('students').update({ profile_id: authData.user.id, student_email: studentEmail }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
+      if (accountLinkError) throw new Error(`Account was created or synchronized but could not be linked: ${accountLinkError.message}`);
       await syncParentAccounts({
         student_id: editingStudent.id,
         primary: {
@@ -370,7 +368,7 @@ export default function SchoolAdminStudents() {
           email: editForm.parent2_email,
         },
       });
-      toast.success(accountCreated ? 'Learner updated and student login account created using the assessment number.' : 'Learner updated and learner login credentials synchronized to the assessment number.');
+      toast.success(hadExistingAccount ? 'Learner updated and login credentials synchronized to the assessment number.' : 'Learner updated and student login account created using the assessment number.');
       setEditingStudent(null);
       refetch();
     } catch (err: any) {

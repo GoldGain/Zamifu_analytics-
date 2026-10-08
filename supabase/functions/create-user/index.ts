@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id, student_id, existing_user_id } = body;
+    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id, student_id, existing_user_id, legacy_email } = body;
 
     if (!email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields: email, password, role" }), {
@@ -129,7 +129,13 @@ Deno.serve(async (req) => {
         persistSession: false,
       },
     });
-    if (existing_user_id) {
+    let accountUserId = existing_user_id;
+    if (!accountUserId && legacy_email) {
+      const { data: usersPage } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const legacyUser = usersPage?.users?.find((candidate) => candidate.email?.toLowerCase() === String(legacy_email).trim().toLowerCase());
+      accountUserId = legacyUser?.id;
+    }
+    if (accountUserId) {
       if (!student_id) {
         return new Response(JSON.stringify({ error: "student_id is required when synchronizing an existing learner account" }), {
           status: 400,
@@ -142,7 +148,7 @@ Deno.serve(async (req) => {
         .eq("id", student_id)
         .eq("school_id", school_id || callerProfile.school_id)
         .maybeSingle();
-      if (!linkedStudent || linkedStudent.profile_id !== existing_user_id) {
+      if (linkedStudent && linkedStudent.profile_id && linkedStudent.profile_id !== accountUserId) {
         return new Response(JSON.stringify({ error: "The existing account is not linked to this learner" }), {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -160,8 +166,8 @@ Deno.serve(async (req) => {
       class_id: class_id || null,
       ...metadata,
     };
-    if (existing_user_id) {
-      const { data: updatedUser, error: updateError } = await adminClient.auth.admin.updateUserById(existing_user_id, {
+    if (accountUserId) {
+      const { data: updatedUser, error: updateError } = await adminClient.auth.admin.updateUserById(accountUserId, {
         email,
         password,
         email_confirm: true,
