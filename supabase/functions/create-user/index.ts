@@ -166,6 +166,15 @@ Deno.serve(async (req) => {
       class_id: class_id || null,
       ...metadata,
     };
+    const linkLearnerAccount = async (userId: string) => {
+      if (!student_id) return null;
+      const { error: linkError } = await adminClient
+        .from("students")
+        .update({ profile_id: userId, student_email: email })
+        .eq("id", student_id)
+        .eq("school_id", school_id || callerProfile.school_id);
+      return linkError;
+    };
     if (accountUserId) {
       const { data: updatedUser, error: updateError } = await adminClient.auth.admin.updateUserById(accountUserId, {
         email,
@@ -176,6 +185,13 @@ Deno.serve(async (req) => {
       if (updateError) {
         return new Response(JSON.stringify({ error: updateError.message }), {
           status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const linkError = await linkLearnerAccount(updatedUser.user?.id || accountUserId);
+      if (linkError) {
+        return new Response(JSON.stringify({ error: `Account was synchronized but could not be linked to the learner: ${linkError.message}` }), {
+          status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -200,10 +216,25 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    const createdUserId = newUser.user?.id;
+    if (!createdUserId) {
+      return new Response(JSON.stringify({ error: "Auth account was created without a user identifier" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const linkError = await linkLearnerAccount(createdUserId);
+    if (linkError) {
+      await adminClient.auth.admin.deleteUser(createdUserId);
+      return new Response(JSON.stringify({ error: `Account was created but could not be linked to the learner: ${linkError.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     return new Response(
       JSON.stringify({ 
-        user: { id: newUser.user?.id, email: newUser.user?.email },
+        user: { id: createdUserId, email: newUser.user?.email },
         message: "User created successfully" 
       }),
       {

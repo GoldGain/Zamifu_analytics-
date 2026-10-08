@@ -317,7 +317,9 @@ export default function SchoolAdminStudents() {
       const loginIdentifier = assessmentNumber.toUpperCase();
       // Learner login credentials are always derived from the assessment number.
       // This migrates legacy accounts that were originally created from admission numbers.
-      const studentEmail = `${loginIdentifier.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
+      const emailIdentifier = loginIdentifier.replace(/[^A-Z0-9]/g, '').toLowerCase();
+      if (!emailIdentifier) throw new Error('Assessment number must contain at least one letter or number.');
+      const studentEmail = `${emailIdentifier}.${schoolPrefix}@student.edu`;
       const { error } = await supabaseUntyped.from('students').update({
         admission_number: editForm.admission_number.trim() || null,
         assessment_number: assessmentNumber,
