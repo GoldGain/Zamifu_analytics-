@@ -315,9 +315,9 @@ export default function SchoolAdminStudents() {
       if (duplicateAssessment?.length) throw new Error('Assessment number already exists in this school.');
       const schoolPrefix = user?.schoolId ? user.schoolId.split('-')[0] : 'student';
       const loginIdentifier = assessmentNumber.toUpperCase();
-      const studentEmail = editForm.student_email.trim().toLowerCase()
-        || String(editingStudent.student_email || '').trim().toLowerCase()
-        || `${loginIdentifier.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
+      // Learner login credentials are always derived from the assessment number.
+      // This migrates legacy accounts that were originally created from admission numbers.
+      const studentEmail = `${loginIdentifier.toLowerCase().replace(/\s+/g, '')}.${schoolPrefix}@student.edu`;
       const { error } = await supabaseUntyped.from('students').update({
         admission_number: editForm.admission_number.trim() || null,
         assessment_number: assessmentNumber,
@@ -350,11 +350,12 @@ export default function SchoolAdminStudents() {
           assessment_number: assessmentNumber,
           class_id: editForm.class_id || undefined,
           student_id: editingStudent.id,
+          existing_user_id: editingStudent.profile_id || undefined,
           metadata: { admission_number: editForm.admission_number.trim() || null, assessment_number: assessmentNumber, class_id: editForm.class_id || null },
         });
         const { error: accountLinkError } = await supabaseUntyped.from('students').update({ profile_id: authData.user.id, student_email: studentEmail }).eq('id', editingStudent.id).eq('school_id', user?.schoolId);
         if (accountLinkError) throw new Error(`Account was created but could not be linked: ${accountLinkError.message}`);
-        accountCreated = true;
+        accountCreated = !editingStudent.profile_id;
       }
       await syncParentAccounts({
         student_id: editingStudent.id,
@@ -369,7 +370,7 @@ export default function SchoolAdminStudents() {
           email: editForm.parent2_email,
         },
       });
-      toast.success(accountCreated ? 'Learner updated and student login account created successfully.' : 'Learner updated successfully and parent account linked.');
+      toast.success(accountCreated ? 'Learner updated and student login account created using the assessment number.' : 'Learner updated and learner login credentials synchronized to the assessment number.');
       setEditingStudent(null);
       refetch();
     } catch (err: any) {
@@ -1056,7 +1057,6 @@ export default function SchoolAdminStudents() {
                 <div><label className={labelCls}>First Name *</label><input value={editForm.first_name} onChange={e => setEditForm({...editForm, first_name: e.target.value})} className={inputCls} required /></div>
                 <div><label className={labelCls}>Middle Name</label><input value={editForm.middle_name} onChange={e => setEditForm({...editForm, middle_name: e.target.value})} className={inputCls} /></div>
                 <div><label className={labelCls}>Last Name *</label><input value={editForm.last_name} onChange={e => setEditForm({...editForm, last_name: e.target.value})} className={inputCls} required /></div>
-                <div><label className={labelCls}>Learner Email (optional)</label><input type="email" value={editForm.student_email} onChange={e => setEditForm({...editForm, student_email: e.target.value})} className={inputCls} placeholder="Auto-generated if blank" /></div>
                 <div><label className={labelCls}>Gender</label>
                   <select value={editForm.gender} onChange={e => setEditForm({...editForm, gender: e.target.value as GenderType})} className={inputCls + " bg-white"}>
                     <option value="">Select Gender</option>

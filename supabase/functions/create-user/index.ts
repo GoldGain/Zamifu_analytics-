@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id, student_id } = body;
+    const { email, password, first_name, last_name, role, school_id, metadata, admission_number, assessment_number, class_id, student_id, existing_user_id } = body;
 
     if (!email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields: email, password, role" }), {
@@ -129,23 +129,65 @@ Deno.serve(async (req) => {
         persistSession: false,
       },
     });
+    if (existing_user_id) {
+      if (!student_id) {
+        return new Response(JSON.stringify({ error: "student_id is required when synchronizing an existing learner account" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: linkedStudent } = await adminClient
+        .from("students")
+        .select("id, profile_id, school_id")
+        .eq("id", student_id)
+        .eq("school_id", school_id || callerProfile.school_id)
+        .maybeSingle();
+      if (!linkedStudent || linkedStudent.profile_id !== existing_user_id) {
+        return new Response(JSON.stringify({ error: "The existing account is not linked to this learner" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
+    const userMetadata = {
+      first_name: first_name || "",
+      last_name: last_name || "",
+      role: role,
+      school_id: school_id || callerProfile.school_id,
+      admission_number: admission_number || null,
+      assessment_number: effectiveAssessmentNumber || null,
+      class_id: class_id || null,
+      ...metadata,
+    };
+    if (existing_user_id) {
+      const { data: updatedUser, error: updateError } = await adminClient.auth.admin.updateUserById(existing_user_id, {
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: userMetadata,
+      });
+      if (updateError) {
+        return new Response(JSON.stringify({ error: updateError.message }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({
+        user: { id: updatedUser.user?.id, email: updatedUser.user?.email },
+        message: "Existing learner account synchronized to assessment credentials",
+        updated: true,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm email
-      user_metadata: {
-        first_name: first_name || "",
-        last_name: last_name || "",
-        role: role,
-        school_id: school_id || callerProfile.school_id,
-        admission_number: admission_number || null,
-        assessment_number: effectiveAssessmentNumber || null,
-        class_id: class_id || null,
-        ...metadata,
-      },
+      email_confirm: true,
+      user_metadata: userMetadata,
     });
-
     if (createError) {
       return new Response(JSON.stringify({ error: createError.message }), {
         status: 400,

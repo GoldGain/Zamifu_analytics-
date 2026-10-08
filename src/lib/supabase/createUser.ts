@@ -13,6 +13,7 @@ interface CreateUserInput {
   assessment_number?: string;
   class_id?: string;
   student_id?: string;
+  existing_user_id?: string;
 }
 
 interface CreateUserResult {
@@ -46,6 +47,7 @@ export async function createScopedUser(input: CreateUserInput): Promise<CreateUs
       assessment_number: input.assessment_number || null,
       class_id: input.class_id || null,
       student_id: input.student_id || null,
+      existing_user_id: input.existing_user_id || null,
       metadata: input.metadata || {},
     },
   });
