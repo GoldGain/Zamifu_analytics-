@@ -85,13 +85,19 @@ export default function ParentChildren() {
     // Load children linked via parent_student_links
     const { data: linked } = await supabaseUntyped
       .from('parent_student_links')
-      .select('*, students(id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name, curriculum, grade_level, level), photo_url, curriculum, gender))')
+      .select('*, students(id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name, curriculum, grade_level, level), photo_url, curriculum, gender)')
       .eq('parent_id', user?.id);
-    if (linked) {
-      const kids = linked.map((l: any) => l.students as unknown as ChildRecord).filter(Boolean);
-      setChildren(kids);
-      if (kids.length > 0) selectChildDetails(kids[0]);
-    }
+    const linkedKids = (linked || []).map((l: any) => l.students as unknown as ChildRecord).filter(Boolean);
+    // Keep the parent portal resilient when a nested relation is hidden by RLS
+    // while the direct parent_id policy still permits the learner record.
+    const { data: directKids } = linkedKids.length > 0 ? { data: null } : await supabaseUntyped
+      .from('students')
+      .select('id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name, curriculum, grade_level, level), photo_url, curriculum, gender')
+      .eq('parent_id', user?.id)
+      .eq('school_id', user?.schoolId);
+    const kids = linkedKids.length > 0 ? linkedKids : ((directKids || []) as unknown as ChildRecord[]);
+    setChildren(kids);
+    if (kids.length > 0) selectChildDetails(kids[0]);
   };
 
   /**
