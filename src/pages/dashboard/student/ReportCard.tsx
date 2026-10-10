@@ -37,9 +37,10 @@ import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844C
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
-import { rankByUnifiedRule } from '@/lib/ranking';
+import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { fetchAllRows } from '@/lib/paginatedQuery';
-import { aggregateLearnerTotals } from '@/lib/learnerTotals';
+import { aggregateLearnerTotals, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
 export default function StudentReportCard() {
   const { user } = useAuth();
@@ -224,10 +225,10 @@ export default function StudentReportCard() {
     // and the Class Summary for the same learner, term and assessment.
     if (classResults && classResults.length > 0) {
       // Same aggregation as the class summary, so both report the same total.
-      const ranked = rankByUnifiedRule(
-        aggregateLearnerTotals(classResults, student?.classes || {}),
-        getSchoolLevelBand(student?.classes || {}),
-      );
+      const totals = aggregateLearnerTotals(classResults, student?.classes || {});
+      const ranked = isSeniorCbeClass(student?.classes || {})
+        ? rankByPathway(totals, getSchoolLevelBand(student?.classes || {}))
+        : rankByUnifiedRule(totals, getSchoolLevelBand(student?.classes || {}));
       const entry = ranked.find((row) => row.studentId === student.id);
       setClassPosition(entry ? entry.position : null);
     } else {
@@ -287,10 +288,10 @@ export default function StudentReportCard() {
       configurePdfFontSize(doc, fontSize);
       const term = terms.find(t => t.id === selectedTerm);
 
-      const avgPercentage = results.length
-        ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length
-        : 0;
-      const totalPoints = isPrimary ? null : results.reduce((s, r) => s + gradePointsForClass(getPercentage(r), classDataForGrading), 0);
+      const learnerMetrics = aggregateLearnerTotals(results.map((row: any) => ({ ...row, students: student })), classDataForGrading)[0];
+      const rankingDetails = learnerMetrics?.rankingSubjects?.length ? { subjects: learnerMetrics.rankingSubjects, totalMarks: learnerMetrics.rankingTotalMarks || 0, totalPoints: learnerMetrics.rankingTotalPoints || 0 } : undefined;
+      const avgPercentage = learnerMetrics?.avgPct || 0;
+      const totalPoints = isPrimary ? null : (rankingDetails?.totalPoints ?? learnerMetrics?.totalPoints ?? 0);
 
       const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
@@ -329,14 +330,14 @@ export default function StudentReportCard() {
         48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
-        { showPoints: !isPrimary },
+        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: student.pathway, track: student.track, overallGrade: (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })(), showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Class },
       );
 
       const qrOptions = { assessmentNumber: student.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
-      let tableEndY = drawResultsTable(doc, results, classDataForGrading, 70, { showDeviation: previousAvg !== null });
+      let tableEndY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 76 : 70, { showDeviation: previousAvg !== null, rankingDetails });
       if (band === 'junior') tableEndY = drawPathwayPerformance(doc, results, tableEndY + 4) + 6;
-      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10);
+      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10, undefined, rankingDetails);
       const devEndY = drawDeviation(doc, deviation, previousAvg, null, summaryEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, devEndY, 38, aiComment, schoolInfo, qrOptions)) {

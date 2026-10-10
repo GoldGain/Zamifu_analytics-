@@ -35,9 +35,10 @@ import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844C
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
-import { rankByUnifiedRule } from '@/lib/ranking';
+import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { fetchAllRows } from '@/lib/paginatedQuery';
-import { aggregateLearnerTotals } from '@/lib/learnerTotals';
+import { aggregateLearnerTotals, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
 declare global {
   interface Window {
@@ -297,10 +298,10 @@ export default function ParentChildReportCard() {
     // Student Portal, Class Summary and report card for the same learner.
     if (classResults && classResults.length > 0) {
       // Same aggregation as the class summary, so both report the same total.
-      const ranked = rankByUnifiedRule(
-        aggregateLearnerTotals(classResults, selectedChild?.classes || {}),
-        getSchoolLevelBand(selectedChild?.classes || {}),
-      );
+      const totals = aggregateLearnerTotals(classResults, selectedChild?.classes || {});
+      const ranked = isSeniorCbeClass(selectedChild?.classes || {})
+        ? rankByPathway(totals, getSchoolLevelBand(selectedChild?.classes || {}))
+        : rankByUnifiedRule(totals, getSchoolLevelBand(selectedChild?.classes || {}));
       const entry = ranked.find((row) => row.studentId === selectedChild.id);
       setClassPosition(entry ? entry.position : null);
     } else {
@@ -354,10 +355,10 @@ export default function ParentChildReportCard() {
       const doc = new jsPDF();
       configurePdfFontSize(doc, fontSize);
       const term = terms.find(t => t.id === selectedTerm);
-      const avgPercentage = results.length
-        ? results.reduce((s, r) => s + getPercentage(r), 0) / results.length
-        : 0;
-      const totalPoints = isPrimary ? null : results.reduce((s, r) => s + gradePointsForClass(getPercentage(r), classDataForGrading), 0);
+      const learnerMetrics = aggregateLearnerTotals(results.map((row: any) => ({ ...row, students: selectedChild })), classDataForGrading)[0];
+      const rankingDetails = learnerMetrics?.rankingSubjects?.length ? { subjects: learnerMetrics.rankingSubjects, totalMarks: learnerMetrics.rankingTotalMarks || 0, totalPoints: learnerMetrics.rankingTotalPoints || 0 } : undefined;
+      const avgPercentage = learnerMetrics?.avgPct || 0;
+      const totalPoints = isPrimary ? null : (rankingDetails?.totalPoints ?? learnerMetrics?.totalPoints ?? 0);
       const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
       // Prefer the unified ranking position so the parent sees the same rank as
@@ -384,17 +385,18 @@ export default function ParentChildReportCard() {
         name: studentFullName,
         photoUrl: selectedChild.photo_url || null,
       });
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined);
+      const overallGrade = calculateGradeForClass(avgPercentage, classDataForGrading);
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: 'subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade, showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Curriculum(classDataForGrading) });
       const qrOptions = { assessmentNumber: selectedChild.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
-      let currentY = drawResultsTable(doc, results, classDataForGrading, 62, { showDeviation: previousAvg !== null }) + 6;
+      let currentY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 69 : 62, { showDeviation: previousAvg !== null, rankingDetails }) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
       if (getSchoolLevelBand(classDataForGrading) === 'junior') {
         currentY = drawPathwayPerformance(doc, results, currentY) + 6;
       }
       
-      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY);
+      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY, undefined, rankingDetails);
       currentY = drawDeviation(doc, deviation, previousAvg, position, currentY + 6);
       if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, currentY, 38, aiComment, schoolInfo, qrOptions)) {
         currentY = drawTrendGraph(doc, trendData, 14, currentY, 182, 34, getSchoolLevelBand(classDataForGrading)) + 2;
