@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { displaySeniorLearningAreaName } from '@/lib/seniorPathways';
 
 type LearningAreaLevel = 'pre_school' | 'lower_primary' | 'upper_primary' | 'junior' | 'senior' | 'senior_844';
 const CATEGORIES = ['Languages', 'Mathematics', 'Sciences', 'Humanities', 'Technical', 'Creative', 'Life Skills'] as const;
@@ -342,6 +343,7 @@ export default function SchoolAdminSubjects() {
   const renderArea = (area: CatalogArea) => {
     const active = activeAreaIds.has(area.id);
     const isBusy = busyKey === `area:${area.id}`;
+    const displayName = activeLevel === 'senior' ? displaySeniorLearningAreaName(area.name) : area.name;
     return (
       <label
         key={area.id}
@@ -360,7 +362,7 @@ export default function SchoolAdminSubjects() {
           aria-label={`${active ? 'Remove' : 'Add'} ${area.name}`}
         />
         <span className="min-w-0 flex-1">
-          <span className="block font-medium text-slate-900">{area.name}</span>
+          <span className="block font-medium text-slate-900">{displayName}</span>
           <span className="mt-1 block text-xs text-slate-500">
             {active ? 'Active for this school' : 'Not active for this school'}
           </span>

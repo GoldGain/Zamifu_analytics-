@@ -16,6 +16,8 @@
  *      rank is skipped (1, 1, 3).
  */
 
+import { normalizeSeniorPathway } from '@/lib/seniorPathways';
+
 export type RankingBand = 'primary' | 'junior' | 'senior';
 
 /** A rankable entry. Form 3/4 may provide KNEC seven-subject metrics. */
@@ -120,6 +122,29 @@ export function rankByUnifiedRule<T extends RankableEntry>(
 ): (T & { position: number; rank: number })[] {
   const sorted = [...entries].sort((a, b) => compareByUnifiedRanking(a, b, band));
   return assignCompetitionRanks(sorted, band);
+}
+
+/**
+ * Senior CBE learners are compared only with peers on the same pathway. The
+ * returned `position` intentionally is the pathway position so downstream
+ * report cards and rankings cannot accidentally render an overall merit.
+ */
+export function rankByPathway<T extends RankableEntry>(
+  entries: T[],
+  band: RankingBand | string | null | undefined = 'senior',
+): (T & { position: number; rank: number; pathway: string; pathwayTotal: number })[] {
+  const groups = new Map<string, T[]>();
+  entries.forEach((entry: any) => {
+    const pathway = normalizeSeniorPathway(entry?.student?.pathway || entry?.pathway) || 'Unassigned Pathway';
+    groups.set(pathway, [...(groups.get(pathway) || []), entry]);
+  });
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .flatMap(([pathway, cohort]) => rankByUnifiedRule(cohort, band).map((entry) => ({
+      ...entry,
+      pathway,
+      pathwayTotal: cohort.length,
+    })));
 }
 
 /** Map of studentId -> rank for a set of entries. */

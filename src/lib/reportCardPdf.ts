@@ -1,10 +1,11 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { getSchoolLevelBand, calculateGradeForClass, gradeLabelForClass, gradePointsMaxForClass, generateSubjectSpecificComment } from './grading';
+import { getSchoolLevelBand, calculateGradeForClass, gradeLabelForClass, gradePointsMaxForClass, generateSubjectSpecificComment, is844Curriculum } from './grading';
 import type { SchoolLevelBand, SubjectResult } from './grading';
 import { pdfFontSize } from './pdfFontSize';
 import QRCode from 'qrcode';
 import { calculatePathwayPerformance, formatPathwayNumber, strongestPathway } from './pathwayPerformance';
+import { isExcludedResult, usesSevenSubjectRanking } from './learnerTotals';
 
 // ── Shared PDF Helper Functions for Report Cards ─────────────────────────────
 
@@ -68,6 +69,7 @@ export interface ReportCardTableOptions {
   showDeviation?: boolean;
   previousAssessmentLabel?: string;
   assessmentColumns?: { id: string; label: string }[];
+  rankingDetails?: { subjects: string[]; totalMarks: number; totalPoints: number };
 }
 
 const REPORT_CONTENT_TOP = 5;
@@ -956,15 +958,22 @@ export function drawStudentInfo(
   y: number = 38,
   assessmentName?: string,
   assessmentNumber?: string,
-  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean }
+  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean; pathway?: string; track?: string; overallGrade?: string; showPathway?: boolean; is844?: boolean }
 ) {
   const fs = pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8);
   const showPoints = positionDetails?.showPoints !== false;
-  const rows: string[][] = [
+  const standardRows: string[][] = [
     ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
     ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
     ['Class Position', positionDetails?.classPosition || position || '—', ...(positionDetails?.streamPosition ? ['Stream Position', positionDetails.streamPosition, 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
   ];
+  const showPathway = positionDetails?.showPathway || positionDetails?.is844;
+  const rows: string[][] = showPathway ? [
+    ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment No.', assessmentNumber || '—'],
+    ['Class', className || '—', 'Pathway', positionDetails?.pathway || '—', 'Track', positionDetails?.track || '—'],
+    ['Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', positionDetails?.is844 ? 'Overall Grade' : 'Overall Level', positionDetails?.overallGrade || '—'],
+    ['Class Position', positionDetails?.classPosition || position || '—', 'Stream Position', positionDetails?.streamPosition || '—', 'Date', new Date().toLocaleDateString()],
+  ] : standardRows;
   const widths = [27, 43, 27, 32, 27, 26];
   doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
   rows.forEach((row, rowIndex) => {
@@ -1000,21 +1009,26 @@ export function drawResultsTable(
   startY = ensureReportCardSpace(doc, startY, 24);
   const sorted = sortResultsBySubject(results);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
+  const is844 = is844Curriculum(classData);
+  const sevenSubjectRanking = usesSevenSubjectRanking(classData);
   const pointsMax = gradePointsMaxForClass(classData);
   const showStream = options.showStreamPosition === true;
   const showDeviation = options.showDeviation !== false;
   const assessmentColumns = options.assessmentColumns || [];
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
   const assessmentCellCount = assessmentColumns.length * 3;
+  const areaLabel = is844 ? 'Subject' : 'Learning Area';
+  const levelLabel = is844 ? 'Grade' : 'Performance Level';
   const tableHead = assessmentColumns.length
-    ? ['No.', 'Learning Area', ...assessmentColumns.flatMap(column => [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\nLevel`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
-    : ['No.', 'Learning Area', 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), 'Performance Level', ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
+    ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+    : ['No.', areaLabel, 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
-    const pct = getPercentage(r);
-    const grading = gradeFromPercentage(pct, classData);
+    const excluded = isExcludedResult(r);
+    const pct = excluded ? 0 : getPercentage(r);
+    const grading = excluded ? null : gradeFromPercentage(pct, classData);
     const subjectName = r.subjects?.name === 'Creative Arts' ? 'C-Arts' : (r.subjects?.name || 'N/A');
     const previous = r.previousPercentage === null || r.previousPercentage === undefined ? null : Number(r.previousPercentage);
-    const deviation = previous === null ? '—' : `${pct - previous >= 0 ? '+' : ''}${(pct - previous).toFixed(1)}%`;
+    const deviation = excluded || previous === null ? '—' : `${pct - previous >= 0 ? '+' : ''}${(pct - previous).toFixed(1)}%`;
     const position = r.classPosition ? `${r.classPosition}/${r.classTotal || '—'}` : '—';
     const streamPosition = r.streamPosition ? `${r.streamPosition}/${r.streamTotal || '—'}` : '—';
     const row: any[] = [i + 1, subjectName];
@@ -1035,28 +1049,29 @@ export function drawResultsTable(
           : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
         row.push(marksLabel, pointsMax > 0 ? (examGrade.points ?? '—') : '—', examLevel || '—');
       });
-      row.push(`${pct.toFixed(0)}%`);
+      row.push(excluded ? 'X' : `${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
-      row.push(`${pct.toFixed(0)}/100`);
+      row.push(excluded ? 'X' : `${pct.toFixed(0)}/100`);
       if (showDeviation) row.push(deviation);
     }
-    if (pointsMax > 0) row.push(grading.points ?? '—');
-    row.push(grading.grade || '—');
+    if (pointsMax > 0) row.push(grading?.points ?? '—');
+    row.push(excluded ? 'X' : grading?.grade || '—');
     if (showStream) row.push(streamPosition);
     row.push(position, r.teacherName || '—', r.teacherComment || '—');
     return row;
   });
-  const totalMarks = sorted.reduce((sum, row) => sum + getPercentage(row), 0);
-  const totalMarksLabel = `${Math.round(totalMarks)} / ${sorted.length * 100}`;
-  const totalPoints = sorted.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
+  const includedRows = sorted.filter((row) => !isExcludedResult(row));
+  const totalMarks = options.rankingDetails?.totalMarks ?? includedRows.reduce((sum, row) => sum + getPercentage(row), 0);
+  const totalMarksLabel = `${Math.round(totalMarks)} / ${sevenSubjectRanking ? 700 : includedRows.length * 100}`;
+  const totalPoints = options.rankingDetails?.totalPoints ?? includedRows.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
   const totalMarksRow = new Array(tableHead.length).fill('');
   const averageIndex = 2 + assessmentCellCount;
   totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? averageIndex : 2] = totalMarksLabel;
   tableBody.push(totalMarksRow);
   if (pointsMax > 0) {
     const totalPointsRow = new Array(tableHead.length).fill('');
-    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? averageIndex + 1 + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sorted.length * pointsMax}`;
+    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? averageIndex + 1 + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sevenSubjectRanking ? 56 : includedRows.length * pointsMax}`;
     tableBody.push(totalPointsRow);
   }
   doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
@@ -1161,25 +1176,28 @@ export function drawSummaryBox(
   const boxH = hasRankingDetails ? (COMPACT_MODE ? 30 : 40) : (COMPACT_MODE ? 18 : 28);
   startY = ensureReportCardSpace(doc, startY, boxH + 2);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
-  const totalMarks = results.reduce((s, r) => s + (Number(r.marks || 0)), 0);
+  const includedResults = results.filter((result) => !isExcludedResult(result));
+  const totalMarks = rankingDetails?.totalMarks ?? includedResults.reduce((s, r) => s + (Number(r.marks || 0)), 0);
+  const summaryPoints = rankingDetails?.totalPoints ?? totalPoints;
   const overallGrading = gradeFromPercentage(avgPercentage, classData);
   doc.setFillColor(0, 137, 123); doc.rect(14, startY, 182, boxH, 'F');
   const fs = pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8);
   const gap = COMPACT_MODE ? 5.8 : 8;
   doc.setFontSize(fs); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
-  doc.text(`Learning Areas: ${results.length}`, 20, startY + gap);
+  doc.text(`${is844Curriculum(classData) ? 'Subjects' : 'Learning Areas'}: ${includedResults.length}`, 20, startY + gap);
   doc.text(`Total Marks: ${totalMarks}`, 65, startY + gap);
   doc.text(`Average: ${avgPercentage.toFixed(1)}%`, 130, startY + gap);
   doc.text(`Position: ${position}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading.grade}`, 65, startY + gap * 2);
-  if (!isPrimary && totalPoints !== null) doc.text(`Total Points: ${totalPoints}`, 130, startY + gap * 2);
+  if (!isPrimary && summaryPoints !== null) doc.text(`Total Points: ${summaryPoints}${rankingDetails ? ' / 56' : ''}`, 130, startY + gap * 2);
   if (streamPosition) {
     doc.text(`Stream Position: ${streamPosition}`, 20, startY + gap * 3);
   }
   if (hasRankingDetails && rankingDetails) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.4 : 6.1));
-    const text = `KNEC 7-subject rank: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints} points; ${rankingDetails.totalMarks.toFixed(0)} marks`;
+    const rankLabel = is844Curriculum(classData) ? 'KNEC 7-subject rank' : 'Senior 7-subject rank';
+    const text = `${rankLabel}: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints}/56 points; ${rankingDetails.totalMarks.toFixed(0)}/700 marks`;
     const lines = doc.splitTextToSize(text, 174);
     doc.text(lines, 20, startY + (COMPACT_MODE ? 25 : 33));
   }

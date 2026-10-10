@@ -1,66 +1,46 @@
-/**
- * Shared per-learner aggregation for ranking.
- *
- * WHY THIS EXISTS
- * ---------------
- * Ranking is only consistent if every page agrees on the TOTALS it ranks.
- * Two different aggregations were in use:
- *
- *   A. Class Summary / All-Streams / Compare Exams (assessmentAnalytics)
- *      — deduplicate by learning area: when a term holds several assessments
- *        (e.g. EXAM1, EXAM2 and the EXAM1+EXAM2 combined rows) only the first
- *        row per learning area contributes, so a learner's total is the sum of
- *        their learning-area scores.
- *
- *   B. Student Portal / Report Cards
- *      — summed EVERY result row, so the combined rows plus both single exams
- *        were added together and the learner's total was inflated. That is why
- *        the same learner could show position 39 in one place and 48 in another.
- *
- * This module implements aggregation A once, and every ranking surface — the
- * class summary, the all-streams summary, compare exams, the student portal,
- * the student report card, the parent report card, the class-teacher dashboard
- * and the stream dashboard — builds its totals from it. Ranking then applies
- * the shared rule in `ranking.ts`.
- */
-
 import {
   calculateCompetencyGrade,
-  gradePointsForClass,
-  getCanonicalLearningAreas,
-  getRequiredLearningAreas,
   getSchoolLevelBand,
   is844Curriculum,
   type SchoolLevelBand,
 } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
+import { isGradeTenClass, normalizeSeniorPathway } from '@/lib/seniorPathways';
 
 /** One learner's aggregated totals for a class, term and assessment filter. */
 export interface LearnerTotals {
   studentId: string;
   classId: string;
   student: any;
-  /** Learning area name -> percentage, first recorded row per area wins. */
+  /** Counted learning-area percentages. Exempt/absent X rows stay in raw results, never here. */
   subjects: Record<string, number>;
-  /** Sum of the learning-area percentages. Primary ranking metric. */
+  /** Sum of effective learning-area percentages used for means and default ranking. */
   totalMarks: number;
-  /** Sum of active grading-scale points across counted learning areas. Tie-breaker. */
+  /** Sum of the current 8-point scale used for CBE and seven-subject 8-4-4 rankings. */
   totalPoints: number;
-  /** Points from the KNEC seven-subject set for 8-4-4 Forms 3/4. */
   rankingTotalPoints?: number;
-  /** Marks from the KNEC seven-subject set for 8-4-4 Forms 3/4. */
   rankingTotalMarks?: number;
-  /** Exact seven (or available subset) of learning areas used for Form 3/4 rank. */
   rankingSubjects?: string[];
-  /** Number of learning areas counted. */
   count: number;
-  /** totalMarks / required learning areas. */
+  /** Mean of actual counted subject slots; paired alternatives consume one slot. */
   avgPct: number;
   gender: string | null;
   examName: string;
 }
 
-/** Percentage of a single result row, tolerant of a missing `percentage`. */
+export interface SevenSubjectMetrics {
+  subjects: string[];
+  totalMarks: number;
+  totalPoints: number;
+}
+
+/** A recorded X means absent/exempt and is deliberately excluded from every aggregate. */
+export function isExcludedResult(result: any): boolean {
+  const isX = (value: unknown) => String(value ?? '').trim().toUpperCase() === 'X';
+  return isX(result?.mark_code) || isX(result?.marks) || isX(result?.percentage) || isX(result?.grade_844);
+}
+
+/** Percentage of a single result row, tolerant of a missing numeric percentage. */
 export function rowPercentage(result: any): number {
   const explicit = result?.percentage;
   if (explicit !== null && explicit !== undefined && String(explicit).trim() !== '') {
@@ -69,85 +49,139 @@ export function rowPercentage(result: any): number {
   }
   const outOf = Number(result?.out_of);
   if (Number.isFinite(outOf) && outOf > 0) {
-    return (Number(result?.marks || 0) / outOf) * 100;
+    const marks = Number(result?.marks);
+    return Number.isFinite(marks) ? (marks / outOf) * 100 : 0;
   }
   const marks = Number(result?.marks);
   return Number.isFinite(marks) ? marks : 0;
 }
 
-/** Points for one learning-area percentage, using the class's active scale. */
-function rowPoints(result: any, percentage: number, band: SchoolLevelBand, classObj: any): number {
-  if (band === 'primary') return 0;
-  // Historical 8-4-4 rows may contain the old 8-point CBE value in cbc_points;
-  // recalculate them from the class so Forms 3/4 consistently use 12..1.
-  if (is844Curriculum(classObj)) {
-    return gradePointsForClass(percentage, classObj);
-  }
-  const stored = Number(result?.cbc_points);
-  if (Number.isFinite(stored) && stored > 0) return stored;
-  return calculateCompetencyGrade(percentage, band).points || 0;
-}
-
-export interface KnecSevenSubjectMetrics {
-  subjects: string[];
-  totalMarks: number;
-  totalPoints: number;
+/** All senior and 8-4-4 ranking points use the requested 8-point maximum. */
+export function rankingPointsForPercentage(percentage: number): number {
+  return calculateCompetencyGrade(percentage, 'senior').points;
 }
 
 const isMathematicsSubject = (name: string): boolean =>
-  /^(?:mathematics|maths?)(?:\s+(?:alternative\s+)?[ab])?\b/i.test(name.trim());
+  /^(?:mathematics|maths?)(?:\s+(?:alternative\s+)?[ab])?\b|^(?:core|essential)\s+mathematics\b/i.test(name.trim());
 
 const isKnecLanguageSubject = (name: string): boolean =>
   /\benglish\b|\bkiswahili\b|\bkenya sign language\b|\bksl\b/i.test(name);
 
-/**
- * KNEC Form 3/4 ranking set: one Mathematics subject, the best of English,
- * Kiswahili or KSL, then the five best remaining subjects. When Maths A/B or
- * multiple language rows exist, the best points score is selected (marks break
- * a points tie). All other subjects remain available in the report card.
- */
-export function calculateKnecSevenSubjectMetrics(
-  subjects: Record<string, number>,
-  classObj: any,
-): KnecSevenSubjectMetrics {
-  const names = Object.keys(subjects);
-  const score = (name: string) => Number(subjects[name] || 0);
-  const points = (name: string) => gradePointsForClass(score(name), classObj);
-  const compareBest = (a: string, b: string) =>
-    points(b) - points(a) || score(b) - score(a) || a.localeCompare(b);
+const compareBest = (subjects: Record<string, number>) => (a: string, b: string) =>
+  rankingPointsForPercentage(subjects[b] || 0) - rankingPointsForPercentage(subjects[a] || 0)
+  || (subjects[b] || 0) - (subjects[a] || 0)
+  || a.localeCompare(b);
 
-  const maths = names.filter(isMathematicsSubject).sort(compareBest);
-  const languages = names.filter(isKnecLanguageSubject).sort(compareBest);
+/**
+ * Form 3/4 rank: Mathematics, the strongest language, then five best remaining
+ * subjects. It always exposes an 8-points-per-subject total (maximum 56).
+ */
+export function calculateKnecSevenSubjectMetrics(subjects: Record<string, number>): SevenSubjectMetrics {
+  const names = Object.keys(subjects);
+  const best = compareBest(subjects);
+  const maths = names.filter(isMathematicsSubject).sort(best);
+  const languages = names.filter(isKnecLanguageSubject).sort(best);
   const otherSubjects = names
     .filter((name) => !isMathematicsSubject(name) && !isKnecLanguageSubject(name))
-    .sort(compareBest);
+    .sort(best);
   const selected = [maths[0], languages[0], ...otherSubjects.slice(0, 5)].filter((name): name is string => Boolean(name));
-
   return {
     subjects: selected,
-    totalMarks: selected.reduce((sum, name) => sum + score(name), 0),
-    totalPoints: selected.reduce((sum, name) => sum + points(name), 0),
+    totalMarks: selected.reduce((sum, name) => sum + (subjects[name] || 0), 0),
+    totalPoints: selected.reduce((sum, name) => sum + rankingPointsForPercentage(subjects[name] || 0), 0),
   };
 }
 
+const isEnglish = (name: string) => /\benglish\b/i.test(name);
+const isKiswahiliOrKsl = (name: string) => /\bkiswahili\b|\bkenya sign language\b|\bksl\b/i.test(name);
+const isCsl = (name: string) => /\bcommunity service learning\b|\bcsl\b/i.test(name);
+const isCoreMath = (name: string) => /\bcore mathematics\b|\bmathematics\s*a\b/i.test(name);
+const isEssentialMath = (name: string) => /\bessential mathematics\b|\bmathematics\s*b\b/i.test(name);
+
+const pathwayElectivePatterns: Record<string, RegExp> = {
+  STEM: /biology|chemistry|physics|computer|agriculture|home science|general science|technical|technology|engineering|aviation|electricity|construction|woodwork|metalwork|power mechanics|drawing and design|marine|health|gis/i,
+  'Social Sciences': /business|history|geography|economics|law|hospitality|tourism|literature|fasihi|french|german|arabic|language|journalism|citizenship/i,
+  'Arts and Sports Science': /art|music|dance|theatre|performing|visual|sports|physical education|creative media|film/i,
+};
+
 /**
- * Aggregate raw result rows into one entry per learner.
- *
- * Rows are deduplicated per learning area so a term that stores single exams
- * AND a combined exam does not double-count a learner's marks.
+ * Grade 10 rank: English, Kiswahili/KSL, pathway-appropriate Mathematics, CSL,
+ * and the learner's best three recorded pathway electives.  Subject assignments
+ * normally ensure only pathway electives are present; the explicit pathway map
+ * protects the rank when an unrelated result is also present.
+ */
+export function calculateSeniorSevenSubjectMetrics(subjects: Record<string, number>, student?: any): SevenSubjectMetrics {
+  const names = Object.keys(subjects);
+  const best = compareBest(subjects);
+  const pathway = normalizeSeniorPathway(student?.pathway);
+  const mathematics = pathway === 'STEM'
+    ? names.filter(isCoreMath)
+    : pathway
+      ? names.filter(isEssentialMath)
+      : names.filter(isMathematicsSubject);
+  const selectedCore = [
+    names.filter(isEnglish).sort(best)[0],
+    names.filter(isKiswahiliOrKsl).sort(best)[0],
+    mathematics.sort(best)[0] || names.filter(isMathematicsSubject).sort(best)[0],
+    names.filter(isCsl).sort(best)[0],
+  ].filter((name): name is string => Boolean(name));
+  const selectedSet = new Set(selectedCore);
+  const remaining = names.filter((name) => !selectedSet.has(name));
+  const pathwayCandidates = pathway
+    ? remaining.filter((name) => pathwayElectivePatterns[pathway].test(name))
+    : [];
+  const electives = (pathwayCandidates.length >= 3 ? pathwayCandidates : remaining).sort(best).slice(0, 3);
+  const selected = [...selectedCore, ...electives];
+  return {
+    subjects: selected,
+    totalMarks: selected.reduce((sum, name) => sum + (subjects[name] || 0), 0),
+    totalPoints: selected.reduce((sum, name) => sum + rankingPointsForPercentage(subjects[name] || 0), 0),
+  };
+}
+
+export function usesSevenSubjectRanking(classObj: any): boolean {
+  return is844Curriculum(classObj) || isGradeTenClass(classObj);
+}
+
+/** Paired alternatives contribute only their best recorded member to a mean. */
+function optionalSlotGroup(name: string): string | null {
+  const normalized = normalizeLearningAreaName(name).toLowerCase().replace(/\s+/g, ' ').trim();
+  if (['cre', 'ire', 'hre', 'religious education'].includes(normalized)) return 'religious-education';
+  if (['kiswahili', 'kenya sign language', 'ksl'].includes(normalized)) return 'kiswahili-ksl';
+  if (['mathematics a', 'mathematics b', 'core mathematics', 'essential mathematics'].includes(normalized)) return 'mathematics-alternative';
+  return null;
+}
+
+function effectiveMeanSubjects(subjects: Record<string, number>): string[] {
+  const singleton: string[] = [];
+  const alternatives = new Map<string, string[]>();
+  Object.keys(subjects).forEach((name) => {
+    const group = optionalSlotGroup(name);
+    if (!group) singleton.push(name);
+    else alternatives.set(group, [...(alternatives.get(group) || []), name]);
+  });
+  alternatives.forEach((names) => {
+    names.sort(compareBest(subjects));
+    if (names[0]) singleton.push(names[0]);
+  });
+  return singleton;
+}
+
+/**
+ * Aggregate rows into one deterministic record per learner. The newest row per
+ * learner/learning-area wins; an X row wins the display state but is excluded
+ * from all rank and mean arithmetic.
  */
 export function aggregateLearnerTotals(rawResults: any[], classObj: any): LearnerTotals[] {
   const band: SchoolLevelBand = getSchoolLevelBand(classObj);
-  const studentMap: Record<string, LearnerTotals> = {};
-  // The raw row currently winning each learning area, so the choice can be
-  // decided by recency rather than by whatever order PostgREST returned.
-  const winner: Record<string, Record<string, { createdAt: number; index: number; row: any }>> = {};
+  const entries = new Map<string, LearnerTotals>();
+  const winners = new Map<string, Map<string, { createdAt: number; index: number; row: any }>>();
 
   (rawResults || []).forEach((result: any, index: number) => {
     const studentId = result?.student_id;
     if (!studentId) return;
-    if (!studentMap[studentId]) {
-      studentMap[studentId] = {
+    if (!entries.has(studentId)) {
+      entries.set(studentId, {
         studentId,
         classId: result.class_id,
         student: result.students,
@@ -158,62 +192,45 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
         avgPct: 0,
         gender: result.students?.gender || null,
         examName: result.school_exams?.name || result.exams?.name || '',
-      };
-      winner[studentId] = {};
+      });
+      winners.set(studentId, new Map());
     }
-    const entry = studentMap[studentId];
-    const percentage = rowPercentage(result);
-    const areaKey = normalizeLearningAreaName(result.subjects?.name || 'Unknown');
+    const entry = entries.get(studentId)!;
+    if (result.students) entry.student = result.students;
+    if (result.school_exams?.name || result.exams?.name) entry.examName = result.school_exams?.name || result.exams?.name;
+    const area = normalizeLearningAreaName(result.subjects?.name || 'Unknown');
     const createdAt = Date.parse(String(result.created_at || '')) || 0;
-    if (result.school_exams?.name || result.exams?.name) {
-      entry.examName = result.school_exams?.name || result.exams?.name;
-    }
-    // A term can hold several rows for the same learning area (Exam 1, Exam 2
-    // and their combined row). Counting more than one would inflate the
-    // learner's total, and picking "the first row the API happened to return"
-    // makes the total depend on request ordering — which is how the same
-    // learner ended up with different positions on different pages. The most
-    // recently recorded row wins deterministically, so every page derives the
-    // same total. The newest row per learning area is the school's latest word
-    // on that learning area (a later exam, or the combined result).
-    const previous = winner[studentId][areaKey];
-    if (previous && (previous.createdAt > createdAt
-      || (previous.createdAt === createdAt && previous.index <= index))) {
-      return;
-    }
-    if (previous) {
-      // Replace the row that previously won this learning area.
-      entry.totalMarks -= entry.subjects[areaKey];
-      entry.totalPoints -= rowPoints(previous.row, entry.subjects[areaKey], band, classObj);
-    } else {
-      entry.count += 1;
-    }
-    winner[studentId][areaKey] = { createdAt, index, row: result };
-    entry.subjects[areaKey] = percentage;
-    entry.totalMarks += percentage;
-    entry.totalPoints += rowPoints(result, percentage, band, classObj);
+    const perLearner = winners.get(studentId)!;
+    const previous = perLearner.get(area);
+    if (previous && (previous.createdAt > createdAt || (previous.createdAt === createdAt && previous.index <= index))) return;
+    perLearner.set(area, { createdAt, index, row: result });
   });
 
-  const observedAreaCount = new Set(
-    (rawResults || []).map((result: any) => normalizeLearningAreaName(result.subjects?.name || 'Unknown')),
-  ).size;
-  const configuredAreaCount = getCanonicalLearningAreas(classObj).length || observedAreaCount;
-  const requiredAreas = getRequiredLearningAreas(classObj, configuredAreaCount);
-
-  return Object.values(studentMap).map((entry) => {
-    const knecMetrics = is844Curriculum(classObj)
-      ? calculateKnecSevenSubjectMetrics(entry.subjects, classObj)
-      : null;
+  return Array.from(entries.values()).map((entry) => {
+    const rawSubjects: Record<string, number> = {};
+    winners.get(entry.studentId)?.forEach((winner, area) => {
+      if (!isExcludedResult(winner.row)) rawSubjects[area] = rowPercentage(winner.row);
+    });
+    const effectiveNames = effectiveMeanSubjects(rawSubjects);
+    const totalMarks = effectiveNames.reduce((sum, name) => sum + (rawSubjects[name] || 0), 0);
+    const totalPoints = effectiveNames.reduce((sum, name) => sum + (band === 'primary' ? 0 : rankingPointsForPercentage(rawSubjects[name] || 0)), 0);
+    const sevenSubjectMetrics = is844Curriculum(classObj)
+      ? calculateKnecSevenSubjectMetrics(rawSubjects)
+      : isGradeTenClass(classObj)
+        ? calculateSeniorSevenSubjectMetrics(rawSubjects, entry.student)
+        : null;
     return {
       ...entry,
-      ...(knecMetrics ? {
-        rankingTotalMarks: knecMetrics.totalMarks,
-        rankingTotalPoints: knecMetrics.totalPoints,
-        rankingSubjects: knecMetrics.subjects,
+      subjects: rawSubjects,
+      totalMarks,
+      totalPoints,
+      count: effectiveNames.length,
+      avgPct: effectiveNames.length ? totalMarks / effectiveNames.length : 0,
+      ...(sevenSubjectMetrics ? {
+        rankingTotalMarks: sevenSubjectMetrics.totalMarks,
+        rankingTotalPoints: sevenSubjectMetrics.totalPoints,
+        rankingSubjects: sevenSubjectMetrics.subjects,
       } : {}),
-      avgPct: requiredAreas
-        ? entry.totalMarks / requiredAreas
-        : entry.count > 0 ? entry.totalMarks / entry.count : 0,
       gender: entry.gender || entry.student?.gender || null,
     };
   });

@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
-import { rankByUnifiedRule } from '@/lib/ranking';
+import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
-import { aggregateLearnerTotals } from '@/lib/learnerTotals';
+import { aggregateLearnerTotals, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { isSeniorCbeClass } from '@/lib/seniorPathways';
 import { Award, Download, Filter, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 /** Term order helper: Term 1 < Term 2 < Term 3 regardless of label casing. */
@@ -36,7 +37,7 @@ export default function StudentResults() {
         // students has two FKs to classes (class_id, stream_id); the embed must
         // name the class_id relationship explicitly or PostgREST returns
         // PGRST201 and the whole learner portal loses its student record.
-        .select('id, class_id, school_id, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name, curriculum, grade_level, level)')
+        .select('id, class_id, school_id, status, graduation_year, pathway, track, classes!students_class_id_fkey(name, stream, stream_name, curriculum, grade_level, level)')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .maybeSingle();
@@ -111,7 +112,7 @@ export default function StudentResults() {
           // class and the learner's position comes out wrong.
           const classResults = await fetchAllRows((from, to) => supabaseUntyped
             .from('results')
-            .select('student_id, class_id, marks, out_of, percentage, cbc_points, created_at, students(id, gender), subjects(name)')
+            .select('student_id, class_id, marks, out_of, percentage, mark_code, cbc_points, created_at, students(id, gender, pathway, track), subjects(name)')
             .eq('class_id', student.class_id)
             .eq('school_id', student.school_id)
             .eq('term_id', selectedTerm)
@@ -121,10 +122,10 @@ export default function StudentResults() {
           if (classResults && classResults.length > 0) {
             // Same aggregation the class summary uses, so a term holding both
             // single exams and their combined rows does not double-count.
-            const ranked = rankByUnifiedRule(
-              aggregateLearnerTotals(classResults, student.classes || student),
-              getSchoolLevelBand(student.classes || student),
-            );
+            const totals = aggregateLearnerTotals(classResults, student.classes || student);
+            const ranked = isSeniorCbeClass(student.classes || student)
+              ? rankByPathway(totals, getSchoolLevelBand(student.classes || student))
+              : rankByUnifiedRule(totals, getSchoolLevelBand(student.classes || student));
             const entry = ranked.find((row) => row.studentId === student.id);
             setClassPosition(entry ? entry.position : (storedPosition || null));
           } else if (storedPosition) {
@@ -181,11 +182,13 @@ export default function StudentResults() {
   };
 
   const getDisplayGrade = (r: any): string => {
+    if (isExcludedResult(r)) return 'X';
     const grade = calculateGradeForClass(getPercentage(r), classData);
     return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
 
   const getDisplayPoints = (r: any): number | string => {
+    if (isExcludedResult(r)) return '—';
     if (getSchoolLevelBand(classData) === 'primary') return '-';
     return gradePointsForClass(getPercentage(r), classData);
   };
@@ -201,7 +204,7 @@ export default function StudentResults() {
   const learnerTotals = aggregateLearnerTotals(results, student?.classes || student || {});
   const learnerTotal = learnerTotals[0];
   const overallAvg = learnerTotal ? Math.round(learnerTotal.avgPct) : 0;
-  const totalPoints = learnerTotal ? learnerTotal.totalPoints : 0;
+  const totalPoints = learnerTotal ? (learnerTotal.rankingTotalPoints ?? learnerTotal.totalPoints) : 0;
   const subjectPerformance = learnerTotal
     ? Object.entries(learnerTotal.subjects)
         .map(([name, percentage]) => ({ name, percentage: Math.round(Number(percentage)) }))
@@ -251,7 +254,7 @@ export default function StudentResults() {
             <div className="text-[10px] uppercase tracking-wider font-bold text-amber-600 mt-1">Average</div>
           </div>
           <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-            <div className="text-2xl font-black text-emerald-600">{totalPoints}</div>
+            <div className="text-2xl font-black text-emerald-600">{totalPoints}{usesSevenSubjectRanking(classData) ? '/56' : ''}</div>
             <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-600 mt-1">Total Points</div>
           </div>
           <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-100">
@@ -351,8 +354,8 @@ export default function StudentResults() {
                   <td className="px-6 py-4">
                     <div className="text-sm text-[#666666]">{r.school_exams?.name || r.exams?.name || 'End Term'}</div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium">{r.marks}/{r.out_of}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{r.percentage}%</td>
+                  <td className="px-6 py-4 text-sm font-medium">{isExcludedResult(r) ? 'X' : `${r.marks}/${r.out_of}`}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{isExcludedResult(r) ? 'X' : `${r.percentage}%`}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(getDisplayGrade(r))}`}>
                       {getDisplayGrade(r)}
