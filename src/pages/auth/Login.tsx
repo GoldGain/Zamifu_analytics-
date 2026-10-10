@@ -7,6 +7,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import PWAInstallButton from '@/components/PWAInstallButton';
 import SEO from '@/components/SEO';
 
+const DEMO_ACCOUNTS = [
+  { label: 'School Admin', email: 'demo.schooladmin@zamifu.co.ke' },
+  { label: 'Teacher', email: 'demo.teacher@zamifu.co.ke' },
+  { label: 'Parent', email: 'demo.parent@zamifu.co.ke' },
+  { label: 'Learner', email: 'demo.learner@zamifu.co.ke' },
+] as const;
+const DEMO_PASSWORD = 'Demo@2025';
+
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -27,11 +35,23 @@ export default function Login() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    if (!qrAssessment) return;
-    setLoginMethod('assessment');
-    setIdentifier(qrAssessment);
-    setPassword(qrAssessment);
+    if (qrAssessment) {
+      setLoginMethod('assessment');
+      setIdentifier(qrAssessment);
+      setPassword(qrAssessment);
+      return;
+    }
+    setLoginMethod('email');
+    setIdentifier(DEMO_ACCOUNTS[0].email);
+    setPassword(DEMO_PASSWORD);
   }, [qrAssessment]);
+
+  const useDemoAccount = (email: string) => {
+    setLoginMethod('email');
+    setIdentifier(email);
+    setPassword(DEMO_PASSWORD);
+    setError('');
+  };
 
   const redirectByRole = (role: string) => {
     if (role === 'master_super_admin') navigate('/master-admin', { replace: true });
@@ -205,6 +225,20 @@ export default function Login() {
           {qrAssessment && (
             <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
               Welcome to Zamifu. Log in using your Assessment Number as both Username AND Password. The Assessment Number must be CAPITALIZED (e.g. ADM216).
+            </div>
+          )}
+
+          {!qrAssessment && (
+            <div className="mb-5 rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <p className="text-xs font-black uppercase tracking-wide text-violet-900">Demo School access</p>
+              <p className="mt-1 text-xs text-violet-800">Choose a role to autofill its demo account. Password: <strong>Demo@2025</strong></p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {DEMO_ACCOUNTS.map((account) => (
+                  <button key={account.email} type="button" onClick={() => useDemoAccount(account.email)} className={`rounded-lg border px-2.5 py-2 text-xs font-bold transition ${identifier === account.email ? 'border-violet-600 bg-violet-600 text-white' : 'border-violet-200 bg-white text-violet-800 hover:bg-violet-100'}`}>
+                    {account.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
