@@ -93,8 +93,7 @@ export default function ParentChildren() {
     const { data: directKids } = linkedKids.length > 0 ? { data: null } : await supabaseUntyped
       .from('students')
       .select('id, first_name, last_name, admission_number, school_id, class_id, classes(name, stream, stream_name, curriculum, grade_level, level), photo_url, curriculum, gender')
-      .eq('parent_id', user?.id)
-      .eq('school_id', user?.schoolId);
+      .eq('parent_id', user?.id);
     const kids = linkedKids.length > 0 ? linkedKids : ((directKids || []) as unknown as ChildRecord[]);
     setChildren(kids);
     if (kids.length > 0) selectChildDetails(kids[0]);
