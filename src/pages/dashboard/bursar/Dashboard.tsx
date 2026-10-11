@@ -48,9 +48,12 @@ export default function BursarDashboard() {
       }
 
       const paidByInvoice = new Map<string, number>();
+      let totalPaid = 0;
       (payments || []).forEach((payment: any) => {
         const invoiceId = String(payment.invoice_id || '');
-        if (invoiceId) paidByInvoice.set(invoiceId, (paidByInvoice.get(invoiceId) || 0) + Number(payment.amount || 0));
+        const amount = Number(payment.amount || 0);
+        totalPaid += amount;
+        if (invoiceId) paidByInvoice.set(invoiceId, (paidByInvoice.get(invoiceId) || 0) + amount);
       });
       const next = (invoices || []).reduce((totals: FeeSummary, invoice: any) => {
         const invoiced = Number(invoice.total_amount || 0);
@@ -59,10 +62,13 @@ export default function BursarDashboard() {
           : Number(invoice.amount_paid || 0);
         const outstanding = Math.max(0, Number(invoice.balance ?? invoiced - paid));
         totals.invoiced += invoiced;
-        totals.paid += paid;
         totals.outstanding += outstanding;
         return totals;
       }, { ...emptySummary });
+      // Total Paid is the school's complete payment total, matching the
+      // Payments tab in Fee Management, including a payment whose invoice was
+      // subsequently retired or is not currently returned by the invoice query.
+      next.paid = totalPaid;
       setSummary(next);
       setLoading(false);
     };
