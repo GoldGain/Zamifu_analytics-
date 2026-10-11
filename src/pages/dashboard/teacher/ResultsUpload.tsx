@@ -313,9 +313,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
 
   // ── Download helpers ─────────────────────────────────────────────────────────
   const is844Class = is844Curriculum(currentClassData);
-  const getMainGrade = (row: ProcessedRow) => gradeLabelForClass(row.percentage, currentClassData);
-  const getMainPoints = (row: ProcessedRow) => gradePointsForClass(row.percentage, currentClassData);
-  const getMainDescriptor = (row: ProcessedRow) => calculateGradeForClass(row.percentage, currentClassData).descriptor;
+  const getMainGrade = (row: ProcessedRow) => row.markCode || gradeLabelForClass(row.percentage, currentClassData);
+  const getMainPoints = (row: ProcessedRow) => row.markCode ? 0 : gradePointsForClass(row.percentage, currentClassData);
+  const getMainDescriptor = (row: ProcessedRow) => row.markCode === 'X' ? 'Missing marks / absent' : row.markCode === 'Y' ? 'Cheated examination' : calculateGradeForClass(row.percentage, currentClassData).descriptor;
 
   const downloadManualPDF = () => {
     if (!manualPreview.length) return;
@@ -634,8 +634,8 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       startY: 40,
       head: [['Pos', 'Student Name', 'Adm #', 'Marks', 'Out Of', '%', currentGradeLabel, 'Points']],
       body: csvData.map(row => [
-        row.position, row.name, row.admission_number, row.marks, row.out_of,
-        `${row.percentage}%`, getMainGrade(row), getMainPoints(row),
+        row.position, row.name, row.admission_number, row.markCode || row.marks, row.out_of,
+        row.markCode || `${row.percentage}%`, getMainGrade(row), getMainPoints(row),
       ]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [37, 99, 235] },
@@ -650,9 +650,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       Position: row.position,
       'Student Name': row.name,
       'Admission #': row.admission_number,
-      Marks: row.marks,
+      Marks: row.markCode || row.marks,
       'Out Of': row.out_of,
-      'Percentage (%)': row.percentage,
+      'Percentage (%)': row.markCode || row.percentage,
       [currentGradeLabel]: getMainGrade(row),
       Points: getMainPoints(row),
       Descriptor: getMainDescriptor(row),
@@ -889,7 +889,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                             </td>
                             {manualPreviewReady && previewRow && (
                               <>
-                                <td className="py-2 px-3 font-semibold">{previewRow.percentage}%</td>
+                                <td className="py-2 px-3 font-semibold">{previewRow.markCode || `${previewRow.percentage}%`}</td>
                                 <td className="py-2 px-3">
                                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getMainGrade(previewRow))}`}>
                                     {getMainGrade(previewRow)}
@@ -1024,9 +1024,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                             {(row.position || 0) > 3 && <span className="text-gray-500">#{row.position}</span>}
                           </td>
                           <td className="py-2 px-3 font-medium">{row.name}</td>
-                          <td className="py-2 px-3">{row.marks}</td>
+                          <td className="py-2 px-3">{row.markCode || row.marks}</td>
                           <td className="py-2 px-3">{row.out_of}</td>
-                          <td className="py-2 px-3 font-semibold">{row.percentage}%</td>
+                          <td className="py-2 px-3 font-semibold">{row.markCode || `${row.percentage}%`}</td>
                           <td className="py-2 px-3"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getMainGrade(row))}`}>{getMainGrade(row)}</span></td>
                           <td className="py-2 px-3">{getMainPoints(row)}</td>
                         </tr>

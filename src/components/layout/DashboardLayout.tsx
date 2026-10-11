@@ -72,6 +72,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/reseller-admin/students' },
     { label: 'School Admins', icon: <UserCheck className="w-5 h-5" />, path: '/reseller-admin/school-admins' },
     { label: 'Communicate', icon: <MessageSquare className="w-5 h-5" />, path: '/reseller-admin/communicate' },
+    { label: 'SMS Usage', icon: <MessageSquare className="w-5 h-5" />, path: '/reseller-admin/sms-usage' },
     { label: 'Payments', icon: <DollarSign className="w-5 h-5" />, path: '/reseller-admin/payments' },
     { label: 'Pricing', icon: <CreditCard className="w-5 h-5" />, path: '/reseller-admin/pricing' },
     { label: 'Access Control', icon: <Shield className="w-5 h-5" />, path: '/reseller-admin/access-control' },

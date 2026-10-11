@@ -491,13 +491,14 @@ export default function StudentReportCard() {
               <tbody>
                 {results.map((r, i) => {
                   const percentage = getPercentage(r);
+                  const markCode = String(r.mark_code || '').toUpperCase();
                   const activeGrade = calculateGradeForClass(percentage, classDataForGrading);
-                  const grading = { grade: 'subLevel' in activeGrade ? activeGrade.subLevel : activeGrade.grade, points: activeGrade.points, descriptor: activeGrade.descriptor };
+                  const grading = { grade: markCode === 'X' || markCode === 'Y' ? markCode : ('subLevel' in activeGrade ? activeGrade.subLevel : activeGrade.grade), points: markCode ? 0 : activeGrade.points, descriptor: markCode === 'X' ? 'Missing marks / absent' : markCode === 'Y' ? 'Cheated examination' : activeGrade.descriptor };
                   return (
                     <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-2 px-3 font-medium">{r.subjects?.name === 'Creative Arts' ? 'C-Arts' : r.subjects?.name}</td>
-                      <td className="py-2 px-3">{r.marks}</td>
-                      <td className="py-2 px-3">{percentage}%</td>
+                      <td className="py-2 px-3">{markCode || r.marks}</td>
+                      <td className="py-2 px-3">{markCode || `${percentage}%`}</td>
                       <td className="py-2 px-3">
                         <span className={`text-xs font-bold px-2 py-1 rounded-full ${
                           grading.grade.startsWith('EE') || grading.grade.startsWith('A') ? 'bg-green-100 text-green-700' :

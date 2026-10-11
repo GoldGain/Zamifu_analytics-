@@ -181,6 +181,8 @@ export default function StudentResults() {
   };
 
   const getDisplayGrade = (r: any): string => {
+    const markCode = String(r?.mark_code || '').toUpperCase();
+    if (markCode === 'X' || markCode === 'Y') return markCode;
     const grade = calculateGradeForClass(getPercentage(r), classData);
     return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
@@ -351,8 +353,8 @@ export default function StudentResults() {
                   <td className="px-6 py-4">
                     <div className="text-sm text-[#666666]">{r.school_exams?.name || r.exams?.name || 'End Term'}</div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium">{r.marks}/{r.out_of}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{r.percentage}%</td>
+                  <td className="px-6 py-4 text-sm font-medium">{r.mark_code || r.marks}/{r.out_of}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{r.mark_code || `${r.percentage}%`}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(getDisplayGrade(r))}`}>
                       {getDisplayGrade(r)}

@@ -252,7 +252,7 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     // The configured weight is keyed by source exam id. Keep this column in
     // the source read or every combined assessment silently becomes equal
     // weighted during refreshes and PDF generation.
-    .select('student_id, class_id, subject_id, exam_id, marks, out_of, percentage, teacher_id, academic_year, curriculum')
+    .select('student_id, class_id, subject_id, exam_id, marks, mark_code, out_of, percentage, teacher_id, academic_year, curriculum')
     .eq('school_id', schoolId)
     .eq('term_id', termId)
     .in('class_id', safeClassIds)
@@ -275,6 +275,9 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     const first = values[0];
     const totalWeight = values.reduce((sum, value) => sum + value.weight, 0);
     const percentage = values.reduce((sum, value) => sum + value.percentage * value.weight, 0) / Math.max(totalWeight, 0.0001);
+    const exceptionalCode = values.find((value) => String(value.mark_code || '').toUpperCase() === 'Y')?.mark_code
+      || values.find((value) => String(value.mark_code || '').toUpperCase() === 'X')?.mark_code
+      || null;
     return {
       school_id: schoolId,
       student_id: first.student_id,
@@ -285,6 +288,7 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
       academic_year: first.academic_year || String(new Date().getFullYear()),
       curriculum: first.curriculum || 'CBE',
       marks: Number(percentage.toFixed(2)),
+      mark_code: exceptionalCode,
       out_of: 100,
       percentage: Number(percentage.toFixed(2)),
       exam_id: combinedExamId,

@@ -58,6 +58,7 @@ export interface LearnerTotals {
   avgPct: number;
   gender: string | null;
   examName: string;
+  markCode?: 'X' | 'Y';
 }
 
 /** Percentage of a single result row, tolerant of a missing `percentage`. */
@@ -158,6 +159,7 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
         avgPct: 0,
         gender: result.students?.gender || null,
         examName: result.school_exams?.name || result.exams?.name || '',
+        markCode: undefined,
       };
       winner[studentId] = {};
     }
@@ -192,6 +194,8 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
     entry.subjects[areaKey] = percentage;
     entry.totalMarks += percentage;
     entry.totalPoints += rowPoints(result, percentage, band, classObj);
+    const markCode = String(result?.mark_code || '').toUpperCase();
+    if (markCode === 'X' || markCode === 'Y') entry.markCode = markCode;
   });
 
   const observedAreaCount = new Set(
