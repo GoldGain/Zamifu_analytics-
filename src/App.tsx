@@ -73,6 +73,8 @@ import SchoolAdminSMSWallet from '@/pages/dashboard/school-admin/SMSWallet';
 import SchoolAdminSchoolSettings from '@/pages/dashboard/school-admin/SchoolSettings';
 import SchoolAdminSubscriptionReceipts from '@/pages/dashboard/school-admin/SubscriptionReceipts';
 import SchoolAdminActivityHistory from '@/pages/dashboard/school-admin/ActivityHistory';
+import SchoolAdminLibrary from '@/pages/dashboard/school-admin/Library';
+import SchoolAdminInventory from '@/pages/dashboard/school-admin/Inventory';
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 import TeacherResultsUpload from '@/pages/dashboard/teacher/ResultsUpload';
@@ -271,6 +273,8 @@ function AppRoutes() {
       <Route path="/school-admin/combine-exams" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><CombineExams /></ProtectedRoute>} />
       <Route path="/school-admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminAnnouncements /></ProtectedRoute>} />
       <Route path="/school-admin/subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjects /></ProtectedRoute>} />
+      <Route path="/school-admin/library" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminLibrary /></ProtectedRoute>} />
+      <Route path="/school-admin/inventory" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminInventory /></ProtectedRoute>} />
       <Route path="/school-admin/subject-groups" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubjectGroups /></ProtectedRoute>} />
       <Route path="/school-admin/optional-subjects" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><LearnerOptionalSubjects /></ProtectedRoute>} />
       <Route path="/school-admin/branding" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBranding /></ProtectedRoute>} />

@@ -237,8 +237,8 @@ export default function SMSWallet() {
       <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 flex gap-3 text-sm text-amber-900">
         <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
         <div>
-          <p className="font-semibold">No free parent-SMS allowance is included in this wallet.</p>
-          <p className="mt-1">Subscription and SMS credits are separate. The system reserves credits before sending and returns them automatically when the provider reports a failure.</p>
+          <p className="font-semibold">All SMS messages use purchased credits.</p>
+          <p className="mt-1">SMS credits are separate from subscriptions. The system reserves credits before sending and returns them automatically when the provider reports a failure.</p>
         </div>
       </div>
 

@@ -33,11 +33,11 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlanOption[] = [
 
 export const SMS_NON_SUBSCRIBER_PLAN: SubscriptionPlanOption = {
   id: 'sms_non_subscriber',
-  name: 'SMS (Non-Subscribers)',
+  name: 'SMS Credits (All Schools)',
   price: 1,
   unit: 'sms',
   period: 'term',
-  featureSummary: 'Pay-per-SMS; purchase SMS credits from the SMS Wallet',
+  featureSummary: 'Pay-per-SMS for every school; purchase SMS credits from the SMS Wallet',
   includesSms: false,
 };
 
