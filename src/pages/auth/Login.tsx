@@ -7,6 +7,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import PWAInstallButton from '@/components/PWAInstallButton';
 import SEO from '@/components/SEO';
 
+const DEMO_ACCOUNTS = [
+  { label: 'School Admin', email: 'demo.schooladmin@zamifu.co.ke', password: 'Demo@2025' },
+  { label: 'Teacher', email: 'demo.teacher@zamifu.co.ke', password: 'Demo@2025' },
+  { label: 'Parent', email: 'demo.parent@zamifu.co.ke', password: 'Demo@2025' },
+  { label: 'Learner', email: 'demo.learner@zamifu.co.ke', password: 'Demo@2025' },
+];
+
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -18,6 +25,13 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const qrAssessment = (searchParams.get('assessment') || '').trim().toUpperCase();
+
+  const selectDemoAccount = (account: (typeof DEMO_ACCOUNTS)[number]) => {
+    setLoginMethod('email');
+    setIdentifier(account.email);
+    setPassword(account.password);
+    setError('');
+  };
 
   // If already logged in, redirect to appropriate dashboard
   useEffect(() => {
@@ -207,6 +221,26 @@ export default function Login() {
               Welcome to Zamifu. Log in using your Assessment Number as both Username AND Password. The Assessment Number must be CAPITALIZED (e.g. ADM216).
             </div>
           )}
+
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-amber-900">Demo School access</p>
+              <span className="text-[11px] font-medium text-amber-700">Safe demo data</span>
+            </div>
+            <p className="mt-1 text-xs text-amber-800">Choose a demo role to fill the login form. Demo accounts are isolated from client schools.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {DEMO_ACCOUNTS.map((account) => (
+                <button
+                  key={account.email}
+                  type="button"
+                  onClick={() => selectDemoAccount(account)}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                >
+                  {account.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Login Method Toggle */}
           <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-xl">
