@@ -8,11 +8,12 @@ import PWAInstallButton from '@/components/PWAInstallButton';
 import SEO from '@/components/SEO';
 
 const DEMO_ACCOUNTS = [
-  { label: 'School Admin', email: 'demo.schooladmin@zamifu.co.ke', password: 'Demo@2025' },
-  { label: 'Teacher', email: 'demo.teacher@zamifu.co.ke', password: 'Demo@2025' },
-  { label: 'Parent', email: 'demo.parent@zamifu.co.ke', password: 'Demo@2025' },
-  { label: 'Learner', email: 'demo.learner@zamifu.co.ke', password: 'Demo@2025' },
-];
+  { label: 'School Admin', email: 'demo.schooladmin@zamifu.co.ke' },
+  { label: 'Teacher', email: 'demo.teacher@zamifu.co.ke' },
+  { label: 'Parent', email: 'demo.parent@zamifu.co.ke' },
+  { label: 'Learner', email: 'demo.learner@zamifu.co.ke' },
+] as const;
+const DEMO_PASSWORD = 'Demo@2025';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -26,13 +27,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const qrAssessment = (searchParams.get('assessment') || '').trim().toUpperCase();
 
-  const selectDemoAccount = (account: (typeof DEMO_ACCOUNTS)[number]) => {
-    setLoginMethod('email');
-    setIdentifier(account.email);
-    setPassword(account.password);
-    setError('');
-  };
-
   // If already logged in, redirect to appropriate dashboard
   useEffect(() => {
     if (!authLoading && user) {
@@ -41,18 +35,30 @@ export default function Login() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    if (!qrAssessment) return;
-    setLoginMethod('assessment');
-    setIdentifier(qrAssessment);
-    setPassword(qrAssessment);
+    if (qrAssessment) {
+      setLoginMethod('assessment');
+      setIdentifier(qrAssessment);
+      setPassword(qrAssessment);
+      return;
+    }
+    setLoginMethod('email');
+    setIdentifier(DEMO_ACCOUNTS[0].email);
+    setPassword(DEMO_PASSWORD);
   }, [qrAssessment]);
+
+  const useDemoAccount = (email: string) => {
+    setLoginMethod('email');
+    setIdentifier(email);
+    setPassword(DEMO_PASSWORD);
+    setError('');
+  };
 
   const redirectByRole = (role: string) => {
     if (role === 'master_super_admin') navigate('/master-admin', { replace: true });
     else if (role === 'reseller_super_admin') navigate('/reseller-admin', { replace: true });
     else if (role === 'super_admin') navigate('/super-admin', { replace: true });
     else if (role === 'school_admin') navigate('/school-admin', { replace: true });
-    else if (role === 'bursar') navigate('/bursar', { replace: true });
+    else if (role === 'bursar') navigate('/bursar/fees', { replace: true });
     else if (role === 'teacher') navigate('/teacher', { replace: true });
     else if (role === 'student') navigate('/student', { replace: true });
     else if (role === 'parent') navigate('/parent', { replace: true });
@@ -160,7 +166,7 @@ export default function Login() {
       } else if (role === 'school_admin') {
         navigate('/school-admin', { replace: true });
       } else if (role === 'bursar') {
-        navigate('/bursar', { replace: true });
+        navigate('/bursar/fees', { replace: true });
       } else if (role === 'teacher') {
         navigate('/teacher', { replace: true });
       } else if (role === 'student') {
@@ -222,25 +228,19 @@ export default function Login() {
             </div>
           )}
 
-          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-amber-900">Demo School access</p>
-              <span className="text-[11px] font-medium text-amber-700">Safe demo data</span>
+          {!qrAssessment && (
+            <div className="mb-5 rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <p className="text-xs font-black uppercase tracking-wide text-violet-900">Demo School access</p>
+              <p className="mt-1 text-xs text-violet-800">Choose a role to autofill its demo account. Password: <strong>Demo@2025</strong></p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {DEMO_ACCOUNTS.map((account) => (
+                  <button key={account.email} type="button" onClick={() => useDemoAccount(account.email)} className={`rounded-lg border px-2.5 py-2 text-xs font-bold transition ${identifier === account.email ? 'border-violet-600 bg-violet-600 text-white' : 'border-violet-200 bg-white text-violet-800 hover:bg-violet-100'}`}>
+                    {account.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <p className="mt-1 text-xs text-amber-800">Choose a demo role to fill the login form. Demo accounts are isolated from client schools.</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {DEMO_ACCOUNTS.map((account) => (
-                <button
-                  key={account.email}
-                  type="button"
-                  onClick={() => selectDemoAccount(account)}
-                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
-                >
-                  {account.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          )}
 
           {/* Login Method Toggle */}
           <div className="flex gap-2 mb-6 p-1 bg-gray-100 rounded-xl">

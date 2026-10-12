@@ -6,8 +6,9 @@ import {
   type SchoolLevelBand,
 } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
-import { rankByUnifiedRule } from '@/lib/ranking';
+import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { aggregateLearnerTotals } from '@/lib/learnerTotals';
+import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
 export type AssessmentLearnerSummary = {
   studentId: string;
@@ -107,5 +108,7 @@ export function buildAssessmentLearnerSummaries(rawResults: any[], classObj: any
       gradeLabel: 'subLevel' in grade ? grade.subLevel : grade.grade,
     };
   });
-  return rankByUnifiedRule(summaries, band) as AssessmentLearnerSummary[];
+  return (isSeniorCbeClass(classObj)
+    ? rankByPathway(summaries, band)
+    : rankByUnifiedRule(summaries, band)) as AssessmentLearnerSummary[];
 }

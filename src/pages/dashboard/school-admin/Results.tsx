@@ -47,7 +47,9 @@ import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
 import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
-import { rankByUnifiedRule } from '@/lib/ranking';
+import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
+import { isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
 type ComparisonSourceRow = {
   student_id?: string | null;
@@ -160,7 +162,7 @@ async function fetchCombinedAssessmentData(
   });
   const columns = (components || []).map((component: any) => ({
     id: String(component.source_exam_id),
-    label: `${sourceExamNames.get(component.source_exam_id) || 'Assessment'}`,
+    label: `${sourceExamNames.get(component.source_exam_id) || 'Assessment'} (${Number(component.weight || 0)}%)`,
   }));
   return { columns, values };
 }
@@ -196,17 +198,21 @@ function createReportCardSubjectRows(
   combinedAssessmentData?: CombinedAssessmentData,
 ) {
   const targetRows = currentResults.filter((row: any) => row.student_id === target.studentId);
-  const names = sortSubjects(Object.keys(target.subjects || {}).filter((key) => !key.endsWith('_grade') && !key.endsWith('_points')));
+  const names = sortSubjects(Array.from(new Set([
+    ...Object.keys(target.subjects || {}).filter((key) => !key.endsWith('_grade') && !key.endsWith('_points')),
+    ...targetRows.filter((row: any) => isExcludedResult(row)).map((row: any) => normalizeLearningAreaName(row.subjects?.name || '')).filter(Boolean),
+  ])));
   return names.map((subject) => {
-    const raw = targetRows.find((row: any) => normalizeLearningAreaName(row.subjects?.name || '') === normalizeLearningAreaName(subject));
+    const raw = [...targetRows].reverse().find((row: any) => normalizeLearningAreaName(row.subjects?.name || '') === normalizeLearningAreaName(subject));
     const normalized = normalizeLearningAreaName(subject);
     const classRank = reportCardSubjectRank(summaries, subject, target.studentId, null, false);
     const streamRank = reportCardSubjectRank(summaries, subject, target.studentId, target.classId, true);
     return {
       subjects: { name: subject },
-      marks: Number(raw?.marks ?? target.subjects[subject] ?? 0),
+      marks: isExcludedResult(raw) ? 'X' : Number(raw?.marks ?? target.subjects[subject] ?? 0),
       out_of: Number(raw?.out_of || 100),
-      percentage: Number(target.subjects[subject] || 0),
+      percentage: isExcludedResult(raw) ? 0 : Number(target.subjects[subject] || 0),
+      mark_code: isExcludedResult(raw) ? 'X' : raw?.mark_code || null,
       previousPercentage: previousSubjectValues.get(`${target.studentId}|${normalized}`) ?? null,
       classPosition: classRank.position,
       classTotal: classRank.total,
@@ -252,7 +258,7 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     // The configured weight is keyed by source exam id. Keep this column in
     // the source read or every combined assessment silently becomes equal
     // weighted during refreshes and PDF generation.
-    .select('student_id, class_id, subject_id, exam_id, marks, mark_code, out_of, percentage, teacher_id, academic_year, curriculum')
+    .select('student_id, class_id, subject_id, exam_id, marks, out_of, percentage, teacher_id, academic_year, curriculum')
     .eq('school_id', schoolId)
     .eq('term_id', termId)
     .in('class_id', safeClassIds)
@@ -275,9 +281,6 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     const first = values[0];
     const totalWeight = values.reduce((sum, value) => sum + value.weight, 0);
     const percentage = values.reduce((sum, value) => sum + value.percentage * value.weight, 0) / Math.max(totalWeight, 0.0001);
-    const exceptionalCode = values.find((value) => String(value.mark_code || '').toUpperCase() === 'Y')?.mark_code
-      || values.find((value) => String(value.mark_code || '').toUpperCase() === 'X')?.mark_code
-      || null;
     return {
       school_id: schoolId,
       student_id: first.student_id,
@@ -288,7 +291,6 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
       academic_year: first.academic_year || String(new Date().getFullYear()),
       curriculum: first.curriculum || 'CBE',
       marks: Number(percentage.toFixed(2)),
-      mark_code: exceptionalCode,
       out_of: 100,
       percentage: Number(percentage.toFixed(2)),
       exam_id: combinedExamId,
@@ -310,15 +312,21 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
   return payload.length;
 }
 
-function reportCardTotals(rows: any[], totalPoints: number | null | undefined, classData?: any) {
+function reportCardTotals(
+  rows: any[],
+  totalPoints: number | null | undefined,
+  classData?: any,
+  rankingDetails?: { totalMarks?: number; totalPoints?: number },
+) {
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
-  const is844 = is844Curriculum(classData);
-  const totalMarks = rows.reduce((sum, row) => sum + Number(row.percentage ?? 0), 0);
-  const totalMarksOutOf = rows.length * 100;
-  const totalPointsOutOf = rows.length * (is844 ? 12 : 8);
+  const includedRows = rows.filter((row) => !isExcludedResult(row));
+  const totalMarks = rankingDetails?.totalMarks ?? includedRows.reduce((sum, row) => sum + Number(row.percentage ?? 0), 0);
+  const totalMarksOutOf = usesSevenSubjectRanking(classData) ? 700 : includedRows.length * 100;
+  const resolvedPoints = rankingDetails?.totalPoints ?? totalPoints;
+  const totalPointsOutOf = usesSevenSubjectRanking(classData) ? 56 : includedRows.length * 8;
   return {
     marks: `${Math.round(totalMarks)} marks out of ${totalMarksOutOf}`,
-    points: isPrimary ? undefined : `${totalPoints ?? '—'} points out of ${totalPointsOutOf}`,
+    points: isPrimary ? undefined : `${resolvedPoints ?? '—'} points out of ${totalPointsOutOf}`,
     showPoints: !isPrimary,
   };
 }
@@ -512,28 +520,7 @@ type PdfOutputMode = 'download' | 'print';
 
 function outputPdfDocument(doc: jsPDF, filename: string, mode: PdfOutputMode, printWindow?: Window | null) {
   if (mode === 'download') {
-    // jsPDF's `save()` delegates to FileSaver/browser behavior that is
-    // unreliable on mobile Safari and some embedded Android browsers. Use a
-    // real Blob download link, with a blob-tab fallback where `download` is
-    // unsupported.
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.rel = 'noopener';
-    anchor.style.display = 'none';
-    document.body.appendChild(anchor);
-    if (typeof anchor.download === 'string') {
-      anchor.click();
-    } else {
-      const downloadWindow = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!downloadWindow) window.location.href = url;
-    }
-    window.setTimeout(() => {
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    }, 1500);
+    doc.save(filename);
     return;
   }
   // Keep Print distinct from Download: use jsPDF's print action and send the
@@ -732,7 +719,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const rows = await fetchAllRows((from, to) => {
         let query = supabaseUntyped
           .from('results')
-          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, mark_code, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender, pathway, track), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
+          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
           .in('class_id', classIds)
           .eq('term_id', selectedTerm)
           .eq('school_id', schoolId)
@@ -1052,7 +1039,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return fetchAllRows((from, to) => {
       let query = supabaseUntyped
         .from('results')
-        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, mark_code, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender, pathway, track), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
+        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
         .eq('class_id', effectiveClassId)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
@@ -1122,22 +1109,28 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   /** Report-card class rank is grade-wide; stream rank is stream-local. */
   const rankReportCardCohorts = (gradeSummaries: any[], streamClasses: any[], bandClass: any) => {
-    const gradeRanked = rankByUnifiedRule(gradeSummaries, getSchoolLevelBand(bandClass));
+    const gradeRanked = isSeniorCbeClass(bandClass)
+      ? rankByPathway(gradeSummaries, getSchoolLevelBand(bandClass))
+      : rankByUnifiedRule(gradeSummaries, getSchoolLevelBand(bandClass));
     const classPositionByStudent = new Map<string, number>();
-    gradeRanked.forEach((summary) => classPositionByStudent.set(summary.studentId, summary.position));
+    const classTotalByStudent = new Map<string, number>();
+    gradeRanked.forEach((summary: any) => {
+      classPositionByStudent.set(summary.studentId, summary.position);
+      classTotalByStudent.set(summary.studentId, summary.pathwayTotal || gradeRanked.length);
+    });
     const streamPositionByStudent = new Map<string, number>();
     const streamTotalByStudent = new Map<string, number>();
     for (const streamClass of streamClasses) {
-      const streamRanked = rankByUnifiedRule(
-        gradeSummaries.filter((summary) => summary.classId === streamClass.id),
-        getSchoolLevelBand(streamClass),
-      );
-      streamRanked.forEach((summary) => {
+      const streamCohort = gradeSummaries.filter((summary) => summary.classId === streamClass.id);
+      const streamRanked = isSeniorCbeClass(streamClass)
+        ? rankByPathway(streamCohort, getSchoolLevelBand(streamClass))
+        : rankByUnifiedRule(streamCohort, getSchoolLevelBand(streamClass));
+      streamRanked.forEach((summary: any) => {
         streamPositionByStudent.set(summary.studentId, summary.position);
-        streamTotalByStudent.set(summary.studentId, streamRanked.length);
+        streamTotalByStudent.set(summary.studentId, summary.pathwayTotal || streamRanked.length);
       });
     }
-    return { classPositionByStudent, streamPositionByStudent, streamTotalByStudent, classTotal: gradeRanked.length };
+    return { classPositionByStudent, classTotalByStudent, streamPositionByStudent, streamTotalByStudent, classTotal: gradeRanked.length };
   };
 
   const fetchReportCardTeacherNames = async (classIds: string[]) => {
@@ -1206,10 +1199,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       else if (request.target === 'bulk-report-cards') await downloadBulkReportCards(fontSize, request.mode, printWindow);
       else if (request.target === 'all-streams-bulk') await downloadAllStreamsBulkReportCards(fontSize, request.mode, printWindow);
       else if (request.target === 'all-streams-summary') await downloadAllStreamsSummary(fontSize, request.mode, printWindow);
-      else if (request.student) {
-        if (request.mode === 'download') await downloadIndividualReportCard(request.student, fontSize);
-        else await downloadSingleReportCard(request.student, fontSize, request.mode, printWindow);
-      }
+      else if (request.student) await downloadSingleReportCard(request.student, fontSize, request.mode, printWindow);
     } finally {
       if (request.mode === 'print' && printWindow && !printWindow.closed) printWindow.focus();
       setPendingPdfDownload(null);
@@ -1701,7 +1691,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
       }
 
-      if (false && combinedExam) {
+      if (combinedExam) {
         await addCombinedExamComparisonPage(doc, {
           combinedExam,
           classIds: [scope === 'class_teacher' ? scopedClassId : selectedClass].filter(Boolean) as string[],
@@ -1931,16 +1921,18 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const directStreamPosition = streamClasses.length > 1 ? `${rankInfo.streamPositionByStudent.get(studentId) || '—'}/${rankInfo.streamTotalByStudent.get(studentId) || '—'}` : undefined;
       const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === studentId);
       const studentResultsForTable = applyExamDeviationRows(createReportCardSubjectRows(targetSummary, gradeResults, gradeSummaries, previousSubjectValues, teacherNames, reportCombinedAssessmentData), previousRows);
-      const totals = reportCardTotals(studentResultsForTable, targetSummary.totalPoints, classObj);
+      const rankingDetails = targetSummary.rankingSubjects?.length ? { subjects: targetSummary.rankingSubjects, totalMarks: targetSummary.rankingTotalMarks || 0, totalPoints: targetSummary.rankingTotalPoints || 0 } : undefined;
+      const totals = reportCardTotals(studentResultsForTable, targetSummary.totalPoints, classObj, rankingDetails);
       const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
-      drawStudentInfo(doc, studentFullName, targetSummary.student?.admission_number || s?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, targetSummary.student?.assessment_number || s?.assessment_number || undefined, { classPosition: `${classPosition || '—'}/${gradeSummaries.length}`, streamPosition: directStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation, pathway: targetSummary.student?.pathway || s.student?.pathway, track: targetSummary.student?.track || s.student?.track });
+      const overallGrade = calculateGradeForClass(targetSummary.avgPct, classObj);
+      drawStudentInfo(doc, studentFullName, targetSummary.student?.admission_number || s?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, targetSummary.student?.assessment_number || s?.assessment_number || undefined, { classPosition: `${classPosition || '—'}/${rankInfo.classTotalByStudent.get(studentId) || gradeSummaries.length}`, streamPosition: directStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation, pathway: targetSummary.student?.pathway, track: targetSummary.student?.track, overallGrade: 'subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade, showPathway: usesSevenSubjectRanking(classObj), is844: is844Curriculum(classObj) });
 
       const qrOptions = { assessmentNumber: targetSummary.student?.assessment_number || s?.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
       const hasComparison = Boolean(previousExamComparison?.results?.length);
-      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
+      let currentY = drawResultsTable(doc, studentResultsForTable, classObj, cardAssessment ? 75 : 69, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns, rankingDetails });
       if (band === 'junior') currentY = drawPathwayPerformance(doc, studentResultsForTable, currentY + 4);
-      currentY = drawSummaryBox(doc, studentResultsForTable, targetSummary.avgPct, targetSummary.totalPoints, `${classPosition || '—'}/${rankInfo.classTotal}`, classObj, currentY + 4, directStreamPosition, is844Curriculum(classObj) && targetSummary.rankingSubjects?.length ? { subjects: targetSummary.rankingSubjects, totalMarks: targetSummary.rankingTotalMarks || 0, totalPoints: targetSummary.rankingTotalPoints || 0 } : undefined);
+      currentY = drawSummaryBox(doc, studentResultsForTable, targetSummary.avgPct, targetSummary.totalPoints, `${classPosition || '—'}/${rankInfo.classTotalByStudent.get(studentId) || rankInfo.classTotal}`, classObj, currentY + 4, directStreamPosition, rankingDetails);
       if (trendData.length >= 1 && canFitReportCardOptionalSection(doc, currentY + 3, 32, aiComment, schoolInfo, qrOptions)) currentY = drawTrendGraph(doc, trendData, 14, currentY + 3, 182, 28, band) + 2;
       currentY = drawAIComment(doc, aiComment, currentY + 2, { bottomY: commentBottomY });
       await addSignaturesToPDF(doc, signatures, currentY + 2, schoolInfo, qrOptions);
@@ -2048,8 +2040,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const bulkStreamPosition = streamClasses.length > 1 ? `${rankInfo.streamPositionByStudent.get(s.studentId) || '—'}/${rankInfo.streamTotalByStudent.get(s.studentId) || '—'}` : undefined;
         const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === s.studentId);
         const studentResultsForTable = applyExamDeviationRows(createReportCardSubjectRows(enrichedTarget, gradeResults, gradeSummaries, previousSubjectValues, teacherNames, reportCombinedAssessmentData), previousRows);
-        const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj);
+        const rankingDetails = s.rankingSubjects?.length ? { subjects: s.rankingSubjects, totalMarks: s.rankingTotalMarks || 0, totalPoints: s.rankingTotalPoints || 0 } : undefined;
+        const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj, rankingDetails);
         const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
+        const overallGrade = calculateGradeForClass(s.avgPct, classObj);
         drawStudentInfo(
           mainDoc,
           studentFullName,
@@ -2061,17 +2055,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           48,
           cardAssessment,
           s.student?.assessment_number || undefined,
-          { classPosition: `${classPosition || '—'}/${rankInfo.classTotal}`, streamPosition: bulkStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation }
+          { classPosition: `${classPosition || '—'}/${rankInfo.classTotalByStudent.get(s.studentId) || rankInfo.classTotal}`, streamPosition: bulkStreamPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation, pathway: s.student?.pathway, track: s.student?.track, overallGrade: 'subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade, showPathway: usesSevenSubjectRanking(classObj), is844: is844Curriculum(classObj) }
         );
 
         const qrOptions = { assessmentNumber: s.student?.assessment_number };
         const commentBottomY = getReportCardCommentBottomY(mainDoc, schoolInfo, qrOptions);
         const hasComparison = Boolean(previousExamComparison?.results?.length);
-        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 75 : 69, { showStreamPosition: streamClasses.length > 1, showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns, rankingDetails });
 
         if (band === 'junior') currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4);
 
-        currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${classPosition}/${rankInfo.classTotal}`, classObj, currentY + 4, bulkStreamPosition, is844Curriculum(classObj) && s.rankingSubjects?.length ? { subjects: s.rankingSubjects, totalMarks: s.rankingTotalMarks || 0, totalPoints: s.rankingTotalPoints || 0 } : undefined);
+        currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${classPosition}/${rankInfo.classTotalByStudent.get(s.studentId) || rankInfo.classTotal}`, classObj, currentY + 4, bulkStreamPosition, rankingDetails);
 
         currentY = drawOverallDeviation(mainDoc, s.totalPct, prevAvg === null || prevAvg === undefined ? null : prevAvg * studentResultsForTable.length, currentY);
         const studentTrend = studentTrends[s.studentId] || [];
@@ -2120,7 +2114,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchResultsAll = async (classIds: string[], termId: string, examId?: string, selectCols?: string): Promise<any[]> => {
     const pageSize = 1000;
-    const selected = selectCols || 'id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, mark_code, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender, pathway, track), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)';
+    const selected = selectCols || 'id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)';
     const allResults: any[] = [];
     let from = 0;
     while (true) {
@@ -2515,7 +2509,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     }
 
     const combinedExam = selectedExam ? exams.find((exam) => exam.id === selectedExam && exam.type === 'combined') : null;
-    if (false && combinedExam) {
+    if (combinedExam) {
       await addCombinedExamComparisonPage(doc, {
         combinedExam,
         classIds: summaryClasses.map((item: any) => item.id),
@@ -2670,15 +2664,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const classPosition = s.classPosition ? `${s.classPosition}${s.classPosition === 1 ? 'st' : s.classPosition === 2 ? 'nd' : s.classPosition === 3 ? 'rd' : 'th'} out of ${s.classTotal}` : 'N/A';
         const previousRows = (previousExamComparison?.results || []).filter((row: any) => row.student_id === s.studentId);
         const studentResultsForTable = applyExamDeviationRows(createReportCardSubjectRows(s, rawResults, streamSummaries, new Map(), allStreamTeacherNames, reportCombinedAssessmentData), previousRows);
-        const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj);
+        const rankingDetails = s.rankingSubjects?.length ? { subjects: s.rankingSubjects, totalMarks: s.rankingTotalMarks || 0, totalPoints: s.rankingTotalPoints || 0 } : undefined;
+        const totals = reportCardTotals(studentResultsForTable, s.totalPoints, classObj, rankingDetails);
         const examDeviation = formatExamDeviation(studentResultsForTable, previousRows, previousExamComparison?.exam?.name);
-        drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation, pathway: s.student?.pathway, track: s.student?.track });
+        const overallGrade = calculateGradeForClass(s.avgPct, classObj);
+        drawStudentInfo(mainDoc, studentFullName, s.student?.admission_number || 'N/A', streamLabel(classObj), termObj?.name || '', termObj?.academic_year || '', studentPosition, 48, cardAssessment, s.student?.assessment_number || undefined, { classPosition, streamPosition: studentPosition, totalMarks: totals.marks, totalPoints: totals.points, showPoints: totals.showPoints, overallDeviation: examDeviation, pathway: s.student?.pathway, track: s.student?.track, overallGrade: 'subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade, showPathway: usesSevenSubjectRanking(classObj), is844: is844Curriculum(classObj) });
         const qrOptions = { assessmentNumber: s.student?.assessment_number };
         const commentBottomY = getReportCardCommentBottomY(mainDoc, schoolInfo, qrOptions);
         const hasComparison = Boolean(previousExamComparison?.results?.length);
-        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 69 : 63, { showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns });
+        let currentY = drawResultsTable(mainDoc, studentResultsForTable, classObj, cardAssessment ? 75 : 69, { showDeviation: hasComparison, assessmentColumns: reportCombinedAssessmentData.columns, rankingDetails });
         if (band === 'junior') currentY = drawPathwayPerformance(mainDoc, studentResultsForTable, currentY + 4);
-        currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${totalStudents}`, classObj, currentY + 4, studentPosition, is844Curriculum(classObj) && s.rankingSubjects?.length ? { subjects: s.rankingSubjects, totalMarks: s.rankingTotalMarks || 0, totalPoints: s.rankingTotalPoints || 0 } : undefined);
+        currentY = drawSummaryBox(mainDoc, studentResultsForTable, s.avgPct, s.totalPoints, `${s.position}/${s.pathwayTotal || totalStudents}`, classObj, currentY + 4, studentPosition, rankingDetails);
         currentY = drawDeviation(mainDoc, deviation, prevAvg, null, currentY);
         const studentTrend = studentTrends[s.studentId] || [];
         if (studentTrend.length >= 1 && canFitReportCardOptionalSection(mainDoc, currentY + 2, 32, aiComment, schoolInfo, qrOptions)) currentY = drawTrendGraph(mainDoc, studentTrend, 14, currentY + 2, 182, 28, band) + 2;
@@ -3023,14 +3019,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             </div>
             <button
               type="button"
-              onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner)}
+              onClick={() => selectedLearner && void downloadIndividualReportCard(selectedLearner)}
               disabled={!selectedLearner || downloadingLearner}
-              className="min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1d4ed8] disabled:opacity-50"
+              className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#1d4ed8] disabled:opacity-50"
             >
               {downloadingLearner ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {downloadingLearner ? 'Preparing…' : 'Download Report Card'}
             </button>
-            <button type="button" onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner, 'print')} disabled={!selectedLearner || downloadingLearner || generatingPDF || generatingBulk} className="min-h-11 w-full sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
+            <button type="button" onClick={() => selectedLearner && openPdfFontSizeDialog('report-card', selectedLearner, 'print')} disabled={!selectedLearner || downloadingLearner || generatingPDF || generatingBulk} className="min-h-11 flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-5 py-3 text-sm font-medium text-slate-800 border border-slate-200 hover:bg-slate-200 disabled:opacity-50"><Printer className="h-4 w-4" /> Print Report Card</button>
           </div>
           {selectedLearner && (
             <p className="mt-3 text-xs font-medium text-blue-700">
