@@ -4,13 +4,14 @@ import { formatClassStream } from './class-label';
  * Shared timetable generation logic
  *
  * Structure (always 6 lessons before lunch):
- *   L1, L2 → FIRST BREAK → L3, L4 → SECOND BREAK → L5, L6 → LUNCH
+ *   Lessons are generated from the configured level contract; breaks and lunch
+ *   remain fixed for each level.
  *   → optional after-lunch lessons (0–3) → ACTIVITIES
  *
  * Default lesson counts (overridable from DB / Timetable Setup):
  * | Level            | Total | After lunch |
  * |------------------|-------|-------------|
- * | Pre-Primary      | 6     | 0           |
+ * | Pre-Primary      | 5     | 0           |
  * | Lower Primary    | 6     | 0           |
  * | Junior School    | 8     | 2           |
  * | Senior 10-12     | 8     | 2           |
@@ -53,7 +54,7 @@ export interface LevelLessonConfig {
  * Form 3 & 4 (8-4-4): 7 lessons/day, 1 after lunch.
  */
 export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
-  'pre-primary': { totalLessons: 6, afterLunch: 0 },
+  'pre-primary': { totalLessons: 5, afterLunch: 0 },
   'lower-primary': { totalLessons: 6, afterLunch: 0 },
   'upper-primary': { totalLessons: 7, afterLunch: 1 },
   junior: { totalLessons: 8, afterLunch: 2 },

@@ -30,6 +30,14 @@ const resolveLevelGroup = (grade: number | null | undefined): LevelGroup | null 
   if (g <= 9) return 'junior';
   return 'senior';
 };
+const REQUIRED_WEEKLY_LESSONS: Record<LevelGroup, number> = {
+  'pre-primary': 25,
+  'lower-primary': 31,
+  'upper-primary': 35,
+  junior: 41,
+  senior: 40,
+  'form-3-4': 40,
+};
 interface TeacherAssignment {
   id: string;
   teacher_id: string;
@@ -239,7 +247,7 @@ export default function AssignTeachers() {
   const classTotalRows = classes.map((cls) => {
     const levelGroup = resolveLevelGroup(Number(cls.level));
     const lessonsPerDay = levelGroup ? getLessonCountForLevel(levelGroup) : 8;
-    const required = lessonsPerDay * ALL_DAYS.length;
+    const required = levelGroup ? REQUIRED_WEEKLY_LESSONS[levelGroup] : lessonsPerDay * ALL_DAYS.length;
     const configured = assignments
       .filter((assignment) => assignment.class_id === cls.id)
       .reduce((sum, assignment) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
@@ -270,7 +278,7 @@ export default function AssignTeachers() {
     }
     const selectedClass = classes.find((cls) => cls.id === formData.class_id);
     const levelGroup = selectedClass ? resolveLevelGroup(Number(selectedClass.level)) : null;
-    const required = (levelGroup ? getLessonCountForLevel(levelGroup) : 8) * ALL_DAYS.length;
+    const required = levelGroup ? REQUIRED_WEEKLY_LESSONS[levelGroup] : 8 * ALL_DAYS.length;
     const replacing = assignments.filter((assignment) =>
       assignment.class_id === formData.class_id && assignment.subject_id === formData.subject_id,
     );
@@ -489,13 +497,17 @@ export default function AssignTeachers() {
       <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-5 text-sm">
         <h2 className="font-black text-gray-900 text-base mb-2">Timetable Assignment Guide</h2>
         <ol className="list-decimal list-inside space-y-1 text-gray-700">
-          <li><strong>Step 1 - Set the number of lessons:</strong> enter how many lessons per week for each learning area (example: Mathematics 5, English 5, Science 4).</li>
+          <li><strong>Step 1 - Set the number of lessons:</strong> enter the KICD weekly allocation for each learning area. The class total must reach the required weekly contract before generation.</li>
           <li><strong>Step 2 - Set double lessons (optional):</strong> choose the weekday; the two periods are placed consecutively inside the subject default window.</li>
           <li><strong>Step 3 - Set activities (optional):</strong> add clubs, sports, and library slots in Timetable Setup.</li>
           <li><strong>Step 4 - Generate:</strong> open Timetable then Generate and click Generate Timetable.</li>
           <li><strong>Step 5 - Review:</strong> check the timetable, then edit and regenerate if needed.</li>
         </ol>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 sm:col-span-2 lg:col-span-3">
+            <p className="font-bold text-[11px] uppercase tracking-wide text-emerald-800">Required lessons per class / week</p>
+            <p className="text-xs text-emerald-900 mt-1">Pre-Primary <strong>25 + PPI (2)</strong> · Lower Primary <strong>31</strong> · Upper Primary <strong>35</strong> · Junior <strong>41 including PPI</strong> · Senior <strong>40</strong> · Form 3–4 <strong>40</strong>. The class summary below shows each class&apos;s shortfall or excess.</p>
+          </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Junior (Grade 7-9)</p>
             <ul className="text-[11px] text-gray-600 mt-1 space-y-0.5">

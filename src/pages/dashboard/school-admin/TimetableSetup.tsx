@@ -35,7 +35,7 @@ export const LEVEL_GROUPS = [
 const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   'pre-primary': {
     start_time: '08:30', end_time: '12:30', period_duration: 35,
-    lessons_per_day: 6, after_lunch_lessons: 0,
+    lessons_per_day: 5, after_lunch_lessons: 0,
     first_break_start: '09:45', first_break_end: '10:15',
     second_break_start: '11:15', second_break_end: '11:35',
     lunch_start: '12:00', lunch_end: '12:30',
@@ -51,7 +51,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'upper-primary': {
     start_time: '08:00', end_time: '15:30', period_duration: 40,
-    lessons_per_day: 6, after_lunch_lessons: 0,
+    lessons_per_day: 7, after_lunch_lessons: 1,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -75,7 +75,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'form-3-4': {
     start_time: '08:00', end_time: '17:00', period_duration: 40,
-    lessons_per_day: 7, after_lunch_lessons: 1,
+    lessons_per_day: 8, after_lunch_lessons: 2,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -85,7 +85,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
 
 // Lesson info per level for display
 const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; note: string }> = {
-  'pre-primary': { total: 6, afterLunch: 0, note: 'School ends at lunch' },
+  'pre-primary': { total: 5, afterLunch: 0, note: '5 lessons/day; PPI is scheduled separately' },
   'lower-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'upper-primary': { total: 7, afterLunch: 1, note: '7 lessons/day' },
   'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
@@ -352,6 +352,15 @@ export default function TimetableSetup() {
     if (!schoolId) return;
     const name = activityDraft.activity_name.trim();
     if (!name) { toast.error('Enter an activity name'); return; }
+    const isPpi = /\bppi\b/i.test(name);
+    if (isPpi && activityDraft.day_of_week !== 5) {
+      toast.error('PPI must be scheduled on Friday Lesson 1.');
+      return;
+    }
+    if (isPpi && !activityDraft.blocks_lessons) {
+      toast.error('PPI must use Exact-time block so it replaces Friday Lesson 1.');
+      return;
+    }
     if (!normalizeTime(activityDraft.start_time) || !normalizeTime(activityDraft.end_time)) { toast.error('Enter valid activity times'); return; }
     const toMinutes = (value: string) => {
       const [hours, minutes] = value.slice(0, 5).split(':').map(Number);
@@ -376,13 +385,13 @@ export default function TimetableSetup() {
     try {
       const { data, error } = await supabaseUntyped.from('after_school_activities').insert({
         school_id: schoolId,
-        day_of_week: activityDraft.day_of_week,
+        day_of_week: isPpi ? 5 : activityDraft.day_of_week,
         activity_name: name,
         start_time: normalizeTime(activityDraft.start_time),
         end_time: normalizeTime(activityDraft.end_time),
         target_classes: activityDraft.target_classes.trim() || 'All',
         target_level_group: activityDraft.target_level_group || 'all',
-        blocks_lessons: activityDraft.blocks_lessons,
+        blocks_lessons: isPpi ? true : activityDraft.blocks_lessons,
       }).select('id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons').single();
       if (error) throw error;
       if (data) setActivities(prev => [...prev, {
@@ -450,7 +459,7 @@ export default function TimetableSetup() {
             Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7+] → <strong>ACTIVITIES</strong>
           </p>
           <p className="mt-1 text-xs text-blue-700">
-            Pre-Primary: <strong>6 lessons (ends at lunch)</strong> | Lower Primary: <strong>6 lessons (ends at lunch)</strong> | Upper Primary: <strong>7 lessons</strong> | Junior/8-4-4: <strong>8 lessons</strong> | Senior: <strong>8 lessons</strong>
+            Pre-Primary: <strong>5 lessons/day (25/week) + PPI</strong> | Lower Primary: <strong>6 lessons/day</strong> | Upper Primary: <strong>7 lessons/day</strong> | Junior: <strong>8 lessons/day + PPI</strong> | Senior: <strong>8 lessons/day</strong> | 8-4-4: <strong>8 lessons/day</strong>
           </p>
         </div>
       </div>
@@ -579,7 +588,7 @@ export default function TimetableSetup() {
           <Plus className="w-5 h-5 text-emerald-600" />
           Scheduled Activities
         </h2>
-        <p className="text-sm text-gray-600 mb-4">Activities are optional and appear only when a school adds them. Set the day, exact time, level, and optional class scope. For PPI or another activity that should replace a lesson, use the existing lesson interval for that level (for example, Friday Lesson 1: 8:20–9:00) and keep <strong>Exact-time block</strong> enabled. The activity will fill that lesson cell without adding a column or changing the level&apos;s saved lesson count; breaks and lunch remain fixed.</p>
+        <p className="text-sm text-gray-600 mb-4">Activities are optional and appear only when a school adds them. Set the day, exact time, level, and optional class scope. PPI is a separate weekly requirement: schedule it for <strong>Friday Lesson 1</strong> as an exact-time block so it replaces that lesson cell without adding a column. Do not add PPI as an ordinary learning-area assignment; the timetable keeps the configured day count and fixed breaks/lunch.</p>
         <div className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
