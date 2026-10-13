@@ -201,7 +201,7 @@ async function fetchImageDataUrl(url: string): Promise<string | null> {
 async function rasterizeForPdf(source: string): Promise<{ dataUrl: string; format: 'PNG' | 'JPEG' }> {
   const dataUrl = await fetchImageDataUrl(source);
   if (!dataUrl) throw new Error('A required visual could not be loaded for the PDF. Regenerate the paper or remove the broken visual.');
-  if (/^data:image\/(png|jpeg|jpg|webp);/i.test(dataUrl)) {
+  if (/^data:image\/(png|jpeg|jpg);/i.test(dataUrl)) {
     return { dataUrl, format: /^data:image\/png/i.test(dataUrl) ? 'PNG' : 'JPEG' };
   }
   if (typeof document === 'undefined') throw new Error('Visual PDF rendering is available in the browser only.');
@@ -210,7 +210,12 @@ async function rasterizeForPdf(source: string): Promise<{ dataUrl: string; forma
   image.src = dataUrl;
   await image.decode();
   const canvas = document.createElement('canvas');
-  const scale = Math.min(2, 1200 / Math.max(image.width, 1));
+  // The generated diagrams and maps are SVG. Rasterize them to at least
+  // 2400px wide (over 300 DPI across the printable A4 width) while keeping
+  // larger source vectors at native resolution. Raster inputs are not
+  // upscaled; WebP and SVG are converted to PNG by the canvas below.
+  const isSvg = /^data:image\/svg\+xml(?:;|,)/i.test(dataUrl);
+  const scale = isSvg ? Math.max(1, 2400 / Math.max(image.width, 1)) : 1;
   canvas.width = Math.max(1, Math.round(image.width * scale));
   canvas.height = Math.max(1, Math.round(image.height * scale));
   const context = canvas.getContext('2d');

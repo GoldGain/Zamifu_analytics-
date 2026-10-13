@@ -317,12 +317,137 @@ async function loadVettedContext(
   const databaseContext = matching.map((row: any) => [row.strand, row.sub_strand, row.content_summary].filter(Boolean).join(': ')).join('\n');
   const databaseSources = matching.map((row: any) => row.source_name).filter(Boolean);
   const requiresSourceBackedContext = request.level === 'upper_primary' || request.level === 'senior_secondary';
-  const embedded = requiresSourceBackedContext ? { context: '', sourceSummary: [] } : embeddedCurriculumContext(request);
-  const context = [databaseContext, embedded.context].filter(Boolean).join('\n');
+  const officialCurriculum = request.level === 'junior_secondary'
+    ? await loadApprovedCurriculumTreeContext(supabase, request)
+    : { context: '', sourceSummary: [] };
+  const embedded = requiresSourceBackedContext || officialCurriculum.context
+    ? { context: '', sourceSummary: [] }
+    : embeddedCurriculumContext(request);
+  const context = [databaseContext, officialCurriculum.context, embedded.context].filter(Boolean).join('\n');
   return {
     context,
-    sourceSummary: Array.from(new Set([...databaseSources, ...embedded.sourceSummary])).slice(0, 12),
+    sourceSummary: Array.from(new Set([...databaseSources, ...officialCurriculum.sourceSummary, ...embedded.sourceSummary])).slice(0, 12),
   };
+}
+
+async function loadApprovedCurriculumTreeContext(
+  supabase: ReturnType<typeof createClient>,
+  request: ExamGenerationRequest,
+): Promise<{ context: string; sourceSummary: string[] }> {
+  const empty = { context: '', sourceSummary: [] as string[] };
+  if (!request.curriculumScope?.length || !request.strands.length) return empty;
+
+  try {
+    const { data: grades, error: gradeError } = await supabase
+      .from('curriculum_grades')
+      .select('id, grade_name')
+      .eq('grade_name', request.gradeLevel)
+      .limit(2);
+    const grade = (grades || []).find((row: any) => normalizeContextKey(row.grade_name) === normalizeContextKey(request.gradeLevel));
+    if (gradeError || !grade) return empty;
+
+    const { data: subjects, error: subjectError } = await supabase
+      .from('curriculum_subjects')
+      .select('id, subject_name, curriculum_source_id')
+      .eq('grade_id', grade.id)
+      .eq('subject_name', request.subject)
+      .eq('is_current', true)
+      .limit(2);
+    const subject = (subjects || []).find((row: any) => normalizeContextKey(row.subject_name) === normalizeContextKey(request.subject));
+    if (subjectError || !subject?.curriculum_source_id) return empty;
+
+    const { data: sources, error: sourceError } = await supabase
+      .from('curriculum_sources')
+      .select('source_name, source_url, license_status, retrieval_status')
+      .eq('id', subject.curriculum_source_id)
+      .limit(2);
+    const source = (sources || [])[0];
+    if (sourceError || !source
+      || source.license_status !== 'official_public'
+      || source.retrieval_status !== 'approved'
+      || !/^https:\/\//i.test(String(source.source_url || ''))
+      || !/kicd/i.test(String(source.source_name || ''))) return empty;
+
+    const { data: strandRows, error: strandError } = await supabase
+      .from('curriculum_strands')
+      .select('id, strand_name, strand_description, strand_order')
+      .eq('subject_id', subject.id)
+      .order('strand_order', { ascending: true })
+      .limit(500);
+    if (strandError) return empty;
+    const verifiedStrands = (strandRows || []).filter((row: any) => /(?:official|source-verified)\s+kicd/i.test(String(row.strand_description || '')));
+    const verifiedByKey = new Map(verifiedStrands.map((row: any) => [normalizeContextKey(row.strand_name), row]));
+    const requestedNodes = request.curriculumScope;
+    const selectedStrands = requestedNodes.map((node) => verifiedByKey.get(normalizeContextKey(node.strand)));
+    if (selectedStrands.some((row) => !row)) return empty;
+    const selectedStrandRows = selectedStrands as any[];
+    const selectedKeys = new Set(selectedStrandRows.map((row) => normalizeContextKey(row.strand_name)));
+    if (request.strands.some((name) => !selectedKeys.has(normalizeContextKey(name)))) return empty;
+
+    const { data: subStrandRows, error: subStrandError } = await supabase
+      .from('curriculum_sub_strands')
+      .select('id, strand_id, sub_strand_name, sub_strand_description, sub_strand_order')
+      .in('strand_id', selectedStrandRows.map((row) => row.id))
+      .order('sub_strand_order', { ascending: true })
+      .limit(2000);
+    if (subStrandError) return empty;
+    const allSubStrands = subStrandRows || [];
+    const requestedSubKeys = new Set(request.subStrands.map(normalizeContextKey));
+    if ([...requestedSubKeys].some((key) => !allSubStrands.some((row: any) => normalizeContextKey(row.sub_strand_name) === key))) return empty;
+
+    const selectedSubStrands: any[] = [];
+    for (const node of requestedNodes) {
+      const strand = verifiedByKey.get(normalizeContextKey(node.strand));
+      const children = allSubStrands.filter((row: any) => row.strand_id === strand.id);
+      const allowedNames = node.subStrands.length
+        ? new Set(node.subStrands.map(normalizeContextKey))
+        : requestedSubKeys.size
+          ? requestedSubKeys
+          : new Set(children.map((row: any) => normalizeContextKey(row.sub_strand_name)));
+      const selectedChildren = children.filter((row: any) => allowedNames.has(normalizeContextKey(row.sub_strand_name)));
+      if (!selectedChildren.length || [...allowedNames].some((key) => !selectedChildren.some((row: any) => normalizeContextKey(row.sub_strand_name) === key))) return empty;
+      selectedSubStrands.push(...selectedChildren);
+    }
+    const selectedSubIds = [...new Set(selectedSubStrands.map((row) => row.id))];
+    let topicRows: any[] = [];
+    if (selectedSubIds.length) {
+      const { data, error } = await supabase
+        .from('curriculum_topics')
+        .select('id, sub_strand_id, topic_name, topic_description, learning_objectives, topic_order')
+        .in('sub_strand_id', selectedSubIds)
+        .order('topic_order', { ascending: true })
+        .limit(3000);
+      if (error && requestedNodes.some((node) => node.topics.length)) return empty;
+      topicRows = data || [];
+    }
+
+    const contextLines = [
+      `Approved official curriculum source: ${source.source_name} (${source.source_url}).`,
+      `Verified KICD curriculum scope: ${grade.grade_name} · ${subject.subject_name}.`,
+    ];
+    for (const node of requestedNodes) {
+      const strand = verifiedByKey.get(normalizeContextKey(node.strand));
+      const children = selectedSubStrands.filter((row) => row.strand_id === strand.id);
+      const requestedTopics = new Set(node.topics.map(normalizeContextKey));
+      const allNodeTopics = topicRows.filter((row) => children.some((child) => child.id === row.sub_strand_id));
+      if (requestedTopics.size && [...requestedTopics].some((key) => !allNodeTopics.some((row) => normalizeContextKey(row.topic_name) === key))) return empty;
+      for (const child of children) {
+        const childTopics = allNodeTopics.filter((row) => row.sub_strand_id === child.id
+          && (!requestedTopics.size || requestedTopics.has(normalizeContextKey(row.topic_name)))).slice(0, 6);
+        const topicText = childTopics.map((row) => {
+          const objectives = Array.isArray(row.learning_objectives) ? row.learning_objectives.filter(Boolean).slice(0, 3).join('; ') : '';
+          return [row.topic_name, String(row.topic_description || '').slice(0, 400), objectives].filter(Boolean).join(' — ');
+        });
+        contextLines.push(`${strand.strand_name}: ${child.sub_strand_name}${child.sub_strand_description ? ` — ${String(child.sub_strand_description).slice(0, 500)}` : ''}${topicText.length ? `; topics: ${topicText.join(' | ')}` : ''}`);
+      }
+    }
+    return {
+      context: contextLines.join('\n'),
+      sourceSummary: [String(source.source_name)],
+    };
+  } catch {
+    return empty;
+  }
 }
 
 type ExamProfile = {

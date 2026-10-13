@@ -22,6 +22,8 @@ import {
 export const MAX_SCOPE_REPAIR_ATTEMPTS = 3;
 /** How many times one visual may be sent back before it is dropped. */
 export const MAX_VISUAL_REPAIR_ATTEMPTS = 2;
+/** Base delay before retrying a failed/incomplete visual specification. */
+export const VISUAL_REPAIR_BACKOFF_BASE_MS = 500;
 /** Share of questions that may be dropped before the paper is a genuine failure. */
 export const MAX_UNREPAIRABLE_RATIO = 0.3;
 
@@ -129,6 +131,11 @@ function isVisualOnly(issues: ExamValidationIssue[]): boolean {
   return issues.length > 0 && issues.every((issue) => VISUAL_ISSUE_CODES.has(issue.code));
 }
 
+function waitBeforeVisualRetry(attempt: number): Promise<void> {
+  const delay = Math.min(4000, VISUAL_REPAIR_BACKOFF_BASE_MS * 2 ** Math.max(0, attempt - 1));
+  return new Promise((resolve) => setTimeout(resolve, delay));
+}
+
 function markingSchemePresent(questions: GeneratedExamQuestion[]): boolean {
   return questions.some((question) => {
     if (typeof question.marking_scheme === 'string' && question.marking_scheme.trim()) return true;
@@ -222,7 +229,10 @@ export async function repairGeneratedExam(
       const issues = issuesForPosition(request, state, index, options);
       if (!issues.length || !isVisualOnly(issues)) break;
       const repaired = await adapter.rewriteVisual({ request, question: state[index], issues, attempt });
-      if (!repaired) continue;
+      if (!repaired) {
+        if (attempt < MAX_VISUAL_REPAIR_ATTEMPTS) await waitBeforeVisualRetry(attempt);
+        continue;
+      }
       state[index] = repaired;
       if (!visualRepaired.has(index)) {
         visualRepaired.add(index);
@@ -236,7 +246,11 @@ export async function repairGeneratedExam(
           },
         });
       }
-      if (!issuesForPosition(request, state, index, options).length) break;
+      const remainingAfterRepair = issuesForPosition(request, state, index, options);
+      if (!remainingAfterRepair.length) break;
+      if (attempt < MAX_VISUAL_REPAIR_ATTEMPTS && isVisualOnly(remainingAfterRepair)) {
+        await waitBeforeVisualRetry(attempt);
+      }
     }
     const remaining = issuesForPosition(request, state, index, options);
     if (remaining.length && isVisualOnly(remaining)) {

@@ -64,6 +64,21 @@ assert.equal(dropped.questions.length, 0, 'an unrecoverable required visual must
 assert.ok(dropped.actions.some((action) => action.kind === 'question_dropped'), 'drop must be recorded as a question drop');
 assert.equal(dropped.actions.some((action) => action.kind === 'visual_dropped'), false, 'failed visual must not be silently stripped from a kept question');
 
+let visualAttempts = 0;
+const retryStartedAt = Date.now();
+const retriedVisual = await repairGeneratedExam(request, [unusable], {
+  rewriteVisual: async ({ question }) => {
+    visualAttempts += 1;
+    if (visualAttempts === 1) return null;
+    const repaired = { ...question, visual_spec: mapQuestion.visual_spec };
+    return { ...repaired, image_url: renderExamVisualDataUrl(repaired) };
+  },
+  rewriteQuestion: async () => null,
+});
+assert.equal(visualAttempts, 2, 'a failed visual attempt must be retried');
+assert.ok(Date.now() - retryStartedAt >= 450, 'visual retry must use a backoff delay');
+assert.equal(retriedVisual.questions.length, 1, 'a valid second visual attempt must keep the question');
+
 const replacement = await repairGeneratedExam(request, [unusable], {
   rewriteVisual: async () => null,
   rewriteQuestion: async () => baseQuestion({
@@ -76,4 +91,4 @@ assert.equal(replacement.questions.length, 1, 'a successful non-visual replaceme
 assert.equal(replacement.questions[0].visual_spec, null, 'replacement must not require a visual');
 assert.ok(replacement.actions.some((action) => action.kind === 'question_rewritten'), 'replacement must be recorded');
 
-console.log('visual-integrity regression passed (vector map + failed-visual replacement/drop semantics)');
+console.log('visual-integrity regression passed (vector map + backoff retry + failed-visual replacement/drop semantics)');
