@@ -20,6 +20,7 @@ import { deleteResults } from '@/lib/resultActions';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
+import { calculateNumericMeanPercentage, getNumericMeanRows } from '@/lib/resultMeans';
 
 interface ProcessedRow {
   student_id: string;
@@ -361,12 +362,14 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     XLSX.writeFile(wb, `results_${className}_${subjectName}.xlsx`);
   };
 
-  // ── Calculate class mean ────────────────────────────────────────────────────
-  const calculateClassMean = (data: ProcessedRow[]): number => {
-    if (data.length === 0) return 0;
-    const total = data.reduce((sum, r) => sum + r.percentage, 0);
-    return Math.round((total / data.length) * 100) / 100;
+  // ── Calculate class mean using numeric marks only (X/Y are status codes) ────
+  const calculateClassMean = (data: ProcessedRow[]): number | null => calculateNumericMeanPercentage(data);
+  const formatClassMean = (data: ProcessedRow[]): string => {
+    const mean = calculateClassMean(data);
+    return mean === null ? 'N/A' : `${mean}%`;
   };
+  const classMeanCountLabel = (data: ProcessedRow[]): string =>
+    `${getNumericMeanRows(data).length}/${data.length} learners counted; X/Y excluded`;
 
   // ── Check for duplicate subject entries ──────────────────────────────────────
   const checkDuplicateSubject = async (): Promise<boolean> => {
@@ -936,10 +939,10 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                       {/* Mean Calculation Display */}
                       <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 rounded-xl">
                         <span className="text-sm text-blue-700">
-                          <strong>Class Mean: {calculateClassMean(manualPreview)}%</strong>
+                          <strong>Class Mean: {formatClassMean(manualPreview)}</strong>
                         </span>
                         <span className="text-xs text-blue-500">
-                          ({manualPreview.length} learners)
+                          ({classMeanCountLabel(manualPreview)})
                         </span>
                       </div>
                       <button
@@ -1038,9 +1041,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                   {/* Mean Display */}
                   <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 rounded-xl mr-auto">
                     <span className="text-sm text-blue-700">
-                      <strong>Class Mean: {calculateClassMean(csvData)}%</strong>
+                      <strong>Class Mean: {formatClassMean(csvData)}</strong>
                     </span>
-                    <span className="text-xs text-blue-500">({csvData.length} learners)</span>
+                    <span className="text-xs text-blue-500">({classMeanCountLabel(csvData)})</span>
                   </div>
                   <button onClick={() => handleSubmit(csvData, true)} disabled={uploading} className="bg-gray-100 text-gray-700 border border-gray-300 px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-200 disabled:opacity-50 flex items-center gap-2">
                     {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save as Draft'}
