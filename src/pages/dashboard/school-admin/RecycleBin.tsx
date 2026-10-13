@@ -231,6 +231,11 @@ export default function RecycleBin() {
   };
 
   const totalRecords = impact?.records.reduce((sum, row) => sum + row.count, 0) || 0;
+  const hasReferences = Boolean(impact && (
+    totalRecords > 0 || impact.guardianLinksToOtherLearners > 0 || impact.feePaymentTotal > 0
+    || impact.parentPaymentTotal > 0 || impact.invoicePaidTotal > 0 || impact.invoiceBalanceTotal > 0
+    || impact.openLoans > 0 || impact.unpaidLibraryFines > 0 || impact.smsLogs > 0 || impact.smsTransactions > 0
+  ));
   const isCandidateBusy = Boolean(deletionCandidate && busyId === deletionCandidate.id);
 
   return (
@@ -258,8 +263,10 @@ export default function RecycleBin() {
 
             <div className="space-y-5 p-5">
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <div className="flex gap-2 font-semibold"><AlertTriangle className="h-5 w-5 shrink-0" /> This action cannot be undone.</div>
-                <p className="mt-2">The learner record and its dependent database rows will be deleted first; the linked login account is removed last. If a database step fails, the transaction is rolled back and deletion is stopped.</p>
+                <div className="flex gap-2 font-semibold"><AlertTriangle className="h-5 w-5 shrink-0" />{impact && !impactLoading && !impactError && !hasReferences ? 'No linked records found.' : 'This action cannot be undone.'}</div>
+                <p className="mt-2">{impact && !impactLoading && !impactError && !hasReferences
+                  ? 'This learner has no linked marks, fees, attendance, guardian links, library records or matching SMS history. Do you want to permanently delete the learner and linked login?'
+                  : 'The learner record and its dependent database rows will be deleted first; the linked login account is removed last. If a database step fails, the transaction is rolled back and deletion is stopped.'}</p>
               </div>
 
               {authCleanupPending ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><strong>Learner data has been deleted, but the login account still needs cleanup.</strong> Retry the server-side Auth deletion below. The remaining account is verified to have no learner row.</div> : impactLoading ? <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-600"><Loader2 className="h-5 w-5 animate-spin" /> Counting affected records and totals…</div> : impactError ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><strong>Cannot safely continue:</strong> {impactError} The deletion button remains disabled until every count can be verified.</div> : impact && (
