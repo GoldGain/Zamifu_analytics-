@@ -23,6 +23,7 @@ import { kjseaFormatInstruction } from './kjsea-paper-formats.js';
 interface DeepSeekChoice {
   message?: { content?: unknown; reasoning_content?: string | null };
   text?: unknown;
+  finish_reason?: string | null;
 }
 
 interface DeepSeekResponse {
@@ -340,10 +341,11 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
   const prompt = buildExamPrompt(request, knowledgeContext);
   let parsed: Record<string, unknown> | null = null;
   let lastFailure = '';
+  const standardTokenBudget = outputTokenBudget(request);
   const attemptPlans = [
-    { model: modelName, maxTokens: outputTokenBudget(request), useJsonMode: true },
-    { model: modelName, maxTokens: outputTokenBudget(request, true), useJsonMode: false },
-    { model: fallbackModel, maxTokens: outputTokenBudget(request, true), useJsonMode: false },
+    { model: modelName, maxTokens: standardTokenBudget, useJsonMode: true },
+    { model: fallbackModel, maxTokens: standardTokenBudget, useJsonMode: false },
+    { model: fallbackModel, maxTokens: Math.min(20000, standardTokenBudget + 8000), useJsonMode: false },
   ];
 
   for (let attempt = 0; attempt < attemptPlans.length && !parsed; attempt += 1) {
@@ -369,7 +371,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     const body = JSON.stringify(requestPayload);
     console.log('[exam-gen] attempt:', attempt + 1, 'model:', plan.model, 'request body length:', body.length, 'max_tokens:', plan.maxTokens);
 
-    const timeoutMs = attempt === 0 ? 45000 : 35000;
+    const timeoutMs = attempt === 0 ? 70000 : attempt === 1 ? 70000 : 90000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -400,6 +402,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
       }
 
       const content = readMessageContent(payload);
+      console.log('[exam-gen] attempt:', attempt + 1, 'finish reason:', payload.choices?.[0]?.finish_reason || 'unknown');
       console.log('[exam-gen] attempt:', attempt + 1, 'content preview:', content.slice(0, 200));
       if (!content) throw new DeepSeekResponseError(`The AI service returned an empty response on attempt ${attempt + 1}.`);
       const candidate = parseJsonObject(content);
