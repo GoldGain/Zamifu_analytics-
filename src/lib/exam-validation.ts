@@ -215,7 +215,8 @@ export function validateGeneratedExam(
       });
     }
   }
-  if (request.includeImages && questions.length > 0 && !questions.some((question) => question.visual_spec)) {
+  const visualPaperRequired=request.format==='kjsea'&&/^integrated\s+science$/i.test(request.subject.trim());
+  if (request.includeImages && visualPaperRequired&&questions.length > 0 && !questions.some((question) => question.visual_spec)) {
     issues.push({ code: 'VISUAL_REQUIRED', severity: 'critical', message: 'Visual questions are enabled, but the paper contains no structured visual specification.' });
   }
   const hasMapBlueprintSlot = request.blueprint?.sections.some((section) => /map|topograph/i.test(`${section.id} ${section.title || ''}`)) || false;

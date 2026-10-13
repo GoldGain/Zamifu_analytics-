@@ -29,6 +29,7 @@ export interface ExamVisualSpec {
   table_rows?: Array<Array<string | number>>;
   rows?: Array<Array<string | number>>;
   data?: Array<Array<string | number>>;
+  print_panel?: boolean;
 }
 
 function escapeXml(value: unknown): string {
@@ -68,7 +69,7 @@ function centeredTextLines(text: string, x: number, y: number, maxChars: number,
 }
 
 function tableCellText(text: unknown, x: number, centerY: number, width: number, header = false): string {
-  const lines = wrapWords(text, Math.floor(width / 7)).slice(0, 2);
+  const lines = wrapWords(text, Math.floor(width / 7));
   const lineHeight = 13;
   const startY = centerY - ((lines.length - 1) * lineHeight) / 2 + 4;
   return lines.map((entry, index) => `<text x="${x}" y="${startY + index * lineHeight}" text-anchor="middle" class="${header ? 'table-header' : 'table-cell'}">${escapeXml(entry)}</text>`).join('');
@@ -606,84 +607,185 @@ function parseMarkdownTableBlocks(source: string): string[][][] {
   return blocks;
 }
 
-function parseMarkdownTable(source: string): string[][] {
-  return parseMarkdownTableBlocks(source).flat();
+type TableSet = { headers: string[]; rows: string[][] };
+
+interface RenderedTable {
+  markup: string;
+  height: number;
+  captionY: number;
 }
 
-function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): string {
-  const sourceLabels = (spec.labels || []).map(String).filter(Boolean);
-  const sourceRows = (spec.x_labels || []).map(String).filter(Boolean);
+function isRenderableTableSet(headers: string[], rows: string[][]): boolean {
+  return headers.length >= 2
+    && rows.length > 0
+    && headers.every((header) => header.trim())
+    && rows.every((row) => row.length === headers.length && row.every((value) => value.trim()));
+}
+
+function tableCellLines(text: unknown, width: number): string[] {
+  return wrapWords(text, Math.floor(Math.max(56, width) / 7));
+}
+
+function tableRowHeight(row: string[], widths: number[], header = false): number {
+  const lineCount = Math.max(1, ...row.map((value, index) => tableCellLines(value, widths[index] - 8).length));
+  return Math.max(header ? 30 : 30, lineCount * 13 + 10);
+}
+
+function tableColumnWidths(table: TableSet, indexes: number[], totalWidth: number): number[] {
+  const desired = indexes.map((columnIndex) => {
+    const longest = Math.max(
+      table.headers[columnIndex].length,
+      ...table.rows.map((row) => row[columnIndex].length),
+    );
+    return Math.min(150, Math.max(58, longest * 5.4 + 18));
+  });
+  const desiredTotal = desired.reduce((sum, width) => sum + width, 0);
+  if (desiredTotal <= totalWidth) {
+    const extra = (totalWidth - desiredTotal) / desired.length;
+    return desired.map((width) => width + extra);
+  }
+  return indexes.map(() => totalWidth / indexes.length);
+}
+
+function splitTableColumns(columnCount: number): number[][] {
+  if (columnCount <= 6) return [Array.from({ length: columnCount }, (_, index) => index)];
+  const panels: number[][] = [];
+  // Keep the first column (normally the row identifier) in every panel. Five
+  // data columns leave readable print widths without dropping wide-table data.
+  for (let start = 1; start < columnCount; start += 5) {
+    panels.push([0, ...Array.from({ length: Math.min(5, columnCount - start) }, (_, offset) => start + offset)]);
+  }
+  return panels;
+}
+
+function extractTableSets(spec: ExamVisualSpec, question?: GeneratedExamQuestion): TableSet[] | null {
+  const sourceLabels = (spec.labels || []).map(String);
+  const sourceRows = (spec.x_labels || []).map(String);
   const values = (spec.values || []).map((value) => String(value));
-  const structuredHeaders = (spec.table_headers || spec.labels || []).map(String).filter(Boolean);
-  const structuredRows = (spec.table_rows || spec.rows || spec.data || [])
-    .filter((row): row is Array<string | number> => Array.isArray(row))
-    .map((row) => row.map((value) => String(value ?? '').trim()));
-  const parsedRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()).filter(Boolean));
-  const commaSeparated = parsedRows.some((parts) => parts.length > 1);
+  const structuredHeaders = (spec.table_headers ?? ((spec.table_rows ?? spec.rows ?? spec.data) ? spec.labels : []) ?? []).map(String);
+  const rawStructuredRows = spec.table_rows ?? spec.rows ?? spec.data;
+  const malformedStructuredRows = Array.isArray(rawStructuredRows) && rawStructuredRows.some((row) => !Array.isArray(row));
+  const structuredRows = Array.isArray(rawStructuredRows)
+    ? rawStructuredRows.map((row) => Array.isArray(row) ? row.map((value) => String(value ?? '')) : [])
+    : [];
+  const hasStructuredSource = spec.table_headers !== undefined || spec.table_rows !== undefined || spec.rows !== undefined || spec.data !== undefined;
+  const parsedLegacyRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()));
   const promptNumbers = String(spec.prompt || '').match(/[+-]?\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
-  // Prefer the structured table contract, then complete Markdown tables from
-  // the learner-facing stem. When both are present, append any additional
-  // source table that is not a duplicate of the structured table. This keeps
-  // multi-table case studies faithful without manufacturing missing values.
-  const markdownTables = parseMarkdownTableBlocks(`${question?.question_text || ''}\n${spec.prompt || ''}`);
-  const tableSets: Array<{ headers: string[]; rows: string[][] }> = [];
-  if (structuredHeaders.length >= 2 && structuredRows.length > 0) {
-    const headers = structuredHeaders.slice(0, 6);
-    const rows = structuredRows.map((row) => [...row, ...Array(Math.max(0, headers.length - row.length)).fill('—')].slice(0, headers.length));
-    tableSets.push({ headers, rows });
-    for (const table of markdownTables) {
-      const candidateHeaders = table[0].slice(0, 6);
-      const candidateRows = table.slice(1).map((row) => [...row, ...Array(Math.max(0, candidateHeaders.length - row.length)).fill('—')].slice(0, candidateHeaders.length));
-      const duplicate = candidateHeaders.join('|') === headers.join('|') && candidateRows.some((row) => rows.some((existing) => existing.join('|') === row.join('|')));
-      if (!duplicate && candidateHeaders.length >= 2 && candidateRows.length > 0) tableSets.push({ headers: candidateHeaders, rows: candidateRows });
-    }
-  } else if (markdownTables.length > 0) {
-    for (const table of markdownTables) {
-      const columnCount = Math.min(6, Math.max(...table.map((row) => row.length)));
-      const headers = table[0].slice(0, columnCount);
-      while (headers.length < columnCount) headers.push(`Detail ${headers.length}`);
-      const rows = table.slice(1).map((row) => [...row, ...Array(Math.max(0, columnCount - row.length)).fill('—')].slice(0, columnCount));
-      tableSets.push({ headers, rows });
-    }
-  } else if (sourceLabels.length >= 2 && sourceRows.length >= 2 && (values.length >= sourceLabels.length || promptNumbers.length >= sourceLabels.length)) {
-    const rowValues = (values.length >= sourceLabels.length ? values : promptNumbers).slice(0, sourceLabels.length);
-    tableSets.push({ headers: [sourceRows[0] || 'Item', ...sourceLabels], rows: [[sourceRows[1] || 'Value', ...rowValues]] });
-  } else {
-    const fallbackHeaders = sourceLabels.length ? sourceLabels.slice(0, 6) : ['Item', 'Value'];
-    const fallbackRows = sourceRows.length ? sourceRows.slice(0, 6) : ['Item 1', 'Item 2', 'Item 3', 'Item 4'];
-    const inferredColumns = commaSeparated ? Math.max(fallbackHeaders.length, ...parsedRows.map((parts) => parts.length)) : Math.max(fallbackHeaders.length, values.length ? 2 : fallbackHeaders.length);
-    const headers = [...fallbackHeaders];
-    if (commaSeparated && headers.length === 3 && inferredColumns === 4) headers.splice(2, 0, 'Group');
-    while (headers.length < inferredColumns) headers.push(`Detail ${headers.length}`);
-    const rows = fallbackRows.map((row, rowIndex) => {
-      const parts = parsedRows[rowIndex];
-      if (commaSeparated && parts.length > 1) return [...parts, ...Array(Math.max(0, headers.length - parts.length)).fill('—')].slice(0, headers.length);
-      return headers.map((_, columnIndex) => columnIndex === 0 ? row : values[rowIndex] ?? '—');
-    });
-    tableSets.push({ headers, rows });
+  if (malformedStructuredRows) return null;
+  const markdownTables = spec.print_panel ? [] : parseMarkdownTableBlocks(`${question?.question_text || ''}\n${spec.prompt || ''}`);
+  const tableSets: TableSet[] = [];
+
+  if (hasStructuredSource && (structuredHeaders.length > 0 || structuredRows.length > 0)) {
+    if (!isRenderableTableSet(structuredHeaders, structuredRows)) return null;
+    tableSets.push({ headers: structuredHeaders, rows: structuredRows });
   }
 
+  for (const table of markdownTables) {
+    const [headers, ...rows] = table;
+    const candidate: TableSet = { headers, rows };
+    if (!isRenderableTableSet(candidate.headers, candidate.rows)) return null;
+    const duplicate = tableSets.some((existing) => existing.headers.join('|') === candidate.headers.join('|')
+      && existing.rows.length === candidate.rows.length
+      && existing.rows.every((row, index) => row.join('|') === candidate.rows[index].join('|')));
+    if (!duplicate) tableSets.push(candidate);
+  }
+
+  if (tableSets.length === 0 && sourceLabels.length >= 2 && parsedLegacyRows.length > 0
+    && parsedLegacyRows.every((row) => row.length >= sourceLabels.length && row.every((value) => value.trim()))) {
+    const legacyColumnCount = Math.max(...parsedLegacyRows.map((row) => row.length));
+    if (parsedLegacyRows.every((row) => row.length === legacyColumnCount)) {
+      const headers = [...sourceLabels];
+      while (headers.length < legacyColumnCount) headers.push(`Unlabelled column ${headers.length - sourceLabels.length + 1}`);
+      tableSets.push({ headers, rows: parsedLegacyRows });
+    }
+  }
+
+  if (tableSets.length === 0 && sourceLabels.length >= 2 && sourceRows.length >= 2) {
+    const rowValues = values.length === sourceLabels.length
+      ? values
+      : promptNumbers.length === sourceLabels.length ? promptNumbers : null;
+    if (rowValues) {
+      const candidate: TableSet = {
+        headers: [sourceRows[0], ...sourceLabels],
+        rows: [[sourceRows[1], ...rowValues]],
+      };
+      if (!isRenderableTableSet(candidate.headers, candidate.rows)) return null;
+      tableSets.push(candidate);
+    }
+  }
+
+  return tableSets.length > 0 ? tableSets : null;
+}
+
+export function examVisualPrintPanels(question: GeneratedExamQuestion): GeneratedExamQuestion[] {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  if (String(spec.asset_type || '').toLowerCase() !== 'table') return [question];
+  const tableSets = extractTableSets(spec, question);
+  if (!tableSets) return [];
+  const panels: GeneratedExamQuestion[] = [];
+  tableSets.forEach((table) => {
+    const columnPanels = splitTableColumns(table.headers.length);
+    columnPanels.forEach((indexes) => {
+      for (let rowStart = 0; rowStart < table.rows.length; rowStart += 6) {
+        const rowChunk = table.rows.slice(rowStart, rowStart + 6).map((row) => indexes.map((index) => row[index]));
+        const panelNumber = panels.length + 1;
+        const panelSpec: ExamVisualSpec = {
+          ...spec,
+          title: `${spec.title || spec.caption || 'Table'} · panel ${panelNumber}`,
+          table_headers: indexes.map((index) => table.headers[index]),
+          table_rows: rowChunk,
+          labels: indexes.map((index) => table.headers[index]),
+          x_labels: [],
+          values: [],
+          print_panel: true,
+        };
+        panels.push({ ...question, image_url: null, visual_spec: panelSpec as Record<string, unknown> });
+      }
+    });
+  });
+  return panels;
+}
+
+function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): RenderedTable | null {
+  const tableSets = extractTableSets(spec, question);
+  if (!tableSets) return null;
+
   const x = 28;
-  let y = 58;
   const tableWidth = 424;
-  const rowHeight = tableSets.length > 1 ? 20 : (tableSets[0]?.rows.length || 0) > 5 ? 26 : 30;
-  return tableSets.map(({ headers, rows }, tableIndex) => {
-    const columnWidth = tableWidth / headers.length;
-    const header = headers.map((header, index) => {
-      const cellX = x + index * columnWidth;
-      return `<rect x="${cellX}" y="${y}" width="${columnWidth}" height="${rowHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/>${tableCellText(header, cellX + columnWidth / 2, y + rowHeight / 2, columnWidth - 8, true)}`;
-    }).join('');
-    const body = rows.map((row, rowIndex) => {
-      const cellY = y + rowHeight * (rowIndex + 1);
-      return row.map((value, columnIndex) => {
-        const cellX = x + columnIndex * columnWidth;
-        return `<rect x="${cellX}" y="${cellY}" width="${columnWidth}" height="${rowHeight}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/>${tableCellText(value, cellX + columnWidth / 2, cellY + rowHeight / 2, columnWidth - 8)}`;
+  let y = 58;
+  let markup = '';
+  tableSets.forEach((table, tableIndex) => {
+    const panels = splitTableColumns(table.headers.length);
+    panels.forEach((indexes, panelIndex) => {
+      if (panels.length > 1) {
+        y += 4;
+        markup += `<text x="${x}" y="${y + 12}" class="small">Table ${tableIndex + 1} · Panel ${panelIndex + 1}/${panels.length} (shared identifier: ${escapeXml(table.headers[0])})</text>`;
+        y += 22;
+      }
+      const widths = tableColumnWidths(table, indexes, tableWidth);
+      const headerHeight = tableRowHeight(indexes.map((index) => table.headers[index]), widths, true);
+      const headerCells = indexes.map((columnIndex, index) => {
+        const cellX = x + widths.slice(0, index).reduce((sum, width) => sum + width, 0);
+        return `<rect x="${cellX}" y="${y}" width="${widths[index]}" height="${headerHeight}" fill="#dbeafe" stroke="#1d4ed8" stroke-width="1"/>${tableCellText(table.headers[columnIndex], cellX + widths[index] / 2, y + headerHeight / 2, widths[index] - 8, true)}`;
       }).join('');
-    }).join('');
-    const markup = `${header}${body}`;
-    y += (rows.length + 1) * rowHeight + (tableIndex < tableSets.length - 1 ? 12 : 0);
-    return markup;
-  }).join('');
+      markup += headerCells;
+      y += headerHeight;
+      table.rows.forEach((row, rowIndex) => {
+        const valuesForPanel = indexes.map((index) => row[index]);
+        const height = tableRowHeight(valuesForPanel, widths);
+        const cells = valuesForPanel.map((value, index) => {
+          const cellX = x + widths.slice(0, index).reduce((sum, width) => sum + width, 0);
+          return `<rect x="${cellX}" y="${y}" width="${widths[index]}" height="${height}" fill="${rowIndex % 2 === 0 ? '#ffffff' : '#f9fafb'}" stroke="#9ca3af" stroke-width="1"/>${tableCellText(value, cellX + widths[index] / 2, y + height / 2, widths[index] - 8)}`;
+        }).join('');
+        markup += cells;
+        y += height;
+      });
+      y += 14;
+    });
+    y += tableIndex < tableSets.length - 1 ? 8 : 0;
+  });
+  const bodyBottom = y;
+  return { markup, height: Math.max(320, bodyBottom + 48), captionY: Math.max(302, bodyBottom + 16) };
 }
 
 const EXPLICIT_VISUAL_REFERENCE = /\b(?:diagram|figure|map|graph|chart|table|illustration|picture|image|photograph|flowchart|number\s+line)\b|\b(?:shown\s+(?:below|above)|as\s+(?:shown|illustrated)|study\s+(?:it|the)|observe\s+(?:it|the)|refer\s+to|look\s+at|use\s+the)\b/i;
@@ -696,16 +798,7 @@ const EXPLICIT_VISUAL_REFERENCE = /\b(?:diagram|figure|map|graph|chart|table|ill
 export function hasCompleteTableVisual(question: GeneratedExamQuestion): boolean {
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   if (String(spec.asset_type || '').toLowerCase() !== 'table') return true;
-  const headers = (spec.table_headers || spec.labels || []).map(String).filter((value) => value.trim());
-  const structuredRows = (spec.table_rows || spec.rows || spec.data || [])
-    .filter((row): row is Array<string | number> => Array.isArray(row))
-    .map((row) => row.map((value) => String(value ?? '').trim()));
-  if (headers.length >= 2 && structuredRows.length > 0 && structuredRows.every((row) => row.length >= headers.length && row.slice(0, headers.length).every((value) => value && value !== '—'))) return true;
-  const markdownRows = parseMarkdownTable(`${question.question_text || ''}\n${spec.prompt || ''}`);
-  if (markdownRows.length >= 2) return markdownRows.slice(1).every((row) => row.every((value) => value.trim() && value.trim() !== '—'));
-  const values = (spec.values || []).map((value) => String(value).trim()).filter(Boolean);
-  const promptNumbers = String(spec.prompt || '').match(/[+-]?\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
-  return headers.length >= 2 && (values.length >= headers.length || promptNumbers.length >= headers.length);
+  return extractTableSets(spec, question) !== null;
 }
 
 function deterministicDiagramType(question: GeneratedExamQuestion): string | null {
@@ -735,18 +828,32 @@ function deterministicDiagramType(question: GeneratedExamQuestion): string | nul
 }
 
 function diagramTemplateCompatible(question: GeneratedExamQuestion): boolean {
-  const spec=question.visual_spec;
+  const spec=question.visual_spec as ExamVisualSpec;
   if(spec?.asset_type!=='diagram')return true;
   const type=deterministicDiagramType(question);
   const expected: Record<string,RegExp[]>= {atom:[/\bnucleus\b/i,/\belectron\b/i],digestive_system:[/\bstomach\b/i,/\bsmall\s+intestine\b/i],flower:[/\banther\b/i,/\bstigma\b/i],concave_mirror:[/\b(?:centre|center)\b|\bcurvature\b/i,/\bfocus\b|\bfocal\s+point\b/i]};
+  const labels = (spec.labels || []).map(String).filter((label) => label.trim());
   for(const [index,pattern]of(expected[type||'']||[]).entries()){
     const label=String(spec.labels?.[index]||'').trim();
     const meaning=label.replace(/^[A-Za-z]\s*(?:=|:|[-–])\s*/,'').trim();
     if(meaning&&!/^[A-Za-z]$/.test(meaning)&&!pattern.test(meaning))return false;
   }
-  const descriptor=[question.question_text,...(question.sub_parts||[]).map(part=>part.prompt),spec.title,spec.prompt].join(' ');
+  const descriptor=[question.question_text,...(question.sub_parts||[]).map(part=>part.prompt),spec.title,spec.prompt,...labels].filter(Boolean).join(' ');
+  const unsupportedTemplateReferences: Record<string, RegExp> = {
+    atom: /\b(?:proton|neutron|nucleon|atomic\s+(?:number|mass)|mass\s+number|electron\s+(?:arrangement|configuration|shell)|energy\s+level|valence|outer(?:most)?\s+shell)\b/i,
+    digestive_system: /\b(?:liver|pancreas|gall\s*bladder|oesophagus|esophagus|mouth|salivary|duodenum|ileum|colon|large\s+intestine|rectum|anus|appendix)\b/i,
+    flower: /\b(?:ovary|ovule|filament|style|sepal|petal|nectary|pollen\s+tube|receptacle)\b/i,
+  };
+  if (unsupportedTemplateReferences[type || '']?.test(descriptor)) return false;
+  if (type === 'atom' && labels.length > 2) return false;
+  if (type === 'digestive_system' && labels.length > 2) return false;
+  if (type === 'flower' && labels.length > 2) return false;
+  if (type === 'concave_mirror' && labels.slice(2).some((label) => {
+    const meaning = label.replace(/^[A-Za-z]\s*(?:=|:|[-–])\s*/,'').trim();
+    return !/^object\s+(?:is\s+)?(?:beyond|outside)\s+(?:the\s+)?(?:centre|center|c)\b/i.test(meaning);
+  })) return false;
   if(type==='atom'&&/\b(?:electron\s+(?:arrangement|configuration)|outer(?:most)?\s+shell|number\s+of\s+(?:electrons|protons|neutrons)|count\s+(?:the\s+)?(?:electrons|protons|neutrons))\b/i.test(descriptor))return false;
-  if(type==='concave_mirror'&&/\b(?:between\s+(?:the\s+)?(?:focus|focal\s+point|centre|center)|at\s+(?:the\s+)?(?:focus|focal\s+point|centre|center))\b/i.test(descriptor))return false;
+  if(type==='concave_mirror'&&/\b(?:between\b|at\s+(?:the\s+)?(?:focus|focal\s+point|centre|center)|inside\s+(?:the\s+)?(?:focus|focal\s+point|centre|center)|within\s+(?:the\s+)?(?:focus|focal\s+point|centre|center))\b/i.test(descriptor))return false;
   return true;
 }
 
@@ -821,13 +928,21 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   const effectiveSpec = assetType === 'map' ? normalizeMapSpec(spec, question) : spec;
   const title = visualTitle(effectiveSpec, question);
   let body = '';
+  let visualHeight = 320;
+  let captionY = 302;
   if (assetType === 'map') {
     const mapBody = renderMap(effectiveSpec, question);
     if (!mapBody) return null;
     body = mapBody;
   }
   else if (assetType === 'graph' || assetType === 'chart') body = renderGraph(spec);
-  else if (assetType === 'table') body = renderTable(spec, question);
+  else if (assetType === 'table') {
+    const table = renderTable(spec, question);
+    if (!table) return null;
+    body = table.markup;
+    visualHeight = table.height;
+    captionY = table.captionY;
+  }
   else if (assetType === 'number_line') body = renderNumberLine(spec);
   else if (assetType === 'shape' || assetType === 'diagram') {
     const diagramType = deterministicDiagramType(question);
@@ -875,8 +990,10 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
     }).join('');
   } else return null;
   const caption = effectiveSpec.caption || (assetType === 'map' ? 'Use the key, scale and north arrow when interpreting this vector map.' : 'Teacher-approved visual');
-  const captionMarkup = centeredTextLines(caption, 240, 302, 62, 'small', 12);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.map-label{font:11px Arial;fill:#111827}.map-legend{font:10.5px Arial;fill:#111827}.map-key-title{font:700 11px Arial;fill:#111827}.table-header{font:700 11px Arial;fill:#1e3a8a}.table-cell{font:11px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>${centeredTextLines(title, 240, 22, 42, 'title', 18)}${body}${captionMarkup}</svg>`;
+  const captionMarkup = centeredTextLines(caption, 240, captionY, 62, 'small', 12);
+  const printWidthPx = 2550;
+  const printHeightPx = Math.ceil(visualHeight * printWidthPx / 480);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${printWidthPx}" height="${printHeightPx}" data-print-dpi="300" preserveAspectRatio="xMidYMin meet" viewBox="0 0 480 ${visualHeight}"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.map-label{font:11px Arial;fill:#111827}.map-legend{font:10.5px Arial;fill:#111827}.map-key-title{font:700 11px Arial;fill:#111827}.table-header{font:11px Arial;fill:#1e3a8a;font-weight:700}.table-cell{font:11px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="${visualHeight}" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>${centeredTextLines(title, 240, 22, 42, 'title', 18)}${body}${captionMarkup}</svg>`;
   return dataUrl(svg);
 }
 

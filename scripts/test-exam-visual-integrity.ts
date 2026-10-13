@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { renderExamVisualDataUrl, hasUsableVisualSpec, isSupportedExamMapSpec, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
+import { examVisualPrintPanels, renderExamVisualDataUrl, hasUsableVisualSpec, isSupportedExamMapSpec, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
 import { curatedVisualDataUrl } from '../src/lib/exam-visual-library.js';
 import { resolveQuestionVisualForPdf } from '../src/lib/exam-generator.js';
 import { repairGeneratedExam } from '../src/lib/exam-repair.js';
@@ -250,3 +250,60 @@ const wrongMirrorPosition=baseQuestion({question_text:'Study the concave mirror 
 assert.equal(hasUsableVisualSpec(wrongMirrorPosition),false,'a fixed beyond-C ray template cannot depict an object inside the focus');
 assert.equal(renderExamVisualDataUrl(wrongMirrorPosition),null);
 console.log('PASS: anatomy labels, atom-count limits and mirror-object positions are checked before SVG rendering.');
+
+const unsupportedDigestiveAnatomy = baseQuestion({
+  question_text: 'Study the human digestive-system diagram and identify the liver.',
+  visual_spec: {
+    asset_type: 'diagram', title: 'Human digestive system',
+    labels: ['P = stomach', 'Q = small intestine'],
+    prompt: 'Identify the liver on the diagram.',
+  },
+});
+assert.equal(hasUsableVisualSpec(unsupportedDigestiveAnatomy), false, 'a digestive question requiring an unrendered liver must fail visual validation');
+assert.equal(renderExamVisualDataUrl(unsupportedDigestiveAnatomy), null, 'an unrendered digestive organ must not receive a misleading SVG');
+
+const unsupportedFlowerAnatomy = baseQuestion({
+  question_text: 'Study the longitudinal section of a flower and label the ovary.',
+  visual_spec: {
+    asset_type: 'diagram', title: 'Longitudinal section of a flower',
+    labels: ['A = anther', 'B = stigma'],
+    prompt: 'Label the ovary on the diagram.',
+  },
+});
+assert.equal(hasUsableVisualSpec(unsupportedFlowerAnatomy), false, 'a flower question requiring an unrendered ovary must fail visual validation');
+assert.equal(renderExamVisualDataUrl(unsupportedFlowerAnatomy), null, 'an unrendered flower organ must not receive a misleading SVG');
+
+const wideTallHeaders = ['ID', 'Term 1', 'Term 2', 'Term 3', 'Term 4', 'Term 5', 'Term 6', 'Term 7'];
+const wideTallRows = Array.from({ length: 9 }, (_, row) => wideTallHeaders.map((_, column) => column === 0 ? `Learner-${row + 1}` : `value-${row + 1}-${column}`));
+const wideTallTable = baseQuestion({
+  question_text: 'Use the complete assessment-results table below.',
+  visual_spec: {
+    asset_type: 'table', title: 'Complete assessment results', table_headers: wideTallHeaders,
+    table_rows: wideTallRows, caption: 'All terms and learners are shown.',
+  },
+});
+const wideTallSvgUrl = renderExamVisualDataUrl(wideTallTable);
+assert.ok(wideTallSvgUrl?.startsWith('data:image/svg+xml;charset=utf-8,'), 'wide/tall table must render as an SVG data URL');
+const wideTallSvg = decodeURIComponent(wideTallSvgUrl!.split(',', 2)[1]);
+for (const value of [...wideTallHeaders, ...wideTallRows.flat()]) {
+  assert.ok(wideTallSvg.includes(value), `wide/tall table SVG must preserve ${value}`);
+}
+assert.ok(!wideTallSvg.includes('>—</text>'), 'wide/tall table SVG must not invent dash cells');
+const wideTallViewBox = wideTallSvg.match(/viewBox="0 0 480 (\d+(?:\.\d+)?)"/);
+assert.ok(wideTallViewBox && Number(wideTallViewBox[1]) > 320, 'wide/tall table SVG must expose a dynamic height');
+
+const printPanels = examVisualPrintPanels(wideTallTable);
+assert.equal(printPanels.length, 4, 'eight columns and nine rows should become two horizontal by two vertical print panels');
+const panelValues = new Set<string>();
+for (const panel of printPanels) {
+  const panelSpec = panel.visual_spec as Record<string, unknown>;
+  const panelHeaders = (panelSpec.table_headers as string[]) || [];
+  const panelRows = (panelSpec.table_rows as Array<Array<string | number>>) || [];
+  assert.ok(panelHeaders.length <= 6, 'each print panel must contain at most six columns');
+  assert.ok(panelRows.length <= 6, 'each print panel must contain at most six data rows');
+  assert.equal(panelRows.every((row) => row.length === panelHeaders.length), true, 'print panels must retain rectangular complete rows');
+  for (const row of panelRows) for (const value of row) panelValues.add(String(value));
+}
+for (const value of wideTallRows.flat()) assert.ok(panelValues.has(value), `print panels must preserve ${value}`);
+assert.ok(printPanels.slice(1).every((panel) => ((panel.visual_spec as Record<string, unknown>).table_headers as string[])[0] === 'ID'), 'horizontal panels must repeat the shared identifier column');
+console.log(`PASS: unsupported anatomy is rejected; lossless table source height=${wideTallViewBox![1]} panels=${printPanels.length}.`);

@@ -46,6 +46,22 @@ import {
 type UiPaperVariant = 'single' | 'paper1' | 'paper2' | 'both';
 type AssessmentScopeMode = 'full_paper' | 'strand' | 'sub_strand' | 'topical';
 
+const SCHOOL_VARIANT_FORMATS: ExamFormat[] = ['standard30', 'cbe', 'custom'];
+const SCHOOL_VARIANT_OPTIONS: Array<{ value: UiPaperVariant; label: string; description: string }> = [
+  { value: 'single', label: 'Single paper', description: 'One school-configured paper' },
+  { value: 'paper1', label: 'Paper 1', description: 'Generate only the first school paper' },
+  { value: 'paper2', label: 'Paper 2', description: 'Generate only the second school paper' },
+  { value: 'both', label: 'Both papers', description: 'Generate two independent papers' },
+];
+
+function isSchoolVariantFormat(value: ExamFormat): boolean {
+  return SCHOOL_VARIANT_FORMATS.includes(value);
+}
+
+function uiPaperVariantLabel(value: UiPaperVariant): string {
+  return value === 'paper1' ? 'Paper 1' : value === 'paper2' ? 'Paper 2' : value === 'both' ? 'Both papers' : 'Single paper';
+}
+
 export interface CurriculumTopicOption {
   id: string;
   topic_name: string;
@@ -181,6 +197,7 @@ export default function ExamGenerator({
   )), [allowedFormats, gradeNine, subject]);
   const isOfficialKjsea = format === 'kjsea' && gradeNine && Boolean(officialKjseaSpec);
   const isOfficialKpsea = format === 'kpsea' && Boolean(kpseaSpec);
+  const isSchoolConfiguredVariantFormat = isSchoolVariantFormat(format);
   const marksLocked = format === 'standard30' || isOfficialKjsea || isOfficialKpsea;
   const durationLocked = format === 'standard30' || isOfficialKjsea || isOfficialKpsea;
 
@@ -307,6 +324,10 @@ export default function ExamGenerator({
   }
 
   function handlePaperVariantChange(nextVariant: UiPaperVariant) {
+    if (isSchoolConfiguredVariantFormat) {
+      setPaperVariant(nextVariant);
+      return;
+    }
     if (!isOfficialKjsea || !supportsTwoPapers(subject) || nextVariant === 'single') return;
     setPaperVariant(nextVariant);
     const officialVariant = nextVariant === 'paper2' ? 'paper2' : 'paper1';
@@ -449,9 +470,15 @@ export default function ExamGenerator({
       setTitle(saved.title || '');
       setFormat(loadedPaper.format);
       setTerm(saved.term || 'Term 1');
-      const savedVariant = loadedPaper.format === 'kjsea' && gradeNine && supportsTwoPapers(subject)
-        ? loadedPaper.paper_variant === 'paper2' || loadedPaper.blueprint?.paper_variant === 'paper2' ? 'paper2' : 'paper1'
-        : loadedPaper.paper_variant || loadedPaper.blueprint?.paper_variant || 'single';
+      const savedVariant: UiPaperVariant = loadedPaper.format === 'kpsea'
+        ? 'single'
+        : loadedPaper.format === 'kjsea' && gradeNine && supportsTwoPapers(subject)
+          ? loadedPaper.paper_variant === 'paper2' || loadedPaper.blueprint?.paper_variant === 'paper2' ? 'paper2' : 'paper1'
+          : loadedPaper.paper_variant === 'paper2' || loadedPaper.blueprint?.paper_variant === 'paper2'
+            ? 'paper2'
+            : loadedPaper.paper_variant === 'paper1' || loadedPaper.blueprint?.paper_variant === 'paper1'
+              ? 'paper1'
+              : 'single';
       const savedKjseaSpec = loadedPaper.format === 'kjsea' && gradeNine
         ? getKjseaPaperSpec(subject, savedVariant === 'paper2' ? 'paper2' : supportsTwoPapers(subject) ? 'paper1' : 'single')
         : null;
@@ -459,7 +486,7 @@ export default function ExamGenerator({
       setTotalMarks(loadedPaper.format === 'standard30' ? 30 : savedKjseaSpec?.marks ?? savedKpseaSpec?.marks ?? Number(saved.total_marks ?? loadedPaper.total_marks));
       setDurationMinutes(loadedPaper.format === 'standard30' ? 45 : savedKjseaSpec?.duration_minutes ?? savedKpseaSpec?.duration_minutes ?? Number(saved.duration_minutes ?? loadedPaper.duration_minutes));
       setDurationSource(loadedPaper.format === 'standard30' ? 'standard' : savedKjseaSpec || savedKpseaSpec ? 'kicd' : 'manual');
-      setPaperVariant(savedVariant === 'paper2' ? 'paper2' : savedVariant === 'paper1' ? 'paper1' : 'single');
+      setPaperVariant(savedVariant);
       setSelectedQuestionTypes(new Set(questions.map((question) => question.question_type)));
       setIncludeImages(questions.some((question) => Boolean(question.image_url || question.visual_spec)));
       toast.success('Saved assessment opened for review.');
@@ -486,9 +513,18 @@ export default function ExamGenerator({
       if (!token) throw new Error('Your session has expired. Please sign in again.');
 
       const separateKjseaPapers = isOfficialKjsea && supportsTwoPapers(subject);
-      const variants: Array<'single' | 'paper1' | 'paper2'> = format === 'kjsea' && separateKjseaPapers
-        ? paperVariant === 'both' ? ['paper1', 'paper2'] : [paperVariant === 'paper2' ? 'paper2' : 'paper1']
+      const separateSchoolPapers = isSchoolConfiguredVariantFormat && paperVariant !== 'single';
+      const canGenerateSeparatePapers = separateKjseaPapers || separateSchoolPapers;
+      const variants: Array<'single' | 'paper1' | 'paper2'> = canGenerateSeparatePapers
+        ? paperVariant === 'both'
+          ? ['paper1', 'paper2']
+          : [paperVariant === 'paper2' ? 'paper2' : 'paper1']
         : ['single'];
+      const configuredSchoolBlueprint = isSchoolConfiguredVariantFormat
+        ? format === 'standard30'
+          ? makeFormatBlueprint(format, 30, difficulty)
+          : makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty)
+        : undefined;
       const generatedPapersForRun: ExamPaper[] = [];
       const repairNotices: string[] = [];
       const generationFailures: string[] = [];
@@ -501,7 +537,10 @@ export default function ExamGenerator({
             : null;
           const kpseaSpecForRequest = format === 'kpsea' ? getKpseaPaperSpec(subject) : null;
           const variantLabel = variant === 'paper1' ? 'Paper 1' : variant === 'paper2' ? 'Paper 2' : '';
-          const requestTitle = paperVariant === 'both' && variantLabel ? `${baseTitle} — ${variantLabel}` : title;
+          const requestTitle = variantLabel ? `${baseTitle} — ${variantLabel}` : title;
+          const schoolBlueprint = configuredSchoolBlueprint
+            ? { ...configuredSchoolBlueprint, paper_variant: variant }
+            : undefined;
           const request: ExamGenerationRequest = {
             title: requestTitle,
             gradeLevel,
@@ -522,14 +561,14 @@ export default function ExamGenerator({
             term,
             schoolName,
             level: assessmentLevel,
-            paperVariant: variant === 'single' ? undefined : variant,
+            // KPSEA remains a verified single/composite national practice paper;
+            // school variants are explicit only for school-configured formats.
+            paperVariant: format === 'kpsea' ? undefined : variant,
             blueprint: format === 'kjsea' && kjseaSpec
               ? makeKjseaBlueprint(subject, variant, difficulty)
               : format === 'kpsea' && kpseaSpecForRequest
                 ? makeKpseaBlueprint(subject, difficulty)
-                : format === 'standard30'
-                  ? makeFormatBlueprint(format, 30, difficulty)
-                  : makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty),
+                : schoolBlueprint || makeBalancedBlueprint(Array.from(selectedQuestionTypes), totalMarks, difficulty),
           };
           const response = await fetch('/api/generate-exam', {
             method: 'POST',
@@ -542,7 +581,7 @@ export default function ExamGenerator({
           if (repairInfo?.status === 'repaired' && repairInfo.message) repairNotices.push(repairInfo.message);
           const generated = payload?.paper as ExamPaper | undefined;
           if (!generated?.questions?.length) throw new Error('The exam service returned no questions.');
-          const generatedWithUiTitle = separateKjseaPapers && variantLabel
+          const generatedWithUiTitle = canGenerateSeparatePapers && variantLabel
             ? { ...generated, title: requestTitle || `${generated.title} — ${variantLabel}`, paper_variant: variant }
             : { ...generated, paper_variant: variant === 'single' ? generated.paper_variant : variant };
           generatedPapersForRun.push(generatedWithUiTitle);
@@ -876,6 +915,23 @@ export default function ExamGenerator({
                 </div>
               </div>
             )}
+            {isSchoolConfiguredVariantFormat && (
+              <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">School paper setup</p>
+                    <p className="mt-1 text-[11px] leading-4 text-slate-600">Optional split for your own blueprint. <strong>School-configured—not a national paper specification.</strong> Your selected scope, question types, marks, and duration are reused for each independent paper.</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-blue-700">{uiPaperVariantLabel(paperVariant)}</span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                  {SCHOOL_VARIANT_OPTIONS.map((option) => {
+                    const selected = paperVariant === option.value;
+                    return <button key={option.value} type="button" aria-pressed={selected} onClick={() => handlePaperVariantChange(option.value)} className={`rounded-lg border px-2 py-2 text-left transition ${selected ? 'border-blue-500 bg-white shadow-sm ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/60'}`}><span className="block text-[11px] font-semibold text-slate-800">{option.label}</span><span className="mt-0.5 block text-[10px] leading-4 text-slate-500">{option.description}</span></button>;
+                  })}
+                </div>
+              </div>
+            )}
             <label className="block text-xs font-semibold text-slate-700">Term
               <select value={term} onChange={(event) => setTerm(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none transition focus:border-red-500 focus:ring-2 focus:ring-red-100">
                 <option>Term 1</option><option>Term 2</option><option>Term 3</option><option>End of Year</option>
@@ -977,7 +1033,7 @@ export default function ExamGenerator({
             <div className="mb-3 flex flex-col gap-3">
               <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-slate-900">Generated paper</h3><p className="mt-1 text-xs leading-5 text-slate-500">Review every question, validate the blueprint, then approve before sharing with learners.</p></div>{paper && <PaperStatusBadge status={paper.status || 'draft'} />}</div>
               {paper && <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2 text-xs"><span className="font-semibold text-slate-700">Quality gate:</span><span className="rounded-full bg-red-100 px-2 py-1 font-semibold text-red-700">{criticalIssueCount} critical</span><span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-700">{warningIssueCount} warnings</span>{criticalIssueCount === 0 ? <span className="font-medium text-emerald-700">Ready for review</span> : <span className="font-medium text-red-700">Export and approval locked</span>}</div>{validationIssues.length > 0 && <div className="mt-2 space-y-1">{validationIssues.slice(0, 4).map((issue, issueIndex) => <p key={`${issue.code}-${issueIndex}`} className={`text-[11px] leading-4 ${issue.severity === 'critical' ? 'text-red-700' : issue.severity === 'warning' ? 'text-amber-700' : 'text-blue-700'}`}>{issue.severity === 'critical' ? 'Critical' : issue.severity === 'warning' ? 'Warning' : 'Info'}: {issue.message}</p>)}</div>}</div>}
-              {generatedPapers.length > 1 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-100 bg-red-50/50 p-2" aria-label="Generated paper switcher"><span className="mr-1 text-[11px] font-semibold text-slate-700">Generated papers:</span>{generatedPapers.map((entry, index) => <button key={`${entry.id || entry.title}-${index}`} type="button" aria-pressed={selectedPaperIndex === index} onClick={() => { setSelectedPaperIndex(index); setPaper(entry); }} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${selectedPaperIndex === index ? 'bg-red-600 text-white' : 'bg-white text-red-700 hover:bg-red-100'}`}>{entry.paper_variant === 'paper2' ? 'Paper 2' : 'Paper 1'}</button>)}</div>}
+              {generatedPapers.length > 1 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-red-100 bg-red-50/50 p-2" aria-label="Generated paper switcher"><span className="mr-1 text-[11px] font-semibold text-slate-700">Generated papers:</span>{generatedPapers.map((entry, index) => <button key={`${entry.id || entry.title}-${index}`} type="button" aria-pressed={selectedPaperIndex === index} onClick={() => { setSelectedPaperIndex(index); setPaper(entry); }} className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${selectedPaperIndex === index ? 'bg-red-600 text-white' : 'bg-white text-red-700 hover:bg-red-100'}`}>{entry.paper_variant === 'paper2' ? 'Paper 2' : entry.paper_variant === 'paper1' ? 'Paper 1' : 'Single paper'}</button>)}</div>}
               {paper && <div className="flex flex-wrap items-center gap-2"><select value={exportMode} onChange={(event) => setExportMode(event.target.value as ExamPdfMode)} disabled={criticalIssueCount > 0} className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"><option value="student">Student paper PDF</option><option value="marking_scheme">Marking scheme PDF</option><option value="answer_key">Compact answer key PDF</option><option value="combined">Student paper + marking scheme</option></select><button type="button" onClick={() => void downloadPaper()} disabled={downloading || criticalIssueCount > 0} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">{downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}Export</button><button type="button" onClick={() => void approvePaper()} disabled={approvingPaper || criticalIssueCount > 0 || paper.status === 'approved'} className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{approvingPaper ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BadgeCheck className="h-3.5 w-3.5" />}{paper.status === 'approved' ? 'Approved' : 'Approve paper'}</button></div>}
             </div>
 

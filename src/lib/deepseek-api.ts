@@ -497,8 +497,9 @@ function chunkBlueprintSlots(slots: ExamBlueprintSlot[]): ExamBlueprintSlot[][] 
       cursor = end;
       continue;
     }
-    if (sectionSlots.length > 10) {
-      for (let offset = 0; offset < sectionSlots.length; offset += 10) chunks.push(sectionSlots.slice(offset, offset + 10));
+    const sectionChunkSize=sectionSlots.some(slot=>slot.questionType==='case_study'||slot.questionType==='essay')?4:10;
+    if (sectionSlots.length > sectionChunkSize) {
+      for (let offset = 0; offset < sectionSlots.length; offset += sectionChunkSize) chunks.push(sectionSlots.slice(offset, offset + sectionChunkSize));
       cursor = end;
       continue;
     }
@@ -511,7 +512,8 @@ function chunkBlueprintSlots(slots: ExamBlueprintSlot[]): ExamBlueprintSlot[][] 
       const nextSection = slots[groupEnd].sectionIndex;
       const nextRelativeEnd = slots.slice(groupEnd).findIndex((slot) => slot.sectionIndex !== nextSection);
       const nextEnd = nextRelativeEnd === -1 ? slots.length : groupEnd + nextRelativeEnd;
-      if (nextEnd - cursor > 10) break;
+      const structuredCount=slots.slice(cursor,nextEnd).filter(slot=>slot.questionType==='case_study'||slot.questionType==='essay').length;
+      if (nextEnd - cursor > 10||structuredCount>4) break;
       groupEnd = nextEnd;
     }
     chunks.push(slots.slice(cursor, groupEnd));
@@ -546,7 +548,7 @@ async function generateLargeBlueprintInChunks(
         for (let attempt = 1; attempt <= 2 && !recovered; attempt += 1) {
           if (Date.now() >= deadlineAt) break;
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), Math.max(1,Math.min(45000,deadlineAt-Date.now())));
+          const timeoutId = setTimeout(() => controller.abort(), Math.max(1,Math.min(60000,deadlineAt-Date.now())));
           try {
             const response = await fetch(endpoint, {
               method: 'POST',
@@ -558,7 +560,7 @@ async function generateLargeBlueprintInChunks(
                   { role: 'user', content: `${chunkPrompt}\n\nThis is chunk attempt ${attempt}; output all ${chunk.length} slots now.` },
                 ],
                 temperature: attempt === 1 ? 0.45 : 0.25,
-                max_tokens: Math.min(12000, Math.max(4000, chunk.length * 520)),
+                max_tokens: Math.min(14000,Math.max(5000,chunk.reduce((sum,slot)=>sum+(slot.questionType==='case_study'||slot.questionType==='essay'?1800:450),0)+(request.includeImages?1800:800))),
                 stream: false,
                 response_format: { type: 'json_object' },
               }),

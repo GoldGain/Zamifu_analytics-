@@ -7,7 +7,7 @@ import {
   type GeneratedExamQuestion,
   type QuestionType,
 } from './exam-schema';
-import { renderExamVisualDataUrl } from './exam-visuals';
+import { examVisualPrintPanels, renderExamVisualDataUrl } from './exam-visuals';
 import { getKjseaPaperSpec } from './kjsea-paper-formats';
 import {
   candidateCalculationInstruction,
@@ -512,6 +512,8 @@ export function resolveQuestionVisualForPdf(question: GeneratedExamQuestion): st
 }
 
 async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: GeneratedExamQuestion, y: number, subtitle?: string): Promise<number> {
+  const panels=examVisualPrintPanels(question);
+  if(panels.length>1){for(const panel of panels)y=await addQuestionVisual(doc,paper,panel,y,subtitle);return y;}
   const source = resolveQuestionVisualForPdf(question);
   if (!source) return y;
   const visual = await rasterizeForPdf(source);
