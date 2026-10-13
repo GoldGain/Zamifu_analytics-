@@ -515,14 +515,21 @@ async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: Gene
   const source = resolveQuestionVisualForPdf(question);
   if (!source) return y;
   const visual = await rasterizeForPdf(source);
-  y = ensureRoom(doc, paper, y, 68, subtitle);
+  const properties=doc.getImageProperties(visual.dataUrl);
+  const requestedWidth=question.visual_spec?.asset_type==='map'?166:130;
+  const requestedHeight=requestedWidth*properties.height/properties.width;
+  const scale=Math.min(1,160/requestedHeight);
+  const width=requestedWidth*scale,height=requestedHeight*scale;
+  y = ensureRoom(doc, paper, y, height+10, subtitle);
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7.5);
   doc.setTextColor(75, 85, 99);
   doc.text(`Visual for question ${question.question_number || ''}`.trim(), 19, y);
-  doc.addImage(visual.dataUrl, visual.format, 19, y + 3, 92, 58, undefined, 'FAST');
-  y += 64;
+  doc.addImage(visual.dataUrl, visual.format, 19, y + 3, width,height, undefined, 'FAST');
+  y += height+9;
   doc.setTextColor(31, 41, 55);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(isFormalPracticeFormat(paper)?8.5:9.5);
   return y;
 }
 
@@ -539,9 +546,13 @@ function addStructuredSubParts(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(paper.format === 'kjsea' ? 8.2 : 8.8);
   for (const [partIndex, part] of question.sub_parts.entries()) {
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(paper.format==='kjsea'?8.2:8.8);
     const marks = ` [${part.marks} mark${part.marks === 1 ? '' : 's'}]`;
     const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${paper.format === 'standard30' || paper.format === 'kjsea' ? marks : ''}`, textWidth);
     y = ensureRoom(doc, paper, y, lines.length * 4.2 + 4, subtitle);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(paper.format==='kjsea'?8.2:8.8);
     doc.text(lines, 19, y);
     y += lines.length * 4.2 + 2;
     const decision = spacePlan.subParts[partIndex];
@@ -588,6 +599,8 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
       const spacePlan = getQuestionAnswerSpacePlan(paper.subject, question);
       const showMarks = !formal || paper.format === 'kjsea' || paper.format === 'standard30';
       const markText = ` [${question.marks} mark${question.marks === 1 ? '' : 's'}]`;
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(formal?8.5:9.5);
       const stem = doc.splitTextToSize(`${sequence}. ${learnerQuestionText(question)}${showMarks ? markText : ''}`, textWidth);
       y = ensureRoom(doc, paper, y, stem.length * 4.6 + 10, 'STUDENT PAPER');
       doc.setFont('helvetica', 'bold');
@@ -595,6 +608,7 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
       doc.text(stem, 14, y);
       doc.setFont('helvetica', 'normal');
       y += stem.length * 4.6 + 2;
+      y = await addQuestionVisual(doc, paper, { ...question, question_number: sequence }, y, 'STUDENT PAPER');
       y = addStructuredSubParts(doc, paper, question, y, textWidth, 'STUDENT PAPER', spacePlan);
       const options = normalizeOptions(question);
       if (options.length) {
@@ -614,7 +628,6 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
           y += 5;
         }
       }
-      y = await addQuestionVisual(doc, paper, { ...question, question_number: sequence }, y, 'STUDENT PAPER');
       if (!question.sub_parts?.length) y = addCalculationSpace(doc, paper, y + 2, spacePlan.question, 'STUDENT PAPER');
       y += formal ? 6 : 4;
       sequence += 1;
