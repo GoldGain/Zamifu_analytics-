@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { createScopedUser } from '@/lib/supabase/createUser';
-import { deleteScopedUser, syncTeacherAccount } from '@/lib/supabase/accountActions';
+import { deleteScopedUser, retryTeacherAuthCleanup, syncTeacherAccount } from '@/lib/supabase/accountActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTeachers } from '@/hooks/useSupabaseData';
 import { Search, Plus, Loader2, KeyRound, Pencil, Trash2, X, Download } from 'lucide-react';
@@ -68,6 +68,8 @@ export default function SchoolAdminTeachers() {
   // Delete state
   const [deletingTeacher, setDeletingTeacher] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [authCleanupPending, setAuthCleanupPending] = useState(false);
+  const [pendingAuthUserId, setPendingAuthUserId] = useState<string | null>(null);
   const [exportingTimetables, setExportingTimetables] = useState(false);
 
   const nextTeacherNumber = useMemo(() => {
@@ -280,18 +282,31 @@ export default function SchoolAdminTeachers() {
   };
 
   const handleDelete = async () => {
-    if (!deletingTeacher) return;
+    if (!deletingTeacher || !user?.schoolId) return;
     setDeleting(true);
     try {
-      await deleteScopedUser({
-        record_id: deletingTeacher.id,
-        target_type: 'teacher',
-        school_id: user?.schoolId,
-      });
-      toast.success(`Teacher "${deletingTeacher.first_name} ${deletingTeacher.last_name}" and login account deleted.`);
+      if (authCleanupPending) {
+        const targetUserId = pendingAuthUserId || deletingTeacher.profile_id;
+        if (!targetUserId) throw new Error('The teacher login ID is unavailable for retry. Contact an administrator.');
+        await retryTeacherAuthCleanup({ target_user_id: targetUserId, school_id: user.schoolId });
+      } else {
+        await deleteScopedUser({
+          record_id: deletingTeacher.id,
+          target_type: 'teacher',
+          school_id: user.schoolId,
+          permanent: true,
+        });
+      }
+      toast.success(`Teacher "${deletingTeacher.first_name} ${deletingTeacher.last_name}" record and any linked login deleted.`);
+      setAuthCleanupPending(false);
+      setPendingAuthUserId(null);
       setDeletingTeacher(null);
       refetch();
     } catch (err: any) {
+      if (err?.authCleanupPending) {
+        setAuthCleanupPending(true);
+        setPendingAuthUserId(err.targetUserId || deletingTeacher.profile_id || null);
+      }
       toast.error('Failed to delete teacher: ' + err.message);
     } finally {
       setDeleting(false);
@@ -475,12 +490,14 @@ export default function SchoolAdminTeachers() {
               </div>
             </div>
             <p className="text-sm text-gray-700 mb-6">
-              Are you sure you want to delete <strong>{deletingTeacher.first_name} {deletingTeacher.last_name}</strong> ({deletingTeacher.employee_number})?
+              {authCleanupPending
+                ? <>The teacher record has been removed, but its login account still needs cleanup. Retry the server-side Auth deletion below.</>
+                : <>Are you sure you want to delete <strong>{deletingTeacher.first_name} {deletingTeacher.last_name}</strong> ({deletingTeacher.employee_number})?</>}
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setDeletingTeacher(null)} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50">Cancel</button>
+              <button onClick={() => setDeletingTeacher(null)} disabled={authCleanupPending || deleting} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50">Cancel</button>
               <button onClick={handleDelete} disabled={deleting} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} {authCleanupPending ? 'Retry login cleanup' : 'Delete'}
               </button>
             </div>
           </div>
