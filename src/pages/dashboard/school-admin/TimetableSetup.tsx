@@ -589,6 +589,7 @@ export default function TimetableSetup() {
           Scheduled Activities
         </h2>
         <p className="text-sm text-gray-600 mb-4">Activities are optional and appear only when a school adds them. Set the day, exact time, level, and optional class scope. PPI is a separate weekly requirement: schedule it for <strong>Friday Lesson 1</strong> as an exact-time block so it replaces that lesson cell without adding a column. Do not add PPI as an ordinary learning-area assignment; the timetable keeps the configured day count and fixed breaks/lunch.</p>
+        <p className="text-xs text-gray-500">A lesson space taken by PPI (for the case of Junior School and Lower Primary) can be rescheduled as an activity after the day&apos;s lessons to ensure no lesson is missed.</p>
         <div className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>
