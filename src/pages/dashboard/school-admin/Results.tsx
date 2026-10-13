@@ -80,26 +80,36 @@ function areAllResultRowsPublished(rows: any[]): boolean {
   return rows.length > 0 && rows.every(isPublishedResultRow);
 }
 
-async function fetchPublishedAssessmentIds(schoolId: string, classIds: string[] = []): Promise<Set<string>> {
+function isComparisonReadyResultRow(row: any): boolean {
+  const status = String(row?.status || '').toLowerCase();
+  const workflowReady = status === 'submitted' || status === 'approved' || isPublishedResultRow(row);
+  return workflowReady && hasRecordedMarks(row);
+}
+
+function areAllComparisonRowsReady(rows: any[]): boolean {
+  return rows.length > 0 && rows.every(isComparisonReadyResultRow);
+}
+
+async function fetchComparisonReadyAssessmentIds(schoolId: string, classIds: string[] = []): Promise<Set<string>> {
   if (!isUuid(schoolId) || classIds.length === 0) return new Set();
   const rows = await fetchAllRows((from, to) => {
     let query = supabaseUntyped.from('results')
-      .select('id, exam_id, status, published_at')
+      .select('id, exam_id, status, published_at, marks, percentage, converted_marks, grade_844, cbc_grade, cbc_sublevel')
       .eq('school_id', schoolId)
       .in('class_id', classIds)
       .not('exam_id', 'is', null)
       .order('id', { ascending: true });
     return query.range(from, to);
   });
-  const counts = new Map<string, { total: number; published: number }>();
+  const counts = new Map<string, { total: number; ready: number }>();
   rows.forEach((row: any) => {
     if (!row.exam_id) return;
-    const entry = counts.get(row.exam_id) || { total: 0, published: 0 };
+    const entry = counts.get(row.exam_id) || { total: 0, ready: 0 };
     entry.total += 1;
-    if (isPublishedResultRow(row)) entry.published += 1;
+    if (isComparisonReadyResultRow(row)) entry.ready += 1;
     counts.set(row.exam_id, entry);
   });
-  return new Set([...counts.entries()].filter(([, value]) => value.total > 0 && value.published === value.total).map(([id]) => id));
+  return new Set([...counts.entries()].filter(([, value]) => value.total > 0 && value.ready === value.total).map(([id]) => id));
 }
 
 async function fetchCombinedAssessmentData(
@@ -556,7 +566,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [comparisonRows, setComparisonRows] = useState<any[]>([]);
   const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
-  const [comparisonPublishedExamIds, setComparisonPublishedExamIds] = useState<Set<string>>(new Set());
+  const [comparisonReadyExamIds, setComparisonReadyExamIds] = useState<Set<string>>(new Set());
   const [comparisonPublishedLoading, setComparisonPublishedLoading] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatingBulk, setGeneratingBulk] = useState(false);
@@ -791,7 +801,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       if (updateError) throw updateError;
       toast.success('Results published. Use Notify Parents when you are ready to share them.');
       void loadScopedResults();
-      if (user?.schoolId) void fetchPublishedAssessmentIds(user.schoolId, comparisonClassIds).then(setComparisonPublishedExamIds).catch((error) => console.warn('Could not refresh published comparisons:', error));
+      if (user?.schoolId) void fetchComparisonReadyAssessmentIds(user.schoolId, comparisonClassIds).then(setComparisonReadyExamIds).catch((error) => console.warn('Could not refresh ready comparisons:', error));
     } catch (err: any) { toast.error('Failed to publish results: ' + err.message); console.error(err); }
     setPublishing(false);
   };
@@ -2702,15 +2712,15 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   useEffect(() => {
     let cancelled = false;
-    setComparisonPublishedExamIds(new Set());
+    setComparisonReadyExamIds(new Set());
     if (!user?.schoolId || comparisonClassIds.length === 0) {
       setComparisonPublishedLoading(false);
       return () => { cancelled = true; };
     }
     setComparisonPublishedLoading(true);
-    void fetchPublishedAssessmentIds(user.schoolId, comparisonClassIds)
-      .then((ids) => { if (!cancelled) setComparisonPublishedExamIds(ids); })
-      .catch((error) => { if (!cancelled) console.warn('Published assessment list unavailable:', error); })
+    void fetchComparisonReadyAssessmentIds(user.schoolId, comparisonClassIds)
+      .then((ids) => { if (!cancelled) setComparisonReadyExamIds(ids); })
+      .catch((error) => { if (!cancelled) console.warn('Comparison-ready assessment list unavailable:', error); })
       .finally(() => { if (!cancelled) setComparisonPublishedLoading(false); });
     return () => { cancelled = true; };
   }, [user?.schoolId, comparisonClassIdsKey]);
@@ -2741,8 +2751,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           ? supabaseUntyped.from('school_learning_areas').select('learning_area_id').eq('school_id', user?.schoolId).eq('is_active', true).limit(500)
           : Promise.resolve({ data: [], error: null }),
       ]);
-      if (!areAllResultRowsPublished(first as any[]) || !areAllResultRowsPublished(second as any[])) {
-        throw new Error('Comparison uses only published assessments. Both assessments must be finalized for every stored result.');
+      if (!areAllComparisonRowsReady(first as any[]) || !areAllComparisonRowsReady(second as any[])) {
+        throw new Error('Both assessments must have marks recorded for every learner and be submitted, approved, or published before comparison. Draft or partially marked assessments are excluded.');
       }
       if (catalogResult.error) throw catalogResult.error;
       if (schoolAreasResult.error) throw schoolAreasResult.error;
@@ -2805,12 +2815,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
 
   const comparisonExamsForTerm = (termId: string) => {
-    const published = exams.filter((exam) => comparisonPublishedExamIds.has(exam.id));
-    const matching = published.filter((exam) => !termId || exam.term_id === termId);
+    const ready = exams.filter((exam) => comparisonReadyExamIds.has(exam.id));
+    const matching = ready.filter((exam) => !termId || exam.term_id === termId);
     // Some legacy school_exams rows predate term_id consistency. Keep the
     // selector usable in that case; the selected term remains explicit in the
     // results query and the option shows its recorded term when available.
-    return matching.length > 0 ? matching : published;
+    return matching.length > 0 ? matching : ready;
   };
   const formatComparisonMarks = (marks: number | null, outOf: number | null) => {
     if (marks == null) return '—';
@@ -3041,7 +3051,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
       <section className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div><h2 className="text-lg font-semibold text-[#111111]">Compare Exams</h2><p className="text-sm text-gray-500">Comparison uses only published assessments. Draft, in-progress, and partially published assessments are excluded.</p>{comparisonPublishedLoading && <p className="mt-1 text-xs text-indigo-600">Loading finalized assessments…</p>}</div>
+          <div><h2 className="text-lg font-semibold text-[#111111]">Compare Exams</h2><p className="text-sm text-gray-500">Fully marked submitted, approved, and published assessments are available. Draft or partially marked assessments are excluded.</p>{comparisonPublishedLoading && <p className="mt-1 text-xs text-indigo-600">Loading comparison-ready assessments…</p>}</div>
           <div className="flex gap-2"><button onClick={() => void loadExamComparison()} disabled={comparisonLoading} className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50">{comparisonLoading ? 'Comparing…' : 'Compare Exams'}</button><button onClick={() => void downloadExamComparison()} disabled={!comparisonData || comparisonLoading} className="px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold disabled:opacity-50"><Download className="inline w-4 h-4 mr-1" />Download PDF</button></div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
