@@ -35,7 +35,7 @@ export const SCOPE_ISSUE_CODES: ReadonlySet<string> = new Set([
   'MISSING_CURRICULUM_TAG',
 ]);
 
-/** Problems confined to the visual, which never require dropping the question. */
+/** Problems confined to a visual before a non-visual replacement is attempted. */
 export const VISUAL_ISSUE_CODES: ReadonlySet<string> = new Set([
   'VISUAL_SPEC_INCOMPLETE',
   'TABLE_DATA_INCOMPLETE',
@@ -101,7 +101,7 @@ export interface ExamRepairOptions {
   maxUnrepairableRatio?: number;
 }
 
-/** Remove a visual but keep the question itself. */
+/** Legacy helper retained for callers that explicitly remove an optional visual. */
 export function dropQuestionVisual(question: GeneratedExamQuestion): GeneratedExamQuestion {
   return { ...question, image_url: null, visual_spec: null };
 }
@@ -187,6 +187,7 @@ export async function repairGeneratedExam(
   const rewritten = new Set<number>();
   const visualRepaired = new Set<number>();
   const visualDropped = new Set<number>();
+  const visualReplacementFailed = new Set<number>();
 
   // ---- Phase A: rewrite questions whose tags, answers, or structure are wrong.
   for (let index = 0; index < state.length; index += 1) {
@@ -215,7 +216,7 @@ export async function repairGeneratedExam(
     }
   }
 
-  // ---- Phase B: complete each unusable visual, or drop just that visual.
+  // ---- Phase B: complete each unusable visual, or replace/drop the question.
   for (let index = 0; index < state.length; index += 1) {
     for (let attempt = 1; attempt <= MAX_VISUAL_REPAIR_ATTEMPTS; attempt += 1) {
       const issues = issuesForPosition(request, state, index, options);
@@ -239,18 +240,34 @@ export async function repairGeneratedExam(
     }
     const remaining = issuesForPosition(request, state, index, options);
     if (remaining.length && isVisualOnly(remaining)) {
-      // The question is sound; only its visual could not be salvaged.
-      state[index] = dropQuestionVisual(state[index]);
-      visualDropped.add(index);
-      recorded.push({
-        index,
-        action: {
-          kind: 'visual_dropped',
-          questionNumber: index + 1,
-          detail: `Removed the unusable visual from question ${index + 1}; the question itself was kept.`,
-          codes: uniqueCodes(remaining),
-        },
-      });
+      // A required visual cannot be stripped from a question that still asks
+      // the learner to use it. Ask for a self-contained non-visual replacement;
+      // if that fails, let Phase C drop the whole question.
+      const replacementIssues: ExamValidationIssue[] = [
+        ...remaining,
+        { code: 'VISUAL_REPLACEMENT_REQUIRED', severity: 'critical', message: 'The required visual could not be rendered. Replace this with a self-contained question and set visual_spec to null.', questionIndex: index },
+      ];
+      let replaced = false;
+      for (let attempt = 1; attempt <= MAX_SCOPE_REPAIR_ATTEMPTS; attempt += 1) {
+        const replacement = await adapter.rewriteQuestion({ request, question: state[index], issues: replacementIssues, attempt });
+        if (!replacement || replacement.visual_spec || replacement.image_url) continue;
+        state[index] = replacement;
+        if (!issuesForPosition(request, state, index, options).length) {
+          replaced = true;
+          rewritten.add(index);
+          recorded.push({
+            index,
+            action: {
+              kind: 'question_rewritten',
+              questionNumber: index + 1,
+              detail: `Replaced question ${index + 1} with a self-contained non-visual question after its visual failed.`,
+              codes: uniqueCodes(replacementIssues),
+            },
+          });
+          break;
+        }
+      }
+      if (!replaced) visualReplacementFailed.add(index);
     }
   }
 
@@ -258,6 +275,19 @@ export async function repairGeneratedExam(
   const survivors: GeneratedExamQuestion[] = [];
   const survivorIndices = new Set<number>();
   for (let index = 0; index < state.length; index += 1) {
+    if (visualReplacementFailed.has(index)) {
+      const issues = issuesForPosition(request, state, index, options);
+      recorded.push({
+        index,
+        action: {
+          kind: 'question_dropped',
+          questionNumber: index + 1,
+          detail: `Removed question ${index + 1} because its required visual could not be repaired and no non-visual replacement was available.`,
+          codes: uniqueCodes(issues.length ? issues : [{ code: 'VISUAL_REPLACEMENT_FAILED', severity: 'critical', message: 'Required visual replacement failed.', questionIndex: index }]),
+        },
+      });
+      continue;
+    }
     const issues = issuesForPosition(request, state, index, options);
     if (issues.length) {
       recorded.push({
@@ -378,7 +408,7 @@ ${describeRequestScope(request)}
 - Provide a real correct_answer and marking_scheme; never write marking instructions instead of the actual answer.
 ${question.question_type === 'multiple_choice' ? '- Provide exactly four options and name the correct one.' : ''}
 - Only include a visual_spec when the question genuinely requires one, and then give it complete labels or complete data.
-${question.visual_spec ? '- If you keep a visual, every label and value it needs must be present and readable.' : '- Set visual_spec to null.'}
+${issues.some((issue) => issue.code === 'VISUAL_REPLACEMENT_REQUIRED') ? '- The previous required visual could not be rendered. This replacement MUST be answerable without a visual: set visual_spec to null and do not refer to a map, diagram, table, image, or anything shown below.' : question.visual_spec ? '- If you keep a visual, every label and value it needs must be present and readable.' : '- Set visual_spec to null.'}
 
 The rejected question was:
 ${JSON.stringify({
@@ -422,7 +452,8 @@ Rules for the repaired visual:
 - Give a clear title and caption.
 - tables: supply table_headers with at least two headers AND table_rows containing every learner-facing cell and numeric value. Never rely on x_labels alone.
 - graphs and charts: supply values (at least two numbers) AND matching x_labels (or labels) for every value.
-- diagrams, shapes, number lines, flowcharts and maps: supply at least two readable labels (or map_regions).
+- diagrams, shapes, number lines and flowcharts: supply at least two readable labels.
+- maps: supply base_map as kenya, east_africa, or africa; at least two map_regions; readable labels; a two-entry legend; scale_text; and compass. The map will use embedded vector country boundaries, not a hand-drawn polygon or image URL.
 - measurement diagrams must show real readings, graduations, units and objects, not a decorative placeholder.
 - If the question genuinely does not need a visual, return visual_spec as null.
 

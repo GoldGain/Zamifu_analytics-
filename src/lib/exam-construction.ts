@@ -93,9 +93,10 @@ export function isSocialStudiesSubject(subject: string): boolean {
 export function mapWorkLaw(request: ExamGenerationRequest): string {
   if (!isSocialStudiesSubject(request.subject)) return '';
   return [
-    'Map work law: where the selected strand or topic covers map work, include at least one map-based question.',
-    'Use the Kenya map for counties, physical features, climate or vegetation; the Africa map for countries, regions and physical features; the world map for continents, oceans and latitude.',
-    'Describe each map with a visual_spec whose asset_type is "map", whose map_regions list the regions shown, and whose labels name every feature the learner must read. Maps must be readable in black and white.',
+    'Map work law: where the selected strand or topic covers map work, include at least one map-based question. For the full KJSEA Social Studies paper, reserve Q21–Q23 for three map-based structured questions.',
+    'Use the Kenya map for counties, physical features, climate or vegetation; the East Africa map for regional countries and the Great Lakes/Rift Valley context; the Africa map for countries, regions and physical features. Do not invent a hand-drawn polygon or use a photographic/AI-generated map.',
+    'Describe each map with a visual_spec whose asset_type is "map", whose base_map is one of "kenya", "east_africa", or "africa", whose map_regions list at least two named regions/countries shown, whose labels name every feature the learner must read, and whose legend has at least two entries.',
+    'Every map visual must include a readable title, a north-arrow/compass field, a scale_text field, a visible map frame, and a key/legend. The renderer supplies the vector country boundaries; do not put a map placeholder, Markdown table, or image URL in question_text.',
   ].join(' ');
 }
 export function kjseaFormatLaw(request: ExamGenerationRequest): string {

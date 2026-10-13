@@ -3,6 +3,7 @@ import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 import {
   buildCoveragePlanFromRequest,
   isMathsLikeSubject,
+  isSocialStudiesSubject,
   missingAnswerIndices,
   normalizePaperVariant,
   paperVariantLabel,
@@ -141,6 +142,12 @@ export function validateGeneratedExam(
   }
   if (request.includeImages && questions.length > 0 && !questions.some((question) => question.visual_spec)) {
     issues.push({ code: 'VISUAL_REQUIRED', severity: 'critical', message: 'Visual questions are enabled, but the paper contains no structured visual specification.' });
+  }
+  if (isSocialStudiesSubject(request.subject) && request.format === 'kjsea' && request.includeImages) {
+    const mapQuestions = questions.filter((question) => String(question.visual_spec?.asset_type || '').toLowerCase() === 'map').length;
+    if (mapQuestions < 3) {
+      issues.push({ code: 'SOCIAL_STUDIES_MAP_REQUIREMENT', severity: 'critical', message: `The full Social Studies paper requires at least three actual vector map questions (Q21–Q23); only ${mapQuestions} map question${mapQuestions === 1 ? '' : 's'} were generated.` });
+    }
   }
 
   const seen = new Map<string, number>();

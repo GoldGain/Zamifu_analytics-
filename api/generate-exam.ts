@@ -472,15 +472,13 @@ async function handleExamGeneration(
       }
     }
     const mathsLike = isMathsLikeSubject(parsedRequest.subject);
-    const postProcess = (question: GeneratedExamQuestion): GeneratedExamQuestion => applyCuratedVisualFallback(
-      repairQuestionAnswers(
-        normalizeQuestionNotation(
-          withRenderedExamVisual(filterUnnecessaryExamVisual(question)),
-          { division: mathsLike },
-        ),
-      ),
-      parsedRequest.subject,
-    );
+    const postProcess = (question: GeneratedExamQuestion): GeneratedExamQuestion => {
+      const filtered = filterUnnecessaryExamVisual(question);
+      const fallback = applyCuratedVisualFallback(filtered, parsedRequest.subject);
+      return repairQuestionAnswers(
+        normalizeQuestionNotation(withRenderedExamVisual(fallback), { division: mathsLike }),
+      );
+    };
     let renderedQuestions = draftPaper.questions.map(postProcess);
 
     // A single bad question used to fail the entire paper here. Now each broken

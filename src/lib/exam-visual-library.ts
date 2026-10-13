@@ -6,6 +6,7 @@
  */
 import type { GeneratedExamQuestion } from './exam-schema.js';
 import { isSocialStudiesSubject, normalizeKey } from './exam-construction.js';
+import { inferExamMapBase } from './exam-map-data.js';
 
 export interface CuratedVisual {
   key: string;
@@ -163,6 +164,41 @@ function hasUsableSpec(question: GeneratedExamQuestion): boolean {
 }
 export function applyCuratedVisualFallback(question: GeneratedExamQuestion, subject = ''): GeneratedExamQuestion {
   const spec = question.visual_spec as Record<string, unknown> | null | undefined;
+  const socialMap = isSocialStudiesSubject(subject)
+    && (String(spec?.asset_type || '').toLowerCase() === 'map' || String(spec?.curated_key || '').startsWith('map_'));
+  if (socialMap) {
+    const descriptor = [question.question_text, question.strand, question.sub_strand, question.topic, spec?.title, spec?.prompt, spec?.caption].filter(Boolean).join(' ');
+    const baseMap = inferExamMapBase(spec?.base_map || descriptor);
+    const regions = Array.isArray(spec?.map_regions)
+      ? spec.map_regions.map(String).filter((entry) => entry.trim())
+      : [];
+    const labels = Array.isArray(spec?.labels)
+      ? spec.labels.map(String).filter((entry) => entry.trim())
+      : [];
+    const mapRegions = regions.length >= 2 ? regions : labels.length >= 2 ? labels : baseMap === 'kenya'
+      ? ['Kenya', 'Uganda', 'Tanzania', 'Ethiopia', 'Somalia']
+      : baseMap === 'africa'
+        ? ['Kenya', 'Nigeria', 'Egypt', 'South Africa', 'Madagascar']
+        : ['Kenya', 'Uganda', 'Tanzania', 'Ethiopia', 'Somalia', 'South Sudan'];
+    return {
+      ...question,
+      image_url: null,
+      visual_spec: {
+        ...(spec || {}),
+        asset_type: 'map',
+        title: String(spec?.title || 'Map for interpretation'),
+        base_map: baseMap,
+        map_regions: mapRegions,
+        legend: Array.isArray(spec?.legend) && spec.legend.length >= 2 ? spec.legend : [
+          'Dark fill: named focus region',
+          'Line: country boundary',
+          'Arrow: north; bar: approximate distance',
+        ],
+        scale_text: String(spec?.scale_text || (baseMap === 'kenya' ? '≈ 200 km' : baseMap === 'africa' ? '≈ 1,000 km' : '≈ 500 km')),
+        compass: String(spec?.compass || 'North'),
+      },
+    };
+  }
   if (spec?.curated_key) {
     const key = String(spec.curated_key);
     return { ...question, image_url: curatedVisualDataUrl(key) || null, visual_spec: { ...spec } };
