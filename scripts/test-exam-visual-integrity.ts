@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { renderExamVisualDataUrl, hasUsableVisualSpec } from '../src/lib/exam-visuals.js';
+import { renderExamVisualDataUrl, hasUsableVisualSpec, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
 import { repairGeneratedExam } from '../src/lib/exam-repair.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
 import type { ExamGenerationRequest, GeneratedExamQuestion } from '../src/lib/exam-schema.js';
@@ -46,6 +46,59 @@ for (const required of ['East Africa map', 'KEY', 'Line:', 'boundary', '500 km',
 }
 assert.ok(!svg.toLowerCase().includes('schematic'), 'map SVG must not be described as schematic');
 assert.equal(hasUsableVisualSpec({ ...mapQuestion, image_url: rendered }), true, 'complete map metadata must pass visual validation');
+
+const scienceDiagramCases: Array<{ name: string; question: GeneratedExamQuestion }> = [
+  {
+    name: 'atom',
+    question: baseQuestion({
+      question_text: 'Study the diagram below showing the structure of an atom of element Z.',
+      visual_spec: { asset_type: 'diagram', title: 'Structure of an atom of element Z', labels: ['X = nucleus', 'Y = electron'], prompt: 'Show a nucleus and orbiting electrons.' },
+    }),
+  },
+  {
+    name: 'digestive system',
+    question: baseQuestion({
+      question_text: 'Study the diagram below showing a section of the human digestive system.',
+      visual_spec: { asset_type: 'diagram', title: 'Human digestive system', labels: ['P = stomach', 'Q = small intestine'], prompt: 'Show labelled organs.' },
+    }),
+  },
+  {
+    name: 'flower',
+    question: baseQuestion({
+      question_text: 'Study the diagram below showing a longitudinal section of a flower.',
+      visual_spec: { asset_type: 'diagram', title: 'Longitudinal section of a flower', labels: ['A = anther', 'B = stigma'], prompt: 'Show labelled reproductive parts.' },
+    }),
+  },
+  {
+    name: 'concave mirror',
+    question: baseQuestion({
+      question_text: 'Study the diagram below showing a concave mirror with an object beyond the centre of curvature.',
+      visual_spec: { asset_type: 'diagram', title: 'Concave mirror ray diagram', labels: ['C = centre of curvature', 'F = principal focus', 'Object beyond C'], prompt: 'Show principal focus, centre, object and image.' },
+    }),
+  },
+];
+for (const { name, question } of scienceDiagramCases) {
+  const image = renderExamVisualDataUrl(question);
+  assert.ok(image?.startsWith('data:image/svg+xml;charset=utf-8,'), `${name} must render as deterministic SVG`);
+  const diagramSvg = decodeURIComponent(image!.split(',', 2)[1]);
+  assert.ok(!diagramSvg.includes('SCHEMATIC VISUAL'), `${name} must not use the generic placeholder`);
+  if (name === 'atom') assert.ok(diagramSvg.includes('particle counts are not shown'), 'atom diagram must not imply a particular element or particle count');
+  assert.equal(hasUsableVisualSpec(question), true, `${name} must pass visual validation when its renderer is supported`);
+  const refreshed = withRenderedExamVisual({ ...question, image_url: 'data:image/svg+xml;charset=utf-8,stale-generic-placeholder' });
+  assert.equal(refreshed.image_url, image, `${name} must replace a stale placeholder with the deterministic renderer output`);
+}
+
+const unsupportedDiagram = baseQuestion({
+  question_text: 'Study the diagram of a fictional apparatus below.',
+  visual_spec: { asset_type: 'diagram', title: 'Uncatalogued apparatus', labels: ['P = inlet', 'Q = outlet'], prompt: 'Show an apparatus.' },
+});
+assert.equal(hasUsableVisualSpec(unsupportedDiagram), false, 'an unrecognized generic diagram must not pass visual validation');
+assert.equal(renderExamVisualDataUrl(unsupportedDiagram), null, 'unsupported diagrams must not render a fake labeled-box image');
+assert.equal(
+  withRenderedExamVisual({ ...unsupportedDiagram, image_url: 'data:image/svg+xml;charset=utf-8,stale-generic-placeholder' }).image_url,
+  null,
+  'unsupported diagram normalization must clear stale generic imagery',
+);
 
 const socialMapRequest: ExamGenerationRequest = {
   title: 'Social Studies map minimum test', gradeLevel: 'Grade 9', subject: 'Social Studies',
@@ -111,4 +164,4 @@ assert.equal(replacement.questions.length, 1, 'a successful non-visual replaceme
 assert.equal(replacement.questions[0].visual_spec, null, 'replacement must not require a visual');
 assert.ok(replacement.actions.some((action) => action.kind === 'question_rewritten'), 'replacement must be recorded');
 
-console.log('visual-integrity regression passed (vector map + one-map Social Studies minimum + backoff retry + failed-visual replacement/drop semantics)');
+console.log('visual-integrity regression passed (vector map + Science diagram templates + unsupported-placeholder rejection + one-map Social Studies minimum + backoff retry + failed-visual replacement/drop semantics)');

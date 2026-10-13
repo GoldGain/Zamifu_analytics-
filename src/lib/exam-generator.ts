@@ -70,12 +70,106 @@ function gradeLabel(paper: BrandedPaper): string {
   return /^grade\s+/i.test(supplied) ? supplied : `Grade ${supplied || '—'}`;
 }
 
-function groupedQuestions(paper: BrandedPaper): Array<{ type: QuestionType; questions: GeneratedExamQuestion[]; marks: number }> {
+function isKjseaSocialStudiesPaper(paper: BrandedPaper): boolean {
+  return paper.format === 'kjsea' && /social\s+studies/i.test(paper.subject);
+}
+
+function paperVariant(paper: BrandedPaper): string {
+  return paper.paper_variant || paper.blueprint?.paper_variant || 'single';
+}
+
+function isKjseaIntegratedSciencePaper1(paper: BrandedPaper): boolean {
+  return paper.format === 'kjsea'
+    && /integrated\s+science/i.test(paper.subject)
+    && paperVariant(paper) === 'paper1';
+}
+
+function isKjseaIntegratedSciencePaper2(paper: BrandedPaper): boolean {
+  return paper.format === 'kjsea'
+    && /integrated\s+science/i.test(paper.subject)
+    && paperVariant(paper) === 'paper2';
+}
+
+export type ExamPdfQuestionGroup = {
+  type: QuestionType;
+  questions: GeneratedExamQuestion[];
+  marks: number;
+  title?: string;
+  sectionTag?: string;
+};
+type QuestionGroup = ExamPdfQuestionGroup;
+
+function groupedQuestions(paper: BrandedPaper): QuestionGroup[] {
+  const ordered = [...paper.questions].sort((a, b) => (a.question_number || 0) - (b.question_number || 0));
+  const blueprintSections = paper.format === 'kjsea' ? paper.blueprint?.sections : undefined;
+  if (blueprintSections?.length) {
+    const groups: QuestionGroup[] = [];
+    let cursor = 0;
+    for (const section of blueprintSections) {
+      const questions = ordered.slice(cursor, cursor + section.count);
+      cursor += section.count;
+      if (!questions.length) continue;
+      const title = section.title?.trim() || questionTypeLabel(section.question_type);
+      const sectionTag = title.match(/^(Section\s+[A-Z]|Sehemu\s+[A-Z])\s*[:·]/i)?.[1]
+        || title.match(/^(Question\s+\d+)/i)?.[1]
+        || `Component ${groups.length + 1}`;
+      groups.push({
+        type: section.question_type,
+        questions,
+        marks: questions.reduce((sum, question) => sum + question.marks, 0),
+        title,
+        sectionTag,
+      });
+    }
+    if (cursor < ordered.length) {
+      const remaining = ordered.slice(cursor);
+      groups.push({
+        type: remaining[0].question_type,
+        questions: remaining,
+        marks: remaining.reduce((sum, question) => sum + question.marks, 0),
+        title: 'Additional questions',
+        sectionTag: `Component ${groups.length + 1}`,
+      });
+    }
+    if (isKjseaSocialStudiesPaper(paper) || isKjseaIntegratedSciencePaper1(paper)) {
+      const merged: QuestionGroup[] = [];
+      for (const group of groups) {
+        const previous = merged[merged.length - 1];
+        if (previous && previous.sectionTag === group.sectionTag && /^Section\s+[A-Z]$/i.test(group.sectionTag || '')) {
+          previous.questions.push(...group.questions);
+          previous.marks += group.marks;
+        } else {
+          const isSectionB = /^Section\s+B$/i.test(group.sectionTag || '');
+          merged.push({
+            ...group,
+            title: isSectionB ? 'Section B: Structured and essay questions' : group.title,
+          });
+        }
+      }
+      return merged;
+    }
+    return groups;
+  }
+  if (isKjseaIntegratedSciencePaper2(paper)) {
+    return ordered.length ? [{ type: 'case_study', questions: ordered, marks: ordered.reduce((sum, question) => sum + question.marks, 0), title: 'Written practical skills', sectionTag: 'Component' }] : [];
+  }
   const order = [...new Set(paper.questions.map((question) => question.question_type))];
   return order.map((type) => {
     const questions = paper.questions.filter((question) => question.question_type === type);
     return { type, questions, marks: questions.reduce((sum, question) => sum + question.marks, 0) };
   });
+}
+
+export function groupExamQuestionsForPdf(paper: ExamPaper): ExamPdfQuestionGroup[] {
+  return groupedQuestions(paper);
+}
+
+function sectionDisplayName(paper: BrandedPaper, groupIndex: number, group: QuestionGroup): string {
+  if (group.title) return group.title;
+  if (isKjseaIntegratedSciencePaper2(paper)) return 'Written practical skills';
+  if (isKjseaSocialStudiesPaper(paper) && groupIndex === 1) return 'Structured and essay questions';
+  if (isKjseaIntegratedSciencePaper1(paper) && groupIndex === 1) return 'Structured and essay questions';
+  return questionTypeLabel(group.type);
 }
 
 function isFormalPracticeFormat(paper: BrandedPaper): boolean {
@@ -318,15 +412,15 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   doc.setFontSize(8.5);
   doc.text('PAPER STRUCTURE', 14, y);
   y += 3;
-  const groups = groupedQuestions(paper);
+  const groups = groupExamQuestionsForPdf(paper);
   autoTable(doc, {
     startY: y,
     margin: { left: 14, right: 14 },
     theme: 'grid',
-    head: [['Section', 'Question type', 'Number of questions', 'Maximum score']],
+    head: [[paper.format === 'kjsea' ? 'Section / component' : 'Section', 'Paper section or component', 'Number of questions', 'Maximum score']],
     body: groups.map((group, index) => [
-      `Section ${String.fromCharCode(65 + index)}`,
-      questionTypeLabel(group.type),
+      group.sectionTag || `Section ${String.fromCharCode(65 + index)}`,
+      sectionDisplayName(paper, index, group),
       String(group.questions.length),
       String(group.marks),
     ]),
@@ -402,8 +496,8 @@ function addStructuredSubParts(doc: jsPDF, paper: BrandedPaper, question: Genera
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(paper.format === 'kjsea' ? 8.2 : 8.8);
   for (const part of question.sub_parts) {
-    const marks = `  [${part.marks} mark${part.marks === 1 ? '' : 's'}]`;
-    const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${paper.format === 'standard30' ? marks : ''}`, textWidth);
+    const marks = ` [${part.marks} mark${part.marks === 1 ? '' : 's'}]`;
+    const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${paper.format === 'standard30' || paper.format === 'kjsea' ? marks : ''}`, textWidth);
     y = ensureRoom(doc, paper, y, lines.length * 4.2 + 4, subtitle);
     doc.text(lines, 19, y);
     y += lines.length * 4.2 + 2;
@@ -422,14 +516,16 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
   let y = addPageHeader(doc, paper, false, 'STUDENT PAPER');
   addWorkingSpaceColumn(doc, paper);
   const formal = isFormalPracticeFormat(paper);
-  const groups = groupedQuestions(paper);
+  const groups = groupExamQuestionsForPdf(paper);
   let sequence = 1;
   for (const [groupIndex, group] of groups.entries()) {
     y = ensureRoom(doc, paper, y, 18, 'STUDENT PAPER');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(formal ? 8.5 : 9);
     doc.setTextColor(formal ? 17 : 153, formal ? 24 : 27, formal ? 39 : 27);
-    const sectionHeading = `SECTION ${String.fromCharCode(65 + groupIndex)}: ${questionTypeLabel(group.type).toUpperCase()} (${group.marks} MARK${group.marks === 1 ? '' : 'S'})`;
+    const sectionHeading = paper.format === 'kjsea'
+      ? `${sectionDisplayName(paper, groupIndex, group).toUpperCase()} (${group.marks} MARK${group.marks === 1 ? '' : 'S'})`
+      : `SECTION ${String.fromCharCode(65 + groupIndex)}: ${sectionDisplayName(paper, groupIndex, group).toUpperCase()} (${group.marks} MARK${group.marks === 1 ? '' : 'S'})`;
     if (formal) {
       doc.text(sectionHeading, 14, y);
       doc.setDrawColor(107, 114, 128);
@@ -445,7 +541,9 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
     doc.setTextColor(0, 0, 0);
     for (const question of group.questions) {
       const textWidth = formal ? 91 : 176;
-      const stem = doc.splitTextToSize(`${sequence}. ${learnerQuestionText(question)}${formal ? '' : `  [${question.marks} mark${question.marks === 1 ? '' : 's'}]`}`, textWidth);
+      const showMarks = !formal || paper.format === 'kjsea' || paper.format === 'standard30';
+      const markText = ` [${question.marks} mark${question.marks === 1 ? '' : 's'}]`;
+      const stem = doc.splitTextToSize(`${sequence}. ${learnerQuestionText(question)}${showMarks ? markText : ''}`, textWidth);
       y = ensureRoom(doc, paper, y, stem.length * 4.6 + 10, 'STUDENT PAPER');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(formal ? 8.5 : 9.5);
@@ -489,13 +587,13 @@ async function renderMarkingScheme(doc: jsPDF, paper: BrandedPaper): Promise<voi
   doc.setFontSize(7.5);
   doc.text('Use this school-owned marking scheme with the matching student paper. Award only the marks shown.', 105, y, { align: 'center' });
   y += 6;
-  const groups = groupedQuestions(paper);
+  const groups = groupExamQuestionsForPdf(paper);
   const rows: string[][] = [];
   let sequence = 1;
   groups.forEach((group, groupIndex) => {
     group.questions.forEach((question) => {
       rows.push([
-        `Section ${String.fromCharCode(65 + groupIndex)}`,
+        group.title || group.sectionTag || `Section ${String.fromCharCode(65 + groupIndex)}`,
         String(sequence),
         questionTypeLabel(question.question_type),
         markingGuidance(question),
@@ -507,7 +605,7 @@ async function renderMarkingScheme(doc: jsPDF, paper: BrandedPaper): Promise<voi
   autoTable(doc, {
     startY: y,
     margin: { left: 12, right: 12 },
-    head: [['Section', 'No.', 'Question type', 'Expected answer / marking guidance', 'Marks']],
+    head: [['Section / component', 'No.', 'Question type', 'Expected answer / marking guidance', 'Marks']],
     body: rows,
     styles: { fontSize: 7.2, cellPadding: 2, valign: 'top', overflow: 'linebreak', lineColor: [107, 114, 128], lineWidth: 0.25 },
     headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },

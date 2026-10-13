@@ -378,6 +378,93 @@ function renderConceptMapDiagram(spec: ExamVisualSpec): string {
   return `<g>${connectors}<circle cx="240" cy="154" r="54" fill="#dcfce7" stroke="#15803d" stroke-width="3"/>${centeredTextLines('Healthy Friendship', 240, 149, 15, 'body', 16)}${boxes}<text x="240" y="277" text-anchor="middle" class="small">Concept map; relationships are shown schematically.</text></g>`;
 }
 
+function diagramLabelCode(spec: ExamVisualSpec, index: number, fallback: string): string {
+  const raw = String(spec.labels?.[index] || '').trim();
+  return raw.match(/^([A-Za-z])\s*(?:=|:)/)?.[1] || fallback;
+}
+
+function renderAtomDiagram(spec: ExamVisualSpec): string {
+  const nucleus = escapeXml(diagramLabelCode(spec, 0, 'X'));
+  const electron = escapeXml(diagramLabelCode(spec, 1, 'Y'));
+  return `<g>
+    <ellipse cx="240" cy="164" rx="116" ry="78" fill="none" stroke="#64748b" stroke-width="2.5"/>
+    <circle cx="240" cy="164" r="37" fill="#dbeafe" stroke="#1d4ed8" stroke-width="3"/>
+    <circle cx="316" cy="111" r="9" fill="#f97316" stroke="#9a3412" stroke-width="2"/>
+    <path d="M91 112 L199 151" fill="none" stroke="#111827" stroke-width="1.8"/>
+    <rect x="55" y="92" width="38" height="34" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+    <text x="74" y="115" text-anchor="middle" class="body">${nucleus}</text>
+    <path d="M352 93 L324 106" fill="none" stroke="#111827" stroke-width="1.8"/>
+    <rect x="352" y="74" width="38" height="34" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+    <text x="371" y="97" text-anchor="middle" class="body">${electron}</text>
+    <text x="240" y="270" text-anchor="middle" class="small">Simplified model; not to scale; particle counts are not shown.</text>
+  </g>`;
+}
+
+function renderDigestiveSystemDiagram(spec: ExamVisualSpec): string {
+  const stomach = escapeXml(diagramLabelCode(spec, 0, 'P'));
+  const intestine = escapeXml(diagramLabelCode(spec, 1, 'Q'));
+  return `<g>
+    <path d="M202 58 Q240 42 278 58 L292 118 Q300 161 281 221 L266 263 L214 263 L199 221 Q180 161 188 118 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.5"/>
+    <path d="M240 70 L240 127" fill="none" stroke="#be123c" stroke-width="8" stroke-linecap="round"/>
+    <path d="M240 125 C210 125 202 148 208 169 C214 190 238 198 256 183 C273 169 265 143 247 137" fill="#fda4af" stroke="#9f1239" stroke-width="3"/>
+    <path d="M218 194 C200 207 279 205 261 220 C246 232 205 217 216 232 C229 246 272 232 262 247 C254 258 224 252 220 260" fill="none" stroke="#ea580c" stroke-width="5" stroke-linecap="round"/>
+    <path d="M256 165 L347 136" fill="none" stroke="#111827" stroke-width="1.8"/>
+    <rect x="347" y="119" width="38" height="34" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+    <text x="366" y="142" text-anchor="middle" class="body">${stomach}</text>
+    <path d="M252 231 L347 224" fill="none" stroke="#111827" stroke-width="1.8"/>
+    <rect x="347" y="207" width="38" height="34" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+    <text x="366" y="230" text-anchor="middle" class="body">${intestine}</text>
+    <text x="240" y="282" text-anchor="middle" class="small">Simplified human digestive system; not to scale.</text>
+  </g>`;
+}
+
+function renderFlowerDiagram(spec: ExamVisualSpec): string {
+  const anther = escapeXml(diagramLabelCode(spec, 0, 'A'));
+  const stigma = escapeXml(diagramLabelCode(spec, 1, 'B'));
+  return `<g>
+    <path d="M240 145 C192 118 173 83 195 63 C220 61 239 88 240 120 C244 83 264 61 287 63 C309 84 287 119 240 145 Z" fill="#fbcfe8" stroke="#be185d" stroke-width="2.5"/>
+    <path d="M239 145 C200 155 174 139 181 118 C199 106 222 119 240 142 C258 119 281 106 299 118 C306 139 280 155 241 145 Z" fill="#f9a8d4" stroke="#be185d" stroke-width="2.5"/>
+    <path d="M240 145 L240 194" stroke="#15803d" stroke-width="6"/>
+    <path d="M224 194 Q240 181 256 194 L251 217 Q240 226 229 217 Z" fill="#bbf7d0" stroke="#15803d" stroke-width="2.5"/>
+    <path d="M202 231 Q240 218 278 231 L267 242 Q240 236 213 242 Z" fill="#86efac" stroke="#15803d" stroke-width="2"/>
+    <path d="M216 112 L205 91 M264 112 L275 91" stroke="#a16207" stroke-width="3"/>
+    <ellipse cx="203" cy="88" rx="10" ry="5" fill="#facc15" stroke="#a16207" stroke-width="2"/>
+    <ellipse cx="277" cy="88" rx="10" ry="5" fill="#facc15" stroke="#a16207" stroke-width="2"/>
+    <line x1="240" y1="89" x2="240" y2="125" stroke="#15803d" stroke-width="3"/>
+    <path d="M230 87 Q240 78 250 87 Q247 94 240 94 Q233 94 230 87 Z" fill="#86efac" stroke="#15803d" stroke-width="2"/>
+    <path d="M204 88 L112 73" stroke="#111827" stroke-width="1.8"/>
+    <rect x="72" y="56" width="38" height="34" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+    <text x="91" y="79" text-anchor="middle" class="body">${anther}</text>
+    <path d="M247 84 L345 69" stroke="#111827" stroke-width="1.8"/>
+    <rect x="345" y="52" width="38" height="34" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+    <text x="364" y="75" text-anchor="middle" class="body">${stigma}</text>
+    <text x="240" y="278" text-anchor="middle" class="small">Longitudinal section of a flower; simplified, not to scale.</text>
+  </g>`;
+}
+
+function renderConcaveMirrorDiagram(spec: ExamVisualSpec): string {
+  const centre = escapeXml(diagramLabelCode(spec, 0, 'C'));
+  const focus = escapeXml(diagramLabelCode(spec, 1, 'F'));
+  return `<g>
+    <line x1="42" y1="180" x2="360" y2="180" stroke="#111827" stroke-width="2"/>
+    <path d="M320 72 Q280 180 320 288" fill="none" stroke="#1d4ed8" stroke-width="5"/>
+    <path d="M329 76 Q289 180 329 284" fill="none" stroke="#94a3b8" stroke-width="2"/>
+    <line x1="140" y1="173" x2="140" y2="187" stroke="#111827" stroke-width="2"/>
+    <line x1="220" y1="173" x2="220" y2="187" stroke="#111827" stroke-width="2"/>
+    <text x="140" y="207" text-anchor="middle" class="body">${centre}</text>
+    <text x="220" y="207" text-anchor="middle" class="body">${focus}</text>
+    <line x1="60" y1="180" x2="60" y2="108" stroke="#15803d" stroke-width="4"/>
+    <path d="M52 119 L60 105 L68 119 Z" fill="#15803d"/>
+    <text x="60" y="94" text-anchor="middle" class="small">Object</text>
+    <line x1="180" y1="180" x2="180" y2="212" stroke="#7c3aed" stroke-width="4"/>
+    <path d="M172 201 L180 215 L188 201 Z" fill="#7c3aed"/>
+    <text x="180" y="235" text-anchor="middle" class="small">Image</text>
+    <path d="M60 108 L309 108 L180 212 M60 108 L300 180 L180 212" fill="none" stroke="#dc2626" stroke-width="2.5"/>
+    <text x="346" y="180" class="small">Concave mirror</text>
+    <text x="240" y="276" text-anchor="middle" class="small">Simplified ray diagram; not to scale.</text>
+  </g>`;
+}
+
 function renderGenericLabeledDiagram(spec: ExamVisualSpec): string {
   const labels = (spec.labels || []).map(String).filter(Boolean).slice(0, 4);
   const effectiveLabels = labels.length >= 2 ? labels : ['Part A', 'Part B'];
@@ -553,6 +640,32 @@ export function hasCompleteTableVisual(question: GeneratedExamQuestion): boolean
   return headers.length >= 2 && (values.length >= headers.length || promptNumbers.length >= headers.length);
 }
 
+function deterministicDiagramType(question: GeneratedExamQuestion): string | null {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  const assetType = String(spec.asset_type || '').toLowerCase();
+  const descriptor = [question.question_text, spec.title, spec.prompt, spec.caption, ...(spec.labels || [])].filter(Boolean).join(' ').toLowerCase();
+  if (assetType === 'diagram') {
+    if (/atom|nucleus|electron/.test(descriptor)) return 'atom';
+    if (/digestive system|stomach|small intestine/.test(descriptor)) return 'digestive_system';
+    if (/flower|anther|stigma|longitudinal section/.test(descriptor)) return 'flower';
+    if (/concave mirror|mirror.*(?:centre|center|focus)|(?:centre|center|focus).*mirror/.test(descriptor)) return 'concave_mirror';
+    if (/measuring\s+cylinder|meniscus|initial\s+volume|final\s+volume|stone/.test(descriptor)) return 'measuring_cylinder';
+    if (/electric\s+circuit|circuit|battery|bulb|switch|connecting\s+wires|ammeter|voltage|potential\s+difference/.test(descriptor)) return 'electric_circuit';
+    if (/nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) return 'nursery';
+    if (/distillation|round-bottom|condenser|receiving flask|separation apparatus/.test(descriptor)) return 'distillation';
+    if (/separating funnel|stopcock|immiscible|two distinct layers/.test(descriptor)) return 'separating_funnel';
+    if (/filter funnel|filter paper|filtrate|residue|evaporating dish|tripod|bunsen|separation stages|sand.*salt/.test(descriptor)) return 'separation_stages';
+    if (/food chain|grasshopper|flow of energy|producer|consumer|predator|prey/.test(descriptor)) return 'food_chain';
+    if (/healthy friendship|friendship|qualities|honesty|kindness|respect|empathy/.test(descriptor)) return 'concept_map';
+  }
+  if (assetType === 'shape') {
+    if (/right[ -]?angled triangle|\btriangle\b/.test(descriptor)) return 'right_triangle';
+    if (/parts of a circle|\bcircle\b|radius|diameter|circumference|chord|tangent/.test(descriptor)) return 'circle_parts';
+    if (/coordinate plane|cartesian plane/.test(descriptor)) return 'coordinate_plane';
+  }
+  return null;
+}
+
 export function hasUsableVisualSpec(question: GeneratedExamQuestion): boolean {
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   const assetType = String(spec.asset_type || '').toLowerCase();
@@ -576,8 +689,12 @@ export function hasUsableVisualSpec(question: GeneratedExamQuestion): boolean {
   if (assetType === 'graph' || assetType === 'chart') return values.length >= 2 && (xLabels.length >= values.length || labels.length >= values.length);
   if (assetType === 'flowchart') return flowLabels >= 2;
   if (assetType === 'number_line') return labels.length >= 2;
-  if (assetType === 'diagram' || assetType === 'shape') return labels.length >= 2;
-  if (assetType === 'illustration') return Boolean(String(spec.prompt || '').trim()) && labels.length >= 1;
+  if (assetType === 'diagram' || assetType === 'shape') {
+    const curatedKey = (spec as Record<string, unknown>).curated_key;
+    if (typeof curatedKey === 'string' && curatedVisualDataUrl(curatedKey)) return true;
+    return labels.length >= 2 && deterministicDiagramType(question) !== null;
+  }
+  if (assetType === 'illustration') return false;
   return false;
 }
 
@@ -608,7 +725,7 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   }
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   const assetType = String(spec.asset_type || '').toLowerCase();
-  if (!assetType && !question.image_url) return null;
+  if (!assetType) return null;
   const effectiveSpec = assetType === 'map' ? normalizeMapSpec(spec, question) : spec;
   const title = visualTitle(effectiveSpec, question);
   let body = '';
@@ -617,25 +734,35 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   else if (assetType === 'table') body = renderTable(spec, question);
   else if (assetType === 'number_line') body = renderNumberLine(spec);
   else if (assetType === 'shape' || assetType === 'diagram') {
-    const descriptor = `${question.question_text} ${spec.title || ''} ${spec.prompt || ''} ${spec.caption || ''} ${(spec.labels || []).join(' ')}`.toLowerCase();
-    if (assetType === 'diagram' && /measuring\s+cylinder|meniscus|initial\s+volume|final\s+volume|stone/.test(descriptor)) {
+    const diagramType = deterministicDiagramType(question);
+    if (diagramType === 'atom') {
+      body = renderAtomDiagram(spec);
+    } else if (diagramType === 'digestive_system') {
+      body = renderDigestiveSystemDiagram(spec);
+    } else if (diagramType === 'flower') {
+      body = renderFlowerDiagram(spec);
+    } else if (diagramType === 'concave_mirror') {
+      body = renderConcaveMirrorDiagram(spec);
+    } else if (diagramType === 'right_triangle' || diagramType === 'circle_parts' || diagramType === 'coordinate_plane') {
+      return curatedVisualDataUrl(diagramType);
+    } else if (diagramType === 'measuring_cylinder') {
       body = renderMeasuringCylinderDiagram(spec);
-    } else if (assetType === 'diagram' && /electric\s+circuit|circuit|cell(?:s)?\b|bulb|switch|connecting\s+wires|ammeter|voltage|potential\s+difference/.test(descriptor)) {
+    } else if (diagramType === 'electric_circuit') {
       body = renderCircuitDiagram(spec);
-    } else if (assetType === 'diagram' && /nursery|horticulture|shade|seed drill|watering can/.test(descriptor)) {
+    } else if (diagramType === 'nursery') {
       body = renderNurseryBedDiagram(spec);
-    } else if (assetType === 'diagram' && /distillation|round-bottom|condenser|receiving flask|separation apparatus/.test(descriptor)) {
+    } else if (diagramType === 'distillation') {
       body = renderDistillationDiagram(spec);
-    } else if (assetType === 'diagram' && /separating funnel|stopcock|immiscible|two distinct layers/.test(descriptor)) {
+    } else if (diagramType === 'separating_funnel') {
       body = renderSeparatingFunnelDiagram(spec);
-    } else if (assetType === 'diagram' && /filter funnel|filter paper|filtrate|residue|evaporating dish|tripod|bunsen|separation stages|sand.*salt/.test(descriptor)) {
+    } else if (diagramType === 'separation_stages') {
       body = renderSeparationStagesDiagram(spec);
-    } else if (assetType === 'diagram' && /food chain|grasshopper|flow of energy|producer|consumer|predator|prey/.test(descriptor)) {
+    } else if (diagramType === 'food_chain') {
       body = renderFoodChainDiagram(spec);
-    } else if (assetType === 'diagram' && /healthy friendship|friendship|qualities|honesty|kindness|respect|empathy/.test(descriptor)) {
+    } else if (diagramType === 'concept_map') {
       body = renderConceptMapDiagram(spec);
     } else {
-      body = renderGenericLabeledDiagram(spec);
+      return null;
     }
   } else if (assetType === 'flowchart') {
     const labels = (spec.labels || ['Start', 'Process', 'Decision', 'End']).slice(0, 4);
@@ -650,9 +777,7 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
         : '';
       return box + arrow;
     }).join('');
-  } else {
-    body = textLines(spec.prompt || 'Teacher-approved educational visual', 55, 110, 340);
-  }
+  } else return null;
   const caption = effectiveSpec.caption || (assetType === 'map' ? 'Use the key, scale and north arrow when interpreting this vector map.' : 'Teacher-approved visual');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.map-label{font:10px Arial;fill:#111827}.map-key-title{font:700 11px Arial;fill:#111827}.table-header{font:700 11px Arial;fill:#1e3a8a}.table-cell{font:11px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>${centeredTextLines(title, 240, 22, 42, 'title', 18)}${body}<text x="240" y="310" text-anchor="middle" class="small">${escapeXml(caption)}</text></svg>`;
   return dataUrl(svg);
@@ -662,7 +787,10 @@ export function withRenderedExamVisual(question: GeneratedExamQuestion): Generat
   if (!question.visual_spec) return question;
   const assetType = String((question.visual_spec as ExamVisualSpec).asset_type || '').toLowerCase();
   const visualSpec = (assetType === 'map' ? normalizeMapSpec(question.visual_spec as ExamVisualSpec, question) : question.visual_spec) as Record<string, unknown>;
-  if (question.image_url && assetType !== 'map') return { ...question, visual_spec: visualSpec };
-  const rendered = renderExamVisualDataUrl({ ...question, image_url: assetType === 'map' ? null : question.image_url, visual_spec: visualSpec });
-  return rendered ? { ...question, image_url: rendered, visual_spec: visualSpec } : { ...question, visual_spec: visualSpec };
+  const rendered = renderExamVisualDataUrl({ ...question, image_url: null, visual_spec: visualSpec });
+  if (rendered) return { ...question, image_url: rendered, visual_spec: visualSpec };
+  if (['map', 'diagram', 'shape', 'table', 'graph', 'chart', 'number_line', 'flowchart'].includes(assetType)) {
+    return { ...question, image_url: null, visual_spec: visualSpec };
+  }
+  return { ...question, visual_spec: visualSpec };
 }
