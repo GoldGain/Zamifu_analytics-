@@ -627,11 +627,7 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
         });
         if (formal) {
           doc.setFontSize(8);
-          if (isObjectiveKpseaPaper(paper)) {
-            doc.text('Record one answer on the separate answer sheet.', 19, y + 1);
-          } else {
-            doc.text('Answer in the space provided.', 19, y + 1);
-          }
+          doc.text('Record one answer on the separate answer sheet.', 19, y + 1);
           y += 5;
         }
       }

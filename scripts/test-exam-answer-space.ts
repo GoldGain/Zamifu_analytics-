@@ -41,7 +41,8 @@ const mathematicsMultipleChoice = question({
   options: ['36', '48', '52', '64'],
   marks: 1,
 });
-assert.equal(getQuestionAnswerSpacePlan('Mathematics', mathematicsMultipleChoice).question.requiresCalculationSpace, false, 'objective Mathematics items should not reserve paper working space');
+assert.equal(getQuestionAnswerSpacePlan('Mathematics', mathematicsMultipleChoice).question.requiresCalculationSpace,true,'numerical Mathematics MCQs still need working room');
+assert.equal(getQuestionAnswerSpacePlan('Mathematics',{...mathematicsMultipleChoice,question_text:'Which word names a shape with three sides?'}).question.requiresCalculationSpace,false,'theory MCQs must not get generic calculation space');
 
 for (const subject of ['English', 'Kiswahili', 'CRE', 'History']) {
   const theory = question({

@@ -178,9 +178,7 @@ export function getQuestionAnswerSpacePlan(
     && MATHEMATICS_STRUCTURED_TYPES.has(question.question_type)
     && !OBJECTIVE_TYPES.has(question.question_type);
   const textDecision = decisionForText(question.question_text, question.marks, subject, question);
-  const decision = isMathematicsSubject(subject) && OBJECTIVE_TYPES.has(question.question_type)
-    ? noCalculationSpace()
-    : textDecision.reason === 'graphical-task'
+  const decision = textDecision.reason === 'graphical-task'
       ? textDecision
       : mathStructured
         ? calculationSpace(question.marks, 'mathematics-structured')
