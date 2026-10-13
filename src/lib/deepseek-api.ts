@@ -489,7 +489,12 @@ function repairEndpoint(useDeepSeek: boolean, apiKey: string): string {
 
 function repairModel(useDeepSeek: boolean): string {
   const configured = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || '';
-  return useDeepSeek ? (configured || 'deepseek-chat') : (configured || 'gpt-5-mini');
+  if (!useDeepSeek) return configured || 'gpt-5-mini';
+  const primary = configured || 'deepseek-chat';
+  if (primary === 'deepseek-v4-pro') {
+    return process.env.AI_EXAM_FALLBACK_MODEL || 'deepseek-chat';
+  }
+  return primary;
 }
 
 /**
@@ -502,6 +507,7 @@ export async function rewriteQuestionWithDeepSeek(prompt: string): Promise<Recor
   const apiKey = deepSeekKey || process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   const useDeepSeek = Boolean(deepSeekKey);
+  const model = repairModel(useDeepSeek);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
   try {
@@ -509,7 +515,7 @@ export async function rewriteQuestionWithDeepSeek(prompt: string): Promise<Recor
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: repairModel(useDeepSeek),
+        model,
         messages: [
           { role: 'system', content: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble.' },
           { role: 'user', content: prompt },
@@ -522,18 +528,24 @@ export async function rewriteQuestionWithDeepSeek(prompt: string): Promise<Recor
       signal: controller.signal,
     });
     const rawText = await response.text().catch(() => '');
-    if (!rawText.trim()) return null;
+    if (!rawText.trim()) {
+      console.warn(`[exam-repair] ${model} returned an empty rewrite response (status ${response.status}).`);
+      return null;
+    }
     let payload: DeepSeekResponse;
     try {
       payload = JSON.parse(rawText) as DeepSeekResponse;
     } catch {
+      console.warn(`[exam-repair] ${model} returned a non-JSON rewrite response.`);
       return null;
     }
     if (!response.ok) {
-      console.warn('[exam-repair] provider rejected the rewrite:', payload.error?.message || response.status);
+      console.warn(`[exam-repair] ${model} rejected the rewrite:`, payload.error?.message || response.status);
       return null;
     }
-    return extractJsonFromContent(readMessageContent(payload));
+    const repaired = extractJsonFromContent(readMessageContent(payload));
+    if (!repaired) console.warn(`[exam-repair] ${model} returned no parseable rewrite object.`);
+    return repaired;
   } catch (error) {
     console.warn('[exam-repair] rewrite request failed:', error instanceof Error ? error.message.slice(0, 200) : 'unknown failure');
     return null;

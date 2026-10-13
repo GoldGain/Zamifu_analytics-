@@ -376,7 +376,7 @@ async function loadApprovedCurriculumTreeContext(
       .limit(500);
     if (strandError) return empty;
     const verifiedStrands = (strandRows || []).filter((row: any) => /(?:official|source-verified)\s+kicd/i.test(String(row.strand_description || '')));
-    const verifiedByKey = new Map(verifiedStrands.map((row: any) => [normalizeContextKey(row.strand_name), row]));
+    const verifiedByKey = new Map<string, any>(verifiedStrands.map((row: any): [string, any] => [normalizeContextKey(row.strand_name), row]));
     const requestedNodes = request.curriculumScope;
     const selectedStrands = requestedNodes.map((node) => verifiedByKey.get(normalizeContextKey(node.strand)));
     if (selectedStrands.some((row) => !row)) return empty;

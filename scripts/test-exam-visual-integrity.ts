@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { renderExamVisualDataUrl, hasUsableVisualSpec } from '../src/lib/exam-visuals.js';
 import { repairGeneratedExam } from '../src/lib/exam-repair.js';
+import { validateGeneratedExam } from '../src/lib/exam-validation.js';
 import type { ExamGenerationRequest, GeneratedExamQuestion } from '../src/lib/exam-schema.js';
 import { inferExamMapBase } from '../src/lib/exam-map-data.js';
 
@@ -45,6 +46,25 @@ for (const required of ['East Africa map', 'KEY', 'Line:', 'boundary', '500 km',
 }
 assert.ok(!svg.toLowerCase().includes('schematic'), 'map SVG must not be described as schematic');
 assert.equal(hasUsableVisualSpec({ ...mapQuestion, image_url: rendered }), true, 'complete map metadata must pass visual validation');
+
+const socialMapRequest: ExamGenerationRequest = {
+  title: 'Social Studies map minimum test', gradeLevel: 'Grade 9', subject: 'Social Studies',
+  strands: [], subStrands: [], topics: [], curriculumScope: [], questionTypes: ['case_study'],
+  totalMarks: 1, durationMinutes: 90, difficulty: 'medium', includeImages: true,
+  includeMarkingScheme: true, format: 'kjsea', term: 'Term 1', blueprint: undefined,
+};
+const oneMapValidation = validateGeneratedExam(socialMapRequest, [{ ...mapQuestion, image_url: rendered }]);
+assert.equal(
+  oneMapValidation.issues.some((issue) => issue.code === 'SOCIAL_STUDIES_MAP_REQUIREMENT'),
+  false,
+  'one complete vector map satisfies the Social Studies minimum; do not require three maps or fixed Q21–Q23 placement',
+);
+const noMapValidation = validateGeneratedExam(socialMapRequest, [baseQuestion()]);
+assert.equal(
+  noMapValidation.issues.some((issue) => issue.code === 'SOCIAL_STUDIES_MAP_REQUIREMENT'),
+  true,
+  'a Social Studies paper without any map must still fail the minimum-map requirement',
+);
 
 const request: ExamGenerationRequest = {
   title: 'Visual repair test', gradeLevel: 'Grade 9', subject: 'Social Studies',
@@ -91,4 +111,4 @@ assert.equal(replacement.questions.length, 1, 'a successful non-visual replaceme
 assert.equal(replacement.questions[0].visual_spec, null, 'replacement must not require a visual');
 assert.ok(replacement.actions.some((action) => action.kind === 'question_rewritten'), 'replacement must be recorded');
 
-console.log('visual-integrity regression passed (vector map + backoff retry + failed-visual replacement/drop semantics)');
+console.log('visual-integrity regression passed (vector map + one-map Social Studies minimum + backoff retry + failed-visual replacement/drop semantics)');

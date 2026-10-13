@@ -86,10 +86,14 @@ export function validateGeneratedExam(
   if (request.format === 'kjsea') {
     const spec = getKjseaPaperSpec(request.subject, normalizePaperVariant(request.paperVariant));
     const objective = questions.filter((question) => question.question_type === 'multiple_choice');
-    if (spec?.subjectKey === 'integratedscience' && spec.variant === 'paper1') {
-      if (objective.length !== 30) issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'Integrated Science Paper 1 requires exactly 30 multiple-choice questions.' });
-    } else if (spec?.subjectKey !== 'integratedscience' && (spec?.variant === 'paper1' || spec?.variant === 'single')) {
-      if (objective.length < 50) issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: 'English and Kiswahili Paper 1 require 50 multiple-choice questions.' });
+    const expectedObjectiveCount = spec?.subjectKey === 'integratedscience' && spec.variant === 'paper1' ? 30
+      : (spec?.subjectKey === 'english' || spec?.subjectKey === 'kiswahili') && spec.variant === 'paper1' ? 50
+        : (spec?.subjectKey === 'agriculture' || spec?.subjectKey === 'pretechnical') && spec.variant === 'paper1' ? 30
+          : spec?.subjectKey === 'creativearts' && spec.variant === 'paper2' ? 40
+            : spec?.variant === 'single' && ['mathematics', 'socialstudies', 'cre', 'ire', 'hre'].includes(spec.subjectKey) ? 20
+              : null;
+    if (expectedObjectiveCount !== null && objective.length !== expectedObjectiveCount) {
+      issues.push({ code: 'KJSEA_OBJECTIVE_LAYOUT', severity: 'critical', message: `${spec?.title || 'This KJSEA paper'} requires exactly ${expectedObjectiveCount} multiple-choice questions; ${objective.length} were generated.` });
     }
     if (spec?.variant === 'paper2' && questions.some((question) => question.question_type === 'multiple_choice')) {
       issues.push({ code: 'KJSEA_PAPER2_OBJECTIVE_LAYOUT', severity: 'critical', message: 'KJSEA Paper 2 must not contain multiple-choice questions.' });
@@ -145,8 +149,8 @@ export function validateGeneratedExam(
   }
   if (isSocialStudiesSubject(request.subject) && request.format === 'kjsea' && request.includeImages) {
     const mapQuestions = questions.filter((question) => String(question.visual_spec?.asset_type || '').toLowerCase() === 'map').length;
-    if (mapQuestions < 3) {
-      issues.push({ code: 'SOCIAL_STUDIES_MAP_REQUIREMENT', severity: 'critical', message: `The full Social Studies paper requires at least three actual vector map questions (Q21–Q23); only ${mapQuestions} map question${mapQuestions === 1 ? '' : 's'} were generated.` });
+    if (mapQuestions < 1) {
+      issues.push({ code: 'SOCIAL_STUDIES_MAP_REQUIREMENT', severity: 'critical', message: 'The full Social Studies paper requires at least one actual vector map question; none was generated.' });
     }
   }
 

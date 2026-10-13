@@ -31,11 +31,11 @@ function paperFocus(subject: string, variant: PaperVariant): string {
   if (key === 'english') {
     return variant === 'paper1'
       ? 'Paper 1 is the 50-mark objective Language paper: reading comprehension, listening and speaking, cloze, grammar and language use.'
-      : 'Paper 2 is the 50-mark constructed-response paper: composition, oral literature, novella, play and poetry.';
+      : 'Paper 2 is the 50-mark constructed-response paper: composition, oral literature, novella/short story, play and poetry.';
   }
   if (key === 'kiswahili') {
     return variant === 'paper1'
-      ? 'Karatasi ya Kwanza ni ya alama 50 na ya chaguo: ufahamu wa kusoma, kusikiliza na kuzungumza, cloze, sarufi na matumizi ya lugha.'
+      ? 'Karatasi ya Kwanza ni ya alama 50 na ya chaguo: Ufahamu wa Kusoma (alama 20), Kusikiliza na Kuzungumza (alama 5), na Sarufi (alama 25); cloze inaweza kuwa sehemu ya Sarufi, si sehemu tofauti ya alama 10.'
       : 'Karatasi ya Pili ni ya alama 50 na ya majibu yaliyoundwa: insha, fasihi simulizi, novela, tamthilia na ushairi.';
   }
   if (key === 'agriculture') {
@@ -93,7 +93,7 @@ export function isSocialStudiesSubject(subject: string): boolean {
 export function mapWorkLaw(request: ExamGenerationRequest): string {
   if (!isSocialStudiesSubject(request.subject)) return '';
   return [
-    'Map work law: where the selected strand or topic covers map work, include at least one map-based question. For the full KJSEA Social Studies paper, reserve Q21–Q23 for three map-based structured questions.',
+    'Map work law: for a full KJSEA Social Studies paper, include at least one map-based structured question. Q21 is a January 2025 sample-style placement, not a 2026 KNEC numbering rule; do not require a fixed map count or number unless the selected content calls for it.',
     'Use the Kenya map for counties, physical features, climate or vegetation; the East Africa map for regional countries and the Great Lakes/Rift Valley context; the Africa map for countries, regions and physical features. Do not invent a hand-drawn polygon or use a photographic/AI-generated map.',
     'Describe each map with a visual_spec whose asset_type is "map", whose base_map is one of "kenya", "east_africa", or "africa", whose map_regions list at least two named regions/countries shown, whose labels name every feature the learner must read, and whose legend has at least two entries.',
     'Every map visual must include a readable title, a north-arrow/compass field, a scale_text field, a visible map frame, and a key/legend. The renderer supplies the vector country boundaries; do not put a map placeholder, Markdown table, or image URL in question_text.',
