@@ -14,6 +14,7 @@ import {
   type QuestionType,
 } from './exam-schema';
 import { renderExamVisualDataUrl } from './exam-visuals';
+import { getKjseaPaperSpec } from './kjsea-paper-formats';
 
 const sectionTitles: Record<string, string> = {
   multiple_choice: 'SECTION A: MULTIPLE CHOICE QUESTIONS',
@@ -63,6 +64,13 @@ function formatLabel(format: ExamFormat): string {
 function internalPaperCode(paper: BrandedPaper): string {
   const subjectCode = paper.subject.replace(/[^a-z0-9]/gi, '').slice(0, 4).toUpperCase() || 'PAPER';
   return `ZAS-${paper.year}-${subjectCode}-${String(paper.version_number || 1).padStart(2, '0')}`;
+}
+
+function officialKjseaPaperCode(paper: BrandedPaper): string | null {
+  if (paper.format !== 'kjsea') return null;
+  const variant = paperVariant(paper);
+  const spec = getKjseaPaperSpec(paper.subject, variant === 'paper1' || variant === 'paper2' ? variant : 'single');
+  return spec?.code || null;
 }
 
 function gradeLabel(paper: BrandedPaper): string {
@@ -382,7 +390,11 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   doc.text(`${paper.subject.toUpperCase()}  |  ${gradeLabel(paper).toUpperCase()}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, y, { align: 'center' });
   y += 5;
   doc.setFontSize(7.5);
-  doc.text(`Internal paper code: ${internalPaperCode(paper)}  |  Time: ${paper.duration_minutes} minutes  |  Total: ${paper.total_marks} marks`, 105, y, { align: 'center' });
+  const officialCode = officialKjseaPaperCode(paper);
+  const codeLabel = officialCode
+    ? `KJSEA code: ${officialCode}  |  School code: ${internalPaperCode(paper)}`
+    : `Internal paper code: ${internalPaperCode(paper)}`;
+  doc.text(`${codeLabel}  |  Time: ${paper.duration_minutes} minutes  |  Total: ${paper.total_marks} marks`, 105, y, { align: 'center' });
   y += 9;
   doc.setFillColor(248, 250, 252);
   doc.rect(14, y - 4, 182, 9, 'F');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { groupExamQuestionsForPdf } from '../src/lib/exam-generator.js';
-import { makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.js';
+import { getKjseaPaperSpec, makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.js';
 import type { ExamPaper, GeneratedExamQuestion, PaperVariant } from '../src/lib/exam-schema.js';
 
 function makePaper(subject: string, variant: PaperVariant): ExamPaper {
@@ -90,4 +90,12 @@ assert.equal(socialStudies[1].questions.length, 14);
 assert.equal(socialStudies[1].marks, 80);
 assert.match(socialStudies[1].title || '', /^Section B: Structured and essay questions$/);
 
-console.log('PASS: PDF grouping preserves all seven audited KJSEA component layouts and mark totals.');
+assert.equal(getKjseaPaperSpec('Integrated Science', 'paper1')?.code, '905/1');
+assert.equal(getKjseaPaperSpec('Integrated Science', 'paper2')?.code, '905/2');
+assert.equal(getKjseaPaperSpec('Kiswahili', 'paper1')?.code, '902/1');
+assert.equal(getKjseaPaperSpec('Kiswahili', 'paper2')?.code, '902/2');
+assert.equal(getKjseaPaperSpec('English', 'paper1')?.code, '901/1');
+assert.equal(getKjseaPaperSpec('English', 'paper2')?.code, '901/2');
+assert.equal(getKjseaPaperSpec('Social Studies', 'single')?.code, '907');
+
+console.log('PASS: PDF grouping preserves all seven audited KJSEA layouts, mark totals, and official paper codes.');
