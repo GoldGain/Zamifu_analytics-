@@ -506,7 +506,7 @@ export default function AssignTeachers() {
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 sm:col-span-2 lg:col-span-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-emerald-800">Required lessons per class / week</p>
-            <p className="text-xs text-emerald-900 mt-1">Pre-Primary <strong>25 + PPI (2)</strong> · Lower Primary <strong>31</strong> · Upper Primary <strong>35</strong> · Junior <strong>41 including PPI</strong> · Senior <strong>40</strong> · Form 3–4 <strong>40</strong>. The class summary below shows each class&apos;s shortfall or excess.</p>
+            <p className="text-xs text-emerald-900 mt-1">Pre-Primary <strong>25</strong> · Lower Primary <strong>31</strong> · Upper Primary <strong>35</strong> · Junior <strong>41 including PPI</strong> · Senior <strong>40</strong> · Form 3–4 <strong>40</strong>. The class summary below shows each class&apos;s shortfall or excess.</p>
           </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Junior (Grade 7-9)</p>
