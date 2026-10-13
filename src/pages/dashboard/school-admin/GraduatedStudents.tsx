@@ -43,9 +43,9 @@ export default function GraduatedStudents() {
         .from('students')
         .select(
           'id, first_name, last_name, middle_name, admission_number, gender, class_id, previous_class_id, status, learner_status, graduation_year, graduation_date, academic_year, kjsea_score, kcse_score, classes:class_id(name, level)'
-        )
+        ).or('is_active.eq.true,is_active.is.null')
         .eq('school_id', user?.schoolId)
-        .or('status.eq.graduated,learner_status.ilike.%graduat%,is_active.eq.false')
+        .or('status.eq.graduated,learner_status.ilike.%graduat%')
         .order('graduation_date', { ascending: false, nullsFirst: false });
 
       if (error) throw error;

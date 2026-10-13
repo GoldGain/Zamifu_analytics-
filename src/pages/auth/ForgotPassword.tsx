@@ -47,7 +47,7 @@ export default function ForgotPassword() {
         if (resetMethod === 'assessment') {
           const { data: student, error: studentError } = await supabase
             .from('students')
-            .select('email, student_email, assessment_number, first_name, last_name')
+            .select('email, student_email, assessment_number, first_name, last_name').or('is_active.eq.true,is_active.is.null')
             .ilike('assessment_number', identifier.trim().toUpperCase())
             .maybeSingle() as any;
 

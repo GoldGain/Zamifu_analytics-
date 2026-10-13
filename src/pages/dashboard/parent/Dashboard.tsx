@@ -41,7 +41,7 @@ export default function ParentDashboard() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const { data: linked } = await supabaseUntyped.from('parent_student_links').select('*, students(*, classes(name, stream, stream_name))').eq('parent_id', user?.id);
+    const { data: linked } = await supabaseUntyped.from('parent_student_links').select('*, students!inner(*, classes(name, stream, stream_name))').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' }).eq('parent_id', user?.id);
     if (linked) {
       const kids = linked.map(l => l.students as unknown as ChildRecord);
       setChildren(kids);

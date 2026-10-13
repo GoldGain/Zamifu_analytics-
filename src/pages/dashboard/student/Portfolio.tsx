@@ -107,7 +107,7 @@ export default function StudentPortfolio() {
     try {
       const { data: student } = await supabaseUntyped
         .from('students')
-        .select('*, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name)')
+        .select('*, status, graduation_year, classes!students_class_id_fkey(name, stream, stream_name)').or('is_active.eq.true,is_active.is.null')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .maybeSingle();

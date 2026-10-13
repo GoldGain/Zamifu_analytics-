@@ -88,7 +88,7 @@ export default function TeacherAnalytics() {
       // Build query based on role
       let resultsQuery = supabaseUntyped
         .from('results')
-        .select('*, subjects(name), classes(id, name, stream, stream_name, level, grade_level, curriculum), students(id, first_name, last_name)')
+        .select('*, subjects(name), classes(id, name, stream, stream_name, level, grade_level, curriculum), students!inner(is_active, id, first_name, last_name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('school_id', schoolId);
 
       if (role === 'subject_teacher') {
@@ -122,7 +122,7 @@ export default function TeacherAnalytics() {
         { data: subs },
       ] = await Promise.all([
         resultsQuery,
-        supabaseUntyped.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
+        supabaseUntyped.from('students').select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null').eq('school_id', schoolId),
         supabaseUntyped.from('classes').select('id, name, stream, stream_name, level').eq('school_id', schoolId).order('level'),
         supabaseUntyped.from('subjects').select('id, name').eq('school_id', schoolId).order('name'),
       ]);

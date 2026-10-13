@@ -29,7 +29,7 @@ export default function MasterAdminDashboard() {
       const [resellersRes, schoolsRes, studentsRes, paymentsRes] = await Promise.all([
         supabase.from('resellers').select('*', { count: 'exact', head: true }),
         supabase.from('schools').select('*', { count: 'exact', head: true }),
-        supabase.from('students').select('*', { count: 'exact', head: true }),
+        supabase.from('students').select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null'),
         supabase.from('parent_payments').select('amount').eq('status', 'success'),
       ]);
 

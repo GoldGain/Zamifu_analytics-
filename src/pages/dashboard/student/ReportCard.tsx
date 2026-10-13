@@ -68,7 +68,7 @@ export default function StudentReportCard() {
     try {
       const { data: studentData } = await supabaseUntyped
         .from('students')
-        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)').or('is_active.eq.true,is_active.is.null')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .single();
@@ -77,7 +77,7 @@ export default function StudentReportCard() {
       if (studentData) {
         const { count } = await supabaseUntyped
           .from('students')
-          .select('id', { count: 'exact', head: true })
+          .select('id', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null')
           .eq('class_id', studentData.class_id)
           .eq('school_id', studentData.school_id);
         setTotalStudents(count || 0);
@@ -209,7 +209,7 @@ export default function StudentReportCard() {
     // exceeds that, so an unpaged read would truncate the ranking cohort.
     const classResults = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
-      .select('*, students(id, first_name, last_name), subjects(name)')
+      .select('*, students!inner(is_active, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
       .eq('class_id', student.class_id)
       .eq('school_id', student.school_id)
       .eq('term_id', selectedTerm)

@@ -30,7 +30,7 @@ export default function MasterAdminStudents() {
   const fetchData = async () => {
     setLoading(true);
     const [studentsRes, schoolsRes, resellersRes] = await Promise.all([
-      supabase.from('students').select('*').order('created_at', { ascending: false }).limit(500),
+      supabase.from('students').select('*').or('is_active.eq.true,is_active.is.null').order('created_at', { ascending: false }).limit(500),
       supabase.from('schools').select('id, name, reseller_id'),
       supabase.from('resellers').select('id, name'),
     ]);

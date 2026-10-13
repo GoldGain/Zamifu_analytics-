@@ -110,7 +110,7 @@ export default function Marklist() {
     try {
       const { data, error } = await supabaseUntyped
         .from('students')
-        .select('id, first_name, last_name, admission_number, class_id')
+        .select('id, first_name, last_name, admission_number, class_id').or('is_active.eq.true,is_active.is.null')
         .eq('class_id', selectedClass)
         .eq('status', 'active')
         .order('first_name', { ascending: true });

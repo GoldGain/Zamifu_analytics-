@@ -12,7 +12,7 @@ export default function StudentTimetable() {
   useEffect(() => { fetchTimetable(); }, []);
 
   const fetchTimetable = async () => {
-    const { data: student } = await supabaseUntyped.from('students').select('class_id').eq('profile_id', user?.id).single();
+    const { data: student } = await supabaseUntyped.from('students').select('class_id').or('is_active.eq.true,is_active.is.null').eq('profile_id', user?.id).single();
     if (student?.class_id) {
       const { data } = await supabaseUntyped.from('timetable').select('*, subjects(name)').eq('class_id', student.class_id).order('start_time');
       const grouped: Record<string, any[]> = {};

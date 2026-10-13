@@ -223,7 +223,7 @@ export default function SchoolAdminAnnouncements() {
       const studentIds = students.map((s: any) => s.id);
       const { data: feeRecords } = await supabaseUntyped
         .from('fee_records')
-        .select('*, students(first_name, last_name, admission_number)')
+        .select('*, students!inner(is_active, first_name, last_name, admission_number)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .in('student_id', studentIds)
         .order('due_date', { ascending: false });
 

@@ -64,7 +64,7 @@ export default function FeeWorkspace() {
 
     const [{ data: inv }, { data: paymentRows }, { data: stds }, { data: cls }, { data: trms }, { data: fs }, { data: receiptInv }] = await Promise.all([
       supabaseUntyped.from('fee_invoices')
-        .select('*, students(first_name, last_name, admission_number, assessment_number, class_id, stream_id), terms(name, academic_year)')
+        .select('*, students!inner(is_active, first_name, last_name, admission_number, assessment_number, class_id, stream_id), terms(name, academic_year)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('school_id', schoolId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false }),
@@ -82,7 +82,7 @@ export default function FeeWorkspace() {
         .select('*, classes(name, stream, stream_name), terms(name, academic_year)')
         .eq('school_id', schoolId).order('created_at', { ascending: false }),
       supabaseUntyped.from('fee_invoices')
-        .select('id, student_id, total_amount, academic_year, term_id, students(first_name, last_name, admission_number, assessment_number, class_id, stream_id), terms(name, academic_year)')
+        .select('id, student_id, total_amount, academic_year, term_id, students!inner(is_active, first_name, last_name, admission_number, assessment_number, class_id, stream_id), terms(name, academic_year)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('school_id', schoolId),
     ]);
 

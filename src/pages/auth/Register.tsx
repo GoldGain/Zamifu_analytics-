@@ -89,7 +89,7 @@ export default function Register() {
       // Check students table for parent email
       const { data: student } = await supabase
         .from('students')
-        .select('parent_email, parent_name, school_id, parent_phone')
+        .select('parent_email, parent_name, school_id, parent_phone').or('is_active.eq.true,is_active.is.null')
         .eq('parent_email', email.toLowerCase())
         .maybeSingle() as any;
 

@@ -263,7 +263,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
 
       const { count: graduatedCount } = await supabaseUntyped
         .from('students')
-        .select('id', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null')
         .eq('school_id', schoolId)
         .eq('status', 'graduated');
       insights.push({
@@ -313,7 +313,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
     if (role === 'parent' && userId) {
       const { data: links } = await supabaseUntyped
         .from('parent_student_links')
-        .select('student_id, students(id, first_name, last_name, admission_number, class_id)')
+        .select('student_id, students!inner(is_active, id, first_name, last_name, admission_number, class_id)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('parent_id', userId);
       const children = (links || []).map((l: any) => l.students).filter(Boolean);
       if (children.length) {
@@ -372,7 +372,7 @@ export async function fetchRoleInsights(ctx: AiContext): Promise<AiInsight[]> {
     if (role === 'student' && userId) {
       const { data: student } = await supabaseUntyped
         .from('students')
-        .select('id, first_name, last_name, status')
+        .select('id, first_name, last_name, status').or('is_active.eq.true,is_active.is.null')
         .eq('profile_id', userId)
         .maybeSingle();
       if (student) {

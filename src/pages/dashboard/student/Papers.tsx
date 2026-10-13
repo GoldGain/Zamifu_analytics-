@@ -30,7 +30,7 @@ export default function StudentPapers() {
       try {
         const { data: student } = await supabaseUntyped
           .from('students')
-          .select('id, class_id, school_id')
+          .select('id, class_id, school_id').or('is_active.eq.true,is_active.is.null')
           .eq('profile_id', user?.id)
           .maybeSingle();
 

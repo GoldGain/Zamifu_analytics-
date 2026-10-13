@@ -91,7 +91,7 @@ export default function CombineExams() {
     for (let offset = 0; ; offset += pageSize) {
       const { data, error } = await db
         .from('results')
-        .select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum, exam_id, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name)')
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, teacher_id, academic_year, curriculum, exam_id, students!inner(is_active, first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('school_id', user.schoolId)
         .in('class_id', activeScope.classIds)
         .eq('term_id', selectedTerm)

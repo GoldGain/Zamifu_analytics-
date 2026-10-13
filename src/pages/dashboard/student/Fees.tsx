@@ -17,7 +17,7 @@ export default function StudentFees() {
   const fetchFees = useCallback(async () => {
     setLoading(true);
     const { data: student } = await supabaseUntyped.from('students')
-      .select('id, school_id, first_name, last_name, admission_number, assessment_number, class_id, stream_id')
+      .select('id, school_id, first_name, last_name, admission_number, assessment_number, class_id, stream_id').or('is_active.eq.true,is_active.is.null')
       .eq('profile_id', user?.id).eq('school_id', user?.schoolId).single();
     if (student) {
       const [{ data: invoiceRows }, { data: allInvoiceRows }, { data: paymentRows }, { data: classRow }] = await Promise.all([

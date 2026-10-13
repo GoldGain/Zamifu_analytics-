@@ -63,7 +63,7 @@ export default function ParentFeeTranscript() {
     try {
       const { data: linked } = await supabaseUntyped
         .from('parent_student_links')
-        .select('*, students(id, first_name, last_name, admission_number, photo_url, classes(name, stream, stream_name))')
+        .select('*, students!inner(is_active, id, first_name, last_name, admission_number, photo_url, classes(name, stream, stream_name))').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('parent_id', user.id);
 
       if (linked) {

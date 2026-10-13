@@ -48,7 +48,7 @@ import { fetchAllRows } from '@/lib/paginatedQuery';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
 import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
 import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
-import { isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { excludedResultCode, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
 import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
 type ComparisonSourceRow = {
@@ -219,10 +219,10 @@ function createReportCardSubjectRows(
     const streamRank = reportCardSubjectRank(summaries, subject, target.studentId, target.classId, true);
     return {
       subjects: { name: subject },
-      marks: isExcludedResult(raw) ? 'X' : Number(raw?.marks ?? target.subjects[subject] ?? 0),
+      marks: isExcludedResult(raw) ? excludedResultCode(raw) || 'X' : Number(raw?.marks ?? target.subjects[subject] ?? 0),
       out_of: Number(raw?.out_of || 100),
       percentage: isExcludedResult(raw) ? 0 : Number(target.subjects[subject] || 0),
-      mark_code: isExcludedResult(raw) ? 'X' : raw?.mark_code || null,
+      mark_code: isExcludedResult(raw) ? excludedResultCode(raw) || 'X' : raw?.mark_code || null,
       previousPercentage: previousSubjectValues.get(`${target.studentId}|${normalized}`) ?? null,
       classPosition: classRank.position,
       classTotal: classRank.total,
@@ -729,7 +729,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const rows = await fetchAllRows((from, to) => {
         let query = supabaseUntyped
           .from('results')
-          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)')
+          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students!inner(is_active, id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
           .in('class_id', classIds)
           .eq('term_id', selectedTerm)
           .eq('school_id', schoolId)
@@ -1049,7 +1049,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return fetchAllRows((from, to) => {
       let query = supabaseUntyped
         .from('results')
-        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
+        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students!inner(is_active, id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('class_id', effectiveClassId)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
@@ -1356,7 +1356,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const rows = await fetchAllRows<any>((from, to) =>
           supabaseUntyped
             .from('students')
-            .select('id, first_name, middle_name, last_name, admission_number, assessment_number, class_id, stream_id, classes!students_class_id_fkey(name, stream, stream_name)')
+            .select('id, first_name, middle_name, last_name, admission_number, assessment_number, class_id, stream_id, classes!students_class_id_fkey(name, stream, stream_name)').or('is_active.eq.true,is_active.is.null')
             .eq('school_id', user?.schoolId)
             .in('class_id', classIds)
             .order('last_name')
@@ -2124,12 +2124,14 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
   const fetchResultsAll = async (classIds: string[], termId: string, examId?: string, selectCols?: string): Promise<any[]> => {
     const pageSize = 1000;
-    const selected = selectCols || 'id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)';
+    const selected = (selectCols || 'id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students(id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)')
+      .replace(/\bstudents\(/g, 'students!inner(is_active, ');
     const allResults: any[] = [];
     let from = 0;
     while (true) {
       let q = supabaseUntyped.from('results')
         .select(selected)
+        .or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .in('class_id', classIds)
         .eq('term_id', termId)
         .eq('school_id', user?.schoolId)

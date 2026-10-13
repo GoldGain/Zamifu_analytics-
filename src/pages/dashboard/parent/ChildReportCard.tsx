@@ -100,7 +100,7 @@ export default function ParentChildReportCard() {
       const ids = links.map((l: any) => l.student_id);
       const { data: students } = await supabaseUntyped
         .from('students')
-        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)')
+        .select('*, classes!students_class_id_fkey(name, stream, stream_name, level, grade_level, curriculum, class_teacher_id)').or('is_active.eq.true,is_active.is.null')
         .in('id', ids);
       setChildren(students || []);
       if (students && students.length > 0) {
@@ -120,7 +120,7 @@ export default function ParentChildReportCard() {
   const fetchTotalStudents = async (classId: string, schoolId: string) => {
     const { count } = await supabaseUntyped
       .from('students')
-      .select('id', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null')
       .eq('class_id', classId)
       .eq('school_id', schoolId);
     setTotalStudents(count || 0);
@@ -283,7 +283,7 @@ export default function ParentChildReportCard() {
     // exceeds that, so an unpaged read would truncate the ranking cohort.
     const classResults = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
-      .select('*, students(id, first_name, last_name), subjects(name)')
+      .select('*, students!inner(is_active, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
       .eq('class_id', selectedChild.class_id)
       .eq('term_id', selectedTerm)
       .order('created_at')

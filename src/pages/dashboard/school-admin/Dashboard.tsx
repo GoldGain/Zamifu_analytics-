@@ -35,7 +35,7 @@ export default function SchoolAdminDashboard() {
       setLoading(true);
       const schoolId = user?.schoolId;
       
-      const { count: studentsCount } = await supabase.from('students').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
+      const { count: studentsCount } = await supabase.from('students').select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null').eq('school_id', schoolId ?? '');
       const { count: teachersCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       const { count: classesCount } = await supabase.from('classes').select('*', { count: 'exact', head: true }).eq('school_id', schoolId ?? '');
       

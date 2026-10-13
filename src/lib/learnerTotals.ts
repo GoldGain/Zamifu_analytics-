@@ -26,6 +26,8 @@ export interface LearnerTotals {
   avgPct: number;
   gender: string | null;
   examName: string;
+  /** Preserves exceptional X/Y status so these learners rank after numeric results. */
+  markCode?: 'X' | 'Y' | null;
 }
 
 export interface SevenSubjectMetrics {
@@ -34,10 +36,17 @@ export interface SevenSubjectMetrics {
   totalPoints: number;
 }
 
-/** A recorded X means absent/exempt and is deliberately excluded from every aggregate. */
+/** X (missing) and Y (cheated) rows are excluded from all numeric aggregates. */
+export function excludedResultCode(result: any): 'X' | 'Y' | null {
+  const values = [result?.mark_code, result?.marks, result?.percentage, result?.grade_844];
+  const codes = values.map((value) => String(value ?? '').trim().toUpperCase());
+  if (codes.includes('Y')) return 'Y';
+  if (codes.includes('X')) return 'X';
+  return null;
+}
+
 export function isExcludedResult(result: any): boolean {
-  const isX = (value: unknown) => String(value ?? '').trim().toUpperCase() === 'X';
-  return isX(result?.mark_code) || isX(result?.marks) || isX(result?.percentage) || isX(result?.grade_844);
+  return excludedResultCode(result) !== null;
 }
 
 /** Percentage of a single result row, tolerant of a missing numeric percentage. */
@@ -178,6 +187,7 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
   const winners = new Map<string, Map<string, { createdAt: number; index: number; row: any }>>();
 
   (rawResults || []).forEach((result: any, index: number) => {
+    if (result?.students?.is_active === false) return;
     const studentId = result?.student_id;
     if (!studentId) return;
     if (!entries.has(studentId)) {
@@ -208,8 +218,14 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
 
   return Array.from(entries.values()).map((entry) => {
     const rawSubjects: Record<string, number> = {};
+    let markCode: 'X' | 'Y' | null = null;
     winners.get(entry.studentId)?.forEach((winner, area) => {
-      if (!isExcludedResult(winner.row)) rawSubjects[area] = rowPercentage(winner.row);
+      const excludedCode = excludedResultCode(winner.row);
+      if (excludedCode) {
+        if (excludedCode === 'Y' || markCode === null) markCode = excludedCode;
+      } else {
+        rawSubjects[area] = rowPercentage(winner.row);
+      }
     });
     const effectiveNames = effectiveMeanSubjects(rawSubjects);
     const totalMarks = effectiveNames.reduce((sum, name) => sum + (rawSubjects[name] || 0), 0);
@@ -221,6 +237,7 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
         : null;
     return {
       ...entry,
+      markCode,
       subjects: rawSubjects,
       totalMarks,
       totalPoints,

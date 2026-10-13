@@ -98,7 +98,7 @@ export default function TeacherDashboard() {
 
       const { count: sCount } = await supabaseUntyped
         .from('students')
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null')
         .eq('school_id', schoolId);
       setStudentCount(sCount || 0);
 
@@ -149,7 +149,7 @@ export default function TeacherDashboard() {
 
         const { data: results } = await supabaseUntyped
           .from('results')
-          .select('*, students(id, first_name, last_name), subjects(name)')
+          .select('*, students!inner(is_active, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
           .eq('class_id', classId)
           .eq('subject_id', subjectId)
           .eq('term_id', latestTerm.id)

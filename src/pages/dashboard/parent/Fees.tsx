@@ -53,7 +53,7 @@ export default function ParentFees() {
 
   const fetchChildren = async () => {
     if (!user?.id) return;
-    const { data: linked } = await supabaseUntyped.from('parent_student_links').select('*, students(first_name, last_name, id, school_id, admission_number, class_id)').eq('parent_id', user.id);
+    const { data: linked } = await supabaseUntyped.from('parent_student_links').select('*, students!inner(is_active, first_name, last_name, id, school_id, admission_number, class_id)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' }).eq('parent_id', user.id);
     if (linked) {
       const kids = linked.map((l: any) => l.students).filter(Boolean);
       setChildren(kids);

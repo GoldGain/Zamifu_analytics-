@@ -13,7 +13,7 @@ export default function SuperAdminAnalytics() {
     setLoading(true);
     const [{ count: sc }, { count: st }, { count: tc }, { count: rc }] = await Promise.all([
       supabaseUntyped.from('schools').select('*', { count: 'exact', head: true }),
-      supabaseUntyped.from('students').select('*', { count: 'exact', head: true }),
+      supabaseUntyped.from('students').select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null'),
       supabaseUntyped.from('teachers').select('*', { count: 'exact', head: true }),
       supabaseUntyped.from('results').select('*', { count: 'exact', head: true }),
     ]);
@@ -23,7 +23,7 @@ export default function SuperAdminAnalytics() {
     if (schools) {
       const breakdown = await Promise.all(schools.map(async (school: any) => {
         const [{ count: sCount }, { count: tCount }] = await Promise.all([
-          supabaseUntyped.from('students').select('*', { count: 'exact', head: true }).eq('school_id', school.id),
+          supabaseUntyped.from('students').select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null').eq('school_id', school.id),
           supabaseUntyped.from('teachers').select('*', { count: 'exact', head: true }).eq('school_id', school.id),
         ]);
         return { ...school, studentCount: sCount || 0, teacherCount: tCount || 0 };

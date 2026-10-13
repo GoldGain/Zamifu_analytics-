@@ -5,7 +5,7 @@ import type { SchoolLevelBand, SubjectResult } from './grading';
 import { pdfFontSize } from './pdfFontSize';
 import QRCode from 'qrcode';
 import { calculatePathwayPerformance, formatPathwayNumber, strongestPathway } from './pathwayPerformance';
-import { isExcludedResult, usesSevenSubjectRanking } from './learnerTotals';
+import { excludedResultCode, isExcludedResult, usesSevenSubjectRanking } from './learnerTotals';
 
 // ── Shared PDF Helper Functions for Report Cards ─────────────────────────────
 
@@ -1024,6 +1024,7 @@ export function drawResultsTable(
     : ['No.', areaLabel, 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const excluded = isExcludedResult(r);
+    const excludedCode = excludedResultCode(r) || 'X';
     const pct = excluded ? 0 : getPercentage(r);
     const grading = excluded ? null : gradeFromPercentage(pct, classData);
     const subjectName = r.subjects?.name === 'Creative Arts' ? 'C-Arts' : (r.subjects?.name || 'N/A');
@@ -1049,14 +1050,14 @@ export function drawResultsTable(
           : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
         row.push(marksLabel, pointsMax > 0 ? (examGrade.points ?? '—') : '—', examLevel || '—');
       });
-      row.push(excluded ? 'X' : `${pct.toFixed(0)}%`);
+      row.push(excluded ? excludedCode : `${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
-      row.push(excluded ? 'X' : `${pct.toFixed(0)}/100`);
+      row.push(excluded ? excludedCode : `${pct.toFixed(0)}/100`);
       if (showDeviation) row.push(deviation);
     }
     if (pointsMax > 0) row.push(grading?.points ?? '—');
-    row.push(excluded ? 'X' : grading?.grade || '—');
+    row.push(excluded ? excludedCode : grading?.grade || '—');
     if (showStream) row.push(streamPosition);
     row.push(position, r.teacherName || '—', r.teacherComment || '—');
     return row;

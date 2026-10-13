@@ -147,7 +147,7 @@ export function useResults(schoolId?: string) {
   const fetchResults = useCallback(async () => {
     try {
       setLoading(true);
-      let query = supabase.from('results').select('*, students(first_name, last_name), subjects(name)').order('created_at', { ascending: false });
+      let query = supabase.from('results').select('*, students!inner(is_active, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' }).order('created_at', { ascending: false });
       if (schoolId) query = query.eq('school_id', schoolId);
       const { data, error } = await query;
       if (error) throw error;
@@ -171,7 +171,7 @@ export function useFeeInvoices(schoolId?: string) {
   const fetchInvoices = useCallback(async () => {
     try {
       setLoading(true);
-      let query = supabase.from('fee_invoices').select('*, students(first_name, last_name)').order('created_at', { ascending: false });
+      let query = supabase.from('fee_invoices').select('*, students!inner(is_active, first_name, last_name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' }).order('created_at', { ascending: false });
       if (schoolId) query = query.eq('school_id', schoolId);
       const { data, error } = await query;
       if (error) throw error;

@@ -20,7 +20,7 @@ export default function StudentHomework() {
     setLoading(true);
     const { data: student } = await supabaseUntyped
       .from('students')
-      .select('id, class_id')
+      .select('id, class_id').or('is_active.eq.true,is_active.is.null')
       .eq('profile_id', user?.id)
       .single();
 

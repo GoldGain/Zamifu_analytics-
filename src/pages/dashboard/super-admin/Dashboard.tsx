@@ -36,7 +36,7 @@ export default function SuperAdminDashboard() {
       setLoading(true);
       const { count: schoolsCount } = await supabase.from('schools').select('*', { count: 'exact', head: true });
       const { count: activeCount } = await supabase.from('schools').select('*', { count: 'exact', head: true }).eq('status', 'active');
-      const { count: studentsCount } = await supabase.from('students').select('*', { count: 'exact', head: true });
+      const { count: studentsCount } = await supabase.from('students').select('*', { count: 'exact', head: true }).or('is_active.eq.true,is_active.is.null');
       const { count: teachersCount } = await supabase.from('teachers').select('*', { count: 'exact', head: true });
       
       setStats({

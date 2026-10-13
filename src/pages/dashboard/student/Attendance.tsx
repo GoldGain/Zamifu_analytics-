@@ -18,7 +18,7 @@ export default function StudentAttendance() {
   useEffect(() => { fetchAttendance(); }, []);
 
   const fetchAttendance = async () => {
-    const { data: student } = await supabaseUntyped.from('students').select('id').eq('profile_id', user?.id).single();
+    const { data: student } = await supabaseUntyped.from('students').select('id').or('is_active.eq.true,is_active.is.null').eq('profile_id', user?.id).single();
     if (student) {
       const { data } = await supabaseUntyped.from('attendance').select('*').eq('student_id', student.id).order('date', { ascending: false }).limit(30);
       const typed = (data || []) as AttendanceRecord[];

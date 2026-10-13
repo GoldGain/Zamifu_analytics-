@@ -5,7 +5,7 @@ import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844C
 import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
-import { aggregateLearnerTotals, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { aggregateLearnerTotals, excludedResultCode, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
 import { isSeniorCbeClass } from '@/lib/seniorPathways';
 import { Award, Download, Filter, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
@@ -37,7 +37,7 @@ export default function StudentResults() {
         // students has two FKs to classes (class_id, stream_id); the embed must
         // name the class_id relationship explicitly or PostgREST returns
         // PGRST201 and the whole learner portal loses its student record.
-        .select('id, class_id, school_id, status, graduation_year, pathway, track, classes!students_class_id_fkey(name, stream, stream_name, curriculum, grade_level, level)')
+        .select('id, class_id, school_id, status, graduation_year, pathway, track, classes!students_class_id_fkey(name, stream, stream_name, curriculum, grade_level, level)').or('is_active.eq.true,is_active.is.null')
         .eq('profile_id', user?.id)
         .eq('school_id', user?.schoolId)
         .maybeSingle();
@@ -112,7 +112,7 @@ export default function StudentResults() {
           // class and the learner's position comes out wrong.
           const classResults = await fetchAllRows((from, to) => supabaseUntyped
             .from('results')
-            .select('student_id, class_id, marks, out_of, percentage, mark_code, cbc_points, created_at, students(id, gender, pathway, track), subjects(name)')
+            .select('student_id, class_id, marks, out_of, percentage, mark_code, cbc_points, created_at, students!inner(is_active, id, gender, pathway, track), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
             .eq('class_id', student.class_id)
             .eq('school_id', student.school_id)
             .eq('term_id', selectedTerm)
@@ -182,7 +182,7 @@ export default function StudentResults() {
   };
 
   const getDisplayGrade = (r: any): string => {
-    if (isExcludedResult(r)) return 'X';
+    if (isExcludedResult(r)) return excludedResultCode(r) || 'X';
     const grade = calculateGradeForClass(getPercentage(r), classData);
     return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
@@ -354,8 +354,8 @@ export default function StudentResults() {
                   <td className="px-6 py-4">
                     <div className="text-sm text-[#666666]">{r.school_exams?.name || r.exams?.name || 'End Term'}</div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium">{isExcludedResult(r) ? 'X' : `${r.marks}/${r.out_of}`}</td>
-                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{isExcludedResult(r) ? 'X' : `${r.percentage}%`}</td>
+                  <td className="px-6 py-4 text-sm font-medium">{isExcludedResult(r) ? excludedResultCode(r) || 'X' : `${r.marks}/${r.out_of}`}</td>
+                  <td className="px-6 py-4 text-sm font-bold text-[#6A1B9A]">{isExcludedResult(r) ? excludedResultCode(r) || 'X' : `${r.percentage}%`}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${gradeColor(getDisplayGrade(r))}`}>
                       {getDisplayGrade(r)}

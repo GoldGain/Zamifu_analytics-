@@ -112,7 +112,7 @@ export default function TeacherHomework() {
   const fetchSubmissions = async (homeworkId: string) => {
     const { data } = await supabaseUntyped
       .from('homework_submissions')
-      .select('*, students(first_name, last_name, admission_number)')
+      .select('*, students!inner(is_active, first_name, last_name, admission_number)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
       .eq('homework_id', homeworkId)
       .order('submitted_at', { ascending: false });
     setSubmissions(prev => ({ ...prev, [homeworkId]: data || [] }));
