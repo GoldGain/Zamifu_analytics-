@@ -15,6 +15,7 @@ import {
   sanitizeCandidateInstruction,
 } from './exam-answer-space';
 import { questionDisplayStem } from './exam-display-stem';
+import { registerUnicodeExamFonts } from './exam-pdf-fonts';
 
 const sectionTitles: Record<string, string> = {
   multiple_choice: 'SECTION A: MULTIPLE CHOICE QUESTIONS',
@@ -734,7 +735,8 @@ export async function downloadExamPdf(paper: ExamPaper, modeOrInclude: ExamPdfMo
   const mode: ExamPdfMode = typeof modeOrInclude === 'boolean' ? (modeOrInclude ? 'combined' : 'student') : modeOrInclude;
   const brandedPaper = paper as BrandedPaper;
   if (!paper.questions.length) throw new Error('There are no questions to export.');
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ unit: 'mm', format: 'a4',compress:true,putOnlyUsedFonts:true });
+  await registerUnicodeExamFonts(doc);
   if (mode === 'student' || mode === 'combined') await renderStudentPaper(doc, brandedPaper);
   if (mode === 'marking_scheme') await renderMarkingScheme(doc, brandedPaper);
   if (mode === 'answer_key') await renderAnswerKey(doc, brandedPaper);
