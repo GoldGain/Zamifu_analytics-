@@ -36,6 +36,7 @@ import {
 import { getKjseaPaperSpec, makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.js';
 import { assessmentLevelForGrade, gradeFormatError, getKpseaPaperSpec, makeKpseaBlueprint } from '../src/lib/exam-grade-policy.js';
 import { bindLanguagePaperComponents } from '../src/lib/exam-component-scope.js';
+import { questionDisplayStem } from '../src/lib/exam-display-stem.js';
 import { applyCuratedVisualFallback } from '../src/lib/exam-visual-library.js';
 import {
   buildQuestionRewritePrompt,
@@ -685,7 +686,7 @@ async function handleExamGeneration(
       const filtered = filterUnnecessaryExamVisual(question);
       const fallback = applyCuratedVisualFallback(filtered, parsedRequest.subject);
       return repairQuestionAnswers(
-        normalizeQuestionNotation(withRenderedExamVisual(fallback), { division: mathsLike }),
+        normalizeQuestionNotation(withRenderedExamVisual({...fallback,question_text:questionDisplayStem(fallback)}), { division: mathsLike }),
       );
     };
     let renderedQuestions = draftPaper.questions.map(postProcess);

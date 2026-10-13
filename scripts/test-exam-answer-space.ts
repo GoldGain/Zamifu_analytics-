@@ -148,3 +148,6 @@ const calculationInstructions = getPrintedCandidateInstructions(paperForInstruct
 assert.match(calculationInstructions.join(' '), /calculation steps only for questions that require a calculation/i);
 
 console.log('PASS: answer-space policy distinguishes Mathematics, real calculations, theory-only papers, mixed subparts, and map scale tasks.');
+
+assert.equal(getQuestionAnswerSpacePlan('English',question({question_text:'Find two examples of imagery in paragraph 5.'})).question.requiresCalculationSpace,false);
+assert.equal(getQuestionAnswerSpacePlan('English',question({question_text:'Determine the character mentioned in line 3.'})).question.requiresCalculationSpace,false);

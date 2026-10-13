@@ -97,7 +97,8 @@ export function textRequiresCalculationSpace(
   const hasCalculationConcept = CALCULATION_CONCEPT.test(value);
   const hasNumericEvidence = NUMERIC_EVIDENCE.test(value);
   if (THEORY_RESPONSE_CUE.test(value) && !hasCalculationVerb) return false;
-  if (hasCalculationVerb && (hasCalculationConcept || hasNumericEvidence)) return true;
+  const explicitCalculationVerb=/\b(?:calculate|compute|work\s+out|solve|evaluate|convert|derive|simplify|factor(?:ise|ize)|expand)\b/i.test(value);
+  if(hasCalculationVerb&&(hasCalculationConcept||(explicitCalculationVerb&&hasNumericEvidence)))return true;
 
   // Expressions such as "12 × 4" are calculations even when the prompt uses
   // a less predictable verb (for example, "What is 12 × 4?").

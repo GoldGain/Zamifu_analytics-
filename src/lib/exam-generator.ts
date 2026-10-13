@@ -14,6 +14,7 @@ import {
   getQuestionAnswerSpacePlan,
   sanitizeCandidateInstruction,
 } from './exam-answer-space';
+import { questionDisplayStem } from './exam-display-stem';
 
 const sectionTitles: Record<string, string> = {
   multiple_choice: 'SECTION A: MULTIPLE CHOICE QUESTIONS',
@@ -190,7 +191,7 @@ function isObjectiveKpseaPaper(paper: BrandedPaper): boolean {
 }
 
 export function learnerQuestionText(question: GeneratedExamQuestion): string {
-  let text = question.question_text || '';
+  let text = questionDisplayStem(question);
   const assetType = String((question.visual_spec as { asset_type?: unknown } | null)?.asset_type || '').toLowerCase();
   if (assetType === 'table') {
     text = text.split(/\r?\n/).filter((line) => {
@@ -455,20 +456,6 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   return Math.min(y, 270);
 }
 
-function addAnswerLines(doc: jsPDF, paper: BrandedPaper, y: number, marks: number): number {
-  if (paper.format !== 'kjsea') return y;
-  const lineCount = Math.max(1, Math.min(6, Math.ceil(marks / 2)));
-  y = ensureRoom(doc, paper, y, lineCount * 5 + 2, 'STUDENT PAPER');
-  doc.setDrawColor(156, 163, 175);
-  doc.setLineWidth(0.25);
-  doc.setLineDashPattern([1, 1], 0);
-  for (let index = 0; index < lineCount; index += 1) {
-    doc.line(14, y + index * 5, 105, y + index * 5);
-  }
-  doc.setLineDashPattern([], 0);
-  return y + lineCount * 5 + 2;
-}
-
 function addCalculationSpace(
   doc: jsPDF,
   paper: BrandedPaper,
@@ -629,7 +616,6 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
       }
       y = await addQuestionVisual(doc, paper, { ...question, question_number: sequence }, y, 'STUDENT PAPER');
       if (!question.sub_parts?.length) y = addCalculationSpace(doc, paper, y + 2, spacePlan.question, 'STUDENT PAPER');
-      if (!options.length) y = addAnswerLines(doc, paper, y + 2, question.marks);
       y += formal ? 6 : 4;
       sequence += 1;
     }

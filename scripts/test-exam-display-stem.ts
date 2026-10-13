@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {questionDisplayStem} from '../src/lib/exam-display-stem.js';
+import {learnerQuestionText} from '../src/lib/exam-generator.js';
+import type {GeneratedExamQuestion} from '../src/lib/exam-schema.js';
+const question:GeneratedExamQuestion={question_type:'case_study',question_text:'Read this original passage.\nNeema works hard and wins a scholarship.\n(a) Name the main character. (2 marks)\n(b) Explain one lesson from her experience. (3 marks)',marks:5,difficulty:'medium',correct_answer:'Neema; persistence.',marking_scheme:'Name: Neema (2); lesson: persistence (3).',sub_parts:[{label:'(a)',prompt:'Name the main character.',marks:2},{label:'(b)',prompt:'Explain one lesson from her experience.',marks:3}]};
+assert.equal(questionDisplayStem(question),'Read this original passage.\nNeema works hard and wins a scholarship.');
+assert.equal(learnerQuestionText(question),questionDisplayStem(question));
+const unrelated={...question,question_text:'Read the passage.\n(a) Three friends played a game.\n(b) They learned teamwork.'};
+assert.equal(questionDisplayStem(unrelated),unrelated.question_text,'unrelated lettered stimulus material must be retained');
+assert.equal(questionDisplayStem({...question,sub_parts:[],question_text:'Andika barua ya kirafiki. (alama 5)'}),'Andika barua ya kirafiki.');
+assert.equal(questionDisplayStem({...question,sub_parts:[],question_text:'Calculate 12 × 4. (5 marks)'}),'Calculate 12 × 4.');
+const source=fs.readFileSync(new URL('../src/lib/exam-generator.ts',import.meta.url),'utf8');
+assert.doesNotMatch(source,/\baddAnswerLines\s*\(/,'legacy unconditional theory answer rulings must not return');
+console.log('PASS: duplicate subparts and repeated marks are removed without losing stimuli or adding theory working blocks.');
