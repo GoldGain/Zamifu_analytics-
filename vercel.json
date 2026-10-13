@@ -1,5 +1,8 @@
 {
   "outputDirectory": "dist",
+  "functions": {
+    "api/generate-exam.ts": { "maxDuration": 300 }
+  },
   "crons": [
     { "path": "/api/run-trial-expiry-notifications", "schedule": "0 6 * * *" }
   ],

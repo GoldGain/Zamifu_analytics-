@@ -1,5 +1,4 @@
 import {
-  allocateQuestionBlueprint,
   makeExamTitle,
   type ExamGenerationRequest,
   type ExamPaper,
@@ -19,6 +18,20 @@ import {
   paperVariantLaw,
 } from './exam-construction.js';
 import { kjseaFormatInstruction } from './kjsea-paper-formats.js';
+import {
+  blueprintSlotKey,
+  bindQuestionToSlot,
+  describeBlueprintSlot,
+  expectedExamMarks,
+  getExamBlueprintSlots,
+  hasFixedBlueprint,
+  questionBlueprintId,
+  questionBlueprintItemIndex,
+  questionBlueprintNumber,
+  questionMatchesBlueprintSlot,
+  type ExamBlueprintSlot,
+} from './exam-generation-contract.js';
+import { questionLacksAnswer } from './exam-construction.js';
 
 interface DeepSeekChoice {
   message?: { content?: unknown; reasoning_content?: string | null };
@@ -75,15 +88,17 @@ function normalizeSubParts(value: unknown): GeneratedExamSubPart[] {
   return value.slice(0, 8).flatMap((entry, index) => {
     if (!entry || typeof entry !== 'object') return [];
     const item = entry as Record<string, unknown>;
-    const prompt = toSafeString(item.prompt).slice(0, 900);
+    // Keep complete extracts and practical instructions; do not cut at an
+    // arbitrary character boundary. The generous bound only protects storage.
+    const prompt = toSafeString(item.prompt).slice(0, 6000);
     const marksValue = Number(item.marks);
     if (!prompt || !Number.isFinite(marksValue) || marksValue < 1 || marksValue > 30) return [];
     return [{
       label: toSafeString(item.label, `(${String.fromCharCode(97 + index)})`).slice(0, 12),
       prompt,
       marks: Math.round(marksValue),
-      correct_answer: toSafeString(item.correct_answer).slice(0, 700),
-      marking_scheme: toSafeString(item.marking_scheme, toSafeString(item.correct_answer)).slice(0, 900),
+      correct_answer: toSafeString(item.correct_answer).slice(0, 5000),
+      marking_scheme: toSafeString(item.marking_scheme, toSafeString(item.correct_answer)).slice(0, 6000),
     }];
   });
 }
@@ -107,12 +122,14 @@ export function normalizeQuestion(raw: unknown, fallbackType: QuestionType, fall
   if (!questionText) return null;
   const marksValue = Number(item.marks);
   const marks = Number.isFinite(marksValue) && marksValue > 0 && marksValue <= 30 ? Math.round(marksValue) : 1;
-  return {
+  const normalized: GeneratedExamQuestion & Record<string, unknown> = {
     question_type: normalizeQuestionType(item.question_type, fallbackType),
-    question_text: normalizeMathNotation(questionText).slice(0, 1800),
+    // Passages, extracts, and practical instructions must not be silently cut
+    // at the former 1,800-character boundary.
+    question_text: normalizeMathNotation(questionText),
     options: toSafeArray(item.options).slice(0, 8),
-    correct_answer: toSafeString(item.correct_answer, 'Teacher to assess according to the marking guidance.').slice(0, 1200),
-    marking_scheme: toSafeString(item.marking_scheme, toSafeString(item.correct_answer, 'Teacher to assess according to the marking guidance.')).slice(0, 1800),
+    correct_answer: toSafeString(item.correct_answer, 'Teacher to assess according to the marking guidance.').slice(0, 5000),
+    marking_scheme: toSafeString(item.marking_scheme, toSafeString(item.correct_answer, 'Teacher to assess according to the marking guidance.')).slice(0, 6000),
     marks,
     sub_parts: normalizeSubParts(item.sub_parts),
     difficulty: normalizeDifficulty(item.difficulty, fallbackDifficulty),
@@ -128,6 +145,15 @@ export function normalizeQuestion(raw: unknown, fallbackType: QuestionType, fall
       ? item.visual_spec as Record<string, unknown>
       : null,
   };
+  const sectionId = toSafeString(item.blueprint_section_id || item.section_id);
+  const sectionTitle = toSafeString(item.blueprint_section_title || item.component_title);
+  const itemIndex = Number(item.blueprint_item_index);
+  const questionNumber = Number(item.blueprint_question_number);
+  if (sectionId) normalized.blueprint_section_id = sectionId;
+  if (sectionTitle) normalized.blueprint_section_title = sectionTitle;
+  if (Number.isInteger(itemIndex) && itemIndex >= 0) normalized.blueprint_item_index = itemIndex;
+  if (Number.isInteger(questionNumber) && questionNumber > 0) normalized.blueprint_question_number = questionNumber;
+  return normalized;
 }
 
 export function fallbackDifficulty(request: ExamGenerationRequest): 'easy' | 'medium' | 'hard' {
@@ -172,8 +198,12 @@ const markFlexibility: Record<QuestionType, number> = {
  * keeping every question within the 1–30 mark schema bounds.
  */
 export function reconcileQuestionMarks(request: ExamGenerationRequest, questions: GeneratedExamQuestion[]): GeneratedExamQuestion[] {
+  // A fixed official blueprint is a content contract, not a display hint. Do
+  // not change a provider's marks to make a wrong component appear compliant;
+  // the focused recovery path must replace the mismatched slot instead.
+  if (request.blueprint?.sections.length) return questions;
   const aligned = alignQuestionsToBlueprint(request, questions);
-  if (request.blueprint?.sections.length || !aligned.length || request.totalMarks <= 0) return aligned;
+  if (!aligned.length || request.totalMarks <= 0) return aligned;
   let delta = Math.round(request.totalMarks) - aligned.reduce((sum, question) => sum + question.marks, 0);
   if (delta === 0) return aligned;
 
@@ -206,7 +236,6 @@ export function reconcileQuestionMarks(request: ExamGenerationRequest, questions
 }
 
 export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
-  const blueprint = allocateQuestionBlueprint(request);
   const selectedStrands = request.strands.length ? request.strands.join('; ') : 'Use the selected curriculum topic context.';
   const selectedSubStrands = request.subStrands.length ? request.subStrands.join('; ') : 'Not separately constrained.';
   const selectedTopics = request.topics.length ? request.topics.join('; ') : 'Not separately constrained.';
@@ -231,9 +260,19 @@ export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext
     : request.format === 'kjsea'
       ? kjseaFormatInstruction(request.subject, request.paperVariant || 'single')
       : 'Use a clear school-based CBC assessment structure with labelled sections and marks.';
-  const blueprintText = request.blueprint?.sections.length
-    ? JSON.stringify(request.blueprint.sections.map((section) => ({ type: section.question_type, count: section.count, marks_per_question: section.marks_per_question, difficulty: section.difficulty, strand: section.strand, sub_strand: section.sub_strand, topic: section.topic, competency: section.competency })))
-    : blueprint.map((entry) => `${entry.count} ${entry.type} items totaling about ${entry.marks} marks`).join('; ');
+  const blueprintSlots = getExamBlueprintSlots(request);
+  const blueprintText = JSON.stringify(blueprintSlots.map((slot) => ({
+    question_number: slot.questionNumber,
+    blueprint_section_id: slot.id,
+    component_title: slot.title,
+    question_type: slot.questionType,
+    marks: slot.marks,
+    difficulty: slot.difficulty,
+    strand: slot.strand || '',
+    sub_strand: slot.subStrand || '',
+    topic: slot.topic || '',
+    competency: slot.competency || '',
+  })));
   const coverageText = coverageInstruction(buildCoveragePlanFromRequest(request));
   const notationLaw = mathNotationLaw();
   const answerLaw = answerCompletenessLaw();
@@ -243,7 +282,7 @@ export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext
     : kjseaFormatLaw(request);
   const mapLaw = mapWorkLaw(request);
 
-  return `You are a senior Kenyan CBE/CBC assessment specialist. Create an original, age-appropriate, classroom-ready assessment. Do not reproduce copyrighted questions, proprietary marking schemes, or web text. Align questions to the stated grade, subject, strand, sub-strand, and topics. Use inclusive language, realistic Kenyan classroom contexts where suitable, clear command words, and internally consistent marks.\n\nOriginality and variation requirements:\n- ${variationInstruction}\n- Change the contexts, names, numbers, data, command words, cognitive demand, and question order where appropriate. Do not copy or lightly paraphrase any avoided stem.\n- Avoid repeated stock openings and avoid using the same examples across questions unless the blueprint deliberately requests a shared case study.\n\nStrict curriculum ancestry law:\n- Treat the curriculum as a hierarchy: strand -> child sub-strand -> child topic.\n- Every question must use a strand from the selected strand set, a sub-strand that belongs to that strand, and a topic that belongs to that sub-strand.\n- If selected topics are provided, every question topic must be one of those selected topics. Never attach a correct-looking label from a different strand or sub-strand.\n- Curriculum scope map: ${curriculumScope}\n\nAvoided question stems from recent papers:\n${avoidedStems}\n\nAssessment context:\n- Grade: ${request.gradeLevel}\n- Subject: ${request.subject}\n- Strand(s): ${selectedStrands}\n- Sub-strand(s): ${selectedSubStrands}\n- Topic(s): ${selectedTopics}\n- Format: ${request.format.toUpperCase()}\n- Format guidance: ${formatDirection}\n- Difficulty: ${request.difficulty}\n- Total marks target: ${request.totalMarks}\n- Duration: ${request.durationMinutes} minutes\n- Required question blueprint: ${blueprintText}\n- Learning outcomes: ${outcomes}\n- Competencies: ${competencies}\n- ${imageDirection}\n\nCoverage requirement: ${coverageText}\n\nExam construction laws:\n- ${notationLaw}\n- ${answerLaw}\n- ${variantLaw}\n- ${kjseaLaw}\n- ${mapLaw}\n\nVetted internal curriculum context (use only as high-level guidance; do not quote it verbatim):\n${knowledgeContext || 'No additional knowledge records were supplied. Use established CBE assessment practice and the selected curriculum context.'}\n\nReturn json only. Use exactly this object shape:\n{\n  "title": "string",\n  "instructions": ["string"],\n  "questions": [\n    {\n      "question_type": "multiple_choice | multiple_response | modified_true_false | completion | matching | short_answer | numeric_response | case_study | essay",\n      "question_text": "string",\n      "options": ["string"],\n      "correct_answer": "string",\n      "marking_scheme": "string",\n      "marks": 1,\n      "sub_parts": [{"label":"(a)","prompt":"string","marks":1,"correct_answer":"string","marking_scheme":"string"}],\n      "difficulty": "easy | medium | hard",\n      "strand": "string",\n      "sub_strand": "string",\n      "topic": "string",\n      "learning_outcome": "string or empty",\n      "competency": "string or empty",\n      "cognitive_level": "remember | understand | apply | analyse | evaluate | create",\n            "visual_spec": {"asset_type":"diagram | map | chart | graph | shape | flowchart | illustration | table | number_line", "title":"string", "prompt":"string", "caption":"string", "labels":["string"], "x_labels":["string"], "values":[number], "legend":["string"], "table_headers":["string"], "table_rows":[["string or number"]], "base_map":"kenya | east_africa | africa", "map_regions":["string"], "scale_text":"string", "compass":"North"} or null
+  return `You are a senior Kenyan CBE/CBC assessment specialist. Create an original, age-appropriate, classroom-ready assessment. Do not reproduce copyrighted questions, proprietary marking schemes, or web text. Align questions to the stated grade, subject, strand, sub-strand, and topics. Use inclusive language, realistic Kenyan classroom contexts where suitable, clear command words, and internally consistent marks.\n\nOriginality and variation requirements:\n- ${variationInstruction}\n- Change the contexts, names, numbers, data, command words, cognitive demand, and question order where appropriate. Do not copy or lightly paraphrase any avoided stem.\n- Avoid repeated stock openings and avoid using the same examples across questions unless the blueprint deliberately requests a shared case study.\n\nStrict curriculum ancestry law:\n- Treat the curriculum as a hierarchy: strand -> child sub-strand -> child topic.\n- Every question must use a strand from the selected strand set, a sub-strand that belongs to that strand, and a topic that belongs to that sub-strand.\n- If selected topics are provided, every question topic must be one of those selected topics. Never attach a correct-looking label from a different strand or sub-strand.\n- Curriculum scope map: ${curriculumScope}\n\nAvoided question stems from recent papers:\n${avoidedStems}\n\nAssessment context:\n- Grade: ${request.gradeLevel}\n- Subject: ${request.subject}\n- Strand(s): ${selectedStrands}\n- Sub-strand(s): ${selectedSubStrands}\n- Topic(s): ${selectedTopics}\n- Format: ${request.format.toUpperCase()}\n- Format guidance: ${formatDirection}\n- Difficulty: ${request.difficulty}\n- Total marks target: ${request.totalMarks}\n- Duration: ${request.durationMinutes} minutes\n- Required question blueprint: ${blueprintText}\n- Full-paper contract: return exactly ${blueprintSlots.length} questions in the exact blueprint order and exactly ${expectedExamMarks(request)} total marks. Do not return a partial paper, a shortened paper, or extra questions.\n- Component binding contract: copy each slot's exact blueprint_section_id into blueprint_section_id, its component_title into blueprint_section_title, its question number into blueprint_question_number, and its zero-based item position within that section into blueprint_item_index. Never move a question to another component to hide a count or marks mismatch.\n- Every question must use the exact question_type and marks for its slot. A fixed official component is not satisfied by a differently typed question with a relabelled title.\n- Learning outcomes: ${outcomes}\n- Competencies: ${competencies}\n- ${imageDirection}\n\nCoverage requirement: ${coverageText}\n\nExam construction laws:\n- ${notationLaw}\n- ${answerLaw}\n- ${variantLaw}\n- ${kjseaLaw}\n- ${mapLaw}\n\nVetted internal curriculum context (use only as high-level guidance; do not quote it verbatim):\n${knowledgeContext || 'No additional knowledge records were supplied. Use established CBE assessment practice and the selected curriculum context.'}\n\nReturn json only. Use exactly this object shape:\n{\n  "title": "string",\n  "instructions": ["string"],\n  "questions": [\n    {\n      "question_type": "multiple_choice | multiple_response | modified_true_false | completion | matching | short_answer | numeric_response | case_study | essay",\n      "blueprint_section_id": "exact id from the required question blueprint",\n      "blueprint_section_title": "exact component title from the required question blueprint",\n      "blueprint_item_index": 0,\n      "blueprint_question_number": 1,\n      "question_text": "string",\n      "options": ["string"],\n      "correct_answer": "string",\n      "marking_scheme": "string",\n      "marks": 1,\n      "sub_parts": [{"label":"(a)","prompt":"string","marks":1,"correct_answer":"string","marking_scheme":"string"}],\n      "difficulty": "easy | medium | hard",\n      "strand": "string",\n      "sub_strand": "string",\n      "topic": "string",\n      "learning_outcome": "string or empty",\n      "competency": "string or empty",\n      "cognitive_level": "remember | understand | apply | analyse | evaluate | create",\n            "visual_spec": {"asset_type":"diagram | map | chart | graph | shape | flowchart | illustration | table | number_line", "title":"string", "prompt":"string", "caption":"string", "labels":["string"], "x_labels":["string"], "values":[number], "legend":["string"], "table_headers":["string"], "table_rows":[["string or number"]], "base_map":"kenya | east_africa | africa", "map_regions":["string"], "scale_text":"string", "compass":"North"} or null
 \n    }\n  ]\n}\nFor every question that does not explicitly require a visual, use null for visual_spec. Keep every field concise, do not repeat the instructions, and do not add commentary outside the JSON object. The word json is intentionally included to enable structured JSON output.`;
 }
 
@@ -252,7 +291,7 @@ export function extractJsonFromContent(content: string): Record<string, unknown>
   try {
     const direct = JSON.parse(content);
     if (direct && typeof direct === 'object' && !Array.isArray(direct)) return direct;
-  } catch {}
+  } catch { /* Try fenced JSON next. */ }
 
   // Strategy 2: Strip markdown code fences and try again
   const fenced = content
@@ -263,7 +302,7 @@ export function extractJsonFromContent(content: string): Record<string, unknown>
   try {
     const fencedParsed = JSON.parse(fenced);
     if (fencedParsed && typeof fencedParsed === 'object' && !Array.isArray(fencedParsed)) return fencedParsed;
-  } catch {}
+  } catch { /* Try a bounded object substring next. */ }
 
   // Strategy 3: Find the first { and last } and parse that substring
   const firstBrace = content.indexOf('{');
@@ -273,17 +312,17 @@ export function extractJsonFromContent(content: string): Record<string, unknown>
     try {
       const extracted = JSON.parse(substring);
       if (extracted && typeof extracted === 'object' && !Array.isArray(extracted)) return extracted;
-    } catch {}
+    } catch { /* Try escaped control characters next. */ }
 
     // Strategy 4: Try fixing common JSON issues — escaped newlines in strings
-    let fixed = substring
+    const fixed = substring
       .replace(/\n/g, '\\n')
       .replace(/\r/g, '\\r')
       .replace(/\t/g, '\\t');
     try {
       const fixedParsed = JSON.parse(fixed);
       if (fixedParsed && typeof fixedParsed === 'object' && !Array.isArray(fixedParsed)) return fixedParsed;
-    } catch {}
+    } catch { /* Try a questions-only array next. */ }
   }
 
   // Strategy 5: Try to find JSON arrays (in case response is just the questions array)
@@ -296,7 +335,7 @@ export function extractJsonFromContent(content: string): Record<string, unknown>
       if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'object') {
         return { questions: arr, title: 'Generated Exam', instructions: [] };
       }
-    } catch {}
+    } catch { /* No usable structured response was returned. */ }
   }
 
   return null;
@@ -308,7 +347,260 @@ function parseJsonObject(content: string): Record<string, unknown> {
   throw new DeepSeekResponseError('The AI response could not be parsed as the requested structured JSON. Please try again.');
 }
 
-export async function generateExamWithDeepSeek(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
+function candidateQuestionUsable(question: GeneratedExamQuestion | undefined, slot: ExamBlueprintSlot): boolean {
+  if (!question || !questionMatchesBlueprintSlot(question, slot) || questionLacksAnswer(question)) return false;
+  if (question.question_type !== 'multiple_choice') return true;
+  const options = question.options || [];
+  if (options.length !== 4 || new Set(options.map((option) => option.trim().toLowerCase())).size !== 4) return false;
+  const answer = question.correct_answer.trim().toLowerCase().replace(/^(?:[a-h][.)]|\([a-h]\))\s*/i, '').trim();
+  return options.some((option, index) => answer === option.trim().toLowerCase() || answer === String.fromCharCode(97 + index));
+}
+
+function missingBlueprintSlots(request: ExamGenerationRequest, questions: Array<GeneratedExamQuestion | undefined>): ExamBlueprintSlot[] {
+  const slots = getExamBlueprintSlots(request);
+  return slots.filter((slot, index) => !candidateQuestionUsable(questions[index], slot));
+}
+
+/**
+ * Place provider items by their complete slot identity first. A section id is
+ * intentionally not sufficient because a section commonly contains 20–50
+ * repeated MCQ slots. Unannotated provider output remains positional for
+ * backwards compatibility, but an explicitly indexed item is never reused.
+ */
+function alignQuestionsToSlots(slots: ExamBlueprintSlot[], candidates: GeneratedExamQuestion[]): Array<GeneratedExamQuestion | undefined> {
+  const byKey = new Map<string, GeneratedExamQuestion[]>();
+  const byNumber = new Map<number, GeneratedExamQuestion[]>();
+  const used = new Set<GeneratedExamQuestion>();
+  const push = <K,>(map: Map<K, GeneratedExamQuestion[]>, key: K, question: GeneratedExamQuestion) => {
+    const existing = map.get(key) || [];
+    existing.push(question);
+    map.set(key, existing);
+  };
+  candidates.forEach((question) => {
+    const id = questionBlueprintId(question);
+    const itemIndex = questionBlueprintItemIndex(question);
+    const questionNumber = questionBlueprintNumber(question);
+    if (id && itemIndex !== null) push(byKey, `${id}:${itemIndex}`, question);
+    if (questionNumber !== null) push(byNumber, questionNumber, question);
+  });
+  const result: Array<GeneratedExamQuestion | undefined> = [];
+  let positionalCursor = 0;
+  const nextUnused = (pool: GeneratedExamQuestion[] | undefined): GeneratedExamQuestion | undefined => {
+    const question = pool?.find((candidate) => !used.has(candidate));
+    if (question) used.add(question);
+    return question;
+  };
+  for (const slot of slots) {
+    let question = nextUnused(byKey.get(blueprintSlotKey(slot)));
+    if (!question) question = nextUnused(byNumber.get(slot.questionNumber));
+    if (!question) {
+      while (positionalCursor < candidates.length) {
+        const candidate = candidates[positionalCursor++];
+        if (used.has(candidate)) continue;
+        const id = questionBlueprintId(candidate);
+        const itemIndex = questionBlueprintItemIndex(candidate);
+        const questionNumber = questionBlueprintNumber(candidate);
+        // A provider that declared an incompatible identity must not be moved
+        // into another slot just to make the paper appear complete.
+        if (id || itemIndex !== null || questionNumber !== null) continue;
+        used.add(candidate);
+        question = candidate;
+        break;
+      }
+    }
+    result.push(question);
+  }
+  return result;
+}
+
+export function buildBlueprintRecoveryPrompt(
+  request: ExamGenerationRequest,
+  slots: ExamBlueprintSlot[],
+  existingCount: number,
+): string {
+  return `Return JSON only as {"questions":[...]} for the missing or invalid slots below. This is a focused recovery for a ${request.gradeLevel} ${request.subject} paper; do not rewrite or renumber the existing ${existingCount} valid questions. Generate exactly one question per listed slot, in the listed order.\n\nExact slots:\n${slots.map(describeBlueprintSlot).join('\n')}\n\nHard contract:\n- Copy blueprint_section_id, blueprint_section_title, blueprint_item_index, and blueprint_question_number exactly from each slot.\n- Use exactly the listed question_type and marks. Never substitute another component, type, or mark value.\n- Include a real correct_answer and a marking_scheme containing the answer, not marking instructions alone.\n- Multiple-choice slots must have exactly four distinct options and correct_answer must match exactly one option or its A-D letter.\n- Structured sub-part marks must sum to the parent marks.\n- Keep question text complete; do not shorten literary passages or practical instructions.\n- Use visual_spec null unless the question genuinely requires a visual; never fabricate a scientific diagram or image URL.\n- Use the selected curriculum hierarchy only: ${request.strands.join('; ')} / ${request.subStrands.join('; ') || 'selected child sub-strands'} / ${request.topics.join('; ') || 'selected child topics'}.`;
+}
+
+async function requestFocusedBlueprintRecovery(
+  endpoint: string,
+  apiKey: string,
+  model: string,
+  request: ExamGenerationRequest,
+  current: GeneratedExamQuestion[],
+  knowledgeContext: string,
+  deadlineAt: number,
+): Promise<GeneratedExamQuestion[] | null> {
+  const slots = getExamBlueprintSlots(request);
+  const working: Array<GeneratedExamQuestion | undefined> = alignQuestionsToSlots(slots, current);
+  for (let round = 1; round <= 2; round += 1) {
+    if (Date.now() >= deadlineAt) return null;
+    const missing = missingBlueprintSlots(request, working);
+    if (!missing.length) return working.map((question, index) => bindQuestionToSlot(question!, slots[index]));
+    const prompt = `${buildBlueprintRecoveryPrompt(request, missing, working.filter(Boolean).length)}\n\nVetted curriculum context:\n${knowledgeContext || 'Use the selected curriculum only.'}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), Math.max(1,Math.min(45000,deadlineAt-Date.now())));
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: 'You are a strict JSON API. Return only a parseable JSON object.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.25,
+          max_tokens: Math.min(20000, Math.max(4000, missing.length * 420)),
+          stream: false,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+      const raw = await response.text().catch(() => '');
+      if (!response.ok || !raw.trim()) continue;
+      let payload: DeepSeekResponse;
+      try { payload = JSON.parse(raw) as DeepSeekResponse; } catch { continue; }
+      const recoveredObject = extractJsonFromContent(readMessageContent(payload));
+      const recovered = Array.isArray(recoveredObject?.questions)
+        ? recoveredObject.questions.map((entry) => normalizeQuestion(entry, missing[0]?.questionType || request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
+        : [];
+      if (!recovered.length) continue;
+      const recoveredBySlot = alignQuestionsToSlots(missing, recovered);
+      for (const [index, slot] of missing.entries()) {
+        const candidate = recoveredBySlot[index];
+        if (candidate && candidateQuestionUsable(candidate, slot)) {
+          working[slot.questionNumber - 1] = bindQuestionToSlot(candidate, slot);
+        }
+      }
+    } catch (error) {
+      console.warn('[exam-gen] focused blueprint recovery failed:', error instanceof Error ? error.message.slice(0, 180) : 'unknown failure');
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (round < 2) await waitBeforeRetry(round);
+  }
+  return missingBlueprintSlots(request, working).length ? null : working as GeneratedExamQuestion[];
+}
+
+function chunkBlueprintSlots(slots: ExamBlueprintSlot[]): ExamBlueprintSlot[][] {
+  const chunks: ExamBlueprintSlot[][] = [];
+  let cursor = 0;
+  while (cursor < slots.length) {
+    const sectionIndex = slots[cursor].sectionIndex;
+    const sectionEnd = slots.slice(cursor).findIndex((slot) => slot.sectionIndex !== sectionIndex);
+    const end = sectionEnd === -1 ? slots.length : cursor + sectionEnd;
+    const sectionSlots = slots.slice(cursor, end);
+    const passageSection = /reading comprehension|ufahamu wa kusoma|four passages/i.test(sectionSlots[0]?.title || '');
+    if (passageSection) {
+      for (let offset = 0; offset < sectionSlots.length; offset += 5) chunks.push(sectionSlots.slice(offset, offset + 5));
+      cursor = end;
+      continue;
+    }
+    if (sectionSlots.length > 10) {
+      for (let offset = 0; offset < sectionSlots.length; offset += 10) chunks.push(sectionSlots.slice(offset, offset + 10));
+      cursor = end;
+      continue;
+    }
+
+    // Small adjacent component sections (for example Science Q31–Q40 or the
+    // five English literary tasks) share a request up to ten slots. Never
+    // split a section across this grouping, preserving every component id.
+    let groupEnd = end;
+    while (groupEnd < slots.length) {
+      const nextSection = slots[groupEnd].sectionIndex;
+      const nextRelativeEnd = slots.slice(groupEnd).findIndex((slot) => slot.sectionIndex !== nextSection);
+      const nextEnd = nextRelativeEnd === -1 ? slots.length : groupEnd + nextRelativeEnd;
+      if (nextEnd - cursor > 10) break;
+      groupEnd = nextEnd;
+    }
+    chunks.push(slots.slice(cursor, groupEnd));
+    cursor = groupEnd;
+  }
+  return chunks;
+}
+
+async function generateLargeBlueprintInChunks(
+  request: ExamGenerationRequest,
+  knowledgeContext: string,
+  endpoint: string,
+  apiKey: string,
+  model: string,
+  fallbackModel: string,
+  deadlineAt: number,
+): Promise<GeneratedExamQuestion[]> {
+  const slots = getExamBlueprintSlots(request);
+  const chunks = chunkBlueprintSlots(slots);
+  const basePrompt = buildExamPrompt(request, knowledgeContext);
+  const results: Array<GeneratedExamQuestion[] | null> = Array.from({ length: chunks.length }, () => null);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const chunkIndex = next++;
+      if (chunkIndex >= chunks.length) return;
+      const chunk = chunks[chunkIndex];
+      const chunkContract = `\n\nFOCUSED COMPONENT CHUNK ${chunkIndex + 1}/${chunks.length}: Return exactly ${chunk.length} questions for these slots only, in this order. Do not return any other slot. Passage groups must remain complete within this chunk; use the original passage as the shared stimulus for its requested items. Do not attempt whole-paper strand coverage within this chunk; use only each slot's own component scope.\n${chunk.map(describeBlueprintSlot).join('\n')}`;
+      const chunkPrompt = `${basePrompt}${chunkContract}`;
+      let recovered: GeneratedExamQuestion[] | null = null;
+      for (const chunkModel of [model, fallbackModel]) {
+        for (let attempt = 1; attempt <= 2 && !recovered; attempt += 1) {
+          if (Date.now() >= deadlineAt) break;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), Math.max(1,Math.min(45000,deadlineAt-Date.now())));
+          try {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+              body: JSON.stringify({
+                model: chunkModel,
+                messages: [
+                  { role: 'system', content: 'You are a strict JSON API. Return only a parseable JSON object.' },
+                  { role: 'user', content: `${chunkPrompt}\n\nThis is chunk attempt ${attempt}; output all ${chunk.length} slots now.` },
+                ],
+                temperature: attempt === 1 ? 0.45 : 0.25,
+                max_tokens: Math.min(12000, Math.max(4000, chunk.length * 520)),
+                stream: false,
+                response_format: { type: 'json_object' },
+              }),
+              signal: controller.signal,
+            });
+            const raw = await response.text().catch(() => '');
+            if (!response.ok || !raw.trim()) continue;
+            let payload: DeepSeekResponse;
+            try { payload = JSON.parse(raw) as DeepSeekResponse; } catch { continue; }
+            const object = extractJsonFromContent(readMessageContent(payload));
+            const candidate = Array.isArray(object?.questions)
+              ? object.questions.map((entry) => normalizeQuestion(entry, chunk[0].questionType, fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
+              : [];
+            if (candidate.length !== chunk.length) continue;
+            const ordered: GeneratedExamQuestion[] = [];
+            const aligned = alignQuestionsToSlots(chunk, candidate);
+            for (const [index, slot] of chunk.entries()) {
+              const question = aligned[index];
+              if (!candidateQuestionUsable(question, slot)) {
+                ordered.length = 0;
+                break;
+              }
+              ordered.push(bindQuestionToSlot(question!, slot));
+            }
+            if (ordered.length === chunk.length) recovered = ordered;
+          } catch (error) {
+            console.warn(`[exam-gen] chunk ${chunkIndex + 1} failed:`, error instanceof Error ? error.message.slice(0, 160) : 'unknown failure');
+          } finally {
+            clearTimeout(timeoutId);
+          }
+        }
+      }
+      results[chunkIndex] = recovered;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, () => worker()));
+  if (results.some((result) => !result)) {
+    throw new DeepSeekResponseError('The provider could not complete every bounded blueprint component chunk; no shortened paper was accepted.');
+  }
+  return results.flatMap((result) => result || []);
+}
+
+export async function generateExamWithDeepSeek(request: ExamGenerationRequest, knowledgeContext = '', deadlineAt = Date.now()+190000): Promise<ExamPaper> {
   // Prefer the explicitly configured DeepSeek credential in production. The platform
   // may also expose an OpenAI-compatible proxy key, but that proxy catalog does not
   // contain DeepSeek model IDs and can return an empty 200 response for them.
@@ -340,6 +632,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
 
   const prompt = buildExamPrompt(request, knowledgeContext);
   let parsed: Record<string, unknown> | null = null;
+  let acceptedQuestions: GeneratedExamQuestion[] | null = null;
   let lastFailure = '';
   const standardTokenBudget = outputTokenBudget(request);
   const attemptPlans = [
@@ -348,7 +641,24 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     { model: fallbackModel, maxTokens: Math.min(20000, standardTokenBudget + 8000), useJsonMode: false },
   ];
 
+  // Large fixed papers routinely exceed a single provider response budget. Keep
+  // every component and slot explicit, generate at most ten items per chunk,
+  // and run no more than three provider calls concurrently.
+  if (hasFixedBlueprint(request) && getExamBlueprintSlots(request).length > 24) {
+    acceptedQuestions = await generateLargeBlueprintInChunks(
+      request,
+      knowledgeContext,
+      endpoint,
+      apiKey,
+      modelName,
+      fallbackModel,
+      deadlineAt,
+    );
+    parsed = { title: makeExamTitle(request), instructions: ['Answer all questions.'] };
+  }
+
   for (let attempt = 0; attempt < attemptPlans.length && !parsed; attempt += 1) {
+    if (Date.now() >= deadlineAt) { lastFailure='The shared generation time budget was exhausted; no shortened paper was saved.'; break; }
     const plan = attemptPlans[attempt];
     const retryInstruction = attempt === 0
       ? ''
@@ -371,7 +681,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     const body = JSON.stringify(requestPayload);
     console.log('[exam-gen] attempt:', attempt + 1, 'model:', plan.model, 'request body length:', body.length, 'max_tokens:', plan.maxTokens);
 
-    const timeoutMs = attempt === 0 ? 70000 : attempt === 1 ? 70000 : 90000;
+    const timeoutMs = Math.max(1,Math.min(attempt === 0 ? 70000 : attempt === 1 ? 70000 : 90000,deadlineAt-Date.now()));
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -410,6 +720,14 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
         ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
         : [];
       if (!candidateQuestions.length) throw new DeepSeekResponseError('The AI service did not provide any valid questions.');
+      let completeQuestions = candidateQuestions;
+      if (hasFixedBlueprint(request)) {
+        const recovered = await requestFocusedBlueprintRecovery(endpoint, apiKey, plan.model, request, candidateQuestions, knowledgeContext,deadlineAt);
+        if (!recovered) {
+          throw new DeepSeekResponseError(`The AI service returned ${candidateQuestions.length} questions, but the fixed blueprint requires ${getExamBlueprintSlots(request).length}; focused recovery could not fill every slot.`);
+        }
+        completeQuestions = recovered;
+      }
       // An incomplete visual no longer discards the whole paper: the repair pass
       // completes it or removes just that visual from that one question.
       const incompleteVisuals = candidateQuestions.filter(
@@ -419,6 +737,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
       if (incompleteVisuals) {
         console.warn(`[exam-gen] ${incompleteVisuals} question(s) returned an incomplete visual; the repair pass will handle them.`);
       }
+      acceptedQuestions = completeQuestions;
       parsed = candidate;
     } catch (error) {
       lastFailure = error instanceof Error && error.name === 'AbortError'
@@ -439,17 +758,16 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
     throw new DeepSeekResponseError(`The AI service did not return a usable exam response after three attempts. Please retry; your selected blueprint and curriculum choices were not lost.${detail}`);
   }
   const fallbackType = request.questionTypes[0] || 'multiple_choice';
-  const normalizedQuestions = Array.isArray(parsed.questions)
+  const normalizedQuestions = acceptedQuestions || (Array.isArray(parsed.questions)
     ? parsed.questions.map((entry) => normalizeQuestion(entry, fallbackType, fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
-    : [];
+    : []);
   const blueprintAlignedQuestions = reconcileQuestionMarks(request, normalizedQuestions);
 
   if (!blueprintAlignedQuestions.length) {
     throw new DeepSeekResponseError('The AI service did not provide any valid questions. Please try again with a narrower curriculum selection.');
   }
 
-  const targetQuestionLimit = Math.min(60, Math.max(3, Math.ceil(request.totalMarks / 1)));
-  const questions = blueprintAlignedQuestions.slice(0, targetQuestionLimit).map((question, index) => ({ ...question, question_number: index + 1 }));
+  const questions = blueprintAlignedQuestions.map((question, index) => ({ ...question, question_number: index + 1 }));
   const computedMarks = questions.reduce((sum, question) => sum + question.marks, 0);
 
   return {
@@ -481,7 +799,7 @@ export function parseRepairedQuestion(
   return normalizeQuestion(candidate, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request));
 }
 
-function repairEndpoint(useDeepSeek: boolean, apiKey: string): string {
+function repairEndpoint(useDeepSeek: boolean): string {
   return useDeepSeek
     ? `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`
     : `${(process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`;
@@ -502,16 +820,17 @@ function repairModel(useDeepSeek: boolean): string {
  * instruction. Returns null on any provider problem: a repair that cannot be
  * attempted must degrade to a drop, never to a failed paper.
  */
-export async function rewriteQuestionWithDeepSeek(prompt: string): Promise<Record<string, unknown> | null> {
+export async function rewriteQuestionWithDeepSeek(prompt: string, deadlineAt = Date.now()+30000): Promise<Record<string, unknown> | null> {
+  if(Date.now()>=deadlineAt)return null;
   const deepSeekKey = process.env.DEEPSEEK_API_KEY;
   const apiKey = deepSeekKey || process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   const useDeepSeek = Boolean(deepSeekKey);
   const model = repairModel(useDeepSeek);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), Math.max(1,Math.min(30000,deadlineAt-Date.now())));
   try {
-    const response = await fetch(repairEndpoint(useDeepSeek, apiKey), {
+    const response = await fetch(repairEndpoint(useDeepSeek), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({

@@ -49,13 +49,19 @@ const weakDiagram = question('Study the diagram below and identify the labelled 
 });
 if (hasUsableVisualSpec(weakDiagram)) throw new Error('A diagram without structured labels was incorrectly accepted.');
 
-const explicitMap = question('Use the map below to identify the county bordering the lake.', {
+const explicitMap = question('Use the map below to identify the countries bordering Lake Victoria.', {
   asset_type: 'map',
-  title: 'Lake Region Map',
-  caption: 'Schematic map of the lake region.',
-  map_regions: ['Lake Victoria', 'County A', 'County B'],
+  title: 'East Africa and Lake Victoria',
+  base_map: 'east_africa',
+  caption: 'Country boundaries and a labelled reference lake.',
+  map_regions: ['Lake Victoria', 'Kenya', 'Uganda', 'Tanzania'],
+  legend: ['Hatch: named focus country', 'Line: country boundary'],
+  scale_text: '≈ 500 km (indicative)',
+  compass: 'North',
 });
 if (!shouldKeepExamVisual(explicitMap)) throw new Error('Explicit map question was suppressed.');
 if (!hasUsableVisualSpec(explicitMap)) throw new Error('A map with named regions was incorrectly rejected.');
+const fakeCountyMap=question('Identify County A on the county map.',{...explicitMap.visual_spec!,title:'County map',map_regions:['County A','County B']});
+if(hasUsableVisualSpec(fakeCountyMap)||renderExamVisualDataUrl(fakeCountyMap))throw new Error('Country geometry must never be used to invent county maps.');
 
 console.log('Visual policy regression checks passed.');

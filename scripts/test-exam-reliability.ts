@@ -84,11 +84,90 @@ try {
     format: 'kjsea',
     blueprint: makeFormatBlueprint('kjsea', 10, 'mixed'),
   };
+  globalThis.fetch = (async (_input, init) => {
+    calls += 1;
+    if (typeof init?.body === 'string') requestBodies.push(JSON.parse(init.body) as Record<string, unknown>);
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+      title: 'Structured recovery', instructions: ['Answer all questions.'], questions: [{
+        question_type: 'case_study', question_text: 'Describe one safe measurement practice in the laboratory.',
+        correct_answer: 'Read the scale at eye level and record the unit.',
+        marking_scheme: 'Award marks for reading at eye level and recording the correct unit.', marks: 10,
+        difficulty: 'medium', strand: 'Numbers', sub_strand: 'Integers', topic: 'Ordering integers',
+      }],
+    }) } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
   const kjseaPaper = await generateExamWithDeepSeek(kjseaRequest, 'Integrated Science: Scientific investigation and measurement.');
   assert.equal(kjseaPaper.questions.length, 1, 'the KJSEA blueprint should request one main structured question');
-  assert.equal(kjseaPaper.questions[0]?.marks, 10, 'the KJSEA blueprint should reconcile the main-question mark value');
-  assert.equal(kjseaPaper.total_marks, 10, 'the reconciled KJSEA paper should total exactly the requested marks');
-  console.log('PASS: KJSEA blueprint reconciliation preserves exact main-question marks.');
+  assert.equal(kjseaPaper.questions[0]?.marks, 10, 'the KJSEA blueprint should preserve the provider slot mark value');
+  assert.equal(kjseaPaper.total_marks, 10, 'the exact KJSEA paper should total exactly the requested marks');
+  assert.equal(kjseaPaper.questions[0]?.question_type, 'case_study', 'a fixed structured slot must not accept an MCQ substitute');
+  console.log('PASS: KJSEA fixed blueprint preserves exact structured type and marks without forging them.');
+
+  function chunkResponse(init: RequestInit | undefined, strand: string, subStrand: string, topic: string): Response {
+    const body = JSON.parse(String(init?.body || '{}')) as { messages?: Array<{ content?: string }> };
+    const prompt = body.messages?.[1]?.content || '';
+    const slots = Array.from(prompt.matchAll(/\n(\d+)\.\s+([^ |]+)\s+\|/g)).map((match) => ({ number: Number(match[1]), id: match[2] }));
+    const questions = slots.map(({ number, id }) => ({
+      question_type: 'multiple_choice',
+      blueprint_section_id: id,
+      blueprint_question_number: number,
+      question_text: `Which statement best answers item ${number}?`,
+      options: ['A', 'B', 'C', 'D'], correct_answer: 'A',
+      marking_scheme: `Award 1 mark for selecting A for item ${number}.`, marks: 1,
+      difficulty: 'medium', strand, sub_strand: subStrand, topic,
+    }));
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ title: 'Chunked paper', instructions: ['Answer all questions.'], questions }) } }] }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  calls = 0;
+  requestBodies.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    calls += 1;
+    assert.match(String(input), /exam-generator\.test/, 'chunk tests must use only the mocked endpoint');
+    if (typeof init?.body === 'string') requestBodies.push(JSON.parse(init.body) as Record<string, unknown>);
+    return chunkResponse(init, 'Language', 'Grammar', 'Language use');
+  }) as typeof fetch;
+  const all50Request: ExamGenerationRequest = {
+    ...request, title: 'English Paper 1 all-50 chunk test', subject: 'English', gradeLevel: 'Grade 9',
+    strands: ['Language'], subStrands: ['Grammar'], topics: ['Language use'], questionTypes: ['multiple_choice'],
+    totalMarks: 50, format: 'kjsea', paperVariant: 'paper1', includeImages: false,
+    blueprint: makeKjseaBlueprint('English', 'paper1', 'medium'),
+  };
+  const all50Paper = await generateExamWithDeepSeek(all50Request, 'English: grammar and language use.');
+  const all50Validation = validateGeneratedExam(all50Request, all50Paper.questions);
+  assert.equal(all50Paper.questions.length, 50, 'chunked English Paper 1 must retain all 50 MCQ slots');
+  assert.equal(all50Paper.total_marks, 50);
+  assert.equal(all50Validation.passed, true, `all 50 MCQs should pass validation: ${JSON.stringify(all50Validation.issues)}`);
+  assert.equal(new Set(all50Paper.questions.map((item) => item.question_text)).size, 50, 'each repeated-section slot must retain a unique item');
+  assert.deepEqual(all50Paper.questions.map((item) => (item as GeneratedExamQuestion & { blueprint_question_number?: number }).blueprint_question_number), Array.from({ length: 50 }, (_, index) => index + 1));
+  assert.equal(calls, 8, 'the four five-item reading chunks plus remaining components should be bounded into eight calls');
+  console.log('PASS: mocked DeepSeek chunking keeps all 50 English MCQs, scope tags, marks and indexes without network access.');
+
+  calls = 0;
+  requestBodies.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    calls += 1;
+    assert.match(String(input), /exam-generator\.test/);
+    if (typeof init?.body === 'string') requestBodies.push(JSON.parse(init.body) as Record<string, unknown>);
+    return chunkResponse(init, 'Numbers', 'Integers', 'Ordering integers');
+  }) as typeof fetch;
+  const cbe100Request: ExamGenerationRequest = {
+    ...request, title: '100-question CBE chunk test', subject: 'Mathematics',
+    strands: ['Numbers'], subStrands: ['Integers'], topics: ['Ordering integers'], questionTypes: ['multiple_choice'],
+    totalMarks: 100, durationMinutes: 120, format: 'cbe', includeImages: false,
+    blueprint: { sections: [{ id: 'cbe-mcq', title: 'CBE objective questions', question_type: 'multiple_choice', count: 100, marks_per_question: 1, difficulty: 'medium' }], total_marks: 100 },
+  };
+  const cbe100Paper = await generateExamWithDeepSeek(cbe100Request, 'Mathematics: numbers and integers.');
+  const cbe100Validation = validateGeneratedExam(cbe100Request, cbe100Paper.questions);
+  assert.equal(cbe100Paper.questions.length, 100, '100-question CBE must retain every repeated-section slot');
+  assert.equal(cbe100Paper.total_marks, 100);
+  assert.equal(cbe100Validation.passed, true, `100-question CBE should pass validation: ${JSON.stringify(cbe100Validation.issues)}`);
+  assert.equal(new Set(cbe100Paper.questions.map((item) => item.question_text)).size, 100);
+  assert.deepEqual(cbe100Paper.questions.map((item) => (item as GeneratedExamQuestion & { blueprint_question_number?: number }).blueprint_question_number), Array.from({ length: 100 }, (_, index) => index + 1));
+  assert.equal(calls, 10, 'a 100-item section should use ten bounded ten-slot calls');
+  console.log('PASS: mocked DeepSeek 100-question CBE chunking preserves all unique repeated-section slots.');
 
   const sciencePaper1 = makeKjseaBlueprint('Integrated Science', 'paper1', 'mixed');
   assert.ok(sciencePaper1, 'Integrated Science Paper 1 should have a KJSEA blueprint');

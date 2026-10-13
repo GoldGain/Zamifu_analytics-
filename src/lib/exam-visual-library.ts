@@ -2,7 +2,9 @@
  * Curated printable black-and-white diagram library for the exam generator.
  * Drawn locally as SVG so no paper depends on an external image service, and
  * stored on a question only as a key so a saved paper is always re-renderable.
- * These are teaching schematics, not survey-accurate maps or scale drawings.
+ * Country-level maps are rendered by exam-visuals.ts from embedded geometry;
+ * the legacy map keys below are retained only for old records and never emit
+ * their former schematic SVG payloads.
  */
 import type { GeneratedExamQuestion } from './exam-schema.js';
 import { isSocialStudiesSubject, normalizeKey } from './exam-construction.js';
@@ -125,7 +127,10 @@ export function curatedVisual(key: string): CuratedVisual | null {
 }
 export function curatedVisualDataUrl(key: string): string | null {
   const visual = curatedVisual(key);
-  if (!visual) return null;
+  // The old map_* artwork had invented shapes and labels. Do not let a saved
+  // legacy key silently resurrect it; structured map specs use the deterministic
+  // Natural Earth renderer in exam-visuals.ts instead.
+  if (!visual || visual.assetType === 'map') return null;
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(visual.svg);
 }
 const VISUAL_REFERENCE = /\b(?:diagram|figure|map|graph|chart|table|illustration|picture|image|photograph|flowchart|sketch|drawing|number line|shown below|study the)\b/i;
@@ -141,6 +146,7 @@ export function pickCuratedVisualKey(question: GeneratedExamQuestion, subject = 
   const social = isSocialStudiesSubject(subject);
   let best: { key: string; score: number } | null = null;
   for (const visual of CURATED_VISUALS) {
+    if (visual.assetType === 'map' && !social) continue;
     if (social && visual.assetType !== 'map' && visual.assetType !== 'diagram') continue;
     let score = 0;
     for (const keyword of visual.keywords) {
@@ -154,7 +160,7 @@ export function pickCuratedVisualKey(question: GeneratedExamQuestion, subject = 
 function hasUsableSpec(question: GeneratedExamQuestion): boolean {
   const spec = question.visual_spec as Record<string, unknown> | null | undefined;
   if (!spec) return false;
-  if (spec.curated_key) return true;
+  if (spec.curated_key && !String(spec.curated_key).startsWith('map_')) return true;
   const tableRows = spec.table_rows || spec.rows || spec.data;
   if (Array.isArray(tableRows) && tableRows.length) return true;
   if (Array.isArray(spec.map_regions) && spec.map_regions.length) return true;
@@ -164,8 +170,9 @@ function hasUsableSpec(question: GeneratedExamQuestion): boolean {
 }
 export function applyCuratedVisualFallback(question: GeneratedExamQuestion, subject = ''): GeneratedExamQuestion {
   const spec = question.visual_spec as Record<string, unknown> | null | undefined;
+  const legacyMapKey = String(spec?.curated_key || '').startsWith('map_');
   const socialMap = isSocialStudiesSubject(subject)
-    && (String(spec?.asset_type || '').toLowerCase() === 'map' || String(spec?.curated_key || '').startsWith('map_'));
+    && (String(spec?.asset_type || '').toLowerCase() === 'map' || legacyMapKey || (!spec && /\bmap\b/i.test(questionHaystack(question))));
   if (socialMap) {
     const descriptor = [question.question_text, question.strand, question.sub_strand, question.topic, spec?.title, spec?.prompt, spec?.caption].filter(Boolean).join(' ');
     const baseMap = inferExamMapBase(spec?.base_map || descriptor);
@@ -190,11 +197,11 @@ export function applyCuratedVisualFallback(question: GeneratedExamQuestion, subj
         base_map: baseMap,
         map_regions: mapRegions,
         legend: Array.isArray(spec?.legend) && spec.legend.length >= 2 ? spec.legend : [
-          'Dark fill: named focus region',
+          'Hatch: focus region',
           'Line: country boundary',
-          'Arrow: north; bar: approximate distance',
+          'North arrow; approx. bar',
         ],
-        scale_text: String(spec?.scale_text || (baseMap === 'kenya' ? '≈ 200 km' : baseMap === 'africa' ? '≈ 1,000 km' : '≈ 500 km')),
+        scale_text: String(spec?.scale_text || (baseMap === 'kenya' ? '≈ 200 km (indicative)' : baseMap === 'africa' ? '≈ 1,500 km (indicative)' : '≈ 500 km (indicative)')),
         compass: String(spec?.compass || 'North'),
       },
     };

@@ -1,5 +1,6 @@
 import { normalizePaperVariant, paperVariantLabel, supportsTwoPapers } from './exam-construction.js';
 import { getKjseaPaperSpec } from './kjsea-paper-formats.js';
+import { gradeFormatError } from './exam-grade-policy.js';
 
 export const CBC_QUESTION_TYPES = [
   { value: 'multiple_choice', label: 'Multiple Choice', defaultMarks: 1 },
@@ -154,7 +155,10 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   if (!cleanText(request.subject)) errors.push('Select a subject.');
   if (!request.strands.length) errors.push('Select an official curriculum scope before generating.');
   if (!request.questionTypes.length) errors.push('Select at least one question type.');
-  if (request.totalMarks < 5 || request.totalMarks > 200) errors.push('Total marks must be between 5 and 200.');
+  const formatError = gradeFormatError(request.gradeLevel, request.format);
+  if (formatError) errors.push(formatError);
+  const singleQuestionReplacement = request.format === 'custom' && request.blueprint?.sections.reduce((sum, section) => sum + section.count, 0) === 1;
+  if (!Number.isInteger(request.totalMarks) || request.totalMarks < (singleQuestionReplacement ? 1 : 5) || request.totalMarks > 200) errors.push(`Total marks must be a whole number between ${singleQuestionReplacement ? 1 : 5} and 200.`);
   const kjseaProjectDuration = request.format === 'kjsea'
     && getKjseaPaperSpec(request.subject, normalizePaperVariant(request.paperVariant))?.duration_minutes === 0;
   if ((!kjseaProjectDuration && request.durationMinutes < 10) || request.durationMinutes > 240) {
@@ -166,14 +170,18 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
     if (request.totalMarks !== expectedMarks) errors.push(`This KJSEA paper must total exactly ${expectedMarks} marks.`);
   }
   const variant = normalizePaperVariant(request.paperVariant);
-  if (variant !== 'single' && !supportsTwoPapers(request.subject)) {
+  if (request.format === 'kjsea' && variant !== 'single' && !supportsTwoPapers(request.subject)) {
     errors.push('Paper 1 and Paper 2 are available only for subjects with an official two-paper KJSEA structure.');
+  }
+  if (request.format === 'kjsea' && variant === 'single' && supportsTwoPapers(request.subject)) {
+    errors.push('Select Paper 1 or Paper 2. The two national papers must be generated separately, not combined into one paper.');
   }
   if (request.blueprint) {
     if (!request.blueprint.sections.length) errors.push('Add at least one blueprint section.');
     const blueprintTotal = request.blueprint.sections.reduce((sum, section) => sum + section.count * section.marks_per_question, 0);
     if (blueprintTotal !== request.totalMarks) errors.push(`Blueprint marks (${blueprintTotal}) must equal the requested total (${request.totalMarks}).`);
-    if (request.blueprint.sections.some((section) => section.count < 1 || section.marks_per_question < 1)) errors.push('Blueprint sections must have positive item counts and marks.');
+    if (request.blueprint.sections.some((section) => !Number.isInteger(section.count) || !Number.isInteger(section.marks_per_question) || section.count < 1 || section.marks_per_question < 1 || section.marks_per_question > 30)) errors.push('Blueprint sections must have positive whole item counts and marks (maximum 30 per question).');
+    if (request.blueprint.sections.some((section) => section.question_type === 'multiple_choice' && section.marks_per_question !== 1)) errors.push('Single-answer multiple-choice questions must carry exactly one mark.');
   }
   return errors;
 }
@@ -289,6 +297,9 @@ export function makeBalancedBlueprint(questionTypes: QuestionType[], totalMarks:
   while (delta !== 0) {
     let changed = false;
     for (const index of adjustmentOrder) {
+      // A distractor-selection MCQ is always one mark. Allocate any remainder
+      // to a constructed-response item rather than making an MCQ multi-mark.
+      if (items[index].type === 'multiple_choice') continue;
       if (delta > 0 && items[index].marks < 30) {
         items[index].marks += 1;
         delta -= 1;

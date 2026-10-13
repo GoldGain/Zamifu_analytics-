@@ -135,9 +135,9 @@ function defaultMapRegions(base: ExamMapBase): string[] {
 }
 
 function mapScaleText(base: ExamMapBase): string {
-  if (base === 'kenya') return '≈ 200 km';
-  if (base === 'africa') return '≈ 1,000 km';
-  return '≈ 500 km';
+  if (base === 'kenya') return '≈ 200 km (indicative)';
+  if (base === 'africa') return '≈ 1,500 km (indicative)';
+  return '≈ 500 km (indicative)';
 }
 
 function mapFeaturesForBase(base: ExamMapBase): ExamMapFeature[] {
@@ -151,16 +151,24 @@ function normalizeMapSpec(spec: ExamVisualSpec, question?: GeneratedExamQuestion
   const base = spec.base_map || inferExamMapBase(descriptor || question?.question_text || 'east Africa');
   const regions = (spec.map_regions || spec.labels || []).map(String).filter((value) => value.trim());
   const legend = (spec.legend || []).map(String).filter((value) => value.trim());
+  const title = String(spec.title || spec.caption || '').trim().replace(/\bschematic\b/gi, 'vector');
+  const caption = String(spec.caption || '').trim().replace(/\bschematic\b/gi, 'vector');
+  const rawScale = String(spec.scale_text || '').trim();
+  const scale = rawScale && /≈|approx(?:imate)?|indicative|not\s+to\s+scale/i.test(rawScale)
+    ? rawScale
+    : rawScale ? `${rawScale} (indicative)` : mapScaleText(base);
   return {
     ...spec,
     base_map: base,
+    ...(title ? { title } : {}),
+    ...(caption ? { caption } : {}),
     map_regions: regions,
     legend: legend.length >= 2 ? legend : [
-      'Dark fill: named focus region',
+      'Hatch: focus region',
       'Line: country boundary',
-      'Arrow: north; bar: approximate distance',
+      'North arrow; approx. bar',
     ],
-    scale_text: String(spec.scale_text || '').trim() || mapScaleText(base),
+    scale_text: scale,
     compass: String(spec.compass || '').trim() || 'North',
   };
 }
@@ -191,80 +199,157 @@ function featureCentroid(feature: ExamMapFeature): [number, number] {
 function matchesMapFeature(feature: ExamMapFeature, values: string[]): boolean {
   const aliases: Record<string, string[]> = {
     's sudan': ['south sudan'],
-    'dem rep congo': ['democratic republic of the congo', 'dr congo', 'congo kinshasa'],
-    'cote divoire': ['cote d ivoire', 'ivory coast'],
+    'dem rep congo': ['democratic republic of the congo', 'democratic republic of congo', 'dr congo', 'congo kinshasa'],
+    'cote d ivoire': ['cote divoire', 'cote d ivoire', 'ivory coast'],
   };
   const name = normalizedWords(feature.name);
   const names = [name, ...(aliases[name] || [])].map(normalizedWords);
   return values.some((value) => {
     const query = normalizedWords(value);
-    return query && names.some((candidate) => query === candidate || query.includes(candidate) || candidate.includes(query));
+    return query && names.includes(query);
   });
 }
 
-function mapReferencePoint(value: string, bounds: { west: number; east: number; south: number; north: number; x: number; y: number; width: number; height: number }): [number, number] | null {
+type MapBounds = { west: number; east: number; south: number; north: number; x: number; y: number; width: number; height: number };
+
+function mapReferencePoint(value: string, bounds: MapBounds): [number, number] | null {
   const query = normalizedWords(value);
-  if (query.includes('lake victoria')) return projectMapPoint([33.2, -1], bounds);
-  if (query.includes('mount kenya')) return projectMapPoint([37.3, -0.15], bounds);
-  if (query.includes('indian ocean')) return projectMapPoint([42.2, -2], bounds);
-  if (query === 'equator' || query.includes('equator')) return projectMapPoint([bounds.west + (bounds.east - bounds.west) * 0.62, 0], bounds);
-  if (query.includes('rift valley')) return projectMapPoint([36.1, -1], bounds);
+  if (query === 'lake victoria') return projectMapPoint([33.2, -1], bounds);
+  if (query === 'mount kenya') return projectMapPoint([37.3, -0.15], bounds);
+  if (query === 'indian ocean') return projectMapPoint([42.2, -2], bounds);
+  if (query === 'equator') return projectMapPoint([bounds.west + (bounds.east - bounds.west) * 0.62, 0], bounds);
+  if (query === 'rift valley') return projectMapPoint([36.1, -1], bounds);
   return null;
 }
 
-function renderMapReferenceOverlays(values: string[], bounds: { west: number; east: number; south: number; north: number; x: number; y: number; width: number; height: number }): string {
-  return values.flatMap((value) => {
-    const query = normalizedWords(value);
-    const point = mapReferencePoint(value, bounds);
-    if (query.includes('lake victoria') && point) {
-      return `<ellipse cx="${point[0]}" cy="${point[1]}" rx="17" ry="9" fill="#bfdbfe" stroke="#1d4ed8" stroke-width="1.5"/><text x="${point[0] + 20}" y="${point[1] + 3}" class="map-label">Lake Victoria</text>`;
-    }
-    if (query.includes('mount kenya') && point) {
-      return `<path d="M${point[0] - 7} ${point[1] + 6} L${point[0]} ${point[1] - 8} L${point[0] + 7} ${point[1] + 6} Z" fill="#64748b" stroke="#111827" stroke-width="1"/><text x="${point[0] + 10}" y="${point[1] + 3}" class="map-label">Mount Kenya</text>`;
-    }
-    if (query.includes('rift valley')) {
-      const start = projectMapPoint([36.7, 5], bounds);
-      const end = projectMapPoint([35.1, -5], bounds);
-      return `<path d="M${start[0]} ${start[1]} L${end[0]} ${end[1]}" fill="none" stroke="#b45309" stroke-width="1.5" stroke-dasharray="5 3"/><text x="${end[0] + 7}" y="${end[1] - 4}" class="map-label">Rift Valley</text>`;
-    }
-    if (query === 'equator' || query.includes('equator')) {
-      const start = projectMapPoint([bounds.west, 0], bounds);
-      const end = projectMapPoint([bounds.east, 0], bounds);
-      return `<path d="M${start[0]} ${start[1]} L${end[0]} ${end[1]}" fill="none" stroke="#15803d" stroke-width="1.2" stroke-dasharray="4 3"/><text x="${bounds.x + 6}" y="${start[1] - 4}" class="map-label">Equator</text>`;
-    }
-    if (query.includes('indian ocean') && point) return `<text x="${point[0] - 28}" y="${point[1]}" class="map-label">Indian Ocean</text>`;
-    return '';
-  }).join('');
+function mapTextClaimsUnsupportedDetail(value: string): boolean {
+  return /\bcount(?:y|ies)\b|sub[ -]?count(?:y|ies)|\bprovince|\bdistrict|topograph|contour|elevation|altitude|relief|hypsometric|road network|railway|river(?:s)?\b|capital cit(?:y|ies)|\btowns?\b/i.test(value);
 }
 
-function renderMap(spec: ExamVisualSpec): string {
-  const normalized = normalizeMapSpec(spec);
-  const base = normalized.base_map || 'east_africa';
-  const features = mapFeaturesForBase(base);
-  const requested = [...(normalized.map_regions || []), ...(normalized.map_features || []), ...(normalized.labels || [])];
+function uniqueMapTargets(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.map(String).map((value) => value.trim()).filter((value) => {
+    const key = normalizedWords(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isSupportedMapTarget(value: string, features: ExamMapFeature[], bounds: MapBounds): boolean {
+  return !mapTextClaimsUnsupportedDetail(value)
+    && wrapWords(value, 20).length <= 2
+    && (features.some((feature) => matchesMapFeature(feature, [value])) || Boolean(mapReferencePoint(value, bounds)));
+}
+
+/**
+ * The embedded geometry is country-level Natural Earth data plus four explicitly
+ * positioned East African references. It is not a county, road, river, or
+ * topographic data set, so unsupported claims must fail rather than receiving a
+ * guessed marker or a generic placeholder.
+ */
+export function isSupportedExamMapSpec(question: GeneratedExamQuestion): boolean {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  if (String(spec.asset_type || '').toLowerCase() !== 'map') return false;
+  const base = String(spec.base_map || '').toLowerCase() as ExamMapBase;
+  if (!['kenya', 'east_africa', 'africa'].includes(base)) return false;
+  const descriptor = [question.question_text, spec.title, spec.prompt, spec.caption].filter(Boolean).join(' ');
+  if (mapTextClaimsUnsupportedDetail(descriptor)) return false;
   const bounds = base === 'kenya'
     ? { west: 33, east: 43.5, south: -5.5, north: 5.5, x: 34, y: 55, width: 304, height: 190 }
     : base === 'africa'
       ? { west: -20, east: 52, south: -36, north: 38, x: 34, y: 55, width: 304, height: 190 }
       : { west: 27, east: 53, south: -12, north: 16, x: 34, y: 55, width: 304, height: 190 };
+  const features = mapFeaturesForBase(base);
+  const explicitTargets = uniqueMapTargets([
+    ...(spec.map_regions || []),
+    ...(spec.map_features || []),
+    ...(spec.labels || []),
+  ]);
+  const maxTargets = base === 'africa' ? 6 : 8;
+  return explicitTargets.length >= 2
+    && explicitTargets.length <= maxTargets
+    && explicitTargets.every((target) => isSupportedMapTarget(target, features, bounds));
+}
+
+function mapLabelMarkup(text: string, point: [number, number], bounds: MapBounds): string {
+  const lines = wrapWords(text, 20).slice(0, 2);
+  const [rawX, rawY] = point;
+  const left = bounds.x + 7;
+  const right = bounds.x + bounds.width - 7;
+  const x = Math.max(left, Math.min(right, rawX));
+  const anchor = x > bounds.x + bounds.width * 0.72 ? 'end' : x < bounds.x + bounds.width * 0.28 ? 'start' : 'middle';
+  const y = Math.max(bounds.y + 13, Math.min(bounds.y + bounds.height - 7, rawY - (lines.length - 1) * 5));
+  return `<text x="${Number(x.toFixed(1))}" y="${Number(y.toFixed(1))}" text-anchor="${anchor}" class="map-label">${lines.map((line, index) => `<tspan x="${Number(x.toFixed(1))}" dy="${index ? 11 : 0}">${escapeXml(line)}</tspan>`).join('')}</text>`;
+}
+
+function renderMapReferenceOverlays(values: string[], bounds: MapBounds): string {
+  return values.flatMap((value) => {
+    const query = normalizedWords(value);
+    const point = mapReferencePoint(value, bounds);
+    if (query === 'lake victoria' && point) {
+      return `<ellipse cx="${point[0]}" cy="${point[1]}" rx="17" ry="9" fill="#ffffff" stroke="#111827" stroke-width="1.5" stroke-dasharray="3 2"/>`;
+    }
+    if (query === 'mount kenya' && point) {
+      return `<path d="M${point[0] - 7} ${point[1] + 6} L${point[0]} ${point[1] - 8} L${point[0] + 7} ${point[1] + 6} Z" fill="#ffffff" stroke="#111827" stroke-width="1.5"/>`;
+    }
+    if (query === 'rift valley') {
+      const start = projectMapPoint([36.7, 5], bounds);
+      const end = projectMapPoint([35.1, -5], bounds);
+      return `<path d="M${start[0]} ${start[1]} L${end[0]} ${end[1]}" fill="none" stroke="#111827" stroke-width="1.5" stroke-dasharray="5 3"/>`;
+    }
+    if (query === 'equator') {
+      const start = projectMapPoint([bounds.west, 0], bounds);
+      const end = projectMapPoint([bounds.east, 0], bounds);
+      return `<path d="M${start[0]} ${start[1]} L${end[0]} ${end[1]}" fill="none" stroke="#111827" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+    }
+    return '';
+  }).join('');
+}
+
+function renderMap(spec: ExamVisualSpec, question?: GeneratedExamQuestion): string | null {
+  const normalized = normalizeMapSpec(spec);
+  const base = normalized.base_map || 'east_africa';
+  if (base === 'world') return null;
+  const features = mapFeaturesForBase(base);
+  const bounds = base === 'kenya'
+    ? { west: 33, east: 43.5, south: -5.5, north: 5.5, x: 34, y: 55, width: 304, height: 190 }
+    : base === 'africa'
+      ? { west: -20, east: 52, south: -36, north: 38, x: 34, y: 55, width: 304, height: 190 }
+      : { west: 27, east: 53, south: -12, north: 16, x: 34, y: 55, width: 304, height: 190 };
+  if (question && !isSupportedExamMapSpec({ ...question, visual_spec: spec as Record<string, unknown> })) return null;
+  const requested = uniqueMapTargets([...(normalized.map_regions || []), ...(normalized.map_features || []), ...(normalized.labels || [])]);
+  if ((normalized.legend || []).some((entry) => wrapWords(entry, 17).length > 2)) return null;
   const paths = features.map((feature) => {
     const focus = matchesMapFeature(feature, requested);
-    const fill = focus ? '#cbd5e1' : '#f8fafc';
-    const stroke = focus ? '#1e3a8a' : '#64748b';
-    return feature.polygons.map((polygon) => `<path d="${polygonPath(polygon, bounds)}" fill="${fill}" stroke="${stroke}" stroke-width="${focus ? 1.5 : 0.7}" fill-rule="evenodd"/>`).join('');
+    const fill = focus ? 'url(#map-focus-hatch)' : '#ffffff';
+    const stroke = focus ? '#111827' : '#4b5563';
+    return feature.polygons.map((polygon) => `<path d="${polygonPath(polygon, bounds)}" fill="${fill}" stroke="${stroke}" stroke-width="${focus ? 1.6 : 0.8}" fill-rule="evenodd"/>`).join('');
   }).join('');
-  const labelTargets = (normalized.map_regions || defaultMapRegions(base)).slice(0, base === 'africa' ? 6 : 8);
-  const labels = labelTargets.map((label, index) => {
+  const labelTargets = uniqueMapTargets([
+    ...((normalized.map_regions || []).length ? normalized.map_regions || [] : normalized.labels || defaultMapRegions(base)),
+    ...(normalized.map_features || []),
+  ]).slice(0, base === 'africa' ? 6 : 8);
+  const labels = labelTargets.map((label) => {
     const feature = features.find((candidate) => matchesMapFeature(candidate, [label]));
     const referencePoint = feature ? null : mapReferencePoint(label, bounds);
-    if (!feature && !referencePoint) return `<text x="348" y="${74 + index * 18}" class="small">${escapeXml(String.fromCharCode(65 + index))}: ${escapeXml(label)}</text>`;
-    const [x, y] = feature ? projectMapPoint(featureCentroid(feature), bounds) : referencePoint!;
-    return `<circle cx="${x}" cy="${y}" r="2.8" fill="#1e3a8a"/><text x="${Math.min(334, x + 5)}" y="${Math.max(66, Math.min(246, y + 3))}" class="map-label">${escapeXml(label)}</text>`;
+    if (!feature && !referencePoint) return '';
+    const point = feature ? projectMapPoint(featureCentroid(feature), bounds) : referencePoint!;
+    const marker = feature || !/indian ocean/i.test(label) ? `<circle cx="${point[0]}" cy="${point[1]}" r="2.8" fill="#111827"/>` : '';
+    return marker + mapLabelMarkup(label, point, bounds);
   }).join('');
   const overlays = renderMapReferenceOverlays(requested, bounds);
-  const legend = (normalized.legend || []).slice(0, 3).map((entry, index) => textLines(entry, 364, 80 + index * 28, 94)).join('');
+  let legendY = 82;
+  const legend = (normalized.legend || []).slice(0, 3).map((entry) => {
+    const lines = wrapWords(entry, 17).slice(0, 2);
+    const markup = `<text x="363" y="${legendY}" class="map-legend">${lines.map((line, index) => `<tspan x="363" dy="${index ? 11 : 0}">${escapeXml(line)}</tspan>`).join('')}</text>`;
+    legendY += Math.max(25, lines.length * 11 + 8);
+    return markup;
+  }).join('');
+  const scaleLines = wrapWords(normalized.scale_text || 'approximate distance', 26).slice(0, 2);
+  const scaleMarkup = `<text x="110" y="282" class="small">${scaleLines.map((line, index) => `<tspan x="110" dy="${index ? 11 : 0}">${escapeXml(line)}</tspan>`).join('')}</text>`;
   const baseLabel = base === 'kenya' ? 'Kenya context' : base === 'africa' ? 'Africa context' : 'East Africa context';
-  return `<defs><clipPath id="map-clip"><rect x="26" y="47" width="322" height="215"/></clipPath></defs><rect x="26" y="47" width="322" height="215" fill="#ffffff" stroke="#111827" stroke-width="2"/><g aria-label="${escapeXml(baseLabel)}" clip-path="url(#map-clip)">${paths}${overlays}${labels}<path d="M40 72 H335 M40 230 H335" stroke="#cbd5e1" stroke-width="0.5" stroke-dasharray="3 4"/></g><rect x="356" y="47" width="112" height="118" fill="#ffffff" stroke="#111827" stroke-width="1.5"/><text x="364" y="64" class="map-key-title">KEY</text>${legend}<path d="M333 79 L333 55 L326 66 L340 66 Z" fill="#111827"/><text x="333" y="49" text-anchor="middle" class="small">${escapeXml(normalized.compass || 'North')}</text><line x1="42" y1="278" x2="102" y2="278" stroke="#111827" stroke-width="3"/><line x1="42" y1="273" x2="42" y2="283" stroke="#111827" stroke-width="2"/><line x1="102" y1="273" x2="102" y2="283" stroke="#111827" stroke-width="2"/><text x="110" y="282" class="small">${escapeXml(normalized.scale_text || 'approximate distance')}</text><text x="360" y="184" class="small">${escapeXml(baseLabel)}</text><text x="360" y="202" class="small">Vector country</text><text x="360" y="218" class="small">boundaries</text>`;
+  return `<defs><clipPath id="map-clip"><rect x="26" y="47" width="322" height="215"/></clipPath><pattern id="map-focus-hatch" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#e5e7eb"/><path d="M-2 2 L2 -2 M0 8 L8 0 M6 10 L10 6" stroke="#111827" stroke-width="1"/></pattern></defs><rect x="26" y="47" width="322" height="215" fill="#ffffff" stroke="#111827" stroke-width="2"/><g aria-label="${escapeXml(baseLabel)}" clip-path="url(#map-clip)">${paths}${overlays}${labels}<path d="M40 72 H335 M40 230 H335" stroke="#9ca3af" stroke-width="0.7" stroke-dasharray="3 4"/></g><rect x="352" y="47" width="116" height="150" fill="#ffffff" stroke="#111827" stroke-width="1.5"/><text x="363" y="64" class="map-key-title">KEY</text>${legend}<path d="M328 79 L328 55 L321 66 L335 66 Z" fill="#111827"/><text x="328" y="49" text-anchor="middle" class="small">${escapeXml(normalized.compass || 'North')}</text><line x1="42" y1="278" x2="102" y2="278" stroke="#111827" stroke-width="3"/><line x1="42" y1="273" x2="42" y2="283" stroke="#111827" stroke-width="2"/><line x1="102" y1="273" x2="102" y2="283" stroke="#111827" stroke-width="2"/>${scaleMarkup}<text x="360" y="216" class="small">${escapeXml(baseLabel)}</text><text x="360" y="232" class="small">Vector country</text><text x="360" y="246" class="small">boundaries</text>`;
 }
 
 function renderCircuitDiagram(spec: ExamVisualSpec): string {
@@ -465,23 +550,6 @@ function renderConcaveMirrorDiagram(spec: ExamVisualSpec): string {
   </g>`;
 }
 
-function renderGenericLabeledDiagram(spec: ExamVisualSpec): string {
-  const labels = (spec.labels || []).map(String).filter(Boolean).slice(0, 4);
-  const effectiveLabels = labels.length >= 2 ? labels : ['Part A', 'Part B'];
-  const positions = [[72, 68], [408, 68], [72, 236], [408, 236]];
-  const connectors = effectiveLabels.map((_, index) => {
-    const [x, y] = positions[index];
-    const endX = x < 240 ? 130 : 350;
-    const endY = y < 150 ? 100 : 205;
-    return `<line x1="${x}" y1="${y}" x2="${endX}" y2="${endY}" stroke="#64748b" stroke-width="2"/>`;
-  }).join('');
-  const boxes = effectiveLabels.map((entry, index) => {
-    const [x, y] = positions[index];
-    return `<rect x="${x - 58}" y="${y - 15}" width="116" height="30" rx="7" fill="#f8fafc" stroke="#475569" stroke-width="2"/>${centeredTextLines(entry, x, y - 2, 15, 'small', 11)}`;
-  }).join('');
-  return `<g>${connectors}<rect x="130" y="100" width="220" height="105" rx="12" fill="#f8fafc" stroke="#1d4ed8" stroke-width="3" stroke-dasharray="7 5"/><text x="240" y="145" text-anchor="middle" class="body">SCHEMATIC VISUAL</text><text x="240" y="165" text-anchor="middle" class="small">Use the labelled parts shown.</text>${boxes}<text x="240" y="252" text-anchor="middle" class="small">Not to scale; interpret only as directed by the question.</text></g>`;
-}
-
 function renderNurseryBedDiagram(spec: ExamVisualSpec) {
   const labels = (spec.labels || ['Shade', 'Seed drill', 'Nursery bed', 'Watering can']).map(String);
   const label = (index: number, fallback: string): string => escapeXml(labels[index] || fallback);
@@ -551,8 +619,6 @@ function renderTable(spec: ExamVisualSpec, question?: GeneratedExamQuestion): st
   const parsedRows = sourceRows.map((row) => row.split(',').map((part) => part.trim()).filter(Boolean));
   const commaSeparated = parsedRows.some((parts) => parts.length > 1);
   const promptNumbers = String(spec.prompt || '').match(/[+-]?\s*\d+(?:\.\d+)?/g)?.map((value) => value.replace(/\s+/g, '')) || [];
-  const markdownRows = parseMarkdownTable(`${question?.question_text || ''}\n${spec.prompt || ''}`);
-
   // Prefer the structured table contract, then complete Markdown tables from
   // the learner-facing stem. When both are present, append any additional
   // source table that is not a duplicate of the structured table. This keeps
@@ -678,12 +744,18 @@ export function hasUsableVisualSpec(question: GeneratedExamQuestion): boolean {
   if (!String(spec.title || spec.caption || '').trim()) return false;
   if (assetType === 'table') return hasCompleteTableVisual(question);
   if (assetType === 'map') {
+    if (!String(spec.title || '').trim()) return false;
     const base = String(spec.base_map || '').toLowerCase();
     const legend = (spec.legend || []).map(String).filter((value) => value.trim());
-    return (mapRegions.length >= 2 || labels.length >= 2)
-      && ['kenya', 'east_africa', 'africa', 'world'].includes(base)
+    const rawScale = String(spec.scale_text || '').trim();
+    const normalizedScale = normalizeMapSpec(spec, question).scale_text || '';
+    return isSupportedExamMapSpec(question)
+      && (mapRegions.length >= 2 || labels.length >= 2 || (spec.map_features || []).length >= 2)
+      && ['kenya', 'east_africa', 'africa'].includes(base)
       && legend.length >= 2
-      && Boolean(String(spec.scale_text || '').trim())
+      && legend.every((entry) => wrapWords(entry, 17).length <= 2)
+      && Boolean(rawScale)
+      && /≈|approx(?:imate)?|indicative|not\s+to\s+scale/i.test(normalizedScale)
       && Boolean(String(spec.compass || '').trim());
   }
   if (assetType === 'graph' || assetType === 'chart') return values.length >= 2 && (xLabels.length >= values.length || labels.length >= values.length);
@@ -729,7 +801,11 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
   const effectiveSpec = assetType === 'map' ? normalizeMapSpec(spec, question) : spec;
   const title = visualTitle(effectiveSpec, question);
   let body = '';
-  if (assetType === 'map') body = renderMap(effectiveSpec);
+  if (assetType === 'map') {
+    const mapBody = renderMap(effectiveSpec, question);
+    if (!mapBody) return null;
+    body = mapBody;
+  }
   else if (assetType === 'graph' || assetType === 'chart') body = renderGraph(spec);
   else if (assetType === 'table') body = renderTable(spec, question);
   else if (assetType === 'number_line') body = renderNumberLine(spec);
@@ -779,7 +855,8 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
     }).join('');
   } else return null;
   const caption = effectiveSpec.caption || (assetType === 'map' ? 'Use the key, scale and north arrow when interpreting this vector map.' : 'Teacher-approved visual');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.map-label{font:10px Arial;fill:#111827}.map-key-title{font:700 11px Arial;fill:#111827}.table-header{font:700 11px Arial;fill:#1e3a8a}.table-cell{font:11px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>${centeredTextLines(title, 240, 22, 42, 'title', 18)}${body}<text x="240" y="310" text-anchor="middle" class="small">${escapeXml(caption)}</text></svg>`;
+  const captionMarkup = centeredTextLines(caption, 240, 302, 62, 'small', 12);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320"><style>.title{font:700 18px Arial;fill:#111827}.body{font:14px Arial;fill:#1f2937}.small{font:12px Arial;fill:#374151}.map-label{font:11px Arial;fill:#111827}.map-legend{font:10.5px Arial;fill:#111827}.map-key-title{font:700 11px Arial;fill:#111827}.table-header{font:700 11px Arial;fill:#1e3a8a}.table-cell{font:11px Arial;fill:#374151}.axis{stroke:#111827;stroke-width:2;fill:none}</style><rect width="480" height="320" rx="12" fill="#ffffff" stroke="#d1d5db" stroke-width="2"/>${centeredTextLines(title, 240, 22, 42, 'title', 18)}${body}${captionMarkup}</svg>`;
   return dataUrl(svg);
 }
 

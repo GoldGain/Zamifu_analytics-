@@ -1,20 +1,19 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
-  allocateQuestionBlueprint,
-  cleanText,
   questionTypeLabel,
-  validateExamRequest,
-  type Difficulty,
   type ExamFormat,
-  type ExamGenerationRequest,
-  type ExamGenerationResponse,
   type ExamPaper,
   type GeneratedExamQuestion,
   type QuestionType,
 } from './exam-schema';
 import { renderExamVisualDataUrl } from './exam-visuals';
 import { getKjseaPaperSpec } from './kjsea-paper-formats';
+import {
+  candidateCalculationInstruction,
+  getQuestionAnswerSpacePlan,
+  sanitizeCandidateInstruction,
+} from './exam-answer-space';
 
 const sectionTitles: Record<string, string> = {
   multiple_choice: 'SECTION A: MULTIPLE CHOICE QUESTIONS',
@@ -214,10 +213,11 @@ function formatSpecificInstructions(paper: BrandedPaper): string[] {
       'Do not write more than one answer for any question.',
     ];
   }
+  const calculationInstruction = candidateCalculationInstruction(paper.subject, paper.questions);
   if (paper.format === 'kjsea') {
     return [
       'Answer all questions in the spaces provided.',
-      'Show all working for calculations and give clear labelled responses where required.',
+      calculationInstruction,
       'Use the diagrams, tables, maps and other visual stimuli only as directed by each question.',
     ];
   }
@@ -225,10 +225,23 @@ function formatSpecificInstructions(paper: BrandedPaper): string[] {
     return [
       'Answer all questions.',
       'Choose one correct answer for each multiple-choice question.',
-      'Show your working and write clear responses for structured questions.',
+      calculationInstruction,
     ];
   }
-  return [];
+  return [calculationInstruction];
+}
+
+export function getPrintedCandidateInstructions(paper: ExamPaper): string[] {
+  const brandedPaper = paper as BrandedPaper;
+  const baseInstructions = paper.instructions.length
+    ? paper.instructions
+    : ['Answer all questions.', 'Write your name and class clearly.', 'Read every question carefully before answering.'];
+  return [
+    ...formatSpecificInstructions(brandedPaper),
+    ...baseInstructions.map((instruction) => sanitizeCandidateInstruction(instruction, paper.subject, paper.questions)).filter(Boolean),
+  ]
+    .filter((instruction, index, all) => all.indexOf(instruction) === index)
+    .slice(0, 8);
 }
 
 function addPageHeader(doc: jsPDF, paper: BrandedPaper, continuation = false, subtitle?: string): number {
@@ -407,12 +420,7 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   y += 5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  const baseInstructions = paper.instructions.length
-    ? paper.instructions
-    : ['Answer all questions.', 'Write your name and class clearly.', 'Read every question carefully before answering.'];
-  const instructions = [...formatSpecificInstructions(paper), ...baseInstructions]
-    .filter((instruction, index, all) => all.indexOf(instruction) === index)
-    .slice(0, 8);
+  const instructions = getPrintedCandidateInstructions(paper);
   instructions.forEach((instruction, index) => {
     const lines = doc.splitTextToSize(`${index + 1}. ${instruction}`, 178);
     doc.text(lines, 16, y);
@@ -461,23 +469,43 @@ function addAnswerLines(doc: jsPDF, paper: BrandedPaper, y: number, marks: numbe
   return y + lineCount * 5 + 2;
 }
 
-function addWorkingSpaceColumn(doc: jsPDF, paper: BrandedPaper): void {
-  if (!isFormalPracticeFormat(paper) || isObjectiveKpseaPaper(paper)) return;
-  doc.setDrawColor(107, 114, 128);
-  doc.setLineWidth(0.35);
-  doc.line(112, 52, 112, 282);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
+function addCalculationSpace(
+  doc: jsPDF,
+  paper: BrandedPaper,
+  y: number,
+  decision: ReturnType<typeof getQuestionAnswerSpacePlan>['question'],
+  subtitle: string,
+): number {
+  if (!decision.requiresCalculationSpace) return y;
+  const lineHeight = 5;
+  y = ensureRoom(doc, paper, y, decision.lineCount * lineHeight + 10, subtitle);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.2);
   doc.setTextColor(75, 85, 99);
-  doc.text('WORKING SPACE', 154, 49, { align: 'center' });
+  const graphical = decision.reason === 'graphical-task';
+  doc.text(graphical ? 'GRAPHICAL RESPONSE SPACE' : 'CALCULATION STEPS', 19, y);
+  y += 3;
+  doc.setDrawColor(156, 163, 175);
+  doc.setLineWidth(0.25);
+  if (graphical) {
+    const height = Math.max(24, decision.lineCount * 5);
+    doc.rect(19, y, 172, height);
+    doc.setTextColor(0, 0, 0);
+    return y + height + 3;
+  }
+  doc.setLineDashPattern([1, 1], 0);
+  for (let index = 0; index < decision.lineCount; index += 1) {
+    doc.line(19, y + index * lineHeight, 191, y + index * lineHeight);
+  }
+  doc.setLineDashPattern([], 0);
   doc.setTextColor(0, 0, 0);
+  return y + decision.lineCount * lineHeight + 3;
 }
 
 function ensureRoom(doc: jsPDF, paper: BrandedPaper, y: number, needed: number, subtitle?: string): number {
   if (y + needed <= 272) return y;
   doc.addPage();
   const nextY = addPageHeader(doc, paper, true, subtitle);
-  addWorkingSpaceColumn(doc, paper);
   return nextY;
 }
 
@@ -511,16 +539,26 @@ async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: Gene
   return y;
 }
 
-function addStructuredSubParts(doc: jsPDF, paper: BrandedPaper, question: GeneratedExamQuestion, y: number, textWidth: number, subtitle: string): number {
+function addStructuredSubParts(
+  doc: jsPDF,
+  paper: BrandedPaper,
+  question: GeneratedExamQuestion,
+  y: number,
+  textWidth: number,
+  subtitle: string,
+  spacePlan: ReturnType<typeof getQuestionAnswerSpacePlan>,
+): number {
   if (!question.sub_parts?.length) return y;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(paper.format === 'kjsea' ? 8.2 : 8.8);
-  for (const part of question.sub_parts) {
+  for (const [partIndex, part] of question.sub_parts.entries()) {
     const marks = ` [${part.marks} mark${part.marks === 1 ? '' : 's'}]`;
     const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${paper.format === 'standard30' || paper.format === 'kjsea' ? marks : ''}`, textWidth);
     y = ensureRoom(doc, paper, y, lines.length * 4.2 + 4, subtitle);
     doc.text(lines, 19, y);
     y += lines.length * 4.2 + 2;
+    const decision = spacePlan.subParts[partIndex];
+    if (decision?.requiresCalculationSpace) y = addCalculationSpace(doc, paper, y, decision, subtitle);
   }
   return y;
 }
@@ -534,7 +572,6 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
   addFormalCoverPage(doc, paper, 'STUDENT PAPER');
   doc.addPage();
   let y = addPageHeader(doc, paper, false, 'STUDENT PAPER');
-  addWorkingSpaceColumn(doc, paper);
   const formal = isFormalPracticeFormat(paper);
   const groups = groupExamQuestionsForPdf(paper);
   let sequence = 1;
@@ -560,7 +597,8 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
     }
     doc.setTextColor(0, 0, 0);
     for (const question of group.questions) {
-      const textWidth = formal ? 91 : 176;
+      const textWidth = 176;
+      const spacePlan = getQuestionAnswerSpacePlan(paper.subject, question);
       const showMarks = !formal || paper.format === 'kjsea' || paper.format === 'standard30';
       const markText = ` [${question.marks} mark${question.marks === 1 ? '' : 's'}]`;
       const stem = doc.splitTextToSize(`${sequence}. ${learnerQuestionText(question)}${showMarks ? markText : ''}`, textWidth);
@@ -570,11 +608,11 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
       doc.text(stem, 14, y);
       doc.setFont('helvetica', 'normal');
       y += stem.length * 4.6 + 2;
-      y = addStructuredSubParts(doc, paper, question, y, textWidth, 'STUDENT PAPER');
+      y = addStructuredSubParts(doc, paper, question, y, textWidth, 'STUDENT PAPER', spacePlan);
       const options = normalizeOptions(question);
       if (options.length) {
         options.forEach((option, optionIndex) => {
-          const lines = doc.splitTextToSize(`${String.fromCharCode(65 + optionIndex)}. ${option}`, formal ? 86 : 168);
+          const lines = doc.splitTextToSize(`${String.fromCharCode(65 + optionIndex)}. ${option}`, 168);
           y = ensureRoom(doc, paper, y, lines.length * 4.2 + 2, 'STUDENT PAPER');
           doc.text(lines, 19, y);
           y += lines.length * 4.2 + 1;
@@ -590,6 +628,7 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
         }
       }
       y = await addQuestionVisual(doc, paper, { ...question, question_number: sequence }, y, 'STUDENT PAPER');
+      if (!question.sub_parts?.length) y = addCalculationSpace(doc, paper, y + 2, spacePlan.question, 'STUDENT PAPER');
       if (!options.length) y = addAnswerLines(doc, paper, y + 2, question.marks);
       y += formal ? 6 : 4;
       sequence += 1;

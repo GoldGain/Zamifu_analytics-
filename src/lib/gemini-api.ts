@@ -8,6 +8,7 @@ import {
 } from './deepseek-api.js';
 import { hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 import { makeExamTitle, type ExamGenerationRequest, type ExamPaper, type GeneratedExamQuestion } from './exam-schema.js';
+import { expectedBlueprintQuestionCount, hasFixedBlueprint, getExamBlueprintSlots, questionMatchesBlueprintSlot } from './exam-generation-contract.js';
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -33,10 +34,6 @@ function waitBeforeRetry(attempt: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
 }
 
-function toSafeString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value.trim() : fallback;
-}
-
 function toSafeArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean)
@@ -52,8 +49,10 @@ function buildPaper(request: ExamGenerationRequest, parsed: Record<string, unkno
   if (!blueprintAlignedQuestions.length) {
     throw new GeminiResponseError('Gemini did not provide any valid questions. Please try again with a narrower curriculum selection.');
   }
-  const targetQuestionLimit = Math.min(60, Math.max(3, Math.ceil(request.totalMarks / 1)));
-  const questions = blueprintAlignedQuestions.slice(0, targetQuestionLimit).map((question, index) => ({ ...question, question_number: index + 1 }));
+  if (hasFixedBlueprint(request) && blueprintAlignedQuestions.length !== expectedBlueprintQuestionCount(request)) {
+    throw new GeminiResponseError('Gemini returned an incomplete paper; a shortened blueprint cannot be accepted.');
+  }
+  const questions = blueprintAlignedQuestions.map((question, index) => ({ ...question, question_number: index + 1 }));
   const computedMarks = questions.reduce((sum, question) => sum + question.marks, 0);
   return {
     // The title is an authoring choice made by the teacher/admin. The provider
@@ -81,7 +80,7 @@ function recoveryInstruction(attempt: number): string {
   return '\n\nFINAL RECOVERY REQUIREMENT: Produce the complete paper in the exact JSON shape now. Prioritise all required questions, marks, answers, and marking guidance. Use short sentences, empty strings for optional metadata when necessary, and visual_spec null unless the stem explicitly requires a visual. Any table visual must include table_headers and complete table_rows; do not use x_labels alone. Do not repeat a visual table or bracketed diagram placeholder in question_text. Measurement diagrams must show precise readings, units, graduations, water levels, and objects rather than generic shapes. Return JSON only.';
 }
 
-export async function generateExamWithGemini(request: ExamGenerationRequest, knowledgeContext = ''): Promise<ExamPaper> {
+export async function generateExamWithGemini(request: ExamGenerationRequest, knowledgeContext = '', deadlineAt=Date.now()+190000): Promise<ExamPaper> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new GeminiConfigurationError('Gemini is not configured. Add GEMINI_API_KEY to the server environment.');
@@ -93,6 +92,7 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
   let lastFailure = '';
 
   for (let attempt = 0; attempt < 3 && !parsed; attempt += 1) {
+    if(Date.now()>=deadlineAt){lastFailure='The shared generation time budget was exhausted; no shortened paper was saved.';break;}
     const requestPayload = {
       systemInstruction: {
         parts: [{ text: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble. The response must be parseable JSON.' }],
@@ -105,7 +105,7 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
         thinkingConfig: { thinkingLevel: attempt === 0 ? 'medium' : 'low' },
       },
     };
-    const timeoutMs = attempt === 0 ? 60000 : 45000;
+    const timeoutMs = Math.max(1,Math.min(attempt === 0 ? 60000 : 45000,deadlineAt-Date.now()));
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -135,6 +135,12 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
         ? candidate.questions.map((entry) => normalizeQuestion(entry, request.questionTypes[0] || 'multiple_choice', fallbackDifficulty(request))).filter((entry): entry is GeneratedExamQuestion => Boolean(entry))
         : [];
       if (!candidateQuestions.length) throw new GeminiResponseError('Gemini did not provide any valid questions.');
+      if (hasFixedBlueprint(request)) {
+        const slots = getExamBlueprintSlots(request);
+        if (candidateQuestions.length !== slots.length || candidateQuestions.some((question, index) => !questionMatchesBlueprintSlot(question, slots[index]))) {
+          throw new GeminiResponseError('Gemini did not complete the exact required question slots, components and marks.');
+        }
+      }
       // Per-question shortfalls are repaired or dropped afterwards, so they no
       // longer throw away an otherwise usable paper.
       const incompleteVisuals = candidateQuestions.filter(
@@ -170,13 +176,14 @@ export async function generateExamWithGemini(request: ExamGenerationRequest, kno
  * Gemini counterpart of the single-question repair call. Returns null on any
  * provider problem so a failed repair degrades to a drop, not a failed paper.
  */
-export async function rewriteQuestionWithGemini(prompt: string): Promise<Record<string, unknown> | null> {
+export async function rewriteQuestionWithGemini(prompt: string,deadlineAt=Date.now()+30000): Promise<Record<string, unknown> | null> {
+  if(Date.now()>=deadlineAt)return null;
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
   const model = process.env.GEMINI_MODEL || 'gemini-3.7-flash';
   const endpoint = `${(process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '')}/models/${encodeURIComponent(model)}:generateContent`;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), Math.max(1,Math.min(30000,deadlineAt-Date.now())));
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -186,7 +193,7 @@ export async function rewriteQuestionWithGemini(prompt: string): Promise<Record<
           parts: [{ text: 'You are a strict JSON API. Return ONLY a JSON object with no markdown, no code fences, no explanation text, no preamble.' }],
         },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.25, maxOutputTokens: 1600, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'low' } },
+        generationConfig: { temperature: 0.25, maxOutputTokens: 4000, responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'low' } },
       }),
       signal: controller.signal,
     });

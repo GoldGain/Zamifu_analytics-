@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { renderExamVisualDataUrl, hasUsableVisualSpec, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
+import { renderExamVisualDataUrl, hasUsableVisualSpec, isSupportedExamMapSpec, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
+import { curatedVisualDataUrl } from '../src/lib/exam-visual-library.js';
 import { resolveQuestionVisualForPdf } from '../src/lib/exam-generator.js';
 import { repairGeneratedExam } from '../src/lib/exam-repair.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
@@ -46,12 +47,47 @@ for (const required of ['East Africa map', 'KEY', 'Line:', 'boundary', '500 km',
   assert.ok(svg.includes(required), `rendered map is missing ${required}`);
 }
 assert.ok(!svg.toLowerCase().includes('schematic'), 'map SVG must not be described as schematic');
+assert.ok(svg.includes('map-focus-hatch'), 'focus regions must remain distinguishable in grayscale print');
+assert.ok(isSupportedExamMapSpec(mapQuestion), 'country-level vector map should be recognised as supported');
+assert.ok(/indicative|≈|approx/i.test(mapQuestion.visual_spec?.scale_text || ''), 'map scale must be explicitly approximate or indicative');
+let boundedMapLabels = 0;
+for (const match of svg.matchAll(/<text(?=[^>]*class="map-label")(?=[^>]*x="([0-9.]+)")(?=[^>]*y="([0-9.]+)")[^>]*>/g)) {
+  boundedMapLabels += 1;
+  const x = Number(match[1]);
+  const y = Number(match[2]);
+  assert.ok(x >= 33 && x <= 339, `map label x=${x} must stay inside the map frame`);
+  assert.ok(y >= 55 && y <= 245, `map label y=${y} must stay inside the map frame`);
+}
+assert.ok(boundedMapLabels >= 1, 'map regression must inspect at least one positioned map label');
+assert.equal(curatedVisualDataUrl('map_kenya'), null, 'legacy schematic map keys must not emit invented geometry');
 assert.equal(hasUsableVisualSpec({ ...mapQuestion, image_url: rendered }), true, 'complete map metadata must pass visual validation');
 assert.equal(
   resolveQuestionVisualForPdf({ ...mapQuestion, image_url: 'data:image/svg+xml;charset=utf-8,stale-placeholder' }),
   rendered,
   'PDF export must regenerate a map from its structured spec instead of trusting a stale cached SVG',
 );
+
+const unsupportedCountyMap = baseQuestion({
+  question_text: 'Study the Kenya county map below and identify Kisumu County.',
+  visual_spec: {
+    asset_type: 'map', title: 'Kenya county map', base_map: 'kenya',
+    map_regions: ['Lake Victoria', 'Kisumu County'], legend: ['Hatched fill', 'Line: boundary'],
+    scale_text: '≈ 200 km (indicative)', compass: 'North',
+  },
+});
+assert.equal(isSupportedExamMapSpec(unsupportedCountyMap), false, 'country geometry must not be presented as county geometry');
+assert.equal(hasUsableVisualSpec(unsupportedCountyMap), false, 'unsupported county map must be sent to core visual repair');
+assert.equal(renderExamVisualDataUrl(unsupportedCountyMap), null, 'unsupported county map must not receive a guessed marker');
+
+const unsupportedTopoMap = baseQuestion({
+  question_text: 'Study the topographic map with contour lines below.',
+  visual_spec: {
+    asset_type: 'map', title: 'Topographic map', base_map: 'kenya',
+    map_regions: ['Kenya', 'Uganda'], legend: ['Hatched fill', 'Line: boundary'],
+    scale_text: '≈ 200 km (indicative)', compass: 'North',
+  },
+});
+assert.equal(renderExamVisualDataUrl(unsupportedTopoMap), null, 'topographic claims must not use country-only geometry');
 
 const scienceDiagramCases: Array<{ name: string; question: GeneratedExamQuestion }> = [
   {
@@ -131,8 +167,8 @@ assert.equal(
 const noMapValidation = validateGeneratedExam(socialMapRequest, [baseQuestion()]);
 assert.equal(
   noMapValidation.issues.some((issue) => issue.code === 'SOCIAL_STUDIES_MAP_REQUIREMENT'),
-  true,
-  'a Social Studies paper without any map must still fail the minimum-map requirement',
+  false,
+  'a Social Studies paper without a selected map/topography scope does not require an unrequested map',
 );
 
 const request: ExamGenerationRequest = {

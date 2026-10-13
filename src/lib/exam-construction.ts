@@ -15,7 +15,8 @@ export function normalizeKey(value: unknown): string {
   return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 export function supportsTwoPapers(subject: string): boolean {
-  return TWO_PAPER_SUBJECTS.includes(normalizeKey(subject));
+  const key = normalizeKey(subject);
+  return TWO_PAPER_SUBJECTS.includes(key) || key === 'agricultureandnutrition' || key === 'pretechnicalstudies';
 }
 export function normalizePaperVariant(value: unknown): PaperVariant {
   return value === 'paper1' || value === 'paper2' ? value : 'single';
@@ -60,7 +61,9 @@ function paperFocus(subject: string, variant: PaperVariant): string {
 }
 export function paperVariantLaw(request: ExamGenerationRequest): string {
   const variant = normalizePaperVariant(request.paperVariant);
-  if (variant === 'single' || !supportsTwoPapers(request.subject)) return '';
+  if (variant === 'single') return '';
+  if (request.format !== 'kjsea') return `School-configured paper variant: ${paperVariantLabel(variant)}. Follow the supplied school blueprint, curriculum and mark total; do not import KJSEA or legacy KCSE paper totals or component rules into this grade.`;
+  if (!supportsTwoPapers(request.subject)) return '';
   return [
     `Paper type law: this paper is ${paperVariantLabel(variant)} only.`,
     paperFocus(request.subject, variant),
@@ -83,6 +86,7 @@ export function answerCompletenessLaw(): string {
 export function isMathsLikeSubject(subject: string): boolean {
   const key = normalizeKey(subject);
   return key === 'mathematics' || key === 'maths' || key === 'math'
+    || key === 'coremathematics' || key === 'essentialmathematics'
     || key.startsWith('integratedscience') || key.startsWith('pretechnical')
     || key === 'physics' || key === 'chemistry' || key === 'biology';
 }
@@ -92,9 +96,11 @@ export function isSocialStudiesSubject(subject: string): boolean {
 }
 export function mapWorkLaw(request: ExamGenerationRequest): string {
   if (!isSocialStudiesSubject(request.subject)) return '';
+  const fullKjsea = request.format === 'kjsea' && /social\s*studies/i.test(request.subject);
   return [
-    'Map work law: for a full KJSEA Social Studies paper, include at least one map-based structured question. Q21 is a January 2025 sample-style placement, not a 2026 KNEC numbering rule; do not require a fixed map count or number unless the selected content calls for it.',
+    fullKjsea ? 'Map work law: for a full KJSEA Social Studies paper, include at least one map-based structured question in its named map component. Q21 is a January 2025 sample-style placement, not a 2026 KNEC numbering rule.' : 'Map work law: include a map when the selected geography/map-work curriculum or a question requires interpretation of a map. Do not impose Grade 9 KJSEA numbering or mandatory map counts on school-based papers or history-only topics.',
     'Use the Kenya map for counties, physical features, climate or vegetation; the East Africa map for regional countries and the Great Lakes/Rift Valley context; the Africa map for countries, regions and physical features. Do not invent a hand-drawn polygon or use a photographic/AI-generated map.',
+    'The embedded base maps show country boundaries and supported geographic anchors, not county boundaries or surveyed topographic contours. Never ask for county boundaries, contour readings, grid references, measured distances or unrendered geographic features unless those exact layers/readings are explicitly supplied. Prefer a complete supported country-location or direction task over an unsupported topographical-map placeholder.',
     'Describe each map with a visual_spec whose asset_type is "map", whose base_map is one of "kenya", "east_africa", or "africa", whose map_regions list at least two named regions/countries shown, whose labels name every feature the learner must read, and whose legend has at least two entries.',
     'Every map visual must include a readable title, a north-arrow/compass field, a scale_text field, a visible map frame, and a key/legend. The renderer supplies the vector country boundaries; do not put a map placeholder, Markdown table, or image URL in question_text.',
   ].join(' ');
@@ -255,6 +261,10 @@ export function buildCoveragePlanFromRequest(request: CoveragePlanInput): Covera
   if (!strands.length || questionCount <= 0) return [];
   const byStrand = subStrandsByStrand(request);
   const fallback = request.subStrands || [];
+  const sections=request.blueprint?.sections||[];
+  if(sections.length&&sections.every(section=>Boolean(section.strand)&&strands.includes(section.strand!))){
+    return strands.map(strand=>({strand,subStrands:byStrand[normalizeKey(strand)]||fallback,questions:sections.filter(section=>section.strand===strand).reduce((sum,section)=>sum+section.count,0)}));
+  }
   if (questionCount <= strands.length) {
     return strands.map((strand, index) => ({
       strand, subStrands: byStrand[normalizeKey(strand)] || fallback,
