@@ -152,6 +152,7 @@ export function validateExamRequest(request: ExamGenerationRequest): string[] {
   const errors: string[] = [];
   if (!cleanText(request.gradeLevel)) errors.push('Select a grade level.');
   if (!cleanText(request.subject)) errors.push('Select a subject.');
+  if (!request.strands.length) errors.push('Select an official curriculum scope before generating.');
   if (!request.questionTypes.length) errors.push('Select at least one question type.');
   if (request.totalMarks < 5 || request.totalMarks > 200) errors.push('Total marks must be between 5 and 200.');
   const kjseaProjectDuration = request.format === 'kjsea'

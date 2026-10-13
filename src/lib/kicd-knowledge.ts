@@ -1026,8 +1026,21 @@ function makeEssayAnswer(subject: string, topic: string): string {
 
 
 
-/** Subjects available in the Grade 7-9 exam generator */
-export function juniorExamSubjects(_grade?: string): string[] {
+/** Official Grade 6 learning areas used only if the source-backed database is temporarily unavailable. */
+export const GRADE_SIX_EXAM_SUBJECTS = [
+  'English Activities',
+  'Kiswahili Activities',
+  'Mathematics',
+  'Science & Technology',
+  'Agriculture & Nutrition',
+  'Social Studies',
+  'Creative Arts',
+  'Religious Education',
+] as const;
+
+/** Subjects available in the Grade 6-9 exam generator. */
+export function juniorExamSubjects(grade?: string): string[] {
+  if (/\b6\b/.test(grade || '')) return [...GRADE_SIX_EXAM_SUBJECTS];
   return [...JUNIOR_SCHOOL_SUBJECTS];
 }
 

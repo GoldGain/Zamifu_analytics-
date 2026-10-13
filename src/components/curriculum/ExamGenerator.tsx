@@ -23,7 +23,7 @@ import {
 } from '@/lib/exam-generator';
 import type { AssessmentLevel } from '@/lib/exam-schema';
 import { renderExamVisualDataUrl } from '@/lib/exam-visuals';
-import { filterSubStrands, retainVisibleIds } from '@/lib/curriculum-selection';
+import { filterSubStrands, filterTopics, retainVisibleIds } from '@/lib/curriculum-selection';
 import {
   buildCoveragePlanFromRequest,
   coverageInstruction,
@@ -44,6 +44,7 @@ import {
 } from '@/lib/kicd-defaults';
 
 type UiPaperVariant = 'single' | 'paper1' | 'paper2' | 'both';
+type AssessmentScopeMode = 'full_paper' | 'strand' | 'sub_strand' | 'topical';
 
 export interface CurriculumTopicOption {
   id: string;
@@ -55,6 +56,7 @@ export interface CurriculumTopicOption {
 export interface CurriculumSubStrandOption {
   id: string;
   sub_strand_name: string;
+  topics?: CurriculumTopicOption[];
 }
 
 export interface CurriculumStrandOption {
@@ -133,8 +135,10 @@ export default function ExamGenerator({
   // default, and 'manual' once an admin chooses their own value.
   const [durationSource, setDurationSource] = useState<'kicd' | 'standard' | 'manual'>('standard');
   const [difficulty, setDifficulty] = useState<Difficulty>('mixed');
+  const [scopeMode, setScopeMode] = useState<AssessmentScopeMode>('full_paper');
   const [selectedStrands, setSelectedStrands] = useState<Set<string>>(new Set());
   const [selectedSubStrands, setSelectedSubStrands] = useState<Set<string>>(new Set());
+  const [selectedTopics, setSelectedTopics] = useState<Set<string>>(new Set());
   const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<Set<QuestionType>>(
     new Set<QuestionType>(['multiple_choice', 'short_answer']),
   );
@@ -155,35 +159,65 @@ export default function ExamGenerator({
   // controls stay editable and the generator's own logic is untouched.
   const [paperDefaults, setPaperDefaults] = useState<PaperDefault[]>([]);
 
-  const availableSubStrands = useMemo(() => selectedStrands.size > 0 ? filterSubStrands(strands, selectedStrands) : [], [selectedStrands, strands]);
+  const allSubStrands = useMemo(() => strands.flatMap((strand) => strand.sub_strands || []), [strands]);
+  const allTopics = useMemo(() => strands.flatMap((strand) => (strand.sub_strands || []).flatMap((subStrand) => (
+    (subStrand.topics || []).map((topic) => ({ ...topic, strand_id: strand.id, sub_strand_id: subStrand.id }))
+  ))), [strands]);
+  const effectiveStrandIds = useMemo(() => (
+    scopeMode === 'full_paper' ? new Set(strands.map((strand) => strand.id)) : selectedStrands
+  ), [scopeMode, strands, selectedStrands]);
+  const availableSubStrands = useMemo(() => (
+    effectiveStrandIds.size > 0 ? filterSubStrands(strands, effectiveStrandIds) : []
+  ), [effectiveStrandIds, strands]);
+  const effectiveSubStrandIds = useMemo(() => (
+    scopeMode === 'full_paper' ? new Set(allSubStrands.map((subStrand) => subStrand.id)) : selectedSubStrands
+  ), [scopeMode, allSubStrands, selectedSubStrands]);
+  const availableTopics = useMemo(() => (
+    filterTopics(allTopics, effectiveStrandIds, effectiveSubStrandIds)
+  ), [allTopics, effectiveStrandIds, effectiveSubStrandIds]);
   const curriculumScope = useMemo(() => {
-    if (selectedStrands.size === 0) return [];
+    if (effectiveStrandIds.size === 0) return [];
     return strands
-      .filter((strand) => selectedStrands.has(strand.id))
+      .filter((strand) => effectiveStrandIds.has(strand.id))
       .map((strand) => {
         const visibleSubStrands = (strand.sub_strands || [])
-          .filter((subStrand) => selectedSubStrands.size === 0 || selectedSubStrands.has(subStrand.id));
+          .filter((subStrand) => scopeMode === 'strand' || effectiveSubStrandIds.has(subStrand.id));
         const visibleSubStrandIds = new Set(visibleSubStrands.map((subStrand) => subStrand.id));
         return {
           strand: strand.strand_name,
           subStrands: visibleSubStrands.map((subStrand) => subStrand.sub_strand_name),
-          topics: [],
+          topics: scopeMode === 'topical'
+            ? availableTopics
+              .filter((topic) => selectedTopics.has(topic.id) && topic.strand_id === strand.id && visibleSubStrandIds.has(topic.sub_strand_id || ''))
+              .map((topic) => topic.topic_name)
+            : [],
         };
       });
-  }, [selectedStrands, selectedSubStrands, strands]);
+  }, [effectiveStrandIds, effectiveSubStrandIds, selectedTopics, availableTopics, scopeMode, strands]);
 
   useEffect(() => {
     setSelectedSubStrands((current) => retainVisibleIds(current, availableSubStrands.map((subStrand) => subStrand.id)));
   }, [availableSubStrands]);
 
-  const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size);
+  useEffect(() => {
+    setSelectedTopics((current) => retainVisibleIds(current, availableTopics.map((topic) => topic.id)));
+  }, [availableTopics]);
+
+  const scopeReady = scopeMode === 'full_paper'
+    ? strands.length > 0
+    : scopeMode === 'strand'
+      ? selectedStrands.size > 0
+      : scopeMode === 'sub_strand'
+        ? selectedStrands.size > 0 && selectedSubStrands.size > 0
+        : selectedStrands.size > 0 && selectedSubStrands.size > 0 && selectedTopics.size > 0;
+  const canGenerate = Boolean(gradeLevel && subject && selectedQuestionTypes.size && scopeReady);
   const coveragePreview = useMemo(() => buildCoveragePlanFromRequest({
-    strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
-    subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
+    strands: strands.filter((strand) => effectiveStrandIds.has(strand.id)).map((strand) => strand.strand_name),
+    subStrands: availableSubStrands.filter((subStrand) => effectiveSubStrandIds.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
     curriculumScope,
     totalMarks,
     blueprint: ['standard30', 'kpsea', 'kjsea'].includes(format) ? makeFormatBlueprint(format, totalMarks, difficulty) : undefined,
-  }), [strands, selectedStrands, availableSubStrands, selectedSubStrands, curriculumScope, totalMarks, format, difficulty]);
+  }), [strands, effectiveStrandIds, availableSubStrands, effectiveSubStrandIds, curriculumScope, totalMarks, format, difficulty]);
   const coverageNote = useMemo(() => coverageInstruction(coveragePreview), [coveragePreview]);
   const selectedFormatDescription = formatOptions.find((option) => option.value === format)?.description || '';
 
@@ -208,8 +242,10 @@ export default function ExamGenerator({
 
   useEffect(() => {
     setPaper(null);
+    setScopeMode('full_paper');
     setSelectedStrands(new Set());
     setSelectedSubStrands(new Set());
+    setSelectedTopics(new Set());
   }, [gradeLevel, subject]);
 
   useEffect(() => {
@@ -361,7 +397,7 @@ export default function ExamGenerator({
 
   async function generate() {
     if (!canGenerate) {
-      toast.error('Select a grade, subject, and at least one question type.');
+      toast.error('Choose an assessment scope and at least one question type.');
       return;
     }
     setGenerating(true);
@@ -379,9 +415,11 @@ export default function ExamGenerator({
         title,
         gradeLevel,
         subject,
-        strands: strands.filter((strand) => selectedStrands.has(strand.id)).map((strand) => strand.strand_name),
-        subStrands: availableSubStrands.filter((subStrand) => selectedSubStrands.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
-        topics: [],
+        strands: strands.filter((strand) => effectiveStrandIds.has(strand.id)).map((strand) => strand.strand_name),
+        subStrands: availableSubStrands.filter((subStrand) => effectiveSubStrandIds.has(subStrand.id)).map((subStrand) => subStrand.sub_strand_name),
+        topics: scopeMode === 'topical'
+          ? availableTopics.filter((topic) => selectedTopics.has(topic.id)).map((topic) => topic.topic_name)
+          : [],
         curriculumScope,
         questionTypes: Array.from(selectedQuestionTypes),
         totalMarks: kjseaSpec?.marks ?? totalMarks,
@@ -670,11 +708,29 @@ export default function ExamGenerator({
               </select>
             </label>
             {durationSource === 'kicd' && (
-              <p className="mt-1 text-[11px] font-medium text-green-700">KICD/KNEC published time for {subject}{gradeLevel ? ` · Grade ${gradeLevel}` : ''}. You can change it.</p>
+              <p className="mt-1 text-[11px] font-medium text-green-700">KICD/KNEC published time for {subject}{gradeLevel ? ` · ${gradeLevel}` : ''}. You can change it.</p>
             )}
             {durationSource === 'manual' && (
               <p className="mt-1 text-[11px] text-slate-500">Custom value — the published KICD/KNEC time is not applied.</p>
             )}
+          </div>
+
+          <div className="mt-5 rounded-xl border border-red-100 bg-red-50/40 p-3.5">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+              <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Curriculum scope</p><p className="mt-1 text-[11px] leading-4 text-slate-500">Choose the level at which this assessment should be targeted. The selected KICD source hierarchy is sent with the generation request.</p></div>
+              <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-red-700">{scopeMode === 'full_paper' ? 'Full paper' : scopeMode === 'sub_strand' ? 'Sub-strand' : scopeMode === 'topical' ? 'Topical' : 'Strand-wide'}</span>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {([
+                { value: 'full_paper', label: 'Full paper', description: 'All official strands' },
+                { value: 'strand', label: 'Strand-wide', description: 'One or more strands' },
+                { value: 'sub_strand', label: 'Sub-strand', description: 'Selected sub-strands' },
+                { value: 'topical', label: 'Topical', description: 'Specific listed topics' },
+              ] as Array<{ value: AssessmentScopeMode; label: string; description: string }>).map((option) => {
+                const selected = scopeMode === option.value;
+                return <button key={option.value} type="button" aria-pressed={selected} onClick={() => setScopeMode(option.value)} className={`rounded-lg border p-2.5 text-left transition ${selected ? 'border-red-500 bg-white shadow-sm ring-2 ring-red-100' : 'border-slate-200 bg-white hover:border-red-200'}`}><span className="block text-xs font-semibold text-slate-800">{option.label}</span><span className="mt-0.5 block text-[10px] leading-4 text-slate-500">{option.description}</span></button>;
+              })}
+            </div>
           </div>
 
           {coveragePreview.length > 0 && (
@@ -703,14 +759,17 @@ export default function ExamGenerator({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-2">
-            <SelectionPanel title="1. Strands" count={selectedStrands.size} description="Choose one or more broad curriculum areas." onSelectAll={() => setSelectedStrands(new Set(strands.map((strand) => strand.id)))} onClear={() => setSelectedStrands(new Set())}>
+          {scopeMode === 'full_paper' ? <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50 p-3.5 text-xs text-emerald-900"><p className="font-semibold">Full-paper coverage is selected.</p><p className="mt-1 leading-5">The generator will distribute questions across all {strands.length} official strand{strands.length === 1 ? '' : 's'} and {allSubStrands.length} linked sub-strand{allSubStrands.length === 1 ? '' : 's'} for this grade and subject.</p></div> : <div className={`mt-5 grid gap-3 ${scopeMode === 'topical' ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+            <SelectionPanel title="1. Strands" count={selectedStrands.size} description="Choose one or more broad curriculum areas." onSelectAll={() => setSelectedStrands(new Set(strands.map((strand) => strand.id)))} onClear={() => { setSelectedStrands(new Set()); setSelectedSubStrands(new Set()); setSelectedTopics(new Set()); }}>
               {strands.length ? strands.map((strand) => <SelectableRow key={strand.id} checked={selectedStrands.has(strand.id)} label={strand.strand_name} onChange={() => setSelectedStrands((current) => toggleValue(current, strand.id))} />) : <EmptySelection label="Select a grade and subject first." />}
             </SelectionPanel>
-            <SelectionPanel title="2. Sub-strands" count={selectedSubStrands.size} description={selectedStrands.size ? 'Filtered by the selected strands.' : 'Select a strand first to unlock sub-strands.'} onSelectAll={() => setSelectedSubStrands(new Set(availableSubStrands.map((subStrand) => subStrand.id)))} onClear={() => setSelectedSubStrands(new Set())}>
+            {scopeMode !== 'strand' && <SelectionPanel title="2. Sub-strands" count={selectedSubStrands.size} description={selectedStrands.size ? 'Filtered by the selected strands.' : 'Select a strand first to unlock sub-strands.'} onSelectAll={() => setSelectedSubStrands(new Set(availableSubStrands.map((subStrand) => subStrand.id)))} onClear={() => { setSelectedSubStrands(new Set()); setSelectedTopics(new Set()); }}>
               {availableSubStrands.length ? availableSubStrands.map((subStrand) => <SelectableRow key={subStrand.id} checked={selectedSubStrands.has(subStrand.id)} label={subStrand.sub_strand_name} onChange={() => setSelectedSubStrands((current) => toggleValue(current, subStrand.id))} />) : <EmptySelection label="Select one or more strands first." />}
-            </SelectionPanel>
-          </div>
+            </SelectionPanel>}
+            {scopeMode === 'topical' && <SelectionPanel title="3. Topics" count={selectedTopics.size} description={selectedSubStrands.size ? 'Exact topic anchors from the selected official sub-strands.' : 'Select sub-strands first to unlock topics.'} onSelectAll={() => setSelectedTopics(new Set(availableTopics.map((topic) => topic.id)))} onClear={() => setSelectedTopics(new Set())}>
+              {availableTopics.length ? availableTopics.map((topic) => <SelectableRow key={topic.id} checked={selectedTopics.has(topic.id)} label={topic.topic_name} onChange={() => setSelectedTopics((current) => toggleValue(current, topic.id))} />) : <EmptySelection label="No source topics are available for the selected sub-strands." />}
+            </SelectionPanel>}
+          </div>}
 
           <div className="mt-5 space-y-2 rounded-xl border border-amber-100 bg-amber-50 p-3.5 text-xs text-amber-900">
             <label className="flex cursor-pointer items-start gap-2"><input type="checkbox" checked={includeImages} onChange={(event) => setIncludeImages(event.target.checked)} className="mt-0.5 rounded border-amber-300 text-red-600 focus:ring-red-500" /><span><strong>Generate automatic visuals.</strong> The AI will request precise diagrams, maps, tables, graphs, or illustrations only when a question genuinely requires one. Zamifu renders the visual deterministically for the browser preview and PDF; school-owned attachments remain available as a fallback.</span></label>

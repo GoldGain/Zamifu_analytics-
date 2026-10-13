@@ -65,6 +65,11 @@ function internalPaperCode(paper: BrandedPaper): string {
   return `ZAS-${paper.year}-${subjectCode}-${String(paper.version_number || 1).padStart(2, '0')}`;
 }
 
+function gradeLabel(paper: BrandedPaper): string {
+  const supplied = String(paper.grade_level || '').trim();
+  return /^grade\s+/i.test(supplied) ? supplied : `Grade ${supplied || '—'}`;
+}
+
 function groupedQuestions(paper: BrandedPaper): Array<{ type: QuestionType; questions: GeneratedExamQuestion[]; marks: number }> {
   const order = [...new Set(paper.questions.map((question) => question.question_type))];
   return order.map((type) => {
@@ -141,7 +146,7 @@ function addPageHeader(doc: jsPDF, paper: BrandedPaper, continuation = false, su
   doc.text(continuation ? `${paper.title} — CONTINUED` : paper.title, 105, 18, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
-  doc.text(`${formatLabel(paper.format)}  |  ${paper.subject.toUpperCase()}  |  GRADE ${paper.grade_level}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, 25, { align: 'center' });
+  doc.text(`${formatLabel(paper.format)}  |  ${paper.subject.toUpperCase()}  |  ${gradeLabel(paper).toUpperCase()}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, 25, { align: 'center' });
   doc.setFontSize(7);
   doc.text(`Internal paper code: ${internalPaperCode(paper)}  |  Time: ${paper.duration_minutes} minutes  |  Total: ${paper.total_marks} marks`, 105, 31, { align: 'center' });
   if (subtitle) {
@@ -275,7 +280,7 @@ function addFormalCoverPage(doc: jsPDF, paper: BrandedPaper, subtitle: string): 
   y += 5;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.text(`${paper.subject.toUpperCase()}  |  GRADE ${paper.grade_level}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, y, { align: 'center' });
+  doc.text(`${paper.subject.toUpperCase()}  |  ${gradeLabel(paper).toUpperCase()}  |  ${paper.term || 'SCHOOL TERM'} ${paper.year}`, 105, y, { align: 'center' });
   y += 5;
   doc.setFontSize(7.5);
   doc.text(`Internal paper code: ${internalPaperCode(paper)}  |  Time: ${paper.duration_minutes} minutes  |  Total: ${paper.total_marks} marks`, 105, y, { align: 'center' });

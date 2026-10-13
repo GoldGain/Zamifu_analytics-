@@ -281,19 +281,43 @@ async function loadVettedContext(
     .eq('is_approved', true)
     .eq('subject', request.subject)
     .eq('grade_level', request.gradeLevel)
-    .limit(100);
+    .limit(1000);
 
   const requestedGrade = normalizeContextKey(request.gradeLevel);
   const requestedStrands = new Set(request.strands.map(normalizeContextKey));
   const requestedSubStrands = new Set(request.subStrands.map(normalizeContextKey));
-  const matching = (error ? [] : (data || []))
+  const scopedByStrand = new Map<string, { subStrands: Set<string>; topics: Set<string> }>();
+  for (const node of request.curriculumScope || []) {
+    const strandKey = normalizeContextKey(node.strand);
+    if (!strandKey) continue;
+    scopedByStrand.set(strandKey, {
+      subStrands: new Set(node.subStrands.map(normalizeContextKey).filter(Boolean)),
+      topics: new Set(node.topics.map(normalizeContextKey).filter(Boolean)),
+    });
+  }
+  const filtered = (error ? [] : (data || []))
     .filter((row: any) => !row.grade_level || normalizeContextKey(row.grade_level) === requestedGrade)
     .filter((row: any) => !requestedStrands.size || (row.strand && requestedStrands.has(normalizeContextKey(row.strand))))
-    .filter((row: any) => !requestedSubStrands.size || (row.sub_strand && requestedSubStrands.has(normalizeContextKey(row.sub_strand))))
-    .slice(0, 10);
+    .filter((row: any) => {
+      const strandScope = scopedByStrand.get(normalizeContextKey(row.strand));
+      const allowedSubStrands = strandScope?.subStrands.size ? strandScope.subStrands : requestedSubStrands;
+      return !allowedSubStrands.size || Boolean(row.sub_strand && allowedSubStrands.has(normalizeContextKey(row.sub_strand)));
+    });
+  // Keep one evidence item for every selected strand before adding deeper
+  // sub-strand detail. This prevents a full-paper request from being narrowed
+  // to the first few alphabetic records in a large learning area.
+  const coverage = new Map<string, any>();
+  const remainder: any[] = [];
+  for (const row of filtered) {
+    const key = normalizeContextKey(row.strand);
+    if (key && !coverage.has(key)) coverage.set(key, row);
+    else remainder.push(row);
+  }
+  const matching = [...coverage.values(), ...remainder].slice(0, 24);
   const databaseContext = matching.map((row: any) => [row.strand, row.sub_strand, row.content_summary].filter(Boolean).join(': ')).join('\n');
   const databaseSources = matching.map((row: any) => row.source_name).filter(Boolean);
-  const embedded = embeddedCurriculumContext(request);
+  const requiresSourceBackedContext = request.level === 'upper_primary' || request.level === 'senior_secondary';
+  const embedded = requiresSourceBackedContext ? { context: '', sourceSummary: [] } : embeddedCurriculumContext(request);
   const context = [databaseContext, embedded.context].filter(Boolean).join('\n');
   return {
     context,
@@ -419,6 +443,9 @@ async function handleExamGeneration(
       avoidQuestionStems: Array.from(new Set([...(parsedRequest.avoidQuestionStems || []), ...recentQuestionStems])).slice(0, 40),
     };
     const vetted = await loadVettedContext(supabase, generationRequest);
+    if (!vetted.context.trim()) {
+      throw new Error('No approved KICD source evidence matches this grade, subject, and selected scope. Refresh the curriculum selection or contact an administrator.');
+    }
     let draftPaper;
     try {
       draftPaper = useGemini
