@@ -237,3 +237,16 @@ assert.equal(replacement.questions[0].visual_spec, null, 'replacement must not r
 assert.ok(replacement.actions.some((action) => action.kind === 'question_rewritten'), 'replacement must be recorded');
 
 console.log('visual-integrity regression passed (vector map + Science diagram templates + unsupported-placeholder rejection + one-map Social Studies minimum + backoff retry + failed-visual replacement/drop semantics)');
+
+const validDigestive=baseQuestion({question_text:'Study the diagram of the human digestive system.',visual_spec:{asset_type:'diagram',title:'Human digestive system',labels:['P: stomach','Q: small intestine']}});
+assert.equal(hasUsableVisualSpec(validDigestive),true);
+const wrongDigestive={...validDigestive,visual_spec:{...validDigestive.visual_spec,labels:['P: oesophagus','Q: liver']}};
+assert.equal(hasUsableVisualSpec(wrongDigestive),false,'template labels must identify the organs actually drawn');
+assert.equal(renderExamVisualDataUrl(wrongDigestive),null);
+const atomCounts=baseQuestion({question_text:'Study the atom diagram and state the number of electrons in the outermost shell.',visual_spec:{asset_type:'diagram',title:'Atom',labels:['X','Y']}});
+assert.equal(hasUsableVisualSpec(atomCounts),false,'a nucleus/electron schematic cannot answer particle-count questions');
+assert.equal(renderExamVisualDataUrl(atomCounts),null);
+const wrongMirrorPosition=baseQuestion({question_text:'Study the concave mirror ray diagram with the object between the focus and mirror.',visual_spec:{asset_type:'diagram',title:'Concave mirror',labels:['C','F']}});
+assert.equal(hasUsableVisualSpec(wrongMirrorPosition),false,'a fixed beyond-C ray template cannot depict an object inside the focus');
+assert.equal(renderExamVisualDataUrl(wrongMirrorPosition),null);
+console.log('PASS: anatomy labels, atom-count limits and mirror-object positions are checked before SVG rendering.');

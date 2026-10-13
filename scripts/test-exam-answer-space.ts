@@ -142,6 +142,8 @@ function paperForInstructions(subject: string, questions: GeneratedExamQuestion[
 
 const theoryInstructions = getPrintedCandidateInstructions(paperForInstructions('English', [question({ question_text: 'Explain the writer’s message.' })], ['Show all working.']));
 assert.doesNotMatch(theoryInstructions.join(' '), /show all working|working space|calculation space/i, 'theory cover instructions must not demand generic working');
+assert.doesNotMatch(theoryInstructions.join(' '),/in the spaces provided/i);
+assert.match(sanitizeCandidateInstruction('Write your answers in the spaces provided.','English',[question({question_text:'Describe the character.'})]),/answer booklet/i);
 const calculationInstructions = getPrintedCandidateInstructions(paperForInstructions('Integrated Science', [scienceCalculation], ['Show all working for calculations.']));
 assert.match(calculationInstructions.join(' '), /calculation steps only for questions that require a calculation/i);
 

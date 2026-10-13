@@ -224,6 +224,7 @@ export function sanitizeCandidateInstruction(
   const value = String(instruction || '').replace(/\s+/g, ' ').trim();
   if (!value) return '';
   const hasCalculation = hasCalculationQuestions(subject, questions);
+  if(!hasCalculation&&/\bin\s+(?:the\s+)?spaces?\s+provided\b/i.test(value))return value.replace(/\bin\s+(?:the\s+)?spaces?\s+provided\b/gi,'in your answer booklet');
   const blanketWorking = /\b(?:show|give|include|write)\s+(?:all|your|the)\s+working\b|\bworking\s+space\b|\bcalculation\s+space\b/i;
   if (!hasCalculation && blanketWorking.test(value)) return '';
   if (hasCalculation && /\bshow\s+all\s+working\b/i.test(value)) {

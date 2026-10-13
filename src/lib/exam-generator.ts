@@ -216,7 +216,7 @@ function formatSpecificInstructions(paper: BrandedPaper): string[] {
   const calculationInstruction = candidateCalculationInstruction(paper.subject, paper.questions);
   if (paper.format === 'kjsea') {
     return [
-      'Answer all questions in the spaces provided.',
+      'Answer all questions. Record objective answers on your answer sheet and write other answers in your answer booklet.',
       calculationInstruction,
       'Use the diagrams, tables, maps and other visual stimuli only as directed by each question.',
     ];

@@ -9,6 +9,8 @@ import {
   type ExamMapFeature,
 } from './exam-map-data.js';
 
+export const DETERMINISTIC_SCIENCE_VISUAL_RULES=' Deterministic Science diagram contract: an atom diagram labels the nucleus first and an electron second; particle counts, electron arrangements and outer-shell counts are NOT shown. A digestive-system diagram labels the stomach first and small intestine second. A flower diagram labels the anther first and stigma second. A concave-mirror ray diagram has its object beyond the centre of curvature, with the centre labelled first and focus second; other object positions are unsupported. Use letter labels or the exact anatomical names in that order. For other counts, positions or unsupported anatomy, provide a complete data table or self-contained numerical text instead of a misleading diagram.';
+
 export interface ExamVisualSpec {
   asset_type?: string;
   title?: string;
@@ -732,7 +734,24 @@ function deterministicDiagramType(question: GeneratedExamQuestion): string | nul
   return null;
 }
 
+function diagramTemplateCompatible(question: GeneratedExamQuestion): boolean {
+  const spec=question.visual_spec;
+  if(spec?.asset_type!=='diagram')return true;
+  const type=deterministicDiagramType(question);
+  const expected: Record<string,RegExp[]>= {atom:[/\bnucleus\b/i,/\belectron\b/i],digestive_system:[/\bstomach\b/i,/\bsmall\s+intestine\b/i],flower:[/\banther\b/i,/\bstigma\b/i],concave_mirror:[/\b(?:centre|center)\b|\bcurvature\b/i,/\bfocus\b|\bfocal\s+point\b/i]};
+  for(const [index,pattern]of(expected[type||'']||[]).entries()){
+    const label=String(spec.labels?.[index]||'').trim();
+    const meaning=label.replace(/^[A-Za-z]\s*(?:=|:|[-–])\s*/,'').trim();
+    if(meaning&&!/^[A-Za-z]$/.test(meaning)&&!pattern.test(meaning))return false;
+  }
+  const descriptor=[question.question_text,...(question.sub_parts||[]).map(part=>part.prompt),spec.title,spec.prompt].join(' ');
+  if(type==='atom'&&/\b(?:electron\s+(?:arrangement|configuration)|outer(?:most)?\s+shell|number\s+of\s+(?:electrons|protons|neutrons)|count\s+(?:the\s+)?(?:electrons|protons|neutrons))\b/i.test(descriptor))return false;
+  if(type==='concave_mirror'&&/\b(?:between\s+(?:the\s+)?(?:focus|focal\s+point|centre|center)|at\s+(?:the\s+)?(?:focus|focal\s+point|centre|center))\b/i.test(descriptor))return false;
+  return true;
+}
+
 export function hasUsableVisualSpec(question: GeneratedExamQuestion): boolean {
+  if(!diagramTemplateCompatible(question))return false;
   const spec = (question.visual_spec || {}) as ExamVisualSpec;
   const assetType = String(spec.asset_type || '').toLowerCase();
   const labels = (spec.labels || []).map(String).filter((value) => value.trim());
@@ -790,6 +809,7 @@ export function filterUnnecessaryExamVisual(question: GeneratedExamQuestion): Ge
 }
 
 export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string | null {
+  if(!diagramTemplateCompatible(question))return null;
   const curatedKey = (question.visual_spec as Record<string, unknown> | null | undefined)?.curated_key;
   if (typeof curatedKey === 'string' && curatedKey && !curatedKey.startsWith('map_')) {
     const curated = curatedVisualDataUrl(curatedKey);
