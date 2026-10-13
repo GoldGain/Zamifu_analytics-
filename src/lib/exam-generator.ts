@@ -469,15 +469,23 @@ function ensureRoom(doc: jsPDF, paper: BrandedPaper, y: number, needed: number, 
   return nextY;
 }
 
+export function resolveQuestionVisualForPdf(question: GeneratedExamQuestion): string | null {
+  if (question.visual_spec) {
+    // The structured specification is canonical. Regenerate it with the
+    // current renderer so saved papers cannot retain an older placeholder SVG.
+    const refreshedVisual = renderExamVisualDataUrl({ ...question, image_url: null });
+    if (refreshedVisual) return refreshedVisual;
+
+    const assetType = String((question.visual_spec as { asset_type?: unknown }).asset_type || '').toLowerCase();
+    if (['map', 'diagram', 'shape', 'table', 'graph', 'chart', 'number_line', 'flowchart'].includes(assetType)) {
+      return null;
+    }
+  }
+  return question.image_url || null;
+}
+
 async function addQuestionVisual(doc: jsPDF, paper: BrandedPaper, question: GeneratedExamQuestion, y: number, subtitle?: string): Promise<number> {
-  // Use the exact image attached to the current paper first. Generated papers
-  // already carry the server-rendered SVG used by the browser preview; reusing
-  // it keeps PDF output identical and avoids replacing a corrected visual with
-  // an older cached/generated variant. Saved papers are rebuilt in
-  // openSavedPaper when no image_url is present, so the deterministic fallback
-  // remains available for legacy records.
-  const automaticVisual = question.visual_spec ? renderExamVisualDataUrl(question) : null;
-  const source = question.image_url || automaticVisual;
+  const source = resolveQuestionVisualForPdf(question);
   if (!source) return y;
   const visual = await rasterizeForPdf(source);
   y = ensureRoom(doc, paper, y, 68, subtitle);

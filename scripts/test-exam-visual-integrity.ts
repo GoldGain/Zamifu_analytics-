@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { renderExamVisualDataUrl, hasUsableVisualSpec, withRenderedExamVisual } from '../src/lib/exam-visuals.js';
+import { resolveQuestionVisualForPdf } from '../src/lib/exam-generator.js';
 import { repairGeneratedExam } from '../src/lib/exam-repair.js';
 import { validateGeneratedExam } from '../src/lib/exam-validation.js';
 import type { ExamGenerationRequest, GeneratedExamQuestion } from '../src/lib/exam-schema.js';
@@ -46,6 +47,11 @@ for (const required of ['East Africa map', 'KEY', 'Line:', 'boundary', '500 km',
 }
 assert.ok(!svg.toLowerCase().includes('schematic'), 'map SVG must not be described as schematic');
 assert.equal(hasUsableVisualSpec({ ...mapQuestion, image_url: rendered }), true, 'complete map metadata must pass visual validation');
+assert.equal(
+  resolveQuestionVisualForPdf({ ...mapQuestion, image_url: 'data:image/svg+xml;charset=utf-8,stale-placeholder' }),
+  rendered,
+  'PDF export must regenerate a map from its structured spec instead of trusting a stale cached SVG',
+);
 
 const scienceDiagramCases: Array<{ name: string; question: GeneratedExamQuestion }> = [
   {
@@ -86,6 +92,11 @@ for (const { name, question } of scienceDiagramCases) {
   assert.equal(hasUsableVisualSpec(question), true, `${name} must pass visual validation when its renderer is supported`);
   const refreshed = withRenderedExamVisual({ ...question, image_url: 'data:image/svg+xml;charset=utf-8,stale-generic-placeholder' });
   assert.equal(refreshed.image_url, image, `${name} must replace a stale placeholder with the deterministic renderer output`);
+  assert.equal(
+    resolveQuestionVisualForPdf({ ...question, image_url: 'data:image/svg+xml;charset=utf-8,stale-generic-placeholder' }),
+    image,
+    `${name} PDF output must prefer the current deterministic renderer over a stale placeholder`,
+  );
 }
 
 const unsupportedDiagram = baseQuestion({
@@ -98,6 +109,11 @@ assert.equal(
   withRenderedExamVisual({ ...unsupportedDiagram, image_url: 'data:image/svg+xml;charset=utf-8,stale-generic-placeholder' }).image_url,
   null,
   'unsupported diagram normalization must clear stale generic imagery',
+);
+assert.equal(
+  resolveQuestionVisualForPdf({ ...unsupportedDiagram, image_url: 'data:image/svg+xml;charset=utf-8,stale-generic-placeholder' }),
+  null,
+  'PDF export must not print a stale placeholder for an unsupported structured diagram',
 );
 
 const socialMapRequest: ExamGenerationRequest = {
