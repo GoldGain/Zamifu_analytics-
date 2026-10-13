@@ -1,17 +1,14 @@
 # Exam Generator — Grades 6–10
 
-- [ ] Align grade/format selection: Grade 6 KPSEA practice; Grade 9 KJSEA current source-backed paper structures; Grades 7, 8 and 10 school-based CBE assessments unless a verified national format applies. Do not label local defaults as KICD/KNEC mandates.
-- [ ] Correct multi-paper subjects: each Paper 1/Paper 2 must have its own proper components, exact marks, duration/project window, instructions and marking scheme; generation and repair must preserve component identity.
-- [ ] Student space: no generic calculation/working blocks on theory papers; provide working space for mathematics and actual calculation tasks/sub-parts only.
-- [ ] Full paper reliability: never save a shortened or incorrectly marked paper as successful; recover missing/broken question slots, bound retry/concurrency, preserve selected approved curriculum and clear failure reporting.
-- [ ] Visual integrity: every referenced diagram/table/map appears, required Social Studies map component is retained, map includes frame/title/scale/key/north arrow, labels remain print-readable; no decorative placeholders.
-- [ ] Source evidence: verify current official curriculum coverage for Grades 6–10 and use approved curriculum-tree context for each level.
-- [ ] Push every verified correction to the existing GitHub main branch and deploy to the existing zamifu.company Vercel project.
-- [ ] Validate regression matrix across grade/subject/variant combinations and live Demo School generation; export student/marking PDFs and 300-DPI visual evidence for final successful examples. Report failures honestly and retain draft status for professional review.
+- [x] Align grade/format selection: Grade 6 KPSEA practice; Grade 9 KJSEA current source-backed paper structures; Grades 7, 8 and 10 school-based CBE assessments unless a verified national format applies. Do not label local defaults as KICD/KNEC mandates.
+- [x] Correct multi-paper subjects: each national Paper 1/Paper 2 has its own components, exact marks, duration/project window, instructions and marking scheme; generation and repair preserve component identity. School-configured Paper 1/Paper 2/Both follow the teacher’s selected scope and blueprint and are explicitly not national specifications.
+- [x] Student space: no generic calculation/working blocks on theory papers; provide working space for mathematics and actual calculation tasks/sub-parts only. Dedicated graph/drawing tasks receive their required graphical response area. Actual Kiswahili PDF inspection confirms no dashed theory rulings.
+- [x] Full paper reliability: never save a shortened or incorrectly marked paper as successful; recover missing/broken slots and subpart totals from the latest candidate, bound concurrency/output size and one request-wide deadline, preserve approved curriculum and report clear failures.
+- [x] Visual integrity implementation: every referenced diagram/table/map must appear or the question is repaired; required map slots cannot be dropped. Natural Earth maps retain frame/title/indicative scale/key/north arrow. Science template anatomy and object/count limits are checked. Full table source and paginated print panels preserve every cell. Original SVG source is retained and PDF images are checked at ≥300-DPI equivalent.
+- [x] Source evidence: completed official-source audits for each of Grades 6–10 and use approved provenance-linked curriculum-tree context. School defaults are distinguished from national requirements.
+- [x] Push every verified correction to existing GitHub main. Production rollouts use the existing zamifu.company Vercel project; final source-attribution guard release is currently rolling out.
+- [ ] Complete the full source-backed 85-paper live matrix plus targeted school-variant examples using Demo School; revalidate old responses against strengthened current rules, retry failed cases without duplicate active requests, and export final student/marking PDFs with 300-DPI screenshots and original SVGs. Do not claim the whole matrix passed until it has.
 
-## Work ownership
+## Current validation facts
 
-Parent: API, grade-format policy, schema, UI integration, production validation and delivery.
-PDF spacing agent: exam-generator.ts and focused PDF/space tests.
-Completeness agent: deepseek-api.ts, exam-repair.ts, exam-validation.ts and reliability tests.
-Official evidence workflow: one source audit per Grade 6, 7, 8, 9 and 10.
+Local grade-format, exact-completeness, provider-retry/chunk, source-content, PDF structure/display/space, table and vector visual suites pass. UI school variants and final live matrix are being checked. Gemini’s configured fallback reports depleted prepayment capacity; this is a fallback-service issue, not a statement about Manus or DeepSeek balances. DeepSeek remains the proven active primary; primary chunk failures are being corrected and retried.
