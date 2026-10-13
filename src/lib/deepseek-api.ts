@@ -32,6 +32,7 @@ import {
   type ExamBlueprintSlot,
 } from './exam-generation-contract.js';
 import { questionLacksAnswer } from './exam-construction.js';
+import { ORIGINAL_LITERARY_EXTRACT_RULE } from './exam-literary-policy.js';
 
 interface DeepSeekChoice {
   message?: { content?: unknown; reasoning_content?: string | null };
@@ -253,6 +254,7 @@ export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext
     : 'Do not require any images, but preserve a visual_spec only when the question stem explicitly requires a visual to answer the question. If a visual_spec is present, do not repeat its table or bracketed diagram placeholder in question_text.';
   const outcomes = request.learningOutcomes?.length ? request.learningOutcomes.join('; ') : 'Not separately constrained.';
   if(request.includeImages)imageDirection+=DETERMINISTIC_SCIENCE_VISUAL_RULES;
+  if(/english|kiswahili|literature|fasihi/i.test(request.subject))imageDirection+=ORIGINAL_LITERARY_EXTRACT_RULE;
   const competencies = request.competencies?.length ? request.competencies.join('; ') : 'Use suitable CBC core competencies.';
   const formatDirection = request.format === 'standard30'
     ? 'STANDARD 30-MARK REQUIREMENTS: Produce exactly 10 Section A multiple-choice questions worth 1 mark each, followed by exactly 4 Section B structured questions worth 5 marks each. The structured questions may use lettered sub-parts when useful, and every main question must total its blueprint marks.'
@@ -483,7 +485,7 @@ async function requestFocusedBlueprintRecovery(
   return missingBlueprintSlots(request, working).length ? null : working as GeneratedExamQuestion[];
 }
 
-function chunkBlueprintSlots(slots: ExamBlueprintSlot[]): ExamBlueprintSlot[][] {
+export function chunkBlueprintSlots(slots: ExamBlueprintSlot[]): ExamBlueprintSlot[][] {
   const chunks: ExamBlueprintSlot[][] = [];
   let cursor = 0;
   while (cursor < slots.length) {
