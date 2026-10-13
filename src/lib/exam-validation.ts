@@ -12,6 +12,8 @@ import {
 } from './exam-construction.js';
 import { getKjseaPaperSpec } from './kjsea-paper-formats.js';
 
+const EXPLICIT_VISUAL_REFERENCE = /\b(?:study|use|refer to|observe|label|complete|interpret|in|from|according to|based on)\s+(?:(?:the|this|following)\s+)?(?:diagram|figure|map|graph|chart|table|picture|image|illustration)\b|\b(?:diagram|figure|map|graph|chart|table|picture|image|illustration)\s+(?:shown\s+)?(?:below|above|given|provided)\b|\bsee\s+(?:the\s+)?(?:diagram|figure|map|graph|chart|table)\b/i;
+
 export type ExamValidationSeverity = 'critical' | 'warning' | 'info';
 
 export interface ExamValidationIssue {
@@ -237,6 +239,10 @@ export function validateGeneratedExam(
     }
     if (question.question_type === 'essay' && question.marks < 4) {
       issues.push({ code: 'ESSAY_MARKS_LOW', severity: 'warning', message: 'Extended-response questions normally need enough marks for a developed response.', questionIndex: index });
+    }
+    const visualReferenceText = [question.question_text, ...(question.sub_parts || []).map((part) => part.prompt)].join(' ');
+    if (!question.visual_spec && EXPLICIT_VISUAL_REFERENCE.test(visualReferenceText)) {
+      issues.push({ code: 'VISUAL_REFERENCE_MISSING', severity: 'critical', message: 'This question explicitly refers to a diagram, map, table, or other visual but has no structured visual specification; repair it or replace the question.', questionIndex: index });
     }
     if (question.visual_spec && !question.image_url) {
       issues.push({ code: 'VISUAL_NOT_RENDERED', severity: 'critical', message: 'This question has a visual specification but no rendered visual asset.', questionIndex: index });

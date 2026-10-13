@@ -126,6 +126,26 @@ const request: ExamGenerationRequest = {
   includeMarkingScheme: true, format: 'custom', term: 'Term 1', blueprint: undefined,
 };
 
+const noImageRequest = { ...request, includeImages: false };
+const danglingReference = baseQuestion({ question_text: 'Study the diagram below and name the labelled part.' });
+const danglingValidation = validateGeneratedExam(noImageRequest, [danglingReference]);
+assert.ok(
+  danglingValidation.issues.some((issue) => issue.code === 'VISUAL_REFERENCE_MISSING'),
+  'an explicit diagram reference without a visual specification must fail validation',
+);
+let danglingVisualRetries = 0;
+const replacedDanglingReference = await repairGeneratedExam(noImageRequest, [danglingReference], {
+  rewriteVisual: async () => { danglingVisualRetries += 1; return null; },
+  rewriteQuestion: async () => baseQuestion({
+    question_text: 'Name one function of the nucleus.',
+    correct_answer: 'It controls the activities of the cell.',
+    marking_scheme: 'Award one mark for controlling cell activities.',
+  }),
+});
+assert.equal(danglingVisualRetries, 2, 'a missing reference must use the bounded visual retry flow');
+assert.equal(replacedDanglingReference.questions.length, 1, 'a broken visual reference should survive only as a non-visual replacement');
+assert.equal(replacedDanglingReference.questions[0].visual_spec, null, 'replacement question must not rely on a missing visual');
+
 const unusable = baseQuestion({
   visual_spec: { asset_type: 'map', title: 'Broken map', map_regions: ['Kenya'] },
 });

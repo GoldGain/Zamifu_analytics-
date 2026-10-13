@@ -39,6 +39,7 @@ export const SCOPE_ISSUE_CODES: ReadonlySet<string> = new Set([
 
 /** Problems confined to a visual before a non-visual replacement is attempted. */
 export const VISUAL_ISSUE_CODES: ReadonlySet<string> = new Set([
+  'VISUAL_REFERENCE_MISSING',
   'VISUAL_SPEC_INCOMPLETE',
   'TABLE_DATA_INCOMPLETE',
   'VISUAL_NOT_RENDERED',
