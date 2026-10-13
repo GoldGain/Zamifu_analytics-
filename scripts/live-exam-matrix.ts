@@ -93,8 +93,10 @@ for(const row of records){
  if(!fs.existsSync(responsePath)||!fs.existsSync(requestPath))continue;
  const payload=JSON.parse(fs.readFileSync(responsePath,'utf8')),effective=JSON.parse(fs.readFileSync(requestPath,'utf8'));
  if(!payload.paper?.marking_scheme&&row.paperId){const stored=await savedPaper(row.paperId);if(stored)payload.paper.marking_scheme=stored.paper.marking_scheme;}
- const valid=payload.paper?.questions?.length&&validateGeneratedExam(effective,payload.paper.questions).passed&&payload.paper.questions.length===getExamBlueprintSlots(effective).length&&payload.paper.questions.reduce((sum:number,q:any)=>sum+q.marks,0)===effective.totalMarks&&Boolean(payload.paper.marking_scheme?.length);
- if(valid){row.success=true;row.error=null;row.criticalIssues=[];fs.writeFileSync(responsePath,JSON.stringify(payload,null,2),{mode:0o600});}
+ const currentValidation=payload.paper?.questions?.length?validateGeneratedExam(effective,payload.paper.questions):null;
+ const valid=currentValidation?.passed&&payload.paper.questions.length===getExamBlueprintSlots(effective).length&&payload.paper.questions.reduce((sum:number,q:any)=>sum+q.marks,0)===effective.totalMarks&&Boolean(payload.paper.marking_scheme?.length);
+ if(valid){row.success=true;row.error=null;row.criticalIssues=[];row.paperId=payload.paper.id;row.questionCount=payload.paper.questions.length;row.totalMarks=payload.paper.questions.reduce((sum:number,q:any)=>sum+q.marks,0);fs.writeFileSync(responsePath,JSON.stringify(payload,null,2),{mode:0o600});}
+ else {row.success=false;row.criticalIssues=currentValidation?.issues.filter(issue=>issue.severity==='critical')||[];row.error=row.criticalIssues.map((issue:any)=>issue.message).join('; ')||'The saved draft no longer passes the current complete-paper validation.';}
 }
 fs.writeFileSync(path.join(root,'generation-summary.json'),JSON.stringify(records,null,2));
 const done=new Set(records.filter(row=>row.success).map(row=>row.key));

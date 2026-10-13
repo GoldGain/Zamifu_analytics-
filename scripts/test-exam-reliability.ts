@@ -62,8 +62,8 @@ try {
   const paper = await generateExamWithDeepSeek(request, 'Numbers: Integers: ordering integers and number lines.');
   assert.equal(calls, 3, 'the provider should be retried after empty and malformed responses');
   assert.equal(requestBodies[0]?.model, 'deepseek-chat', 'the proven DeepSeek compatibility alias should remain the first attempt');
-  assert.equal(requestBodies[1]?.model, 'deepseek-v4-pro', 'the first recovery attempt should switch to the configured alternate model');
-  assert.equal(requestBodies[2]?.model, 'deepseek-v4-pro', 'the final recovery attempt should remain on the alternate model');
+  assert.equal(requestBodies[1]?.model, 'deepseek-chat', 'the default recovery must stay on the proven chat route');
+  assert.equal(requestBodies[2]?.model, 'deepseek-chat', 'the default final recovery must not switch to a reasoning-only model');
   assert.ok(Number(requestBodies[2]?.max_tokens) > Number(requestBodies[1]?.max_tokens), 'the final recovery attempt should allow a larger complete-paper response');
   assert.deepEqual(requestBodies[0]?.response_format, { type: 'json_object' }, 'the first attempt should use DeepSeek JSON mode');
   assert.equal(paper.questions.length, 1, 'the recovered response should normalize one valid question');

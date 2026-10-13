@@ -11,6 +11,7 @@ import {
   uncoveredStrands,
 } from './exam-construction.js';
 import { getKjseaPaperSpec } from './kjsea-paper-formats.js';
+import { scientificContentIssues } from './exam-science-policy.js';
 import {
   expectedExamMarks,
   getExamBlueprintSlots,
@@ -252,6 +253,7 @@ export function validateGeneratedExam(
   const selectedTopics = new Set(request.topics.map(normalizeCurriculumLabel).filter(Boolean));
 
   questions.forEach((question, index) => {
+    scientificContentIssues(question).forEach(message=>issues.push({code:'SCIENTIFIC_CONTENT_CORRECTION',severity:'critical',message,questionIndex:index}));
     const stem = normalizeStem(question.question_text);
     if (!stem) issues.push({ code: 'EMPTY_STEM', severity: 'critical', message: 'Question text is empty.', questionIndex: index });
     if (stem && seen.has(stem)) {

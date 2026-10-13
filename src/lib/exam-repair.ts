@@ -236,6 +236,7 @@ function normalizedAnswer(value: unknown): string {
 
 function strictSlotQuestionUsable(question: GeneratedExamQuestion | undefined, slot: ExamBlueprintSlot): boolean {
   if (!question || !questionMatchesBlueprintSlot(question, slot) || questionLacksAnswer(question)) return false;
+  if(question.sub_parts?.length&&(question.sub_parts.reduce((sum,part)=>sum+part.marks,0)!==slot.marks||question.sub_parts.some(part=>!part.prompt?.trim()||part.marks<1)))return false;
   if (question.question_type !== 'multiple_choice') return true;
   const options = question.options || [];
   if (options.length !== 4 || new Set(options.map(normalizedAnswer)).size !== 4) return false;
@@ -479,11 +480,11 @@ export async function repairGeneratedExam(
 
   if (fixedBlueprint) {
     const slots = getExamBlueprintSlots(request);
-    const unresolved = slots.filter((slot, index) => !strictSlotQuestionUsable(state[index], slot));
+    const unresolved = slots.filter((slot,index)=>!strictSlotQuestionUsable(state[index],slot)||issuesForPosition(request,state,index,options).length>0);
     await runWithConcurrency(unresolved, 4, async (slot) => {
       const index = slot.questionNumber - 1;
       const current = state[index];
-      const seed: GeneratedExamQuestion = bindQuestionToSlot({
+      let seed: GeneratedExamQuestion = bindQuestionToSlot({
         ...(current || {}),
         question_type: slot.questionType,
         question_text: current?.question_text || `Generate the complete question for ${slot.title}.`,
@@ -496,7 +497,7 @@ export async function repairGeneratedExam(
         topic: slot.topic || current?.topic || request.topics[0],
       }, slot);
       for (let attempt = 1; attempt <= MAX_SCOPE_REPAIR_ATTEMPTS; attempt += 1) {
-        const existingIssues = current
+        const existingIssues = state[index]
           ? issuesForPosition(request, state, index, options)
           : [];
         const issues: ExamValidationIssue[] = [
@@ -507,6 +508,7 @@ export async function repairGeneratedExam(
         if (!repaired) continue;
         const bound = bindQuestionToSlot(repaired, slot);
         state[index] = bound;
+        seed=bound;
         const remaining = issuesForPosition(request, state, index, options);
         if (strictSlotQuestionUsable(bound, slot) && !remaining.length) {
           rewritten.add(index);

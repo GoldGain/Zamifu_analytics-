@@ -539,6 +539,7 @@ async function handleExamGeneration(
   profile: ExamProfile,
   user: { id: string; email?: string; user_metadata?: Record<string, unknown> },
   request: RequestLike,
+  deadlineAt: number,
 ): Promise<void> {
   const rawParsedRequest = parseExamRequest(parseBody(request.body));
   if (!rawParsedRequest) {
@@ -655,7 +656,7 @@ async function handleExamGeneration(
     if (generationJobId) {
       await supabase.from('exam_generation_jobs').update({request_payload:generationRequest,updated_at:new Date().toISOString()}).eq('id',generationJobId);
     }
-    const generationDeadline=Date.now()+190000;
+    const generationDeadline=Math.min(deadlineAt-70000,Date.now()+190000);
     let draftPaper;
     try {
       draftPaper = useGemini
@@ -693,7 +694,7 @@ async function handleExamGeneration(
 
     // Preserve all fixed slots. A bounded repair may recover bad questions, but
     // an unrecoverable slot must fail honestly rather than shorten the paper.
-    const repairDeadline=Date.now()+70000;
+    const repairDeadline=Math.min(deadlineAt,Date.now()+70000);
     const repairWithProvider = async (prompt: string): Promise<Record<string, unknown> | null> => {
       if(Date.now()>=repairDeadline)return null;
       try {
@@ -855,6 +856,7 @@ async function handleExamGeneration(
 }
 
 export default async function handler(request: RequestLike, response: ResponseLike): Promise<void> {
+  const deadlineAt=Date.now()+270000;
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
   response.setHeader('Cache-Control', 'no-store');
 
@@ -903,5 +905,5 @@ export default async function handler(request: RequestLike, response: ResponseLi
     jsonError(response, 403, 'Only school teachers and school administrators with an active school profile can generate exams.');
     return;
   }
-  await handleExamGeneration(response, supabase as any, profile as ExamProfile, user, request);
+  await handleExamGeneration(response, supabase as any, profile as ExamProfile, user, request,deadlineAt);
 }

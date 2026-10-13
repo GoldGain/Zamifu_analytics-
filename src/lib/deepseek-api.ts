@@ -624,7 +624,7 @@ export async function generateExamWithDeepSeek(request: ExamGenerationRequest, k
   const configuredModel = process.env.AI_EXAM_MODEL || process.env.DEEPSEEK_MODEL || '';
   const modelName = useDeepSeek ? (configuredModel || 'deepseek-chat') : (configuredModel || 'gpt-5-mini');
   const fallbackModel = useDeepSeek
-    ? (process.env.AI_EXAM_FALLBACK_MODEL || (modelName === 'deepseek-chat' ? 'deepseek-v4-pro' : 'deepseek-chat'))
+    ? (process.env.AI_EXAM_FALLBACK_MODEL || 'deepseek-chat')
     : modelName;
 
   console.log('[exam-gen] endpoint:', endpoint);

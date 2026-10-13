@@ -110,3 +110,17 @@ const expired=await repairGeneratedExam(practicalRequest,[question('case_study',
 assert.equal(expired.status,'failed');
 assert.equal(deadlineCalls,0,'expired shared deadlines must prevent new provider work');
 console.log('PASS: fixed practical/literary counts, partial-answer repair, bounded adapter errors, and answerable East Africa map fallback preserve exact contracts.');
+
+const structuralRequest:ExamGenerationRequest={...baseRequest,totalMarks:4,blueprint:{sections:[{id:'structure',title:'Complete structured question',question_type:'case_study',count:1,marks_per_question:4,difficulty:'medium'}],total_marks:4}};
+const structuralQuestion={...question('case_study',4,1,'Original structured task.'),sub_parts:[{label:'(a)',prompt:'Give two observations from the experiment.',marks:2,correct_answer:'Two correct observations.',marking_scheme:'One mark per observation.'},{label:'(b)',prompt:'Explain one precaution in the experiment.',marks:1,correct_answer:'A valid precaution.',marking_scheme:'A valid explanation.'}]};
+let structuralCalls=0;
+const structuralResult=await repairGeneratedExam(structuralRequest,[structuralQuestion],{rewriteVisual:async()=>null,rewriteQuestion:async({question:latest})=>{
+ structuralCalls++;
+ if(structuralCalls===1)return {...latest,question_text:'Latest intermediate structured task.'};
+ assert.equal(latest.question_text,'Latest intermediate structured task.','second attempt must use the first repaired candidate, not the stale original');
+ return {...latest,sub_parts:latest.sub_parts!.map((part,index)=>({...part,marks:index===1?2:part.marks}))};
+}});
+assert.equal(structuralResult.status,'repaired','subpart-total mismatches must enter fixed-slot recovery');
+assert.equal(structuralCalls,2);
+assert.equal(structuralResult.questions[0].sub_parts!.reduce((sum,part)=>sum+part.marks,0),4);
+console.log('PASS: subpart structural mismatches are recovered using each latest candidate.');
