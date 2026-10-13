@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { groupExamQuestionsForPdf } from '../src/lib/exam-generator.js';
+import { groupExamQuestionsForPdf,shouldShowStudentMarks } from '../src/lib/exam-generator.js';
 import { getKjseaPaperSpec, makeKjseaBlueprint } from '../src/lib/kjsea-paper-formats.js';
 import type { ExamPaper, GeneratedExamQuestion, PaperVariant } from '../src/lib/exam-schema.js';
 
@@ -99,3 +99,6 @@ assert.equal(getKjseaPaperSpec('English', 'paper2')?.code, '901/2');
 assert.equal(getKjseaPaperSpec('Social Studies', 'single')?.code, '907');
 
 console.log('PASS: PDF grouping preserves all seven audited KJSEA layouts, mark totals, and official paper codes.');
+
+for(const format of ['cbe','custom','standard30','kjsea'] as const)assert.equal(shouldShowStudentMarks(format),true,`${format} student questions and subparts must show their allocated marks`);
+assert.equal(shouldShowStudentMarks('kpsea'),false,'verified objective KPSEA styling remains unchanged');

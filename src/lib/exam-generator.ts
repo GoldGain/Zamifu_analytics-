@@ -185,6 +185,10 @@ function isFormalPracticeFormat(paper: BrandedPaper): boolean {
   return paper.format === 'standard30' || paper.format === 'kpsea' || paper.format === 'kjsea';
 }
 
+export function shouldShowStudentMarks(format:ExamPaper['format']):boolean {
+  return format!=='kpsea';
+}
+
 function isObjectiveKpseaPaper(paper: BrandedPaper): boolean {
   return paper.format === 'kpsea'
     && paper.questions.length > 0
@@ -552,7 +556,7 @@ function addStructuredSubParts(
     doc.setFont('helvetica','normal');
     doc.setFontSize(paper.format==='kjsea'?8.2:8.8);
     const marks = ` [${part.marks} mark${part.marks === 1 ? '' : 's'}]`;
-    const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${paper.format === 'standard30' || paper.format === 'kjsea' ? marks : ''}`, textWidth);
+    const lines = doc.splitTextToSize(`${part.label} ${part.prompt}${shouldShowStudentMarks(paper.format) ? marks : ''}`, textWidth);
     y = ensureRoom(doc, paper, y, lines.length * 4.2 + 4, subtitle);
     doc.setFont('helvetica','normal');
     doc.setFontSize(paper.format==='kjsea'?8.2:8.8);
@@ -600,7 +604,7 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
     for (const question of group.questions) {
       const textWidth = 176;
       const spacePlan = getQuestionAnswerSpacePlan(paper.subject, question);
-      const showMarks = !formal || paper.format === 'kjsea' || paper.format === 'standard30';
+      const showMarks = shouldShowStudentMarks(paper.format);
       const markText = ` [${question.marks} mark${question.marks === 1 ? '' : 's'}]`;
       doc.setFont('helvetica','bold');
       doc.setFontSize(formal?8.5:9.5);

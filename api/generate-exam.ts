@@ -694,7 +694,7 @@ async function handleExamGeneration(
 
     // Preserve all fixed slots. A bounded repair may recover bad questions, but
     // an unrecoverable slot must fail honestly rather than shorten the paper.
-    const repairDeadline=Math.min(deadlineAt,Date.now()+70000);
+    const repairDeadline=deadlineAt-15000;
     const repairWithProvider = async (prompt: string): Promise<Record<string, unknown> | null> => {
       if(Date.now()>=repairDeadline)return null;
       try {
