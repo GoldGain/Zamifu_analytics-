@@ -67,7 +67,7 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
   },
   'senior': {
     start_time: '08:00', end_time: '16:00', period_duration: 40,
-    lessons_per_day: 8, after_lunch_lessons: 2,
+    lessons_per_day: 7, after_lunch_lessons: 1,
     first_break_start: '09:40', first_break_end: '10:20',
     second_break_start: '11:40', second_break_end: '12:00',
     lunch_start: '12:50', lunch_end: '13:30',
@@ -85,11 +85,11 @@ const DEFAULT_CONFIGS: Record<string, LevelConfig> = {
 
 // Lesson info per level for display
 const LEVEL_LESSON_INFO: Record<string, { total: number; afterLunch: number; note: string }> = {
-  'pre-primary': { total: 5, afterLunch: 0, note: '5 lessons/day; PPI is scheduled separately' },
+  'pre-primary': { total: 5, afterLunch: 0, note: '5 lessons/day; 24 examinable lessons/week leaves 1 slot blank' },
   'lower-primary': { total: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'upper-primary': { total: 7, afterLunch: 1, note: '7 lessons/day' },
   'junior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { total: 8, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { total: 7, afterLunch: 1, note: '7 lessons/day; 33 examinable lessons/week leaves 2 slots blank' },
   'form-3-4': { total: 8, afterLunch: 2, note: '8 lessons/day' },
 };
 
@@ -459,7 +459,7 @@ export default function TimetableSetup() {
             Lesson 1 &amp; 2 → <strong>FIRST BREAK</strong> → Lesson 3 &amp; 4 → <strong>SECOND BREAK</strong> → Lesson 5 &amp; 6 → <strong>LUNCH</strong> → [Lesson 7+] → <strong>ACTIVITIES</strong>
           </p>
           <p className="mt-1 text-xs text-blue-700">
-            Pre-Primary: <strong>5 lessons/day (25/week) + PPI</strong> | Lower Primary: <strong>6 lessons/day</strong> | Upper Primary: <strong>7 lessons/day</strong> | Junior: <strong>8 lessons/day + PPI</strong> | Senior: <strong>8 lessons/day</strong> | 8-4-4: <strong>8 lessons/day</strong>
+            Pre-Primary: <strong>5/day (24 examinable lessons/week; 1 slot may be blank)</strong> | Lower Primary: <strong>6/day (28/week; 2 may be blank)</strong> | Upper Primary: <strong>7/day (34/week; 1 may be blank)</strong> | Junior: <strong>8/day (40/week)</strong> | Senior: <strong>7/day (33/week; 2 may be blank)</strong> | 8-4-4: <strong>8/day (40/week)</strong>
           </p>
         </div>
       </div>
@@ -588,8 +588,8 @@ export default function TimetableSetup() {
           <Plus className="w-5 h-5 text-emerald-600" />
           Scheduled Activities
         </h2>
-        <p className="text-sm text-gray-600 mb-4">Activities are optional and appear only when a school adds them. Set the day, exact time, level, and optional class scope. PPI is a separate weekly requirement: schedule it for <strong>Friday Lesson 1</strong> as an exact-time block so it replaces that lesson cell without adding a column. Do not add PPI as an ordinary learning-area assignment; the timetable keeps the configured day count and fixed breaks/lunch.</p>
-        <p className="text-xs text-gray-500">A lesson space taken by PPI (for the case of Junior School and Lower Primary) can be rescheduled as an activity after the day&apos;s lessons to ensure no lesson is missed.</p>
+        <p className="text-sm text-gray-600 mb-4">Add non-examinable subjects as activities here, including <strong>PPI</strong> and <strong>Indigenous Education</strong>; they are not included in weekly lesson totals. Set the day, exact time, level, and optional class scope. PPI must be scheduled for <strong>Friday Lesson 1</strong> as an exact-time block so it replaces that lesson cell without adding a column. Do not add these activities as ordinary learning-area assignments.</p>
+        <p className="text-xs text-gray-500">Unused lesson slots are allowed when a class has fewer examinable lessons than the weekly timetable capacity; those cells remain blank unless occupied by a scheduled activity.</p>
         <div className="grid grid-cols-1 md:grid-cols-8 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Day</label>

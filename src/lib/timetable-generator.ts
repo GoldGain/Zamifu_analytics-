@@ -8,14 +8,15 @@ import { formatClassStream } from './class-label';
  *   remain fixed for each level.
  *   → optional after-lunch lessons (0–3) → ACTIVITIES
  *
- * Default lesson counts (overridable from DB / Timetable Setup):
- * | Level            | Total | After lunch |
- * |------------------|-------|-------------|
- * | Pre-Primary      | 5     | 0           |
- * | Lower Primary    | 6     | 0           |
- * | Junior School    | 8     | 2           |
- * | Senior 10-12     | 8     | 2           |
- * | 8-4-4            | 7     | 1           |
+ * Default daily lesson slots (weekly examinable targets may leave cells blank):
+ * | Level            | Total/day | After lunch |
+ * |------------------|-----------|-------------|
+ * | Pre-Primary      | 5         | 0           |
+ * | Lower Primary    | 6         | 0           |
+ * | Upper Primary    | 7         | 1           |
+ * | Junior School    | 8         | 2           |
+ * | Senior 10-12     | 7         | 1           |
+ * | 8-4-4            | 8         | 2           |
  */
 
 export interface TimetableSlot {
@@ -49,22 +50,22 @@ export interface LevelLessonConfig {
   afterLunch: number;
 }
 
-/** Built-in defaults — used only when DB does not supply counts.
- * Senior (Grade 10-12): 8 lessons/day, 2 after lunch.
- * Form 3 & 4 (8-4-4): 7 lessons/day, 1 after lunch.
+/** Canonical lesson slots per day; saved school configuration supplies clock times.
+ * Senior (Grade 10-12): 7 lessons/day, 1 after lunch.
+ * Form 3 & 4 (8-4-4): 8 lessons/day, 2 after lunch.
  */
 export const LEVEL_CONFIG: Record<string, LevelLessonConfig> = {
   'pre-primary': { totalLessons: 5, afterLunch: 0 },
   'lower-primary': { totalLessons: 6, afterLunch: 0 },
   'upper-primary': { totalLessons: 7, afterLunch: 1 },
   junior: { totalLessons: 8, afterLunch: 2 },
-  senior: { totalLessons: 8, afterLunch: 2 },
+  senior: { totalLessons: 7, afterLunch: 1 },
   'form-3-4': { totalLessons: 8, afterLunch: 2 },
   // legacy aliases
   lower_primary: { totalLessons: 6, afterLunch: 0 },
   upper_primary: { totalLessons: 7, afterLunch: 1 },
   junior_school: { totalLessons: 8, afterLunch: 2 },
-  senior_school: { totalLessons: 8, afterLunch: 2 },
+  senior_school: { totalLessons: 7, afterLunch: 1 },
   '8-4-4': { totalLessons: 8, afterLunch: 2 },
 };
 
@@ -361,8 +362,9 @@ export interface ExactGridAssignmentIssue {
 }
 
 /**
- * Find assignment settings that make an exact weekly timetable impossible
- * before the backtracking solver starts. A configured double consumes one
+ * Find assignment settings that make a weekly timetable impossible before
+ * the backtracking solver starts. A lower weekly total is valid and leaves
+ * unused cells; an over-capacity total cannot fit. A configured double consumes one
  * weekday; remaining lessons still need another distinct weekday because a
  * subject may occur only once per day.
  */
@@ -416,12 +418,13 @@ export function getExactGridAssignmentIssues(options: {
       (total, assignment) => total + Math.max(0, Number(assignment.lessons_per_week) || 0),
       0,
     );
-    if (configuredTotal !== options.totalLessons * days.length) {
+    const capacity = options.totalLessons * days.length;
+    if (configuredTotal > capacity) {
       issues.push({
         classId,
         className: formatClassStream(cls) || `Class ${classId}`,
         subjectName: 'Weekly total',
-        message: `${formatClassStream(cls) || `Class ${classId}`} has ${configuredTotal} configured lesson periods but requires exactly ${options.totalLessons * days.length}.`,
+        message: `${formatClassStream(cls) || `Class ${classId}`} has ${configuredTotal} configured lesson periods, but this level has only ${capacity} lesson slots. Reduce the weekly allocation by ${configuredTotal - capacity}.`,
       });
     }
 

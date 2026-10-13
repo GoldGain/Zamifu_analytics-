@@ -186,7 +186,7 @@ const classMatchesLevel = (cls: any, levelKey: string): boolean => {
 };
 
 // Display info for each level's lesson structure
-// Senior (Grade 10-12): 8 lessons/day, 2 after lunch
+// Senior (Grade 10-12): 7 lessons/day, 1 after lunch
 // Form 3 & 4 (8-4-4): 9 lessons/day, 3 after lunch
 type GenerationReport = {
   kind: 'success' | 'warning' | 'error';
@@ -196,11 +196,11 @@ type GenerationReport = {
 };
 
 const LEVEL_LESSON_INFO: Record<string, { lessons: number; afterLunch: number; note: string }> = {
-  'pre-primary': { lessons: 6, afterLunch: 0, note: 'School ends at lunch time' },
+  'pre-primary': { lessons: 5, afterLunch: 0, note: 'School ends at lunch time' },
   'lower-primary': { lessons: 6, afterLunch: 0, note: '6 lessons ending before lunch' },
   'upper-primary': { lessons: 7, afterLunch: 1, note: '7 lessons/day' },
   'junior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
-  'senior': { lessons: 8, afterLunch: 2, note: '2 lessons after lunch' },
+  'senior': { lessons: 7, afterLunch: 1, note: '7 lessons/day; 2 weekly slots may remain blank' },
   'form-3-4': { lessons: 8, afterLunch: 2, note: '8 lessons/day' },
 };
 
@@ -217,19 +217,6 @@ export default function TimetableGenerate() {
   const [selectedLevels, setSelectedLevels] = useState<Set<string>>(new Set());
   const [scheduledActivities, setScheduledActivities] = useState<ScheduledActivity[]>([]);
   const [generationReport, setGenerationReport] = useState<GenerationReport | null>(null);
-  /**
-   * Set when the solver found classes whose weekly lessons do not fill the level's
-   * week (Rule 14). The admin decides whether to continue; nothing is saved until
-   * they do, so a week with holes in it is never written by surprise.
-   */
-  const [pendingShortfall, setPendingShortfall] = useState<{
-    levelKey: string;
-    levelLabel: string;
-    message: string;
-    details: string[];
-    canContinue: boolean;
-    reason: string;
-  } | null>(null);
 
   useEffect(() => {
     if (user?.schoolId) fetchData();
@@ -326,7 +313,7 @@ export default function TimetableGenerate() {
     });
   };
 
-  const handleGenerateTimetable = async (runOptions: { continuePastWarning?: boolean } = {}) => {
+  const handleGenerateTimetable = async () => {
     if (selectedLevels.size === 0) {
       const report: GenerationReport = {
         kind: 'error',
@@ -340,7 +327,6 @@ export default function TimetableGenerate() {
     }
 
     setGenerationReport(null);
-    setPendingShortfall(null);
     try {
       setGenerating(true);
       const schoolId = user?.schoolId;
@@ -851,41 +837,16 @@ export default function TimetableGenerate() {
             assignments,
             lessonSlots,
             reservedTeacherCells: cspReservedTeacherCells,
-            // Rule 14 warns rather than blocks. When the admin has seen the
-            // lesson-count warning and chosen to continue, the classes that can be
-            // complete still are; only the shortfall cells are left empty.
-            allowIncompleteClasses: Boolean(runOptions.continuePastWarning),
+            // Weekly totals below capacity are normal; place every assigned lesson
+            // and leave only each short class's unused cells blank.
+            allowIncompleteClasses: true,
             onProgress: (message) => console.info(`[timetable] ${message}`),
           });
-          const dataWarnings = solverResult.warnings.filter((warning) => warning.code.startsWith('weekly-total-'));
           const solverWarnings = solverResult.warnings.filter((warning) => !warning.code.startsWith('weekly-total-'));
-          // A data warning is actionable and may be accepted by the admin. Any
-          // other warning indicates a solver/capacity problem and must block the
-          // write just like an issue; never persist a partially diagnosed grid.
+          // Weekly-total shortfalls are normal; other warnings indicate a solver
+          // or capacity problem and must still block the write.
           if (solverWarnings.length > 0) {
             throw new Error(`${levelLabel} solver error — generation stopped safely before saving:\n${formatCspSolverWarnings(solverWarnings)}`);
-          }
-          // Rule 14 - a class whose weekly lessons do not fill this level's week is
-          // a WARNING, never a block. The admin is shown exactly which classes are
-          // short and decides whether to continue; nothing is saved before that.
-          if (solverResult.needsConfirmation && !runOptions.continuePastWarning) {
-            const short = solverResult.shortClasses;
-            const details = short.map((entry) => (entry.configuredTotal < entry.expectedTotal
-              ? `${entry.className}: ${entry.configuredTotal} lessons, but this level's week holds ${entry.expectedTotal} (${entry.expectedTotal - entry.configuredTotal} fewer)`
-              : `${entry.className}: ${entry.configuredTotal} lessons, but this level's week holds ${entry.expectedTotal} (${entry.configuredTotal - entry.expectedTotal} more)`));
-            const over = short.some((entry) => entry.configuredTotal > entry.expectedTotal);
-            setPendingShortfall({
-              levelKey,
-              levelLabel,
-              message: `${levelLabel}: these classes do not match the level's weekly lesson count.`,
-              details,
-              canContinue: !over,
-              reason: over
-                ? 'A class with MORE lessons than the week holds cannot be fitted. Add lessons to the level, or remove assignments from those classes, then generate again.'
-                : 'You can continue anyway: every lesson you configured is still placed, and only the cells those classes have no lessons for are left empty. Correcting the counts in Teacher Assignments gives a fully filled week.',
-            });
-            setGenerating(false);
-            return;
           }
           if (solverResult.issues.length > 0 || solverResult.entries.length === 0) {
             const detail = formatCspSolverIssues(solverResult.issues) || 'The CSP solver returned no complete grid.';
@@ -898,13 +859,11 @@ export default function TimetableGenerate() {
             subjectNames,
             classes: classesToProcess,
             levelGroup: levelKey,
-            // Continuing past a Rule 14 warning means only the classes the admin
-            // saw in the warning may keep empty cells; every other class must
-            // still be completely filled.
+            // Only classes below their weekly lesson capacity may keep empty cells.
             requireComplete: true,
-            allowBlankSlotsForClassIds: runOptions.continuePastWarning
-              ? solverResult.shortClasses.map((entry) => entry.classId)
-              : undefined,
+            allowBlankSlotsForClassIds: solverResult.shortClasses
+              .filter((entry) => entry.configuredTotal < entry.expectedTotal)
+              .map((entry) => entry.classId),
             requiredLessonCounts,
             requireReligiousPairing: true,
           });
@@ -919,18 +878,20 @@ export default function TimetableGenerate() {
             classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
           });
           generatedSummary.push(
-            `${levelLabel}: ${solverResult.entries.length} entries across 5 days - complete CSP grid (exact weekly totals, ${solverResult.searchNodes.toLocaleString()} search nodes)`,
+            `${levelLabel}: ${solverResult.entries.length} entries across 5 days (${solverResult.searchNodes.toLocaleString()} CSP search nodes).`,
           );
-          if (dataWarnings.length > 0 && runOptions.continuePastWarning) {
-            generatedSummary.push(`Data warning accepted: ${formatCspSolverWarnings(dataWarnings)}`);
+          const normalBlankClasses = solverResult.shortClasses
+            .filter((entry) => entry.configuredTotal < entry.expectedTotal);
+          if (normalBlankClasses.length > 0) {
+            generatedSummary.push(`Unused lesson slots left blank by design: ${normalBlankClasses.map((entry) => `${entry.className} (${entry.configuredTotal}/${entry.expectedTotal}; ${entry.expectedTotal - entry.configuredTotal} blank)`).join(', ')}.`);
           }
           console.info(`[timetable] ${levelKey}: CSP solver placed ${solverResult.entries.length} entries in ${solverResult.durationMs}ms`);
           continue;
         }
 
         // The CSP solver above is the sole lesson-generation path.
-        // Any solver error has already aborted before this point; data warnings
-        // are handled through the explicit confirmation flow.
+        // Any solver error has already aborted before this point. Under-capacity
+        // classes are reported as blank slots rather than a confirmation blocker.
       }
       const teacherTimeSlots = new Map<string, any>();
       for (const entry of allEntries.filter((candidate: any) =>
@@ -945,7 +906,7 @@ export default function TimetableGenerate() {
       }
 
       // Commit only after every selected level has passed generation and the
-      // no-blank validation above. A failed generation therefore leaves the
+      // timetable validation above. A failed generation therefore leaves the
       // client’s existing timetable untouched.
       const levelsToClear = new Set<string>([...Array.from(selectedLevels), 'default']);
       for (const levelKey of Array.from(levelsToClear)) {
@@ -1185,61 +1146,6 @@ export default function TimetableGenerate() {
             {generating ? <Loader2 className="animate-spin" /> : <Zap fill="white" />}
             {generating ? 'Generating...' : `GENERATE TIMETABLE (${selectedLevels.size} level${selectedLevels.size !== 1 ? 's' : ''})`}
           </button>
-          {pendingShortfall && (
-            <div
-              role="alertdialog"
-              aria-labelledby="shortfall-title"
-              className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"
-            >
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <h3 id="shortfall-title" className="font-bold">
-                    Data warning: {' '}
-                    {pendingShortfall.canContinue
-                      ? 'Lesson counts do not fill the week'
-                      : 'Lesson counts exceed the week'}
-                  </h3>
-                  <p className="mt-1 text-sm">{pendingShortfall.message}</p>
-                  <ul className="mt-2 space-y-1 text-sm">
-                    {pendingShortfall.details.map((detail, index) => (
-                      <li key={`${detail}-${index}`} className="flex gap-2">
-                        <span aria-hidden="true">&#8226;</span>
-                        <span>{detail}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-3 text-sm">{pendingShortfall.reason}</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {pendingShortfall.canContinue && (
-                      <button
-                        type="button"
-                        onClick={() => handleGenerateTimetable({ continuePastWarning: true })}
-                        disabled={generating}
-                        className="px-4 py-2 rounded-xl bg-[#2563EB] text-white text-sm font-bold hover:bg-[#1d4ed8] disabled:opacity-50"
-                      >
-                        Continue and generate
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setPendingShortfall(null)}
-                      className="px-4 py-2 rounded-xl bg-white border border-amber-300 text-sm font-semibold text-amber-900 hover:bg-amber-100"
-                    >
-                      {pendingShortfall.canContinue ? 'Cancel - fix the counts first' : 'Close'}
-                    </button>
-                    <a
-                      href="/school-admin/teacher-assignments"
-                      className="px-4 py-2 rounded-xl bg-white border border-amber-300 text-sm font-semibold text-amber-900 hover:bg-amber-100"
-                    >
-                      Open Teacher Assignments
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {generationReport && (
             <div
               role="alert"

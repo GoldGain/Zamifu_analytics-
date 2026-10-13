@@ -34,8 +34,8 @@
  *     of two lessons later.
  *
  * Guarantees
- *   • Rule 14 (weekly total) is a WARNING, never a hard block: a school can
- *     always attempt generation and is told exactly which class does not match.
+ *   • Classes below a level's weekly capacity are scheduled with only their
+ *     unused cells left blank; assignments above capacity remain invalid.
  *   • When no timetable exists, the issue names the class, the learning area and
  *     the blocking constraint — never a bare "generation failed".
  *   • A failing class never hides the state of the others, and a grid that fails
@@ -64,10 +64,8 @@ export interface CspTimetableSolverOptions {
   /** Teacher cells already reserved by another selected level in this school. */
   reservedTeacherCells?: ReadonlySet<string>;
   /**
-   * When the admin has chosen to continue despite a lesson-count mismatch
-   * (Rule 14 is a warning, not a block), a class whose weekly total cannot fill
-   * the level's week is still placed, using its remaining slots on its own
-   * configured lessons so the rest of the week is not left blank.
+   * Allow classes with fewer assigned lessons than available weekly cells to be
+   * scheduled with the unused cells left blank. Over-capacity classes still fail.
    */
   allowIncompleteClasses?: boolean;
   onProgress?: (message: string) => void;
@@ -107,11 +105,7 @@ export interface CspTimetableSolverResult {
   /** Which engine produced the accepted grid. */
   engine: 'csp' | 'none';
   restartCount: number;
-  /**
-   * True when a class's weekly lessons do not fill the level's week (Rule 14), so
-   * the admin has to decide whether to continue. The UI turns this into a prompt
-   * and re-runs with `allowIncompleteClasses` when they accept.
-   */
+  /** True when the caller did not enable blank cells for a short weekly total. */
   needsConfirmation: boolean;
   /** Classes whose own weekly lesson counts do not fill the level's week. */
   shortClasses: { classId: string; className: string; configuredTotal: number; expectedTotal: number }[];
@@ -340,9 +334,8 @@ function diagnoseClass(
   const hard: CspSolverIssue[] = [];
   const warnings: CspSolverWarning[] = [];
   const expected = slotsPerDay * DAY_COUNT;
-  // A short class cannot fill the week with its own lessons, so the rules that
-  // only exist because every cell must be used do not apply to it once the admin
-  // has accepted that (Rule 14). Every other class is checked in full.
+  // A short class cannot fill the week with its own lessons, so rules that only
+  // exist because every cell must be used do not apply when blank cells are allowed.
   const classIsShort = plan.configuredTotal < expected;
   const ctx = { classId: plan.classId, className: plan.className };
 
@@ -374,7 +367,7 @@ function diagnoseClass(
       code: 'weekly-total-mismatch',
       message: `${plan.className} lessons total ${plan.configuredTotal} but this level expects ${expected} `
         + `(${difference > 0 ? `${difference} more` : `${Math.abs(difference)} fewer`}). `
-        + 'A valid timetable may not be possible for this class.',
+        + 'The remaining lesson cells may stay blank for this class.',
       ...ctx,
     });
   }
@@ -2393,8 +2386,8 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
     durationMs: Date.now() - startedAt,
     engine: accepted ? 'csp' : 'none',
     restartCount,
-    // Rule 14 warns rather than blocks, so a mismatch is reported to the admin
-    // instead of silently producing a grid with holes in it.
+    // When incomplete classes are enabled, a weekly mismatch is informational:
+    // the corresponding unused lesson cells remain blank.
     needsConfirmation: shortClasses.length > 0 && !options.allowIncompleteClasses,
     shortClasses,
   });

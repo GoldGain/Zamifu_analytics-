@@ -31,11 +31,11 @@ const resolveLevelGroup = (grade: number | null | undefined): LevelGroup | null 
   return 'senior';
 };
 const REQUIRED_WEEKLY_LESSONS: Record<LevelGroup, number> = {
-  'pre-primary': 25,
-  'lower-primary': 31,
-  'upper-primary': 35,
-  junior: 41,
-  senior: 40,
+  'pre-primary': 24,
+  'lower-primary': 28,
+  'upper-primary': 34,
+  junior: 40,
+  senior: 33,
   'form-3-4': 40,
 };
 interface TeacherAssignment {
@@ -259,7 +259,7 @@ export default function AssignTeachers() {
       required,
       configured,
       delta,
-      status: delta === 0 ? 'OK' : delta < 0 ? 'Under' : 'Over',
+      status: delta === 0 ? 'Target met' : delta < 0 ? 'Below target' : 'Over',
     };
   });
 
@@ -292,7 +292,7 @@ export default function AssignTeachers() {
       .reduce((sum, assignment) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
     const candidateTotal = currentTotal + lessonsPerWeek;
     if (candidateTotal > required) {
-      setError(`${formatClassStream(selectedClass) || 'This class'} (${levelGroup || 'level'}): ${candidateTotal} configured; exactly ${required} required (${required / ALL_DAYS.length}/day × ${ALL_DAYS.length}). Over by ${candidateTotal - required}. Reduce this allocation before saving.`);
+      setError(`${formatClassStream(selectedClass) || 'This class'} (${levelGroup || 'level'}): ${candidateTotal} lessons are assigned, above the weekly maximum of ${required}. Reduce the allocation by ${candidateTotal - required} before saving.`);
       return;
     }
     try {
@@ -318,7 +318,7 @@ export default function AssignTeachers() {
       if (insertError) throw insertError;
 
       setSuccess(candidateTotal < required
-        ? `Assignment saved. ${formatClassStream(selectedClass) || 'This class'} is Under by ${required - candidateTotal}; add ${required - candidateTotal} more lesson period(s) before generating.`
+        ? 'Assignment saved. Any unused timetable cells may remain blank or be used for scheduled activities.'
         : 'Assignment saved successfully!');
       setFormData({ teacher_id: '', class_id: '', subject_id: '', lessons_per_week: 5, priority_band: 'auto', is_double_lesson: false, double_lesson_days: [...ALL_DAYS], available_days: [...ALL_DAYS] });
       await fetchAssignments();
@@ -497,16 +497,16 @@ export default function AssignTeachers() {
       <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/70 p-5 text-sm">
         <h2 className="font-black text-gray-900 text-base mb-2">Timetable Assignment Guide</h2>
         <ol className="list-decimal list-inside space-y-1 text-gray-700">
-          <li><strong>Step 1 - Set the number of lessons:</strong> enter the KICD weekly allocation for each learning area. The class total must reach the required weekly contract before generation.</li>
+          <li><strong>Step 1 - Set the number of lessons:</strong> enter the examinable weekly allocation for each learning area. Unused timetable lesson slots are allowed and will remain blank.</li>
           <li><strong>Step 2 - Set double lessons (optional):</strong> choose the weekday; the two periods are placed consecutively inside the subject default window.</li>
-          <li><strong>Step 3 - Set activities (optional):</strong> add clubs, sports, and library slots in Timetable Setup.</li>
+          <li><strong>Step 3 - Set activities:</strong> add non-examinable subjects as activities in Timetable Setup. Add <strong>PPI</strong> and <strong>Indigenous Education</strong> as activities; do not count them as weekly lessons.</li>
           <li><strong>Step 4 - Generate:</strong> open Timetable then Generate and click Generate Timetable.</li>
           <li><strong>Step 5 - Review:</strong> check the timetable, then edit and regenerate if needed.</li>
         </ol>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 sm:col-span-2 lg:col-span-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-emerald-800">Required lessons per class / week</p>
-            <p className="text-xs text-emerald-900 mt-1">Pre-Primary <strong>25</strong> · Lower Primary <strong>31</strong> · Upper Primary <strong>35</strong> · Junior <strong>41 including PPI</strong> · Senior <strong>40</strong> · Form 3–4 <strong>40</strong>. The class summary below shows each class&apos;s shortfall or excess.</p>
+            <p className="text-xs text-emerald-900 mt-1">Pre-Primary <strong>24</strong> · Lower Primary <strong>28</strong> · Upper Primary <strong>34</strong> · Junior <strong>40</strong> · Senior <strong>33</strong> · Form 3–4 (8-4-4) <strong>40</strong>. These totals exclude activities; PPI and Indigenous Education are activities. Any remaining lesson slots may stay blank.</p>
           </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
             <p className="font-bold text-[11px] uppercase tracking-wide text-blue-700">Junior (Grade 7-9)</p>
@@ -754,12 +754,12 @@ export default function AssignTeachers() {
                       {/* Full class name = grade + stream so an "over"/"under"
                           badge points at the exact stream (Issue 4). */}
                       <p className="text-xs font-black text-gray-800">{formatClassStream(row)}</p>
-                      <p className="text-[10px] text-gray-500">{row.levelGroup} · {row.lessonsPerDay}/day × 5 = {row.required} required</p>
+                      <p className="text-[10px] text-gray-500">{row.levelGroup} · {row.required} examinable lessons/week · {row.lessonsPerDay * ALL_DAYS.length} available slots</p>
                     </div>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
-                      row.status === 'OK'
+                      row.status === 'Target met'
                         ? 'bg-green-100 text-green-700'
-                        : row.status === 'Under'
+                        : row.status === 'Below target'
                           ? 'bg-amber-100 text-amber-700'
                           : 'bg-red-100 text-red-700'
                     }`}>
@@ -767,7 +767,7 @@ export default function AssignTeachers() {
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] text-gray-600">
-                    {row.configured} configured · {row.delta === 0 ? 'exact total' : `${Math.abs(row.delta)} ${row.delta < 0 ? 'under' : 'over'}`}
+                    {row.configured} assigned · {Math.max(0, row.lessonsPerDay * ALL_DAYS.length - row.configured)} unassigned grid slot{Math.max(0, row.lessonsPerDay * ALL_DAYS.length - row.configured) === 1 ? '' : 's'} may stay blank or be used for activities
                   </p>
                 </div>
               ))}
