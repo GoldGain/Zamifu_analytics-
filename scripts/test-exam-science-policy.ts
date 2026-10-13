@@ -9,3 +9,8 @@ assert.ok(validateGeneratedExam(request,[question]).issues.some(issue=>issue.cod
 assert.equal(scientificContentIssues({...question,question_text:'State a domestic disadvantage of hard water.',correct_answer:'It forms limescale in kettles.',marking_scheme:'Award for appliance scaling.'}).length,0);
 assert.equal(scientificContentIssues({...question,question_text:'Evaluate the statement that hard water generally causes kidney stones.',correct_answer:'False: no significant overall association was established.',marking_scheme:'Award for correctly rejecting the general claim.'}).length,0);
 console.log('PASS: unsupported hard-water renal-harm marking is rejected without rejecting domestic effects or qualified evidence.');
+
+const artRequest:ExamGenerationRequest={...request,subject:'Creative Arts',includeImages:true,strands:['Music'],subStrands:['Instruments'],topics:['Traditional instruments']};
+const artQuestion={...question,question_text:'Name a traditional musical instrument.',correct_answer:'A drum.',marking_scheme:'Award for a valid instrument.',strand:'Music',sub_strand:'Instruments',topic:'Traditional instruments'};
+assert.ok(!validateGeneratedExam(artRequest,[artQuestion]).issues.some(issue=>issue.code==='VISUAL_REQUIRED'),'optional images must not fail a valid Creative Arts theory paper');
+assert.ok(validateGeneratedExam(artRequest,[{...artQuestion,question_text:'Study the diagram below and identify the instrument.'}]).issues.some(issue=>issue.code==='VISUAL_REFERENCE_MISSING'),'relaxing optional images must never permit a dangling visual reference');
