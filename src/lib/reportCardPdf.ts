@@ -309,11 +309,17 @@ export function generateUniqueAIComment(
   classData?: any,
   allSubjectResults?: SubjectResult[]
 ): string {
+  // Exceptional status codes are not scores: remove them before generating any
+  // subject-based narrative, and never describe an all-X/Y learner as a zero.
+  const numericSubjectResults = allSubjectResults?.filter((result) => !isExcludedResult(result)) || [];
+  if (allSubjectResults?.length && numericSubjectResults.length === 0) {
+    return 'No numerical average is available because all recorded learning areas are marked X (missing) or Y (cheated). Please refer to the individual status codes.';
+  }
   // If we have full subject data, use the rich subject-specific generator
-  if (allSubjectResults && allSubjectResults.length > 0) {
+  if (numericSubjectResults.length > 0) {
     return generateSubjectSpecificComment(
       studentName,
-      allSubjectResults,
+      numericSubjectResults,
       avgPct,
       position,
       totalStudents,
@@ -409,6 +415,7 @@ export function buildPerformanceTrend(records: PerformanceTrendRecord[]): { term
   }>();
 
   records.forEach((record, index) => {
+    if (isExcludedResult(record)) return;
     // The active assessment is still being entered in many schools. Do not
     // let an incomplete/current assessment distort the exam comparison graph.
     if (record.school_exams?.is_active === true) return;
@@ -1178,19 +1185,20 @@ export function drawSummaryBox(
   startY = ensureReportCardSpace(doc, startY, boxH + 2);
   const isPrimary = getSchoolLevelBand(classData) === 'primary';
   const includedResults = results.filter((result) => !isExcludedResult(result));
+  const hasNumericResults = includedResults.length > 0;
   const totalMarks = rankingDetails?.totalMarks ?? includedResults.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const summaryPoints = rankingDetails?.totalPoints ?? totalPoints;
-  const overallGrading = gradeFromPercentage(avgPercentage, classData);
+  const overallGrading = hasNumericResults ? gradeFromPercentage(avgPercentage, classData) : null;
   doc.setFillColor(0, 137, 123); doc.rect(14, startY, 182, boxH, 'F');
   const fs = pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8);
   const gap = COMPACT_MODE ? 5.8 : 8;
   doc.setFontSize(fs); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
   doc.text(`${is844Curriculum(classData) ? 'Subjects' : 'Learning Areas'}: ${includedResults.length}`, 20, startY + gap);
-  doc.text(`Total Marks: ${totalMarks}`, 65, startY + gap);
-  doc.text(`Average: ${avgPercentage.toFixed(1)}%`, 130, startY + gap);
+  doc.text(`Total Marks: ${hasNumericResults ? totalMarks : '—'}`, 65, startY + gap);
+  doc.text(`Average: ${hasNumericResults ? `${avgPercentage.toFixed(1)}%` : 'N/A'}`, 130, startY + gap);
   doc.text(`Position: ${position}`, 20, startY + gap * 2);
-  doc.text(`Grade: ${overallGrading.grade}`, 65, startY + gap * 2);
-  if (!isPrimary && summaryPoints !== null) doc.text(`Total Points: ${summaryPoints}${rankingDetails ? ' / 56' : ''}`, 130, startY + gap * 2);
+  doc.text(`Grade: ${overallGrading?.grade || 'N/A'}`, 65, startY + gap * 2);
+  if (!isPrimary) doc.text(`Total Points: ${hasNumericResults && summaryPoints !== null ? `${summaryPoints}${rankingDetails ? ' / 56' : ''}` : '—'}`, 130, startY + gap * 2);
   if (streamPosition) {
     doc.text(`Stream Position: ${streamPosition}`, 20, startY + gap * 3);
   }

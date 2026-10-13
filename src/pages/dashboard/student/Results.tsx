@@ -25,7 +25,7 @@ export default function StudentResults() {
   const [terms, setTerms] = useState<any[]>([]);
   const [selectedTerm, setSelectedTerm] = useState('');
   const [previousAvg, setPreviousAvg] = useState<number | null>(null);
-  const [currentAvg, setCurrentAvg] = useState<number>(0);
+  const [currentAvg, setCurrentAvg] = useState<number | null>(null);
 
   useEffect(() => { fetchInitial(); }, []);
 
@@ -100,7 +100,7 @@ export default function StudentResults() {
         // Same learning-area aggregation the class summary and report card use,
         // so the "current average" compared against the previous term matches.
         const ownTotals = aggregateLearnerTotals(currentResults, student.classes || student);
-        setCurrentAvg(ownTotals[0] ? ownTotals[0].avgPct : 0);
+        setCurrentAvg(ownTotals[0]?.count ? ownTotals[0].avgPct : null);
 
         const storedPosition = currentResults.find((r: any) => r.class_position)?.class_position || null;
         // Position always comes from the unified ranking rule (total marks,
@@ -135,7 +135,7 @@ export default function StudentResults() {
           setClassPosition(storedPosition);
         }
       } else {
-        setCurrentAvg(0);
+        setCurrentAvg(null);
         setClassPosition(null);
       }
       await fetchPreviousTermAvg();
@@ -157,13 +157,14 @@ export default function StudentResults() {
     const prevTerm = sortedTerms[currentIdx - 1];
     const { data: prevResults } = await supabaseUntyped
       .from('results')
-      .select('marks, out_of, percentage')
+      .select('marks, out_of, percentage, mark_code')
       .eq('student_id', student.id)
       .eq('school_id', student.school_id)
       .eq('term_id', prevTerm.id);
-    if (!prevResults || prevResults.length === 0) { setPreviousAvg(null); return; }
-    const totalPct = prevResults.reduce((s: number, r: any) => s + (r.percentage || (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0);
-    setPreviousAvg(totalPct / prevResults.length);
+    const numericResults = (prevResults || []).filter((result: any) => !isExcludedResult(result));
+    if (!numericResults.length) { setPreviousAvg(null); return; }
+    const totalPct = numericResults.reduce((s: number, r: any) => s + (r.percentage ?? (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0);
+    setPreviousAvg(totalPct / numericResults.length);
   };
 
   const classData = student?.classes || student || {};
@@ -203,7 +204,7 @@ export default function StudentResults() {
   // shown here cannot disagree with them.
   const learnerTotals = aggregateLearnerTotals(results, student?.classes || student || {});
   const learnerTotal = learnerTotals[0];
-  const overallAvg = learnerTotal ? Math.round(learnerTotal.avgPct) : 0;
+  const overallAvg = learnerTotal?.count ? Math.round(learnerTotal.avgPct) : null;
   const totalPoints = learnerTotal ? (learnerTotal.rankingTotalPoints ?? learnerTotal.totalPoints) : 0;
   const subjectPerformance = learnerTotal
     ? Object.entries(learnerTotal.subjects)
@@ -217,7 +218,7 @@ export default function StudentResults() {
     return 'subLevel' in grade ? grade.subLevel : grade.grade;
   };
 
-  const deviation = previousAvg !== null ? currentAvg - previousAvg : null;
+  const deviation = previousAvg !== null && currentAvg !== null ? currentAvg - previousAvg : null;
 
   return (
     <div className="space-y-6 -m-2 p-2 sm:p-4 rounded-3xl bg-gradient-to-br from-slate-50 via-amber-50/40 to-purple-50/50 min-h-full">
@@ -250,11 +251,11 @@ export default function StudentResults() {
         <h3 className="font-black text-[#1A237E] mb-4">Performance Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="text-center p-4 bg-amber-50 rounded-xl border border-amber-100">
-            <div className="text-2xl font-black text-[#F5A623]">{overallAvg}%</div>
+            <div className="text-2xl font-black text-[#F5A623]">{overallAvg === null ? '—' : `${overallAvg}%`}</div>
             <div className="text-[10px] uppercase tracking-wider font-bold text-amber-600 mt-1">Average</div>
           </div>
           <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-            <div className="text-2xl font-black text-emerald-600">{totalPoints}{usesSevenSubjectRanking(classData) ? '/56' : ''}</div>
+            <div className="text-2xl font-black text-emerald-600">{learnerTotal?.count ? `${totalPoints}${usesSevenSubjectRanking(classData) ? '/56' : ''}` : '—'}</div>
             <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-600 mt-1">Total Points</div>
           </div>
           <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-100">
@@ -299,7 +300,7 @@ export default function StudentResults() {
               </div>
               {deviation !== null && previousAvg !== null && (
                 <div className="text-sm font-medium text-gray-500 mt-0.5">
-                  Previous term average: {previousAvg.toFixed(1)}% → Current: {currentAvg.toFixed(1)}%
+                  Previous term average: {previousAvg.toFixed(1)}% → Current: {currentAvg?.toFixed(1)}%
                   {deviation >= 0
                     ? ' — Keep up the great work!'
                     : ' — Focus and you will bounce back next term.'}

@@ -20,6 +20,7 @@ import { configurePdfFontSize, pdfFontSize, type PdfFontSize } from '@/lib/pdfFo
 import { fetchAllRows } from '@/lib/paginatedQuery';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
+import { excludedResultCode, isExcludedResult } from '@/lib/learnerTotals';
 
 interface StreamClass {
   id: string;
@@ -49,6 +50,7 @@ interface ResultRow {
   subject_id: string;
   percentage: number | null;
   marks: number | null;
+  mark_code?: string | null;
   out_of: number | null;
   cbc_points: number | null;
   points_844: number | null;
@@ -61,6 +63,7 @@ interface ResultRow {
 
 interface StudentStats {
   avg: number | null;
+  markCode?: 'X' | 'Y' | null;
   pctTotal: number;
   totalPoints: number;
   totalMarks: number;
@@ -103,7 +106,7 @@ interface LearnerRank {
   totalOutOf: number;
   grade: string;
   position: number | null;
-  subjects: Record<string, { marks: number | null; percentage: number; points: number; grade: string }>;
+  subjects: Record<string, { marks: number | string | null; percentage: number; points: number; grade: string }>;
 }
 
 interface ImprovedRow {
@@ -311,7 +314,7 @@ export default function StreamDashboard() {
         fetchAllRows((from, to) => {
           let q: any = supabaseUntyped
             .from('results')
-            .select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at')
+            .select('student_id, class_id, subject_id, percentage, marks, mark_code, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at')
             .in('class_id', classIds)
             .eq('school_id', user?.schoolId)
             .eq('term_id', selectedTerm)
@@ -344,7 +347,8 @@ export default function StreamDashboard() {
 
       const studentList: StudentRow[] = (students || []) as StudentRow[];
       const rawResultList: ResultRow[] = (results || []) as ResultRow[];
-      const resultList: ResultRow[] = deduplicateResults(rawResultList);
+      const activeStudentIds = new Set(studentList.map((student) => student.id));
+      const resultList: ResultRow[] = deduplicateResults(rawResultList.filter((row) => activeStudentIds.has(row.student_id)));
       const subjectRows: any[] = (subjectRes?.data || []) as any[];
       const subjectName = new Map(subjectRows.map((s: any) => [s.id, s.name]));
       const previousTerm = (() => {
@@ -353,10 +357,11 @@ export default function StreamDashboard() {
         return index > 0 ? ordered[index - 1] : null;
       })();
       const previousResultList: ResultRow[] = previousTerm
-        ? deduplicateResults((await fetchAllRows((from, to) => supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).order('created_at').order('id').range(from, to))) as ResultRow[])
+        ? deduplicateResults((await fetchAllRows((from, to) => supabaseUntyped.from('results').select('student_id, class_id, subject_id, percentage, marks, mark_code, out_of, cbc_points, points_844, cbc_sublevel, cbc_grade, grade_844, exam_id, created_at').in('student_id', (students || []).map((st: any) => st.id)).eq('school_id', user?.schoolId).eq('term_id', previousTerm.id).order('created_at').order('id').range(from, to))) as ResultRow[])
         : [];
 
       const pctOf = (r: ResultRow): number => {
+        if (isExcludedResult(r)) return 0;
         if (r.percentage != null) return Math.round(r.percentage);
         if (r.out_of && r.out_of > 0) return Math.round(((r.marks ?? 0) / r.out_of) * 100);
         return 0;
@@ -377,15 +382,26 @@ export default function StreamDashboard() {
         const sid = r.student_id;
         if (!statsByStudent[sid]) statsByStudent[sid] = { avg: null, pctTotal: 0, totalPoints: 0, totalMarks: 0, totalOutOf: 0, count: 0 };
         if (!subjectValuesByStudent[sid]) subjectValuesByStudent[sid] = {};
+        const exceptionalCode = excludedResultCode(r);
         const pct = pctOf(r);
+        const rowPoints = exceptionalCode ? 0 : pointsOf(r);
+        const subjectLabel = subjectName.get(r.subject_id) || r.subject_id;
+        subjectValuesByStudent[sid][subjectLabel] = {
+          marks: r.marks ?? exceptionalCode,
+          percentage: pct,
+          points: rowPoints,
+          grade: exceptionalCode || gradeOf(r, pct),
+        };
+        studentClass[sid] = r.class_id;
+        if (exceptionalCode) {
+          if (exceptionalCode === 'Y' || !statsByStudent[sid].markCode) statsByStudent[sid].markCode = exceptionalCode;
+          return;
+        }
         statsByStudent[sid].pctTotal += pct;
         statsByStudent[sid].count += 1;
-        const rowPoints = pointsOf(r);
         statsByStudent[sid].totalPoints += rowPoints;
         statsByStudent[sid].totalMarks += r.marks ?? pct;
         statsByStudent[sid].totalOutOf += r.out_of ?? 100;
-        subjectValuesByStudent[sid][subjectName.get(r.subject_id) || r.subject_id] = { marks: r.marks, percentage: pct, points: rowPoints, grade: gradeOf(r, pct) };
-        studentClass[sid] = r.class_id;
         const sub = r.subject_id;
         if (!subjectAgg[sub]) subjectAgg[sub] = { name: subjectName.get(sub) || sub, byClass: {} };
         const clsId = r.class_id;
@@ -404,6 +420,7 @@ export default function StreamDashboard() {
       // Recompute averages from percentages (points are tracked separately)
       const pctSum: Record<string, { sum: number; count: number }> = {};
       resultList.forEach((r) => {
+        if (isExcludedResult(r)) return;
         if (!pctSum[r.student_id]) pctSum[r.student_id] = { sum: 0, count: 0 };
         pctSum[r.student_id].sum += pctOf(r);
         pctSum[r.student_id].count += 1;
@@ -488,12 +505,13 @@ export default function StreamDashboard() {
       const rankRows: LearnerRank[] = rankByUnifiedRule(
         studentList
           .map((student) => ({ student, stats: statsByStudent[student.id] }))
-          .filter((entry) => entry.stats && entry.stats.avg !== null)
+          .filter((entry) => entry.stats && (entry.stats.avg !== null || entry.stats.markCode))
           .map((entry) => ({
             ...entry,
             studentId: entry.student.id,
             totalMarks: entry.stats!.totalMarks,
             totalPoints: entry.stats!.totalPoints,
+            markCode: entry.stats!.markCode,
           })),
         gradeBand,
       ).map((entry) => {
@@ -522,6 +540,7 @@ export default function StreamDashboard() {
       const prevAvgById: Record<string, number | null> = {};
       const previousPctSums: Record<string, { sum: number; count: number }> = {};
       previousResultList.forEach((r) => {
+        if (isExcludedResult(r)) return;
         const pct = pctOf(r);
         if (!previousPctSums[r.student_id]) previousPctSums[r.student_id] = { sum: 0, count: 0 };
         previousPctSums[r.student_id].sum += pct;

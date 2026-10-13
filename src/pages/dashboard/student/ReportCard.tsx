@@ -39,7 +39,7 @@ import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
 import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { fetchAllRows } from '@/lib/paginatedQuery';
-import { aggregateLearnerTotals, usesSevenSubjectRanking } from '@/lib/learnerTotals';
+import { aggregateLearnerTotals, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
 import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
 export default function StudentReportCard() {
@@ -240,7 +240,7 @@ export default function StudentReportCard() {
     if (!student) return;
     const { data: allResults } = await supabaseUntyped
       .from('results')
-        .select('percentage, marks, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+        .select('percentage, marks, mark_code, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
         .eq('student_id', student.id)
         .eq('school_id', student.school_id)
       .order('terms(academic_year)', { ascending: true })
@@ -265,13 +265,14 @@ export default function StudentReportCard() {
     const prevTerm = sortedTerms[currentIdx - 1];
     const { data: prevResults } = await supabaseUntyped
       .from('results')
-      .select('marks, out_of, percentage')
+      .select('marks, out_of, percentage, mark_code')
       .eq('student_id', student.id)
       .eq('school_id', student.school_id)
       .eq('term_id', prevTerm.id);
-    if (!prevResults || prevResults.length === 0) { setPreviousAvg(null); return; }
-    const totalPct = prevResults.reduce((s: number, r: any) => s + (r.percentage || (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0);
-    setPreviousAvg(totalPct / prevResults.length);
+    const numericResults = (prevResults || []).filter((result: any) => !isExcludedResult(result));
+    if (!numericResults.length) { setPreviousAvg(null); return; }
+    const totalPct = numericResults.reduce((s: number, r: any) => s + (r.percentage ?? (r.out_of > 0 ? (r.marks / r.out_of) * 100 : 0)), 0);
+    setPreviousAvg(totalPct / numericResults.length);
   };
 
   const classDataForGrading = student?.classes || {};
@@ -290,10 +291,10 @@ export default function StudentReportCard() {
 
       const learnerMetrics = aggregateLearnerTotals(results.map((row: any) => ({ ...row, students: student })), classDataForGrading)[0];
       const rankingDetails = learnerMetrics?.rankingSubjects?.length ? { subjects: learnerMetrics.rankingSubjects, totalMarks: learnerMetrics.rankingTotalMarks || 0, totalPoints: learnerMetrics.rankingTotalPoints || 0 } : undefined;
-      const avgPercentage = learnerMetrics?.avgPct || 0;
+      const avgPercentage = learnerMetrics?.count ? learnerMetrics.avgPct : 0;
       const totalPoints = isPrimary ? null : (rankingDetails?.totalPoints ?? learnerMetrics?.totalPoints ?? 0);
 
-      const deviation = previousAvg !== null ? avgPercentage - previousAvg : null;
+      const deviation = learnerMetrics?.count && previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
       // Prefer the unified ranking position so the report card cannot disagree
       // with the portal and class summary; fall back to the stored value.
@@ -302,10 +303,13 @@ export default function StudentReportCard() {
 
       const subjectScores = results.map(r => ({
         name: r.subjects?.name || 'Unknown',
-        percentage: getPercentage(r),
+        marks: r.marks,
+        out_of: r.out_of,
+        mark_code: r.mark_code,
+        percentage: isExcludedResult(r) ? 0 : getPercentage(r),
         previousPercentage: null,
       }));
-      const sortedBest = [...subjectScores].sort((a, b) => b.percentage - a.percentage);
+      const sortedBest = subjectScores.filter((result) => !isExcludedResult(result)).sort((a, b) => b.percentage - a.percentage);
       const bestSubject = sortedBest[0]?.name || 'all subjects';
       const weakestSubject = sortedBest[sortedBest.length - 1]?.name || 'some subjects';
       const studentFullName = `${student.first_name} ${student.last_name}`;
@@ -330,7 +334,7 @@ export default function StudentReportCard() {
         48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
-        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: student.pathway, track: student.track, overallGrade: (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })(), showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Class },
+        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Class },
       );
 
       const qrOptions = { assessmentNumber: student.assessment_number };

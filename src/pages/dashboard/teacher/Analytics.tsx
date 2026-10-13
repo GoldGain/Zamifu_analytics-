@@ -3,6 +3,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { BarChart3, TrendingUp, Award, Users, BookOpen, School, Shield, Eye, Lock } from 'lucide-react';
 import { formatClassStream } from '@/lib/class-label';
+import { isExcludedResult } from '@/lib/learnerTotals';
 
 type TeacherRole = 'subject_teacher' | 'class_teacher' | 'dean_of_studies' | 'admin' | null;
 
@@ -19,7 +20,7 @@ export default function TeacherAnalytics() {
   const [teacherRole, setTeacherRole] = useState<TeacherRole>(null);
   const [teacherAssignments, setTeacherAssignments] = useState<TeacherAssignment[]>([]);
   const [teacherClassId, setTeacherClassId] = useState<string | null>(null);
-  const [stats, setStats] = useState({ totalResults: 0, avgMarks: 0, topGrade: 0, studentsCount: 0 });
+  const [stats, setStats] = useState({ totalResults: 0, numericResults: 0, avgMarks: 0, topGrade: 0, studentsCount: 0 });
   const [subjectPerformance, setSubjectPerformance] = useState<any[]>([]);
   const [classPerformance, setClassPerformance] = useState<any[]>([]);
   const [gradeDistribution, setGradeDistribution] = useState({ EE: 0, ME: 0, AE: 0, BE: 0 });
@@ -142,12 +143,13 @@ export default function TeacherAnalytics() {
       setSubjects(filteredSubjects);
 
       if (results && results.length > 0) {
-        const avg = results.reduce((sum: number, r: any) => sum + getPct(r), 0) / results.length;
-        const top = Math.max(...results.map((r: any) => getPct(r)));
+        const numericResults = results.filter((result: any) => !isExcludedResult(result));
+        const avg = numericResults.length ? numericResults.reduce((sum: number, r: any) => sum + getPct(r), 0) / numericResults.length : 0;
+        const top = numericResults.length ? Math.max(...numericResults.map((r: any) => getPct(r))) : 0;
 
-        // Group by subject
+        // Group by subject; exceptional X/Y codes are not numeric scores.
         const bySubject: Record<string, { name: string; total: number; count: number; classBreakdown: Record<string, { total: number; count: number }> }> = {};
-        results.forEach((r: any) => {
+        numericResults.forEach((r: any) => {
           const name = r.subjects?.name || 'Unknown';
           const className = formatClassStream(r.classes);
           if (!bySubject[name]) bySubject[name] = { name, total: 0, count: 0, classBreakdown: {} };
@@ -169,7 +171,7 @@ export default function TeacherAnalytics() {
 
         // Group by class
         const byClass: Record<string, { name: string; total: number; count: number; subjectBreakdown: Record<string, { total: number; count: number }> }> = {};
-        results.forEach((r: any) => {
+        numericResults.forEach((r: any) => {
           const className = formatClassStream(r.classes);
           const subjectName = r.subjects?.name || 'Unknown';
           if (!byClass[className]) byClass[className] = { name: className, total: 0, count: 0, subjectBreakdown: {} };
@@ -191,7 +193,7 @@ export default function TeacherAnalytics() {
 
         // Grade distribution
         const dist = { EE: 0, ME: 0, AE: 0, BE: 0 };
-        results.forEach((r: any) => {
+        numericResults.forEach((r: any) => {
           const pct = getPct(r);
           const grade = r.cbc_grade || (pct >= 75 ? 'EE' : pct >= 41 ? 'ME' : pct >= 21 ? 'AE' : 'BE');
           if (grade?.startsWith('EE')) dist.EE++;
@@ -200,9 +202,9 @@ export default function TeacherAnalytics() {
           else dist.BE++;
         });
         setGradeDistribution(dist);
-        setStats({ totalResults: results.length, avgMarks: Math.round(avg), topGrade: Math.round(top), studentsCount: sCount || 0 });
+        setStats({ totalResults: results.length, numericResults: numericResults.length, avgMarks: Math.round(avg), topGrade: Math.round(top), studentsCount: sCount || 0 });
       } else {
-        setStats({ totalResults: 0, avgMarks: 0, topGrade: 0, studentsCount: sCount || 0 });
+        setStats({ totalResults: 0, numericResults: 0, avgMarks: 0, topGrade: 0, studentsCount: sCount || 0 });
       }
     } catch (err) {
       console.error('Error fetching analytics:', err);
@@ -269,8 +271,8 @@ export default function TeacherAnalytics() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Results', value: stats.totalResults, icon: <BarChart3 className="w-5 h-5" />, color: 'bg-blue-500' },
-          { label: 'Average Score', value: `${stats.avgMarks}%`, icon: <TrendingUp className="w-5 h-5" />, color: 'bg-green-500' },
-          { label: 'Top Score', value: `${stats.topGrade}%`, icon: <Award className="w-5 h-5" />, color: 'bg-purple-500' },
+          { label: 'Average Score', value: stats.numericResults ? `${stats.avgMarks}%` : 'N/A', icon: <TrendingUp className="w-5 h-5" />, color: 'bg-green-500' },
+          { label: 'Top Score', value: stats.numericResults ? `${stats.topGrade}%` : 'N/A', icon: <Award className="w-5 h-5" />, color: 'bg-purple-500' },
           { label: 'Learners', value: stats.studentsCount, icon: <Users className="w-5 h-5" />, color: 'bg-orange-500' },
         ].map((card, i) => (
           <div key={i} className="bg-white rounded-2xl p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
@@ -402,7 +404,7 @@ export default function TeacherAnalytics() {
       )}
 
       {/* CBE Grade Distribution */}
-      {stats.totalResults > 0 && (
+      {stats.numericResults > 0 && (
         <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
           <h3 className="font-semibold text-[#111111] mb-4">CBE Grade Distribution</h3>
           <div className="flex items-end gap-3 h-40">

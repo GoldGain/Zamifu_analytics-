@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { Bot, Send, Loader2, Globe, User } from 'lucide-react';
+import { excludedResultCode, isExcludedResult } from '@/lib/learnerTotals';
 
 interface Message {
   id: string;
@@ -94,12 +95,16 @@ export default function ParentChatbot() {
           .order('created_at', { ascending: false })
           .limit(6);
         if (results && results.length > 0) {
+          const numericResults = results.filter((r: any) => !isExcludedResult(r));
           const getPct = (r: any) => r.percentage !== undefined && r.percentage !== null ? r.percentage : Math.round((r.marks / (r.out_of || 100)) * 100);
-          const avg = Math.round(results.reduce((s: number, r: any) => s + getPct(r), 0) / results.length);
-          const resultList = results.map((r: any) => `  • ${r.subjects?.name}: ${getPct(r)}% (${r.cbc_grade || '-'})`).join('\n');
+          const avg = numericResults.length ? `${Math.round(numericResults.reduce((s: number, r: any) => s + getPct(r), 0) / numericResults.length)}%` : t('No numeric average yet', 'Hakuna wastani wa nambari bado');
+          const resultList = results.map((r: any) => {
+            const code = excludedResultCode(r);
+            return `  • ${r.subjects?.name}: ${code || `${getPct(r)}%`} (${code || r.cbc_grade || '-'})`;
+          }).join('\n');
           return t(
-            `📚 **Recent Results for ${childName}:**\n\n${resultList}\n\n📈 Average: ${avg}%\n\nFor full report card, go to Report Card section.`,
-            `📚 **Matokeo ya Hivi Karibuni ya ${childName}:**\n\n${resultList}\n\n📈 Wastani: ${avg}%\n\nKwa kadi kamili ya ripoti, nenda sehemu ya Kadi ya Ripoti.`
+            `📚 **Recent Results for ${childName}:**\n\n${resultList}\n\n📈 Average: ${avg}\n\nFor full report card, go to Report Card section.`,
+            `📚 **Matokeo ya Hivi Karibuni ya ${childName}:**\n\n${resultList}\n\n📈 Wastani: ${avg}\n\nKwa kadi kamili ya ripoti, nenda sehemu ya Kadi ya Ripoti.`
           );
         }
         return t(`No results found for ${childName} yet.`, `Hakuna matokeo ya ${childName} bado.`);

@@ -7,6 +7,7 @@ import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { formatClassStream } from '@/lib/class-label';
 import { calculateGradeForClass } from '@/lib/grading';
 import { deleteResults } from '@/lib/resultActions';
+import { excludedResultCode, isExcludedResult } from '@/lib/learnerTotals';
 
 interface MarkEntry {
   id: string;
@@ -18,6 +19,7 @@ interface MarkEntry {
   marks: number;
   out_of: number;
   percentage: number;
+  mark_code?: string | null;
   cbc_sublevel: string | null;
   cbc_grade: string;
   cbc_points: number | null;
@@ -70,7 +72,9 @@ const markPercentage = (mark: Pick<MarkEntry, 'percentage' | 'marks' | 'out_of'>
   return Number.isFinite(outOf) && outOf > 0 ? Number(mark.marks || 0) / outOf * 100 : 0;
 };
 
-const displayGradeForMark = (mark: Pick<MarkEntry, 'percentage' | 'marks' | 'out_of' | 'classes'>): string => {
+const displayGradeForMark = (mark: Pick<MarkEntry, 'percentage' | 'marks' | 'out_of' | 'classes' | 'mark_code'>): string => {
+  const exceptionalCode = excludedResultCode(mark);
+  if (exceptionalCode) return exceptionalCode;
   const grade = calculateGradeForClass(markPercentage(mark), mark.classes || undefined);
   return 'subLevel' in grade ? grade.subLevel : grade.grade;
 };
@@ -610,19 +614,20 @@ export default function ViewMarks() {
                     {group.subjects.map((subject) => {
                       const isSubjectExpanded = expandedSubject === `${group.classId}-${subject.subjectId}`;
                       const sortedMarks = [...subject.marks].sort(compareAdmissionNumber);
+                      const numericMarks = sortedMarks.filter((mark) => !isExcludedResult(mark));
                       const sortedMissing = [...subject.missing].sort((a, b) => String(a.admission_number).localeCompare(String(b.admission_number), undefined, { numeric: true, sensitivity: 'base' }));
                       const subjectDrafts = sortedMarks.filter(m => m.status === 'draft');
                       const subjectSubmitted = sortedMarks.filter(m => m.status === 'submitted');
                       const editableMarks = sortedMarks.filter((mark) => !isMarkLocked(mark));
                       const allEditableSelected = editableMarks.length > 0 && editableMarks.every((mark) => selectedMarkIds.includes(mark.id));
-                      const meanMarks = sortedMarks.length
-                        ? sortedMarks.reduce((sum, mark) => sum + Number(mark.percentage ?? (mark.out_of ? (mark.marks / mark.out_of) * 100 : 0)), 0) / sortedMarks.length
+                      const meanMarks = numericMarks.length
+                        ? numericMarks.reduce((sum, mark) => sum + Number(mark.percentage ?? (mark.out_of ? (mark.marks / mark.out_of) * 100 : 0)), 0) / numericMarks.length
                         : null;
                       const meanGrade = meanMarks === null ? '-' : displayGradeForMark({
                         percentage: meanMarks,
                         marks: meanMarks,
                         out_of: 100,
-                        classes: sortedMarks[0]?.classes || null,
+                        classes: numericMarks[0]?.classes || null,
                       });
                       
                       return (
@@ -701,10 +706,10 @@ export default function ViewMarks() {
                                             />
                                           </div>
                                         ) : (
-                                          <span className="font-medium">{m.marks ?? 0} / {m.out_of ?? 0}</span>
+                                          <span className="font-medium">{excludedResultCode(m) || `${m.marks ?? 0} / ${m.out_of ?? 0}`}</span>
                                         )}
                                       </td>
-                                      <td className="px-3 py-2 font-semibold">{m.percentage ?? 0}%</td>
+                                      <td className="px-3 py-2 font-semibold">{excludedResultCode(m) || `${m.percentage ?? 0}%`}</td>
                                       <td className="px-3 py-2">
                                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gradeColor(displayGradeForMark(m))}`}>
                                           {displayGradeForMark(m)}

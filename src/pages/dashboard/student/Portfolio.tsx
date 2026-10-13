@@ -4,6 +4,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Award, BookOpen, TrendingUp, Star, FileText, ChevronDown, ChevronUp, Loader2, Target, Lightbulb, GraduationCap, Calendar } from 'lucide-react';
 import { formatClassStream } from '@/lib/class-label';
+import { isExcludedResult } from '@/lib/learnerTotals';
 
 interface PortfolioData {
   student: any;
@@ -47,7 +48,7 @@ function getPathwayRecommendation(results: any[]): { text: string; focus: string
     focus: ['Attend all classes regularly', 'Complete all assignments', 'Participate actively in class']
   };
   
-  const validResults = results.filter(r => r.marks_obtained != null && (r.exams?.out_of || r.out_of));
+  const validResults = results.filter(r => !isExcludedResult({ ...r, marks: r.marks_obtained ?? r.marks }) && r.marks_obtained != null && (r.exams?.out_of || r.out_of));
   if (!validResults.length) return {
     text: 'Results are being processed. Continue working hard while your teachers finalize your marks.',
     focus: ['Review past exam papers', 'Seek help from teachers in challenging subjects', 'Form study groups with classmates']
@@ -152,7 +153,7 @@ export default function StudentPortfolio() {
 
   const { student, results, homework, assessments } = portfolio;
 
-  const validResults = results.filter(r => r.marks_obtained != null && (r.exams?.out_of || r.out_of));
+  const validResults = results.filter(r => !isExcludedResult({ ...r, marks: r.marks_obtained ?? r.marks }) && r.marks_obtained != null && (r.exams?.out_of || r.out_of));
   const avgPct = validResults.length
     ? Math.round(validResults.reduce((s, r) => {
         const outOf = r.exams?.out_of || r.out_of || 100;
@@ -165,6 +166,7 @@ export default function StudentPortfolio() {
   // Subject performance
   const subjectMap: Record<string, { name: string; marks: number[]; outOfs: number[]; examNames: string[] }> = {};
   results.forEach(r => {
+    if (isExcludedResult({ ...r, marks: r.marks_obtained ?? r.marks })) return;
     const name = r.subjects?.name || 'Unknown';
     if (!subjectMap[name]) subjectMap[name] = { name, marks: [], outOfs: [], examNames: [] };
     subjectMap[name].marks.push(r.marks_obtained || 0);

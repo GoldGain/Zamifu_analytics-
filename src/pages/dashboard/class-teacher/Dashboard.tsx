@@ -6,13 +6,14 @@ import {
   Search, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronUp, Download, Send
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, getRequiredLearningAreas } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand } from '@/lib/grading';
 import { MarksProgress } from '@/components/MarksProgress';
 import { AddMarksModal, type AddMarksTarget } from '@/components/AddMarksModal';
 import { rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
 import { aggregateLearnerTotals } from '@/lib/learnerTotals';
+import { excludedResultCode } from '@/lib/learnerTotals';
 
 interface StudentPerformance {
   id: string;
@@ -25,7 +26,7 @@ interface StudentPerformance {
   totalOutOf: number | null;
   totalPoints: number | null;
   position: number | null;
-  subjectResults: Record<string, { pct: number; grade: string; points: number; marks: number | null; out_of: number | null }>;
+  subjectResults: Record<string, { pct: number; grade: string; points: number; marks: number | string | null; out_of: number | null }>;
   hasAllMarks: boolean;
 }
 
@@ -148,7 +149,7 @@ export default function ClassTeacherDashboard() {
       // whole class x term would silently truncate the ranking cohort.
       const results = await fetchAllRows((from, to) => supabaseUntyped
         .from('results')
-        .select('student_id, class_id, subject_id, marks, out_of, percentage, cbc_grade, grade_844, cbc_points, created_at, students!inner(is_active, id, gender), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
+        .select('student_id, class_id, subject_id, marks, out_of, percentage, mark_code, cbc_grade, grade_844, cbc_points, created_at, students!inner(is_active, id, gender), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
         .eq('class_id', assignedClass.id)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
@@ -159,13 +160,15 @@ export default function ClassTeacherDashboard() {
       const resultsMap: Record<string, Record<string, any>> = {};
       (results || []).forEach((r: any) => {
         if (!resultsMap[r.student_id]) resultsMap[r.student_id] = {};
-        const percentage = r.percentage ?? (Number(r.out_of) > 0 ? Number(r.marks || 0) / Number(r.out_of) * 100 : 0);
+        const exceptionalCode = excludedResultCode(r);
+        const percentage = exceptionalCode ? 0 : r.percentage ?? (Number(r.out_of) > 0 ? Number(r.marks || 0) / Number(r.out_of) * 100 : 0);
         const grade = calculateGradeForClass(percentage, assignedClass);
         resultsMap[r.student_id][r.subject_id] = {
           pct: percentage,
-          grade: 'subLevel' in grade ? grade.subLevel : grade.grade,
-          points: gradePointsForClass(percentage, assignedClass),
-          marks: r.marks,
+          counted: !exceptionalCode,
+          grade: exceptionalCode || ('subLevel' in grade ? grade.subLevel : grade.grade),
+          points: exceptionalCode ? 0 : gradePointsForClass(percentage, assignedClass),
+          marks: r.marks ?? exceptionalCode,
           out_of: r.out_of,
         };
       });
@@ -179,19 +182,18 @@ export default function ClassTeacherDashboard() {
 
       const perf: StudentPerformance[] = students.map((student) => {
         const sResults = resultsMap[student.id] || {};
-        const pcts = Object.values(sResults).map((r: any) => r.pct).filter((p) => p != null && p > 0);
-        const req = getRequiredLearningAreas(assignedClass || {}) || 0;
-        const denom = req > 0 ? req : pcts.length;
-        const avgPct = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / denom) : null;
+        const numericResults = Object.values(sResults).filter((r: any) => r.counted);
+        const pcts = numericResults.map((r: any) => r.pct);
+        const avgPct = pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
         
-        const marks = Object.values(sResults).map((r: any) => r.marks).filter((m) => m != null);
-        const outOfs = Object.values(sResults).map((r: any) => r.out_of).filter((o) => o != null);
+        const marks = numericResults.map((r: any) => r.marks).filter((m) => m != null);
+        const outOfs = numericResults.map((r: any) => r.out_of).filter((o) => o != null);
         const totalMarks = marks.length > 0 ? marks.reduce((a, b) => a + b, 0) : null;
         const totalOutOf = outOfs.length > 0 ? outOfs.reduce((a, b) => a + b, 0) : null;
         
         const hasAllMarks = subjects.length > 0 && Object.keys(sResults).length >= subjects.length;
 
-        const pointsTotal = Object.values(sResults).reduce((sum: number, r: any) => sum + (Number(r.points) || 0), 0);
+        const pointsTotal = numericResults.reduce((sum: number, r: any) => sum + (Number(r.points) || 0), 0);
         return {
           ...student,
           avgPercentage: avgPct,
