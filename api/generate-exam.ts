@@ -722,7 +722,9 @@ async function handleExamGeneration(
       },
     }, { previousStems: recentQuestionStems,deadlineAt:repairDeadline });
     if (repair.status === 'failed') {
-      throw new DeepSeekResponseError(repair.failureMessage || 'The generated paper could not be repaired.');
+      const details=repair.validation.issues.filter(issue=>issue.severity==='critical').slice(0,8).map(issue=>`Q${issue.questionIndex===undefined?'paper':issue.questionIndex+1}: ${issue.code} — ${issue.message}`).join('; ');
+      console.error('[exam-gen] exact repair failed:',details);
+      throw new DeepSeekResponseError(`${repair.failureMessage || 'The generated paper could not be repaired.'}${details?` Details: ${details}`:''}`);
     }
     renderedQuestions = repair.questions;
     const validation = repair.validation;
@@ -734,7 +736,8 @@ async function handleExamGeneration(
     if (actualMarks !== parsedRequest.totalMarks || (expectedCount !== undefined && renderedQuestions.length !== expectedCount) || validation.issues.some((issue) => issue.severity === 'critical')) {
       throw new DeepSeekResponseError('The paper did not satisfy its complete question, mark and validation contract. It has not been saved as a successful paper.');
     }
-    const paper = { ...draftPaper, instructions: kpseaSpec ? [...draftPaper.instructions, kpseaSpec.score_basis] : draftPaper.instructions, paper_variant: parsedRequest.paperVariant || 'single', blueprint: parsedRequest.blueprint, questions: renderedQuestions.map((question, index) => ({ ...question, question_number: index + 1 })), total_marks: actualMarks };
+    const markingScheme=renderedQuestions.map((question,index)=>`Q${index+1}: ${question.sub_parts?.length?question.sub_parts.map(part=>`${part.label} ${part.marking_scheme||part.correct_answer} [${part.marks} marks]`).join(' | '):question.marking_scheme}`).join('\n');
+    const paper = { ...draftPaper, marking_scheme:markingScheme, instructions: kpseaSpec ? [...draftPaper.instructions, kpseaSpec.score_basis] : draftPaper.instructions, paper_variant: parsedRequest.paperVariant || 'single', blueprint: parsedRequest.blueprint, questions: renderedQuestions.map((question, index) => ({ ...question, question_number: index + 1 })), total_marks: actualMarks };
     const { data: storedQuestions, error: questionError } = await supabase
       .from('exam_questions')
       .insert(paper.questions.map((question) => ({
@@ -788,9 +791,7 @@ async function handleExamGeneration(
         term: paper.term || null,
         year: paper.year,
         questions: questionIds,
-        marking_scheme: paper.questions.map((question, index) => `Q${index + 1}: ${question.sub_parts?.length
-          ? question.sub_parts.map((part) => `${part.label} ${part.marking_scheme || part.correct_answer || 'Award for a correct response.'} [${part.marks} mark${part.marks === 1 ? '' : 's'}]`).join(' | ')
-          : question.marking_scheme}`).join('\n'),
+        marking_scheme: paper.marking_scheme,
         instructions: paper.instructions.join('\n'),
         duration_minutes: paper.duration_minutes,
         total_marks: paper.total_marks,

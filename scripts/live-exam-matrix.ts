@@ -87,6 +87,16 @@ function curl(item:Item):Promise<{status:number|null;body:any;stderr:string}> {
  });
 }
 const records:any[]=fs.existsSync(path.join(root,'generation-summary.json'))?JSON.parse(fs.readFileSync(path.join(root,'generation-summary.json'),'utf8')):[];
+await authenticate();
+for(const row of records){
+ const responsePath=path.join(root,'responses',`${row.key}.json`),requestPath=path.join(root,'requests',`${row.key}.json`);
+ if(!fs.existsSync(responsePath)||!fs.existsSync(requestPath))continue;
+ const payload=JSON.parse(fs.readFileSync(responsePath,'utf8')),effective=JSON.parse(fs.readFileSync(requestPath,'utf8'));
+ if(!payload.paper?.marking_scheme&&row.paperId){const stored=await savedPaper(row.paperId);if(stored)payload.paper.marking_scheme=stored.paper.marking_scheme;}
+ const valid=payload.paper?.questions?.length&&validateGeneratedExam(effective,payload.paper.questions).passed&&payload.paper.questions.length===getExamBlueprintSlots(effective).length&&payload.paper.questions.reduce((sum:number,q:any)=>sum+q.marks,0)===effective.totalMarks&&Boolean(payload.paper.marking_scheme?.length);
+ if(valid){row.success=true;row.error=null;row.criticalIssues=[];fs.writeFileSync(responsePath,JSON.stringify(payload,null,2),{mode:0o600});}
+}
+fs.writeFileSync(path.join(root,'generation-summary.json'),JSON.stringify(records,null,2));
 const done=new Set(records.filter(row=>row.success).map(row=>row.key));
 const selected=manifest.filter(item=>!done.has(item.key)&&(!only.size||only.has(item.key))&&(mode!=='seven'||priorityKeys.includes(item.key)));
 console.log(`LIVE ${mode}: ${selected.length} remaining requests, workers=${workers}. No previous successful paper will be duplicated.`);
@@ -100,11 +110,13 @@ async function run(item:Item){
  const started=new Date().toISOString();let result=await curl(item);
  for(let retry=0;result.status===429&&retry<5;retry++){const seconds=Math.min(600,Number(result.body.retryAfterSeconds)||60);console.log(`RATE ${item.key}: respecting ${seconds}s retry interval.`);await wait(seconds*1000);result=await curl(item);}
  let job=await findJob(item,started).catch(()=>null);
+ if(result.status===0&&!job){await wait(2000);job=await findJob(item,started).catch(()=>null);if(!job){console.log(`TRANSPORT ${item.key}: retrying once because no generation job was created.`);result=await curl(item);job=await findJob(item,started).catch(()=>null);}}
  if(!result.body.paper&&job?.status==='generating'){
   const deadline=Date.now()+180000;
   while(job?.status==='generating'&&Date.now()<deadline){await wait(10000);job=await findJob(item,started);}
  }
  if(!result.body.paper&&job?.status==='ready'&&job.result_paper_id)result.body=await savedPaper(job.result_paper_id);
+ if(result.body.paper&&!result.body.paper.marking_scheme){const stored=await savedPaper(result.body.paper.id);if(stored)result.body.paper.marking_scheme=stored.paper.marking_scheme;}
  const effective=job?.request_payload||item.request;
  if(effective)fs.writeFileSync(path.join(root,'requests',`${item.key}.json`),JSON.stringify(effective,null,2),{mode:0o600});
  const paper=result.body?.paper;
@@ -118,7 +130,6 @@ async function run(item:Item){
  save(row);completed++;active.delete(item.key);console.log(`${success?'PASS':'FAIL'} ${item.key}: ${row.questionCount} questions, ${sum} marks, maps=${row.mapCount}${row.error?`; ${String(row.error).slice(0,300)}`:''}`);
  consecutiveFailures=success?0:consecutiveFailures+1;if(consecutiveFailures>=3){fatal=true;console.log('Paused new requests after three consecutive failures: inspect and fix before more production generation.');}
 }
-await authenticate();
 try{await Promise.all(Array.from({length:Math.min(workers,selected.length)},async()=>{while(!fatal){const next=index++;if(next>=selected.length)return;await run(selected[next]);}}));}finally{clearInterval(heartbeat);}
 console.log(`LIVE run finished: ${records.filter(row=>row.success).length} validated saved papers; ${records.filter(row=>!row.success).length} failures recorded. Summary: ${path.join(root,'generation-summary.json')}`);
 if(records.some(row=>!row.success)||fatal)process.exitCode=1;

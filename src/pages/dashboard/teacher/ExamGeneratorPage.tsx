@@ -24,6 +24,7 @@ interface Subject { id: string; subject_name: string; subject_code: string; curr
 
 const SENIOR_ASSESSMENT_LEVEL: AssessmentLevel = 'senior_secondary';
 const normalizeSubjectName = (value: unknown): string => String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const approvedKicdDescription = (value: unknown): boolean => /\b(?:official\s+(?:source[- ]verified\s+)?kicd|source[- ]verified\s+kicd)\b/i.test(String(value??''));
 
 export default function ExamGeneratorPage() {
   const { user, schoolData } = useAuth();
@@ -141,9 +142,9 @@ export default function ExamGeneratorPage() {
             .in('subject_id', subjectIds)
           : { data: [] };
         if (requestId !== subjectsRequestRef.current) return;
-        const approvedRows = (strandRows || []).filter((strand: { subject_id?: string; strand_description?: string | null; is_current?: boolean | null }) => strand.is_current === true && /official\s+kicd/i.test(strand.strand_description || '')) as Array<{ subject_id?: string; strand_description?: string | null; is_current?: boolean | null }>;
+        const approvedRows = (strandRows || []).filter((strand: { subject_id?: string; strand_description?: string | null; is_current?: boolean | null }) => strand.is_current === true && approvedKicdDescription(strand.strand_description)) as Array<{ subject_id?: string; strand_description?: string | null; is_current?: boolean | null }>;
         const sourceVerifiedSubjectIds = new Set(approvedRows
-          .filter((strand) => /source-verified\s+curriculum/i.test(strand.strand_description || ''))
+          .filter((strand) => /source[- ]verified/i.test(strand.strand_description || ''))
           .map((strand) => strand.subject_id)
           .filter(Boolean));
         const generalVerifiedSubjectIds = new Set(approvedRows.map((strand) => strand.subject_id).filter(Boolean));
@@ -236,9 +237,9 @@ export default function ExamGeneratorPage() {
       if (requestId !== curriculumRequestRef.current) return;
       if (strandsError) throw strandsError;
       const approvedStrands = (strandsData || []).filter((strand: { strand_description?: string | null; is_current?: boolean | null }) =>
-        strand.is_current === true && /official\s+kicd/i.test(strand.strand_description || '')
+        strand.is_current === true && approvedKicdDescription(strand.strand_description)
       ) as Array<{ id: string; strand_name: string; strand_order?: number; strand_description?: string | null; is_current?: boolean | null }>;
-      const sourceVerifiedStrands = approvedStrands.filter((strand) => /source-verified\s+curriculum/i.test(strand.strand_description || ''));
+      const sourceVerifiedStrands = approvedStrands.filter((strand) => /source[- ]verified/i.test(strand.strand_description || ''));
       const effectiveStrandsData = (sourceVerifiedStrands.length ? sourceVerifiedStrands : approvedStrands) as Array<{ id: string; strand_name: string; strand_order?: number }>;
       if (effectiveStrandsData.length === 0) {
         setStrands([]);
