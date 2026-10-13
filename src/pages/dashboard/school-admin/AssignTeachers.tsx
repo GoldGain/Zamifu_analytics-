@@ -514,7 +514,6 @@ export default function AssignTeachers() {
               <li>Lessons 1-3: Mathematics and English; Lessons 1-6: Integrated Science</li>
               <li>Pre-Technical, Kiswahili, and other areas: any lesson slot</li>
               <li>Pre-Tech / Creative Arts doubles start at Lesson 3 or later</li>
-              <li>Kiswahili doubles may not include Lesson 8</li>
             </ul>
           </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
@@ -523,7 +522,6 @@ export default function AssignTeachers() {
               <li>Lessons 1-3: Mathematics and English; Lessons 1-6: Integrated Science</li>
               <li>Pre-Technical, Kiswahili, and other areas: any lesson slot</li>
               <li>Pre-Tech / Creative Arts doubles start at Lesson 3 or later</li>
-              <li>Kiswahili doubles may not include Lesson 8</li>
             </ul>
           </div>
           <div className="rounded-lg bg-white border border-blue-100 p-3">
