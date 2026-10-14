@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lucide-react';
 import { ANNUAL_PRICE_PER_LEARNER, SMS_NON_SUBSCRIBER_PLAN, SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '@/lib/trial';
+import { subscriptionPlanAmount, subscriptionPlanPrice } from '@/lib/subscriptionPricing';
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
@@ -11,7 +12,6 @@ export const TrialCountdown: React.FC = () => {
   const { user } = useAuth();
   const [showPayment, setShowPayment] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [billingPeriod, setBillingPeriod] = useState<'term' | 'annual'>('term');
   const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>('full_access_20');
 
   // Auto-fetch learners count from Supabase
@@ -52,9 +52,8 @@ export const TrialCountdown: React.FC = () => {
   const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
   const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : ANNUAL_PRICE_PER_LEARNER;
   const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) || SUBSCRIPTION_PLANS[0];
-  const selectedPlanAmount = selectedPlan.unit === 'learner' ? learnersCount * selectedPlan.price : selectedPlan.price;
-  const annualBaseline = pricePerLearner * 3;
-  const annualSavings = Math.max(0, annualBaseline - annualFee);
+  const selectedPlanPrice = subscriptionPlanPrice(selectedPlan, pricePerLearner, annualFee);
+  const selectedPlanAmount = subscriptionPlanAmount(selectedPlan, learnersCount, pricePerLearner, annualFee);
 
   // Paid users — show success badge
   if (isPaid) {
@@ -103,11 +102,12 @@ export const TrialCountdown: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto mb-5 text-left">
               {SUBSCRIPTION_PLANS.map((plan) => {
                 const isSelected = selectedPlan.id === plan.id;
-                const amount = plan.unit === 'learner' ? learnersCount * plan.price : plan.price;
+                const planPrice = subscriptionPlanPrice(plan, pricePerLearner, annualFee);
+                const amount = subscriptionPlanAmount(plan, learnersCount, pricePerLearner, annualFee);
                 return (
                   <button type="button" key={plan.id} onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border-2 p-4 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
                     <span className="block font-bold text-gray-900">{plan.name}</span>
-                    <span className="block text-sm text-gray-600">KES {plan.price.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span>
+                    <span className="block text-sm text-gray-600">KES {planPrice.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span>
                     <span className="block text-xs text-gray-500 mt-1">{plan.featureSummary}</span>
                     <span className="block text-xs font-semibold text-blue-700 mt-2">This payment: KES {amount.toLocaleString()}</span>
                   </button>
@@ -173,7 +173,7 @@ export const TrialCountdown: React.FC = () => {
           <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <PaystackButton
               learnersCount={learnersCount}
-              feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined}
+              feePerLearner={selectedPlan.unit === 'learner' ? selectedPlanPrice : undefined}
               fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined}
               subscriptionPlan={selectedPlan.id}
               billingPeriod={selectedPlan.period === 'annual' ? 'annual' : selectedPlan.unit === 'school' ? 'school-term' : 'term'}
@@ -239,8 +239,9 @@ export const TrialCountdown: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
                     {SUBSCRIPTION_PLANS.map((plan) => {
                       const isSelected = selectedPlan.id === plan.id;
-                      const amount = plan.unit === 'learner' ? learnersCount * plan.price : plan.price;
-                      return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {plan.price.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
+                      const planPrice = subscriptionPlanPrice(plan, pricePerLearner, annualFee);
+                      const amount = subscriptionPlanAmount(plan, learnersCount, pricePerLearner, annualFee);
+                      return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {planPrice.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
                     })}
                   </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-gray-700"><strong>{SMS_NON_SUBSCRIBER_PLAN.name}:</strong> KES {SMS_NON_SUBSCRIBER_PLAN.price.toLocaleString()} per SMS. Purchase credits from the SMS Wallet.</div>
