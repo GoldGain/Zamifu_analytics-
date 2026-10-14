@@ -6,7 +6,7 @@ import {
   type GeneratedExamSubPart,
   type QuestionType,
 } from './exam-schema.js';
-import { DETERMINISTIC_SCIENCE_VISUAL_RULES, hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
+import { DETERMINISTIC_SCIENCE_VISUAL_RULES,DETERMINISTIC_MATH_VISUAL_RULES, hasCompleteTableVisual, hasUsableVisualSpec } from './exam-visuals.js';
 import {
   answerCompletenessLaw,
   buildCoveragePlanFromRequest,
@@ -253,7 +253,7 @@ export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext
     ? 'Visual questions are enabled. Include at least one question with a complete structured visual_spec object, but add visual_spec ONLY when the question stem or its sub-parts explicitly require the learner to study, interpret, label, compare, or use a diagram, map, graph, chart, table, flowchart, illustration, picture, image, or number line. For simple recall, multiple-choice, completion, or short-answer questions that do not explicitly require a visual, set visual_spec to null. Never add a generic placeholder visual merely because visuals are enabled. Do not invent an image URL. Prefer precise printable diagrams and deterministic vector map specifications. For every map visual, provide base_map, map_regions, labels, legend, scale_text, and compass. For every table visual, provide table_headers with at least two headers and table_rows containing every complete learner-facing row and cell, including all numeric values needed to answer the question; never provide x_labels alone or leave required cells for the renderer to guess. If a visual_spec is present, do not repeat the same Markdown table or bracketed diagram placeholder in question_text; write a concise instruction such as “Study the visual below” and put all labels, readings, units, and values in the structured visual_spec. For measurement diagrams, include precise labels and readings such as graduated scales, water levels, units, and objects; never return a generic decorative rectangle/circle/triangle placeholder.'
     : 'Do not require any images, but preserve a visual_spec only when the question stem explicitly requires a visual to answer the question. If a visual_spec is present, do not repeat its table or bracketed diagram placeholder in question_text.';
   const outcomes = request.learningOutcomes?.length ? request.learningOutcomes.join('; ') : 'Not separately constrained.';
-  if(request.includeImages)imageDirection+=DETERMINISTIC_SCIENCE_VISUAL_RULES;
+  if(request.includeImages)imageDirection+=DETERMINISTIC_SCIENCE_VISUAL_RULES+DETERMINISTIC_MATH_VISUAL_RULES;
   if(/english|kiswahili|literature|fasihi/i.test(request.subject))imageDirection+=ORIGINAL_LITERARY_EXTRACT_RULE;
   const competencies = request.competencies?.length ? request.competencies.join('; ') : 'Use suitable CBC core competencies.';
   const formatDirection = request.format === 'standard30'
