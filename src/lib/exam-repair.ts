@@ -17,7 +17,7 @@ import {
   type ExamValidationIssue,
   type ExamValidationSummary,
 } from './exam-validation.js';
-import { DETERMINISTIC_SCIENCE_VISUAL_RULES, withRenderedExamVisual } from './exam-visuals.js';
+import { DETERMINISTIC_SCIENCE_VISUAL_RULES,DETERMINISTIC_MATH_VISUAL_RULES, withRenderedExamVisual } from './exam-visuals.js';
 import {
   isSocialStudiesSubject,
   questionLacksAnswer,
@@ -672,7 +672,7 @@ ${describeRequestScope(request)}
 - Provide a real correct_answer and marking_scheme; never write marking instructions instead of the actual answer.
 ${question.question_type === 'multiple_choice' ? '- Provide exactly four options and name the correct one.' : ''}
 - Only include a visual_spec when the question genuinely requires one, and then give it complete labels or complete data.
-${DETERMINISTIC_SCIENCE_VISUAL_RULES}
+${DETERMINISTIC_SCIENCE_VISUAL_RULES}${DETERMINISTIC_MATH_VISUAL_RULES}
 ${issues.some((issue) => issue.code === 'VISUAL_REPLACEMENT_REQUIRED') ? '- The previous required visual could not be rendered. This replacement MUST be answerable without a visual: set visual_spec to null and do not refer to a map, diagram, table, image, or anything shown below.' : question.visual_spec ? '- If you keep a visual, every label and value it needs must be present and readable.' : '- Set visual_spec to null.'}
 
 The rejected question was:
@@ -715,7 +715,7 @@ Rules for the repaired visual:
 - Return a visually complete, printable specification that a learner can read and use to answer the question.
 - asset_type must be one of: diagram, map, chart, graph, shape, flowchart, illustration, table, number_line.
 - Give a clear title and caption.
-${DETERMINISTIC_SCIENCE_VISUAL_RULES}
+${DETERMINISTIC_SCIENCE_VISUAL_RULES}${DETERMINISTIC_MATH_VISUAL_RULES}
 - tables: supply table_headers with at least two headers AND table_rows containing every learner-facing cell and numeric value. Never rely on x_labels alone.
 - graphs and charts: supply values (at least two numbers) AND matching x_labels (or labels) for every value.
 - diagrams, shapes, number lines and flowcharts: supply at least two readable labels.
