@@ -236,7 +236,7 @@ export function reconcileQuestionMarks(request: ExamGenerationRequest, questions
   return adjusted;
 }
 
-export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string): string {
+export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext: string,focusedSlots?:ExamBlueprintSlot[]): string {
   const selectedStrands = request.strands.length ? request.strands.join('; ') : 'Use the selected curriculum topic context.';
   const selectedSubStrands = request.subStrands.length ? request.subStrands.join('; ') : 'Not separately constrained.';
   const selectedTopics = request.topics.length ? request.topics.join('; ') : 'Not separately constrained.';
@@ -263,9 +263,10 @@ export function buildExamPrompt(request: ExamGenerationRequest, knowledgeContext
     : request.format === 'kjsea'
       ? kjseaFormatInstruction(request.subject, request.paperVariant || 'single')
       : 'Use a clear school-based CBC assessment structure with labelled sections and marks.';
-  const blueprintSlots = getExamBlueprintSlots(request);
+  const blueprintSlots = focusedSlots||getExamBlueprintSlots(request);
   const blueprintText = JSON.stringify(blueprintSlots.map((slot) => ({
     question_number: slot.questionNumber,
+    blueprint_item_index:slot.itemIndex,
     blueprint_section_id: slot.id,
     component_title: slot.title,
     question_type: slot.questionType,
@@ -524,6 +525,20 @@ export function chunkBlueprintSlots(slots: ExamBlueprintSlot[]): ExamBlueprintSl
   return chunks;
 }
 
+export function focusedChunkRequest(request:ExamGenerationRequest,slots:ExamBlueprintSlot[]):ExamGenerationRequest {
+  const sections:NonNullable<ExamGenerationRequest['blueprint']>['sections']=[];
+  for(const slot of slots){
+    const existing=sections.find(section=>section.id===slot.id);
+    if(existing){existing.count++;continue;}
+    const original=request.blueprint?.sections[slot.sectionIndex];
+    sections.push({...original,id:slot.id,title:slot.title,question_type:slot.questionType,count:1,marks_per_question:slot.marks,difficulty:slot.difficulty});
+  }
+  const marks=slots.reduce((sum,slot)=>sum+slot.marks,0);
+  const strands=[...new Set(slots.map(slot=>slot.strand||request.strands[(slot.questionNumber-1)%Math.max(1,request.strands.length)]).filter(Boolean))];
+  const scope=request.curriculumScope?.filter(node=>strands.includes(node.strand));
+  return {...request,format:'custom',totalMarks:marks,strands:strands.length?strands:request.strands,subStrands:scope?.length?[...new Set(scope.flatMap(node=>node.subStrands))]:request.subStrands,topics:scope?.length?[...new Set(scope.flatMap(node=>node.topics))]:request.topics,curriculumScope:scope?.length?scope:request.curriculumScope,questionTypes:[...new Set(slots.map(slot=>slot.questionType))],blueprint:{sections,total_marks:marks,paper_variant:request.paperVariant}};
+}
+
 async function generateLargeBlueprintInChunks(
   request: ExamGenerationRequest,
   knowledgeContext: string,
@@ -535,7 +550,6 @@ async function generateLargeBlueprintInChunks(
 ): Promise<GeneratedExamQuestion[]> {
   const slots = getExamBlueprintSlots(request);
   const chunks = chunkBlueprintSlots(slots);
-  const basePrompt = buildExamPrompt(request, knowledgeContext);
   const results: Array<GeneratedExamQuestion[] | null> = Array.from({ length: chunks.length }, () => null);
   let next = 0;
   const worker = async (): Promise<void> => {
@@ -543,6 +557,7 @@ async function generateLargeBlueprintInChunks(
       const chunkIndex = next++;
       if (chunkIndex >= chunks.length) return;
       const chunk = chunks[chunkIndex];
+      const basePrompt=buildExamPrompt(focusedChunkRequest(request,chunk),knowledgeContext,chunk);
       const chunkContract = `\n\nFOCUSED COMPONENT CHUNK ${chunkIndex + 1}/${chunks.length}: Return exactly ${chunk.length} questions for these slots only, in this order. Do not return any other slot. Passage groups must remain complete within this chunk; use the original passage as the shared stimulus for its requested items. Do not attempt whole-paper strand coverage within this chunk; use only each slot's own component scope.\n${chunk.map(describeBlueprintSlot).join('\n')}`;
       const chunkPrompt = `${basePrompt}${chunkContract}`;
       let recovered: GeneratedExamQuestion[] | null = null;

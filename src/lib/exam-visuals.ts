@@ -10,6 +10,7 @@ import {
 } from './exam-map-data.js';
 
 export const DETERMINISTIC_SCIENCE_VISUAL_RULES=' Deterministic Science diagram contract: an atom diagram labels the nucleus first and an electron second; particle counts, electron arrangements and outer-shell counts are NOT shown. A digestive-system diagram labels the stomach first and small intestine second. A flower diagram labels the anther first and stigma second. A concave-mirror ray diagram has its object beyond the centre of curvature, with the centre labelled first and focus second; other object positions are unsupported. Use letter labels or the exact anatomical names in that order. For other counts, positions or unsupported anatomy, provide a complete data table or self-contained numerical text instead of a misleading diagram.';
+export const DETERMINISTIC_MATH_VISUAL_RULES=' Deterministic Mathematics visual contract: render a right triangle only when the prompt explicitly establishes a right angle and structured values/labels agree with the given side lengths; preserve an explicitly named right-angle vertex (default B only when no vertex is named). Do not turn an arbitrary, isosceles or equilateral triangle into a right triangle. Render a circle only for supported radius/diameter/parts labels, matching explicit values; sector, central-angle, arc-length/area, proof, similarity/congruence and coordinate-plane requests are unsupported and must be rejected. Quantitative geometry must never use a fixed generic 3-4-5 or generic circle-parts fallback. When a visual cannot represent the exact givens, return no visual so the question can be repaired as self-contained text.';
 
 export interface ExamVisualSpec {
   asset_type?: string;
@@ -820,11 +821,218 @@ function deterministicDiagramType(question: GeneratedExamQuestion): string | nul
     if (/healthy friendship|friendship|qualities|honesty|kindness|respect|empathy/.test(descriptor)) return 'concept_map';
   }
   if (assetType === 'shape') {
-    if (/right[ -]?angled triangle|\btriangle\b/.test(descriptor)) return 'right_triangle';
+    if (/\bright[ -]?(?:angled|angle|triangle)\b|\bhypotenuse\b|\bpythagorean\b/.test(descriptor)) return 'right_triangle';
     if (/parts of a circle|\bcircle\b|radius|diameter|circumference|chord|tangent/.test(descriptor)) return 'circle_parts';
     if (/coordinate plane|cartesian plane/.test(descriptor)) return 'coordinate_plane';
   }
   return null;
+}
+
+type GeometryDecision = {
+  type: 'right_triangle' | 'circle_parts';
+  quantitative: boolean;
+  values: number[];
+  roles: string[];
+  unit: string;
+  rightAngleVertex?: 'A' | 'B' | 'C';
+};
+
+function geometryDescriptor(question: GeneratedExamQuestion): string {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  return [question.question_text, spec.title, spec.prompt, spec.caption, ...(spec.labels || [])].filter(Boolean).join(' ');
+}
+
+function extractGeometryMeasurements(text: string): number[] {
+  const values: number[] = [];
+  const pattern = /(^|[^\d])(-?\d+(?:\.\d+)?)\s*(cm²|cm2|mm²|mm2|km²|km2|m²|m2|cm|mm|km|m|in|ft)?/gi;
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index || 0;
+    const end = start + match[0].length;
+    const before = text.slice(Math.max(0, start - 18), start);
+    const after = text.slice(end, end + 3);
+    if (match[1].includes('/') || /[/]\s*$/.test(before) || /^\s*\//.test(after) || /(?:π|pi)\s*[=:]?\s*$/i.test(before)) continue;
+    const value = Number(match[2]);
+    if (Number.isFinite(value) && value > 0) values.push(value);
+  }
+  return values;
+}
+
+function finiteGeometryValues(spec: ExamVisualSpec): number[] {
+  return (spec.values || []).map(Number).filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function approximatelyEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) <= Math.max(0.0001, Math.max(Math.abs(left), Math.abs(right)) * 0.0001);
+}
+
+function sameMeasurementSet(expected: number[], actual: number[]): boolean {
+  const unmatched = [...actual];
+  return expected.every((value) => {
+    const index = unmatched.findIndex((candidate) => approximatelyEqual(value, candidate));
+    if (index < 0) return false;
+    unmatched.splice(index, 1);
+    return true;
+  });
+}
+
+function geometryLabelMeaning(label: string): string {
+  return label.replace(/^\s*[A-Za-z]\s*(?:=|:|[-–])\s*/, '').replace(/\d+(?:\.\d+)?\s*(?:cm²|cm2|mm²|mm2|km²|km2|cm|mm|km|m|in|ft)?/gi, '').trim().toLowerCase();
+}
+
+function geometryLabelRole(label: string): string | null {
+  const meaning = geometryLabelMeaning(label);
+  if (/\bhypotenuse\b|\bsloping side\b/.test(meaning)) return 'hypotenuse';
+  if (/\bbase\b|\bhorizontal side\b|\bleg\s*[ab]\b/.test(meaning)) return 'base';
+  if (/\bheight\b|\bvertical side\b|\bperpendicular side\b/.test(meaning)) return 'height';
+  if (/\bradius\b|\br\b/.test(meaning)) return 'radius';
+  if (/\bdiameter\b|\bd\b/.test(meaning)) return 'diameter';
+  return null;
+}
+
+function geometryUnit(text: string): string {
+  const match = text.match(/\b(?:cm²|cm2|mm²|mm2|km²|km2|cm|mm|km|m)\b/i);
+  return match ? match[0] : '';
+}
+
+function geometryLabelsHaveContradictoryNumbers(spec: ExamVisualSpec, values: number[]): boolean {
+  return (spec.labels || []).some((label) => {
+    const labelValues = extractGeometryMeasurements(String(label));
+    return labelValues.length > 0 && !labelValues.every((value) => values.some((candidate) => approximatelyEqual(value, candidate)));
+  });
+}
+
+function unsupportedGeometryClaim(descriptor: string): boolean {
+  return /\b(?:sector|central\s+angle|angle\s+of\s+the\s+sector|arc\s+length|area\s+of\s+(?:a\s+)?sector|segment|coordinate|cartesian|proof|prove|prove\s+that|show\s+that|congruen(?:t|ce)|similar(?:ity)?|construction)\b/i.test(descriptor);
+}
+
+function circleRoleValuePairs(text: string): Record<string, number> {
+  const pairs: Record<string, number> = {};
+  for (const match of text.matchAll(/\b(radius|diameter)\b[^\d]{0,24}(\d+(?:\.\d+)?)/gi)) pairs[match[1].toLowerCase()] = Number(match[2]);
+  return pairs;
+}
+
+function geometryDecision(question: GeneratedExamQuestion): GeometryDecision | null {
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  const assetType = String(spec.asset_type || '').toLowerCase();
+  if (assetType !== 'shape') return null;
+  const type = deterministicDiagramType(question);
+  if (type !== 'right_triangle' && type !== 'circle_parts') return null;
+  const descriptor = geometryDescriptor(question);
+  if (unsupportedGeometryClaim(descriptor)) return null;
+  const values = finiteGeometryValues(spec);
+  const labels = (spec.labels || []).map(String).filter((label) => label.trim());
+  const labelRoles = labels.map(geometryLabelRole).filter((role): role is string => Boolean(role));
+  const vertexMatch = descriptor.match(/\bright\s+angle\s+(?:is\s+)?at\s+([ABC])\b|\b([ABC])\s+is\s+the\s+right[- ]angle(?:d)?\s+vertex\b/i);
+  const rightAngleVertex = (vertexMatch?.[1] || vertexMatch?.[2] || 'B').toUpperCase() as 'A' | 'B' | 'C';
+  const questionValues = extractGeometryMeasurements([question.question_text, spec.prompt].filter(Boolean).join(' '));
+  const labelValues = labels.flatMap(extractGeometryMeasurements);
+  const quantitative = values.length > 0 || questionValues.length > 0 || labelValues.length > 0;
+  if (!quantitative) {
+    if (type === 'right_triangle' && rightAngleVertex !== 'B') return null;
+    return labels.length >= 2 || typeof (spec as Record<string, unknown>).curated_key === 'string'
+      ? { type, quantitative: false, values: [], roles: labelRoles, unit: geometryUnit(descriptor), rightAngleVertex }
+      : null;
+  }
+  if (!values.length || geometryLabelsHaveContradictoryNumbers(spec, values)) return null;
+  if (questionValues.length && !sameMeasurementSet(questionValues, values) && !(type === 'right_triangle' && questionValues.length === 2 && values.length === 3 && sameMeasurementSet(questionValues, values.slice(0, 2)))) return null;
+  if (type === 'right_triangle') {
+    if (values.length < 2 || values.length > 3) return null;
+    const sideRoles = labels.map(geometryLabelRole);
+    const hasHypotenuse = sideRoles.includes('hypotenuse');
+    if (values.length === 2 && hasHypotenuse) return null;
+    const base = values[sideRoles.indexOf('base')] ?? values[0];
+    const height = values[sideRoles.indexOf('height')] ?? values[1];
+    const hypotenuse = values[sideRoles.indexOf('hypotenuse')] ?? (values.length === 3 ? values[2] : Math.sqrt(base * base + height * height));
+    if (!approximatelyEqual(hypotenuse * hypotenuse, base * base + height * height)) return null;
+    return { type, quantitative: true, values, roles: sideRoles.map((role) => role || ''), unit: geometryUnit([question.question_text, spec.prompt, ...labels].filter(Boolean).join(' ')), rightAngleVertex };
+  }
+  if (values.length > 2) return null;
+  const text = [question.question_text, spec.prompt, ...labels].filter(Boolean).join(' ');
+  const pairs = circleRoleValuePairs(text);
+  const roles = labels.map(geometryLabelRole);
+  let radius = values[roles.indexOf('radius')];
+  let diameter = values[roles.indexOf('diameter')];
+  if (!Number.isFinite(radius) && Number.isFinite(pairs.radius)) radius = pairs.radius;
+  if (!Number.isFinite(diameter) && Number.isFinite(pairs.diameter)) diameter = pairs.diameter;
+  if (values.length === 1 && !Number.isFinite(radius) && !Number.isFinite(diameter)) {
+    if (/\bradius\b/i.test(text) && !/\bdiameter\b/i.test(text)) radius = values[0];
+    else if (/\bdiameter\b/i.test(text) && !/\bradius\b/i.test(text)) diameter = values[0];
+    else return null;
+  }
+  if (values.length === 2 && (!Number.isFinite(radius) || !Number.isFinite(diameter))) return null;
+  if (Number.isFinite(radius) && Number.isFinite(diameter) && !approximatelyEqual(diameter, radius * 2)) return null;
+  return { type, quantitative: true, values, roles, unit: geometryUnit([question.question_text, spec.prompt, ...labels].filter(Boolean).join(' ')) };
+}
+
+function renderParameterizedRightTriangle(spec: ExamVisualSpec, question: GeneratedExamQuestion): string | null {
+  const decision = geometryDecision(question);
+  if (!decision || decision.type !== 'right_triangle' || !decision.quantitative) return null;
+  const labels = (spec.labels || []).map(String);
+  const roleIndex = (role: string): number => decision.roles.findIndex((entry) => entry === role);
+  const valueFor = (role: string, fallback: number): number => decision.values[roleIndex(role) >= 0 ? roleIndex(role) : fallback];
+  const base = valueFor('base', 0);
+  const height = valueFor('height', 1);
+  const hypotenuse = decision.values.length === 2 ? Math.sqrt(base * base + height * height) : valueFor('hypotenuse', 2);
+  const unit = decision.unit ? ` ${decision.unit}` : '';
+  const sideText = (role: string, value: number, fallback: string): string => {
+    const source = labels.find((label) => geometryLabelRole(label) === role)
+      || labels.find((label) => extractGeometryMeasurements(label).some((candidate) => approximatelyEqual(candidate, value)))
+      || (role === 'base' ? labels[0] : role === 'height' ? labels[1] : undefined);
+    const explicitValue = source && extractGeometryMeasurements(source).some((candidate) => approximatelyEqual(candidate, value));
+    if (explicitValue) return source!.trim();
+    const meaning = source ? geometryLabelMeaning(source).replace(/[=:]\s*$/, '') : '';
+    const name = meaning || fallback;
+    return `${name} = ${value}${unit}`;
+  };
+  const vertex = decision.rightAngleVertex || 'B';
+  const points = vertex === 'A' ? { A: [110, 245], B: [390, 245], C: [110, 85] } : vertex === 'C' ? { A: [110, 245], B: [390, 245], C: [390, 85] } : { A: [110, 85], B: [110, 245], C: [390, 245] };
+  const [ax, ay] = points.A;
+  const [bx, by] = points.B;
+  const [cx, cy] = points.C;
+  const right = points[vertex];
+  const rightX = right[0];
+  const rightY = right[1];
+  const baseTextX = vertex === 'C' ? 250 : vertex === 'A' ? 250 : 250;
+  const baseTextY = vertex === 'A' || vertex === 'B' ? 270 : 145;
+  const heightTextX = vertex === 'C' ? 430 : 72;
+  const heightTextY = vertex === 'C' ? 170 : 170;
+  const hypotenuseText = decision.values.length === 2 ? 'hypotenuse = ?' : sideText('hypotenuse', hypotenuse, 'hypotenuse');
+  return `<g><polygon points="${ax},${ay} ${bx},${by} ${cx},${cy}" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3"/><rect x="${rightX - 9}" y="${rightY - 9}" width="18" height="18" fill="none" stroke="#111827" stroke-width="2"/><text x="${baseTextX}" y="${baseTextY}" text-anchor="middle" class="body">${escapeXml(sideText('base', base, 'base'))}</text><text x="${heightTextX}" y="${heightTextY}" text-anchor="middle" class="body" transform="rotate(-90 ${heightTextX} ${heightTextY})">${escapeXml(sideText('height', height, 'height'))}</text><text x="276" y="145" text-anchor="middle" class="body">${escapeXml(hypotenuseText)}</text><text x="${rightX + 12}" y="${rightY - 12}" class="small">90° at ${vertex}</text></g>`;
+}
+
+function renderQualitativeCircle(spec: ExamVisualSpec, question: GeneratedExamQuestion): string | null {
+  const descriptor = geometryDescriptor(question).toLowerCase();
+  const labels = (spec.labels || []).map(String).filter((label) => label.trim());
+  const features = new Set(labels.map(geometryLabelRole).filter((role): role is string => Boolean(role)));
+  if (/\bradius\b/.test(descriptor)) features.add('radius');
+  if (/\bdiameter\b/.test(descriptor)) features.add('diameter');
+  if (/\bchord\b/.test(descriptor)) features.add('chord');
+  if (/\btangent\b/.test(descriptor)) features.add('tangent');
+  const parts: string[] = ['<circle cx="240" cy="150" r="92" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3"/><circle cx="240" cy="150" r="4" fill="#111827"/><text x="250" y="146" class="small">O</text>'];
+  if (features.has('radius')) parts.push('<line x1="240" y1="150" x2="332" y2="150" stroke="#b45309" stroke-width="3"/><text x="286" y="139" text-anchor="middle" class="body">radius</text>');
+  if (features.has('diameter')) parts.push('<line x1="148" y1="150" x2="332" y2="150" stroke="#15803d" stroke-width="3"/><text x="240" y="183" text-anchor="middle" class="body">diameter</text>');
+  if (features.has('chord')) parts.push('<line x1="184" y1="84" x2="318" y2="216" stroke="#7c3aed" stroke-width="3"/><text x="320" y="218" class="body">chord</text>');
+  if (features.has('tangent')) parts.push('<line x1="148" y1="242" x2="332" y2="242" stroke="#dc2626" stroke-width="3"/><text x="336" y="246" class="body">tangent</text>');
+  return `<g>${parts.join('')}<text x="240" y="270" text-anchor="middle" class="small">${escapeXml(labels.join(' · ') || 'circle')}</text></g>`;
+}
+
+function renderParameterizedCircle(spec: ExamVisualSpec, question: GeneratedExamQuestion): string | null {
+  const decision = geometryDecision(question);
+  if (!decision || decision.type !== 'circle_parts' || !decision.quantitative) return null;
+  const text = [question.question_text, spec.prompt, ...(spec.labels || [])].filter(Boolean).join(' ');
+  const pairs = circleRoleValuePairs(text);
+  const labels = (spec.labels || []).map(String);
+  const radiusIndex = decision.roles.findIndex((role) => role === 'radius');
+  const diameterIndex = decision.roles.findIndex((role) => role === 'diameter');
+  const radius = radiusIndex >= 0 ? decision.values[radiusIndex] : Number.isFinite(pairs.radius) ? pairs.radius : /\bradius\b/i.test(text) ? decision.values[0] : NaN;
+  const diameter = diameterIndex >= 0 ? decision.values[diameterIndex] : Number.isFinite(pairs.diameter) ? pairs.diameter : /\bdiameter\b/i.test(text) ? decision.values[0] : NaN;
+  const unit = decision.unit ? ` ${decision.unit}` : '';
+  const radiusLabel = Number.isFinite(radius) ? `radius = ${radius}${unit}` : '';
+  const diameterLabel = Number.isFinite(diameter) ? `diameter = ${diameter}${unit}` : '';
+  const labelText = labels.filter((label) => !extractGeometryMeasurements(label).length).slice(0, 2).map(geometryLabelMeaning).filter(Boolean).join(' · ');
+  const radiusMarkup = Number.isFinite(radius) ? `<line x1="240" y1="150" x2="332" y2="150" stroke="#b45309" stroke-width="3"/><text x="286" y="139" text-anchor="middle" class="body">${escapeXml(radiusLabel)}</text>` : '';
+  const diameterMarkup = Number.isFinite(diameter) ? `<line x1="148" y1="150" x2="332" y2="150" stroke="#15803d" stroke-width="3"/><text x="240" y="183" text-anchor="middle" class="body">${escapeXml(diameterLabel)}</text>` : '';
+  return `<g><circle cx="240" cy="150" r="92" fill="#eff6ff" stroke="#1d4ed8" stroke-width="3"/><circle cx="240" cy="150" r="4" fill="#111827"/>${radiusMarkup}${diameterMarkup}<text x="240" y="270" text-anchor="middle" class="small">${escapeXml(labelText || 'circle')}</text></g>`;
 }
 
 function diagramTemplateCompatible(question: GeneratedExamQuestion): boolean {
@@ -888,9 +1096,11 @@ export function hasUsableVisualSpec(question: GeneratedExamQuestion): boolean {
   if (assetType === 'flowchart') return flowLabels >= 2;
   if (assetType === 'number_line') return labels.length >= 2;
   if (assetType === 'diagram' || assetType === 'shape') {
+    const diagramType = deterministicDiagramType(question);
+    if (diagramType === 'right_triangle' || diagramType === 'circle_parts' || diagramType === 'coordinate_plane') return geometryDecision(question) !== null;
     const curatedKey = (spec as Record<string, unknown>).curated_key;
     if (typeof curatedKey === 'string' && curatedVisualDataUrl(curatedKey)) return true;
-    return labels.length >= 2 && deterministicDiagramType(question) !== null;
+    return labels.length >= 2 && diagramType !== null;
   }
   if (assetType === 'illustration') return false;
   return false;
@@ -917,13 +1127,16 @@ export function filterUnnecessaryExamVisual(question: GeneratedExamQuestion): Ge
 
 export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string | null {
   if(!diagramTemplateCompatible(question))return null;
+  const spec = (question.visual_spec || {}) as ExamVisualSpec;
+  const assetType = String(spec.asset_type || '').toLowerCase();
+  const deterministicType = deterministicDiagramType(question);
+  if ((assetType === 'shape' || assetType === 'diagram') && (deterministicType === 'right_triangle' || deterministicType === 'circle_parts' || deterministicType === 'coordinate_plane') && !geometryDecision(question)) return null;
   const curatedKey = (question.visual_spec as Record<string, unknown> | null | undefined)?.curated_key;
-  if (typeof curatedKey === 'string' && curatedKey && !curatedKey.startsWith('map_')) {
+  const isGeometryKey = curatedKey === 'right_triangle' || curatedKey === 'circle_parts' || curatedKey === 'coordinate_plane';
+  if (typeof curatedKey === 'string' && curatedKey && !curatedKey.startsWith('map_') && !isGeometryKey) {
     const curated = curatedVisualDataUrl(curatedKey);
     if (curated) return curated;
   }
-  const spec = (question.visual_spec || {}) as ExamVisualSpec;
-  const assetType = String(spec.asset_type || '').toLowerCase();
   if (!assetType) return null;
   const effectiveSpec = assetType === 'map' ? normalizeMapSpec(spec, question) : spec;
   const title = visualTitle(effectiveSpec, question);
@@ -954,8 +1167,17 @@ export function renderExamVisualDataUrl(question: GeneratedExamQuestion): string
       body = renderFlowerDiagram(spec);
     } else if (diagramType === 'concave_mirror') {
       body = renderConcaveMirrorDiagram(spec);
-    } else if (diagramType === 'right_triangle' || diagramType === 'circle_parts' || diagramType === 'coordinate_plane') {
-      return curatedVisualDataUrl(diagramType);
+    } else if (diagramType === 'right_triangle') {
+      const geometry = geometryDecision(question);
+      body = geometry?.quantitative ? renderParameterizedRightTriangle(spec, question) || '' : curatedVisualDataUrl(diagramType) ? decodeURIComponent(curatedVisualDataUrl(diagramType)!.split(',', 2)[1] || '') : '';
+      if (!body) return null;
+      if (body.startsWith('<svg')) return curatedVisualDataUrl(diagramType);
+    } else if (diagramType === 'circle_parts') {
+      const geometry = geometryDecision(question);
+      body = geometry?.quantitative ? renderParameterizedCircle(spec, question) || '' : renderQualitativeCircle(spec, question) || '';
+      if (!body) return null;
+    } else if (diagramType === 'coordinate_plane') {
+      return null;
     } else if (diagramType === 'measuring_cylinder') {
       body = renderMeasuringCylinderDiagram(spec);
     } else if (diagramType === 'electric_circuit') {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {chunkBlueprintSlots,buildExamPrompt} from '../src/lib/deepseek-api.js';
+import {chunkBlueprintSlots,buildExamPrompt,focusedChunkRequest} from '../src/lib/deepseek-api.js';
 import {getExamBlueprintSlots} from '../src/lib/exam-generation-contract.js';
 import {makeKjseaBlueprint} from '../src/lib/kjsea-paper-formats.js';
 import {literarySourceIssues} from '../src/lib/exam-literary-policy.js';
@@ -17,3 +17,12 @@ assert.equal(literarySourceIssues({...literaryRequest,learningOutcomes:['Analyse
 assert.equal(literarySourceIssues(literaryRequest,{...attributed,question_text:'Original practice extract: The Horizon Beyond Kibwezi.'}).length,0);
 assert.match(buildExamPrompt(literaryRequest,''),/Do not invent an author/);
 console.log(`PASS: ${slots.length} exact Science slots use ${chunks.length} bounded rich-output chunks; unsupplied literary attributions are rejected.`);
+
+for(const chunk of chunks){
+ const focused=focusedChunkRequest(request,chunk),prompt=buildExamPrompt(focused,'',chunk);
+ assert.equal(focused.totalMarks,chunk.reduce((sum,slot)=>sum+slot.marks,0));
+ assert.match(prompt,new RegExp(`return exactly ${chunk.length} questions`));
+ assert.ok(!prompt.includes('return exactly 40 questions'),'an internal chunk must not also be ordered to return the full 40-question paper');
+ for(const slot of chunk){assert.ok(prompt.includes(`\"question_number\":${slot.questionNumber}`));assert.ok(prompt.includes(`\"blueprint_item_index\":${slot.itemIndex}`));}
+}
+console.log('PASS: focused count/marks contracts no longer conflict with whole-paper contracts, and original global slot identities are explicit.');
