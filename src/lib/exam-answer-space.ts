@@ -107,14 +107,13 @@ export function textRequiresCalculationSpace(
   // A non-mathematics numeric-response task only gets space when it contains
   // calculation evidence; this prevents population counts and dates from
   // turning theory questions into working areas.
-  if (hasCalculationConcept && hasNumericEvidence && /\b(?:what|which|give|find|determine|state|record)\b/i.test(value)) {
+  if (hasCalculationConcept && hasNumericEvidence && /\b(?:what|which|give|find|determine|state|record|how\s+(?:many|much|far|long))\b/i.test(value)) {
     return true;
   }
 
-  // Subject is intentionally accepted for a readable call site and future
-  // subject-specific rules; the conservative test above applies to all
-  // subjects, including science, agriculture and social studies.
-  void subject;
+  // Mathematics word problems may imply division, subtraction or another
+  // operation without the command "calculate", for example equal sharing.
+  if(isMathematicsSubject(subject)&&/\b(?:what|how|find|determine)\b/i.test(value)&&(value.match(/\b\d+(?:[,.]\d+)*\b/g)||[]).length>=2)return true;
   return false;
 }
 

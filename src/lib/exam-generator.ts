@@ -620,12 +620,17 @@ async function renderStudentPaper(doc: jsPDF, paper: BrandedPaper): Promise<void
       const options = normalizeOptions(question);
       if (options.length) {
         options.forEach((option, optionIndex) => {
+          doc.setFont('helvetica','normal');
+          doc.setFontSize(9.5);
           const lines = doc.splitTextToSize(`${String.fromCharCode(65 + optionIndex)}. ${option}`, 168);
           y = ensureRoom(doc, paper, y, lines.length * 4.2 + 2, 'STUDENT PAPER');
+          doc.setFont('helvetica','normal');
+          doc.setFontSize(9.5);
           doc.text(lines, 19, y);
           y += lines.length * 4.2 + 1;
         });
         if (formal) {
+          doc.setFont('helvetica','normal');
           doc.setFontSize(8);
           doc.text('Record one answer on the separate answer sheet.', 19, y + 1);
           y += 5;

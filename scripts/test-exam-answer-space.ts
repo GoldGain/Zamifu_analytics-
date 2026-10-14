@@ -152,3 +152,5 @@ console.log('PASS: answer-space policy distinguishes Mathematics, real calculati
 
 assert.equal(getQuestionAnswerSpacePlan('English',question({question_text:'Find two examples of imagery in paragraph 5.'})).question.requiresCalculationSpace,false);
 assert.equal(getQuestionAnswerSpacePlan('English',question({question_text:'Determine the character mentioned in line 3.'})).question.requiresCalculationSpace,false);
+
+for(const stem of ['A library received 1 248 books shared equally among 8 classes. How many books did each class receive?','A trader bought maize for Ksh 2 450 and sold it for Ksh 2 900. What profit was made?'])assert.equal(getQuestionAnswerSpacePlan('Mathematics',{...mathematicsMultipleChoice,question_text:stem}).question.requiresCalculationSpace,true,'numerical word problems need calculation room');
