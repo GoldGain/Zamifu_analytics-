@@ -144,15 +144,19 @@ export default function CombineExams() {
       if (!rows.length) throw new Error('No marks were found in either selected exam.');
       const targetType = activeScope.id === 'school:all' ? 'school' : activeScope.allStreams ? 'grade' : 'class';
       const targetClassId = activeScope.id === 'school:all' || activeScope.allStreams ? null : activeScope.classIds[0];
+      const targetGradeLevel = targetType === 'grade' && activeScope.gradeLevel !== null
+        ? Number(activeScope.gradeLevel)
+        : null;
+      if (targetType === 'grade' && !Number.isFinite(targetGradeLevel)) throw new Error('The selected grade scope is missing a valid grade level.');
       const targetColumn = activeScope.id === 'school:all' ? 'target_type' : activeScope.allStreams ? 'target_grade_level' : 'target_class_id';
-      const targetValue = activeScope.id === 'school:all' ? 'school' : activeScope.allStreams ? activeScope.gradeLevel : targetClassId;
+      const targetValue = activeScope.id === 'school:all' ? 'school' : activeScope.allStreams ? targetGradeLevel : targetClassId;
       const { data: existing, error: lookupError } = await db.from('school_exams').select('id').eq('school_id', user.schoolId).eq('name', name).eq('term_id', selectedTerm).eq('target_type', targetType).eq(targetColumn, targetValue).limit(1).maybeSingle();
       if (lookupError) throw lookupError;
       let examId = existing?.id as string | undefined;
       if (!examId) {
-        const deactResult = await deactivateSameScopeActives({ schoolId: user.schoolId, termId: selectedTerm, targetType, targetClassId: targetClassId || undefined, targetGradeLevel: activeScope.id === 'school:all' ? null : activeScope.gradeLevel ? Number(activeScope.gradeLevel) || null : null, actingUserId: user.id });
+        const deactResult = await deactivateSameScopeActives({ schoolId: user.schoolId, termId: selectedTerm, targetType, targetClassId: targetClassId || undefined, targetGradeLevel, actingUserId: user.id });
         if (deactResult.error) throw deactResult.error;
-        const { data: exam, error: examError } = await db.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: activeScope.id === 'school:all' ? null : activeScope.gradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
+        const { data: exam, error: examError } = await db.from('school_exams').insert({ school_id: user.schoolId, name, type: 'combined', term_id: selectedTerm, target_type: targetType, target_class_id: targetClassId, target_grade_level: targetGradeLevel, is_active: true, activated_at: new Date().toISOString() }).select('id').single();
         if (examError) throw examError;
         examId = exam.id;
       } else {
