@@ -160,6 +160,7 @@ export default function SchoolAdminAssessmentProgress() {
       const students = (studentsRes.data || []) as StudentRow[];
       const subjectName = new Map<string, string>(subjects.map((subject) => [subject.id, subject.name]));
       const studentsByClass = new Map<string, LearnerSummary[]>();
+      const activeLearnerIdsByClass = new Map<string, Set<string>>();
 
       students.forEach((student) => {
         if (!student.class_id) return;
@@ -169,6 +170,9 @@ export default function SchoolAdminAssessmentProgress() {
           admissionNumber: student.admission_number || 'No admission number',
         };
         studentsByClass.set(student.class_id, [...(studentsByClass.get(student.class_id) || []), learner]);
+        const activeLearnerIds = activeLearnerIdsByClass.get(student.class_id) || new Set<string>();
+        activeLearnerIds.add(learner.id);
+        activeLearnerIdsByClass.set(student.class_id, activeLearnerIds);
       });
 
       const taughtByClass = new Map<string, Set<string>>();
@@ -181,6 +185,10 @@ export default function SchoolAdminAssessmentProgress() {
       const resultRowsByClassSubject = new Map<string, ResultRow[]>();
       ((resultsRes.data || []) as ResultRow[]).forEach((result) => {
         if (!result.class_id || !result.subject_id || !result.student_id || !resultHasMarks(result)) return;
+        // Progress is measured against the current active roster. Keep historic
+        // marks for promoted/transferred learners, but don't count them against
+        // the old class's current assessment progress.
+        if (!activeLearnerIdsByClass.get(result.class_id)?.has(result.student_id)) return;
         const key = `${result.class_id}-${result.subject_id}`;
         resultRowsByClassSubject.set(key, [...(resultRowsByClassSubject.get(key) || []), result]);
       });
