@@ -52,17 +52,6 @@ import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { excludedResultCode, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
 import { isSeniorCbeClass } from '@/lib/seniorPathways';
 
-type ComparisonSourceRow = {
-  student_id?: string | null;
-  subjects?: { name?: string | null } | null;
-};
-
-type LearningAreaClass = {
-  curriculum?: string | null;
-  grade_level?: number | string | null;
-  level?: number | string | null;
-  name?: string | null;
-} | null | undefined;
 type CombinedAssessmentMetric = { marks: number; outOf: number; percentage: number };
 type CombinedAssessmentData = {
   columns: { id: string; label: string }[];
@@ -395,23 +384,6 @@ function overallGradeWithBand(avgPct: number, band: SchoolLevelBand) {
 function hasRecordedMarks(result: any) {
   return [result.marks, result.percentage, result.converted_marks, result.grade_844, result.cbc_grade, result.cbc_sublevel]
     .some((value) => value !== null && value !== undefined && String(value).trim() !== '');
-}
-
-function learningAreaCatalogLevel(classObj: LearningAreaClass): string | null {
-  if (!classObj) return null;
-  if (is844Curriculum(classObj)) return 'senior_844';
-  const rawLevel = classObj.grade_level ?? classObj.level;
-  const numericLevel = rawLevel == null || String(rawLevel).trim() === '' ? NaN : Number(rawLevel);
-  const parsedLevel = Number.isFinite(numericLevel)
-    ? numericLevel
-    : Number(String(classObj.name || '').match(/(?:grade|class)\s*(-?\d+)/i)?.[1]);
-  if (!Number.isFinite(parsedLevel)) return null;
-  if (parsedLevel <= 0) return 'pre_school';
-  if (parsedLevel <= 3) return 'lower_primary';
-  if (parsedLevel <= 6) return 'upper_primary';
-  if (parsedLevel <= 9) return 'junior';
-  if (parsedLevel <= 12) return 'senior';
-  return null;
 }
 
 function mergedLearningAreas(canonical: string[], dynamic: string[]) {
@@ -2758,48 +2730,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     try {
       const select = 'student_id, subject_id, marks, out_of, percentage, status, published_at, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name, grade_level, level, curriculum)';
       const classObj = comparisonSeedClass;
-      const catalogLevel = learningAreaCatalogLevel(classObj);
-      const [first, second, catalogResult, schoolAreasResult] = await Promise.all([
+      const [first, second] = await Promise.all([
         fetchResultsAll(comparisonClassIds, comparisonTermA, comparisonExamA, select),
         fetchResultsAll(comparisonClassIds, comparisonTermB, comparisonExamB, select),
-        catalogLevel
-          ? supabaseUntyped.from('learning_area_catalog').select('id, name').eq('level', catalogLevel).limit(200)
-          : Promise.resolve({ data: [], error: null }),
-        catalogLevel
-          ? supabaseUntyped.from('school_learning_areas').select('learning_area_id').eq('school_id', user?.schoolId).eq('is_active', true).limit(500)
-          : Promise.resolve({ data: [], error: null }),
       ]);
       if (!areAllComparisonRowsReady(first as any[]) || !areAllComparisonRowsReady(second as any[])) {
         throw new Error('Both assessments must have marks recorded for every learner and be submitted, approved, or published before comparison. Draft or partially marked assessments are excluded.');
-      }
-      if (catalogResult.error) throw catalogResult.error;
-      if (schoolAreasResult.error) throw schoolAreasResult.error;
-      const activeAreaRows = (schoolAreasResult.data || []) as { learning_area_id: string }[];
-      const catalogAreas = (catalogResult.data || []) as { id: string; name: string }[];
-      const activeAreaIds = new Set(activeAreaRows.map((area) => area.learning_area_id));
-      const learningAreas = catalogAreas
-        .filter((area) => activeAreaIds.has(area.id))
-        .map((area) => area.name)
-        .filter(Boolean);
-      if (catalogLevel && !learningAreas.length) {
-        throw new Error(`No active learning areas are configured for ${classObj?.name || 'this class'}; the comparison was not generated.`);
-      }
-      const allowedAreaNames = catalogLevel
-        ? new Set(learningAreas.map((area: string) => normalizeLearningAreaName(area)))
-        : null;
-      const filterConfiguredRows = (rows: ComparisonSourceRow[]) => allowedAreaNames
-        ? rows.filter((row) => allowedAreaNames.has(normalizeLearningAreaName(row.subjects?.name || '')))
-        : rows;
-      const selectedRowsA = filterConfiguredRows(first as ComparisonSourceRow[]);
-      const selectedRowsB = filterConfiguredRows(second as ComparisonSourceRow[]);
-      const learnerIds = (rows: ComparisonSourceRow[]) => new Set(
-        rows.map((row) => row.student_id).filter((id): id is string => Boolean(id)),
-      );
-      const selectedLearnerIds = new Set([...learnerIds(selectedRowsA), ...learnerIds(selectedRowsB)]);
-      const omittedLearnersA = [...learnerIds(first)].filter((id) => !learnerIds(selectedRowsA).has(id)).length;
-      const omittedLearnersB = [...learnerIds(second)].filter((id) => !learnerIds(selectedRowsB).has(id)).length;
-      if (!selectedRowsA.length || !selectedRowsB.length || selectedLearnerIds.size === 0 || omittedLearnersA > 0 || omittedLearnersB > 0) {
-        throw new Error(`The selected learning-area filter would omit learners with source results (Exam A: ${omittedLearnersA}, Exam B: ${omittedLearnersB}). No marks were altered; check the school's active learning-area selections before comparing.`);
       }
       const termA = terms.find((item) => item.id === comparisonTermA);
       const termB = terms.find((item) => item.id === comparisonTermB);
@@ -2811,10 +2747,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         termBLabel: `${termB?.name || 'Term'} ${termB?.academic_year || ''}`.trim(),
         examALabel: examA?.name || 'Exam 1',
         examBLabel: examB?.name || 'Exam 2',
-        rowsA: selectedRowsA,
-        rowsB: selectedRowsB,
+        // Historical comparisons must retain every recorded learner and learning area,
+        // independent of the school's current learning-area configuration.
+        rowsA: first,
+        rowsB: second,
         classObj,
-        learningAreas,
       });
       if (!built.sideA.learners.length && !built.sideB.learners.length) throw new Error('No results found for either selected assessment.');
       setComparisonData(built);
