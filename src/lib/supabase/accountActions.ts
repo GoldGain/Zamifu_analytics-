@@ -128,7 +128,7 @@ export async function syncTeacherAccount(input: {
 export async function deleteScopedUser(input: {
   record_id?: string;
   target_user_id?: string;
-  target_type: 'student' | 'learner' | 'teacher' | 'parent' | 'school_admin';
+  target_type: 'student' | 'learner' | 'teacher' | 'parent' | 'school_admin' | 'bursar';
   school_id?: string;
   permanent?: boolean;
 }) {

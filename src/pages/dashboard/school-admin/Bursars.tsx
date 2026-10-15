@@ -4,8 +4,13 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { createScopedUser } from '@/lib/supabase/createUser';
+import { deleteScopedUser } from '@/lib/supabase/accountActions';
 
 const DEFAULT_BURSAR_PASSWORD = 'bursar@2025';
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 type Bursar = {
   id: string;
@@ -22,6 +27,8 @@ export default function SchoolAdminBursars() {
   const [bursars, setBursars] = useState<Bursar[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resettingBursarId, setResettingBursarId] = useState<string | null>(null);
+  const [removingBursarId, setRemovingBursarId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState({ first_name: '', last_name: '', email: '', phone: '' });
@@ -35,11 +42,12 @@ export default function SchoolAdminBursars() {
         .select('id, first_name, last_name, email, phone, created_at, is_active')
         .eq('school_id', user.schoolId)
         .eq('role', 'bursar')
+        .or('is_active.is.null,is_active.eq.true')
         .order('created_at', { ascending: false });
       if (error) throw error;
       setBursars((data || []) as Bursar[]);
-    } catch (error: any) {
-      toast.error(error.message || 'Could not load Bursar accounts. Apply the Bursar role migration if this is a new school.');
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, 'Could not load Bursar accounts. Apply the Bursar role migration if this is a new school.'));
     } finally {
       setLoading(false);
     }
@@ -71,10 +79,43 @@ export default function SchoolAdminBursars() {
       setForm({ first_name: '', last_name: '', email: '', phone: '' });
       setShowForm(false);
       await fetchBursars();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create Bursar account.');
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, 'Failed to create Bursar account.'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleResetPassword = async (bursar: Bursar) => {
+    if (!bursar.email) return toast.error('This bursar account has no email address.');
+    setResettingBursarId(bursar.id);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(bursar.email, {
+        redirectTo: `${window.location.origin}/auth/reset-password`,
+      });
+      if (error) throw error;
+      toast.success(`Password reset email sent to ${bursar.email}.`);
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, 'Could not send the password reset email.'));
+    } finally {
+      setResettingBursarId(null);
+    }
+  };
+
+  const handleRemove = async (bursar: Bursar) => {
+    const name = `${bursar.first_name || ''} ${bursar.last_name || ''}`.trim() || bursar.email || 'this bursar';
+    if (!user?.schoolId) return toast.error('No school is assigned to your account.');
+    if (!window.confirm(`Remove ${name} from active bursar accounts? They will lose sign-in access; historical fee records will be retained.`)) return;
+
+    setRemovingBursarId(bursar.id);
+    try {
+      await deleteScopedUser({ target_user_id: bursar.id, target_type: 'bursar', school_id: user.schoolId });
+      toast.success('Bursar access removed. Historical fee records were retained.');
+      await fetchBursars();
+    } catch (error: unknown) {
+      toast.error(errorMessage(error, 'Could not remove the bursar.'));
+    } finally {
+      setRemovingBursarId(null);
     }
   };
 
@@ -127,7 +168,7 @@ export default function SchoolAdminBursars() {
       <div className="relative"><Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search Bursars by name or email..." className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-11 pr-4 text-sm outline-none focus:border-blue-500" /></div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        {loading ? <div className="flex h-40 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-blue-600" /></div> : filtered.length === 0 ? <div className="p-10 text-center text-sm text-gray-500"><UserRound className="mx-auto mb-2 h-8 w-8 text-gray-300" />No Bursar accounts yet. Click Add Bursar to create the fee manager.</div> : <div className="divide-y divide-gray-100">{filtered.map((bursar) => <div key={bursar.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="flex items-center gap-3"><div className="rounded-full bg-blue-50 p-3 text-blue-600"><UserRound className="h-5 w-5" /></div><div><p className="font-bold text-gray-900">{`${bursar.first_name || ''} ${bursar.last_name || ''}`.trim() || 'Bursar'}</p><p className="flex items-center gap-1 text-sm text-gray-500"><Mail className="h-3.5 w-3.5" />{bursar.email || 'No email'}</p></div></div><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Fee Management</span></div>)}</div>}
+        {loading ? <div className="flex h-40 items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-blue-600" /></div> : filtered.length === 0 ? <div className="p-10 text-center text-sm text-gray-500"><UserRound className="mx-auto mb-2 h-8 w-8 text-gray-300" />No Bursar accounts yet. Click Add Bursar to create the fee manager.</div> : <div className="divide-y divide-gray-100">{filtered.map((bursar) => <div key={bursar.id} className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="flex items-center gap-3"><div className="rounded-full bg-blue-50 p-3 text-blue-600"><UserRound className="h-5 w-5" /></div><div><p className="font-bold text-gray-900">{`${bursar.first_name || ''} ${bursar.last_name || ''}`.trim() || 'Bursar'}</p><p className="flex items-center gap-1 text-sm text-gray-500"><Mail className="h-3.5 w-3.5" />{bursar.email || 'No email'}</p></div></div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Fee Management</span><button type="button" onClick={() => handleResetPassword(bursar)} disabled={!bursar.email || resettingBursarId === bursar.id || removingBursarId === bursar.id} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">{resettingBursarId === bursar.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Reset password</button><button type="button" onClick={() => handleRemove(bursar)} disabled={removingBursarId === bursar.id || resettingBursarId === bursar.id} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">{removingBursarId === bursar.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Remove</button></div></div>)}</div>}
       </div>
     </div>
   );
