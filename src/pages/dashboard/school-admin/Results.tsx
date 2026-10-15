@@ -1197,125 +1197,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     }
   };
 
-  const addCombinedExamComparisonPage = async (doc: jsPDF, opts: {
-    combinedExam: any;
-    classIds: string[];
-    termId: string;
-    classLabel: string;
-    rawResults: any[];
-    fontSize: PdfFontSize;
-  }) => {
-    const { data: components, error: componentError } = await (supabaseUntyped as any)
-      .from('school_exam_components')
-      .select('source_exam_id, weight, component_order')
-      .eq('school_id', user?.schoolId)
-      .eq('combined_exam_id', opts.combinedExam.id)
-      .order('component_order');
-    if (componentError) console.warn('Combined exam component metadata unavailable:', componentError.message);
-    const componentRows = (components || []) as any[];
-    const sourceIds = componentRows.map((component) => component.source_exam_id).filter(Boolean);
-    const { data: sourceExams } = sourceIds.length > 0
-      ? await supabaseUntyped.from('school_exams').select('id, name, type').eq('school_id', user?.schoolId).in('id', sourceIds)
-      : { data: [] as any[] };
-    const sourceExamById = new Map((sourceExams || []).map((exam: any) => [exam.id, exam]));
-    const detailSelect = 'student_id, class_id, marks, out_of, percentage, mark_code, students(first_name, last_name, admission_number), subjects(name), classes(name, stream, stream_name, grade_level, level, curriculum)';
-    const sourceStats = await Promise.all(componentRows.map(async (component) => {
-      const sourceResults = await fetchResultsAll(opts.classIds, opts.termId, component.source_exam_id, detailSelect);
-      const numericSourceResults = sourceResults.filter((row: any) => !isExcludedResult(row));
-      const percentages = numericSourceResults.map((row: any) => Number(row.percentage ?? (Number(row.out_of) > 0 ? Number(row.marks || 0) / Number(row.out_of) * 100 : 0)));
-      return {
-        name: sourceExamById.get(component.source_exam_id)?.name || `Source assessment ${String(component.source_exam_id).slice(0, 8)}`,
-        weight: Number(component.weight || 1),
-        average: percentages.length ? percentages.reduce((sum, value) => sum + value, 0) / percentages.length : null,
-        entries: numericSourceResults.length,
-        rows: sourceResults,
-      };
-    }));
-    const combinedByLearnerSubject = new Map<string, { marks: number; outOf: number }>();
-    opts.rawResults.forEach((row: any) => {
-      if (isExcludedResult(row)) return;
-      if (!row.student_id) return;
-      const subject = normalizeLearningAreaName(row.subjects?.name || '');
-      if (!subject) return;
-      const outOf = Number(row.out_of) > 0 ? Number(row.out_of) : 100;
-      const marks = row.marks != null ? Number(row.marks) : Number(row.percentage || 0) * outOf / 100;
-      const key = `${row.student_id}|${subject}`;
-      const current = combinedByLearnerSubject.get(key) || { marks: 0, outOf: 0 };
-      combinedByLearnerSubject.set(key, { marks: current.marks + marks, outOf: current.outOf + outOf });
-    });
-    const combinedPercentages = opts.rawResults.filter((row: any) => !isExcludedResult(row)).map((row: any) => Number(row.percentage ?? (Number(row.out_of) > 0 ? Number(row.marks || 0) / Number(row.out_of) * 100 : 0)));
-    const combinedAverage = combinedPercentages.length
-      ? combinedPercentages.reduce((sum, value) => sum + value, 0) / combinedPercentages.length
-      : null;
-
-    doc.addPage('a4', 'portrait');
-    doc.setFillColor(109, 40, 217); doc.rect(0, 0, 210, 24, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 13));
-    doc.text('COMBINED EXAM SOURCE COMPARISON', 105, 10, { align: 'center' });
-    doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal');
-    doc.text(`${opts.classLabel} — ${opts.combinedExam.name || 'Combined assessment'}`, 105, 18, { align: 'center' });
-    doc.setTextColor(0, 0, 0); doc.setFontSize(pdfFontSize(doc, 9));
-    doc.text('This page compares the source assessments used to calculate the combined assessment.', 14, 34);
-    if (componentRows.length === 0) {
-      doc.setTextColor(120, 120, 120);
-      doc.text('Source metadata was not saved for this historical combined assessment. Re-save it in Combine Exams to enable weighted source details.', 14, 44, { maxWidth: 182 });
-    }
-    const body = [
-      ...sourceStats.map((source) => [source.name, `${source.weight}`, source.average == null ? 'No results' : `${source.average.toFixed(1)}%`, String(source.entries)]),
-      ['Combined result', '—', combinedAverage === null ? 'No numeric marks' : `${combinedAverage.toFixed(1)}%`, String(combinedPercentages.length)],
-    ];
-    autoTable(doc, {
-      startY: componentRows.length ? 42 : 58,
-      head: [['Assessment', 'Weight', 'Average %', 'Result rows']],
-      body,
-      styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 2 },
-      headStyles: { fillColor: [109, 40, 217], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
-      alternateRowStyles: { fillColor: [245, 243, 255] },
-      margin: { left: 14, right: 14 },
-    });
-    doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
-    doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
-    for (const source of sourceStats) {
-      if (!source.rows.length) continue;
-      const detailRows = source.rows.map((row: any) => {
-        const rowClass = classes.find((item: any) => item.id === row.class_id) || row.classes || classes.find((item: any) => opts.classIds.includes(item.id));
-        const outOf = Number(row.out_of) > 0 ? Number(row.out_of) : 100;
-        const marks = row.marks != null ? Number(row.marks) : Number(row.percentage || 0) * outOf / 100;
-        const percentage = Number(row.percentage ?? (outOf > 0 ? marks / outOf * 100 : 0));
-        const grade = calculateGradeForClass(percentage, rowClass);
-        const level = 'subLevel' in grade ? grade.subLevel : grade.grade;
-        const subject = normalizeLearningAreaName(row.subjects?.name || 'Learning Area');
-        const combined = combinedByLearnerSubject.get(`${row.student_id}|${subject}`);
-        const combinedPercentage = combined && combined.outOf > 0 ? combined.marks / combined.outOf * 100 : null;
-        const combinedGrade = combinedPercentage == null ? null : calculateGradeForClass(combinedPercentage, rowClass);
-        const combinedLevel = combinedGrade ? ('subLevel' in combinedGrade ? combinedGrade.subLevel : combinedGrade.grade) : '—';
-        const marksLabel = outOf === 100 ? marks.toFixed(0) : `${marks.toFixed(0)}/${outOf.toFixed(0)}`;
-        const points = gradePointsMaxForClass(rowClass) > 0 ? gradePointsForClass(percentage, rowClass) : '—';
-        const combinedPoints = combinedPercentage == null || gradePointsMaxForClass(rowClass) <= 0 ? '—' : gradePointsForClass(combinedPercentage, rowClass);
-        const learnerName = `${row.students?.first_name || ''} ${row.students?.last_name || ''}`.trim() || 'Unknown learner';
-        return [learnerName, row.students?.admission_number || '—', streamLabel(rowClass), row.subjects?.name || subject, marksLabel, points, level, combinedPercentage == null ? '—' : `${combinedPercentage.toFixed(1)}%`, combinedPoints, combinedLevel];
-      }).sort((a: any[], b: any[]) => String(a[0]).localeCompare(String(b[0])) || String(a[3]).localeCompare(String(b[3])));
-      doc.addPage('a4', 'landscape');
-      doc.setFillColor(109, 40, 217); doc.rect(0, 0, 297, 20, 'F');
-      doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 11));
-      doc.text(`${source.name} — COMPONENT RESULTS`, 148.5, 9, { align: 'center' });
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 7));
-      doc.text(`${opts.classLabel} — ${opts.combinedExam.name || 'Combined assessment'} — weight ${source.weight}%`, 148.5, 16, { align: 'center' });
-      doc.setTextColor(0, 0, 0);
-      autoTable(doc, {
-        startY: 26,
-        head: [['Learner', 'Admission #', 'Stream', 'Learning Area', 'Exam Marks', 'Exam Pts', 'Exam Level', 'Combined Avg %', 'Overall Pts', 'Overall Level']],
-        body: detailRows,
-        styles: { fontSize: pdfFontSize(doc, 6.4), cellPadding: 1, overflow: 'linebreak', halign: 'center' },
-        headStyles: { fillColor: [109, 40, 217], textColor: 255, fontSize: pdfFontSize(doc, 6.5), fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [245, 243, 255] },
-        margin: { left: 8, right: 8 },
-        columnStyles: { 0: { cellWidth: 36, halign: 'left' }, 1: { cellWidth: 23 }, 2: { cellWidth: 25 }, 3: { cellWidth: 38, halign: 'left' }, 4: { cellWidth: 20 }, 5: { cellWidth: 15 }, 6: { cellWidth: 20 }, 7: { cellWidth: 22 }, 8: { cellWidth: 18 }, 9: { cellWidth: 22 } },
-      });
-      drawReportFooter(doc);
-    }
-  };
-
   /**
    * Issue 2 — Search one learner inside the CURRENT filters (Class, Term,
    * Assessment). Matches on name, admission number or assessment number, and
@@ -1430,7 +1311,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const classObj = classes.find(c => c.id === (scope === 'class_teacher' ? scopedClassId : selectedClass));
       const termObj = terms.find(t => t.id === selectedTerm);
       const assessmentLabel = resolveAssessmentLabel(rawResults);
-      const combinedExam = selectedExam ? exams.find((exam) => exam.id === selectedExam && exam.type === 'combined') : null;
       const band = getSchoolLevelBand(classObj);
       const isPrimary = band === 'primary';
       const summaries = buildStudentSummary(rawResults, classObj);
@@ -1683,17 +1563,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         autoTable(doc, { startY: Math.min(150, chartTop + 20 + subjectStats.length * chartRowHeight), head: [['Rank', 'Learning Area', ...analysisGradeLabels, 'Total', 'Average']], body: subRows, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, columnStyles: { 1: { halign: 'left' } } });
         doc.setFontSize(pdfFontSize(doc, 14)); doc.setTextColor(150, 150, 150);
         doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
-      }
-
-      if (combinedExam) {
-        await addCombinedExamComparisonPage(doc, {
-          combinedExam,
-          classIds: [scope === 'class_teacher' ? scopedClassId : selectedClass].filter(Boolean) as string[],
-          termId: selectedTerm,
-          classLabel: streamLabel(classObj),
-          rawResults,
-          fontSize,
-        });
       }
 
       // ── FINAL PAGE: GENDER PERFORMANCE ANALYSIS ─────────────────────────────
@@ -2506,18 +2375,6 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text(`${s.mean.toFixed(1)} / ${s.outOf}`, 174, y);
       });
       doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
-    }
-
-    const combinedExam = selectedExam ? exams.find((exam) => exam.id === selectedExam && exam.type === 'combined') : null;
-    if (combinedExam) {
-      await addCombinedExamComparisonPage(doc, {
-        combinedExam,
-        classIds: summaryClasses.map((item: any) => item.id),
-        termId: opts.termObj.id,
-        classLabel: opts.label,
-        rawResults: opts.rawResults,
-        fontSize: opts.fontSize,
-      });
     }
 
     // ── FINAL PAGE: LEARNER RESULTS WITH STREAM COLUMN ───────────────────────
