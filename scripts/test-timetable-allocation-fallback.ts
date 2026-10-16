@@ -36,9 +36,28 @@ const exactGridIssues = getExactGridAssignmentIssues({
 });
 assert.equal(exactGridIssues.some((issue) => issue.subjectName === 'English' && issue.message.includes('at least 8 available weekdays')), true);
 
+// Werugha regression: five weekly Creative Arts lessons cannot fit one allowed
+// weekday when at most one legal double is permitted. Keep the hard stop and
+// report the mathematically unschedulable remainder rather than relaxing days.
+const werughaCreativeArtsIssues = getExactGridAssignmentIssues({
+  classes: [{ id: 'werugha-grade-8', name: 'Grade 8' }],
+  assignments: [{
+    class_id: 'werugha-grade-8',
+    lessons_per_week: 5,
+    is_double_lesson: true,
+    available_days: ['Thursday'],
+    subjects: { name: 'Creative Arts and Sports' },
+  }],
+  totalLessons: 8,
+});
+assert.equal(werughaCreativeArtsIssues.length, 1);
+assert.match(werughaCreativeArtsIssues[0].message, /At most 2 of 5 can fit/);
+assert.match(werughaCreativeArtsIssues[0].message, /3 would remain unscheduled/);
+assert.match(werughaCreativeArtsIssues[0].message, /No timetable is saved/);
+
 const totalIssues = getExactGridAssignmentIssues({
   classes: [{ id: 'class-2', name: 'Grade 8' }],
-  assignments: [{ class_id: 'class-2', lessons_per_week: 5, subjects: { name: 'Mathematics' } }],
+  assignments: [{ class_id: 'class-2', lessons_per_week: 41, subjects: { name: 'Mathematics' } }],
   totalLessons: 8,
 });
 assert.equal(totalIssues.some((issue) => issue.subjectName === 'Weekly total'), true);

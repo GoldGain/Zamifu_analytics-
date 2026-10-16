@@ -435,16 +435,24 @@ export function getExactGridAssignmentIssues(options: {
       const availableDays = normalizeDays(assignment.available_days);
       const allowedDays = availableDays.length ? availableDays : days;
       const requiredDistinctDays = assignment.is_double_lesson && lessons >= 2 ? lessons - 1 : lessons;
+      const configuredDoubleDays = normalizeDays(assignment.double_lesson_days);
+      const canUseDouble = Boolean(assignment.is_double_lesson && lessons >= 2 && (
+        configuredDoubleDays.length === 0 || configuredDoubleDays.some((day) => allowedDays.includes(day))
+      ));
+      const maxSchedulableLessons = Math.min(lessons, allowedDays.length + (canUseDouble ? 1 : 0));
       if (allowedDays.length < requiredDistinctDays) {
+        const unscheduled = lessons - maxSchedulableLessons;
+        const capacityNote = unscheduled > 0
+          ? ` At most ${maxSchedulableLessons} of ${lessons} can fit these weekdays under the one-appearance-per-day rule${canUseDouble ? ' and one-double-per-week limit' : ''}; ${unscheduled} would remain unscheduled. No timetable is saved until the assignment is corrected.`
+          : '';
         issues.push({
           classId,
           className: formatClassStream(cls) || `Class ${classId}`,
           subjectName,
-          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: ${lessons} weekly lessons require at least ${requiredDistinctDays} available weekdays, but only ${allowedDays.length} are allowed (${allowedDays.join(', ') || 'none'}).`,
+          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: ${lessons} weekly lessons require at least ${requiredDistinctDays} available weekdays, but only ${allowedDays.length} are allowed (${allowedDays.join(', ') || 'none'}).${capacityNote}`,
         });
       }
 
-      const configuredDoubleDays = normalizeDays(assignment.double_lesson_days);
       if (assignment.is_double_lesson && configuredDoubleDays.length > 0 && !configuredDoubleDays.some((day) => allowedDays.includes(day))) {
         issues.push({
           classId,
