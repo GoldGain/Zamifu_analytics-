@@ -1,4 +1,5 @@
-import html2pdf from 'html2pdf.js';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 export const CONDUCT_CATEGORIES = ['Excellent', 'Very good', 'Good', 'Satisfactory', 'Needs improvement'] as const;
 export type ConductCategory = typeof CONDUCT_CATEGORIES[number];
@@ -82,20 +83,22 @@ export function formatCertificateDate(value?: string | null) {
 }
 
 export async function downloadLeavingCertificate(element: HTMLElement, filename: string) {
-  await html2pdf().set({
-    margin: 0,
-    filename,
-    image: { type: 'png', quality: 1 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#fff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-    pagebreak: { mode: ['avoid-all'] },
-  }).from(element).save();
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: '#fff',
+    width: element.scrollWidth,
+    height: element.scrollHeight,
+  });
+  const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait', compress: true });
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 612, 792, undefined, 'FAST');
+  pdf.save(filename);
 }
 
 export function printLeavingCertificate(element: HTMLElement) {
   const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=1200');
   if (!printWindow) return;
-  printWindow.document.write(`<html><head><title>Kenya Primary School Leaving Certificate</title><style>@page{size:A4 portrait;margin:0}body{margin:0;background:white}*{box-sizing:border-box}</style></head><body>${element.outerHTML}</body></html>`);
+  printWindow.document.write(`<html><head><title>Kenya Primary School Leaving Certificate</title><style>@page{size:letter portrait;margin:0}body{margin:0;background:white}*{box-sizing:border-box}</style></head><body>${element.outerHTML}</body></html>`);
   printWindow.document.close();
   printWindow.focus();
   window.setTimeout(() => { printWindow.print(); printWindow.close(); }, 300);

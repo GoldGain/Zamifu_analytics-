@@ -1,27 +1,26 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Download, FileText, Loader2, Printer, Save, Sparkles } from 'lucide-react';
+import { CheckSquare, Download, FileText, Loader2, Printer, Save, Sparkles, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import DigitalSignature from '@/components/DigitalSignature';
 import { CONDUCT_CATEGORIES, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
 import type { LeavingCertificateResult } from '@/lib/leavingCertificate';
+import '@/styles/leavingCertificate.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
 type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
 type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null };
-type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; schoolName: string; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
-
-function CertificatePreview({ data, previewRef, schoolName, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
+type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
+function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
   return <div ref={previewRef} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
     <img className="leaving-certificate-template" src="/certificates/kenya-primary-school-leaving-certificate-official.png" alt="Official Kenya Primary School Leaving Certificate template" />
     <div className="cert-value cert-name">{data.learnerName}</div>
     <div className="cert-value cert-admission">{data.admissionNumber}</div>
     <div className="cert-value cert-dob">{formatCertificateDate(data.dateOfBirth)}</div>
     <div className="cert-value cert-enrolled">{formatCertificateDate(data.dateEnrolled)}</div>
-    <div className="cert-value cert-school">{schoolName}</div>
     <div className="cert-value cert-standard">{data.standard}</div>
     <div className="cert-value cert-left">{formatCertificateDate(data.dateLeft)}</div>
     <div className="cert-value cert-standard-left">{data.standardLeft}</div>
@@ -44,8 +43,12 @@ export default function LeavingCertificate() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkCertificates, setBulkCertificates] = useState<Array<{ studentId: string; certificate: CertificateState }>>([]);
+  const [selectedBulkIds, setSelectedBulkIds] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
+  const bulkRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     if (!user?.schoolId) return;
@@ -73,14 +76,11 @@ export default function LeavingCertificate() {
     return students.filter((student) => `${student.first_name} ${student.middle_name || ''} ${student.last_name} ${student.admission_number}`.toLowerCase().includes(q));
   }, [students, search]);
 
-  const loadCertificate = async (student: StudentRecord | undefined) => {
-    if (!student) return;
-    setSelectedId(student.id);
+  const buildCertificate = async (student: StudentRecord) => {
     const [{ data: saved }, { data: learnerResults }] = await Promise.all([
       supabaseUntyped.from('leaving_certificates').select('*').eq('student_id', student.id).eq('school_id', user?.schoolId).maybeSingle(),
       supabaseUntyped.from('results').select('marks, out_of, percentage, grade_844').eq('student_id', student.id).eq('school_id', user?.schoolId).order('created_at', { ascending: false }).limit(1000),
     ]);
-    setResults(learnerResults || []);
     const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
     const baseCertificate = {
       learnerName: `${student.first_name || ''} ${student.middle_name || ''} ${student.last_name || ''}`.replace(/\s+/g, ' ').trim(),
@@ -90,8 +90,16 @@ export default function LeavingCertificate() {
       academicComment: saved?.academic_comment || '', cocurricularComment: saved?.cocurricular_comment || '', conductComment: saved?.conduct_comment || '', extraNotes: saved?.extra_notes || '',
       pupilSignatureUrl: saved?.pupil_signature_url || null, pupilSignatureType: saved?.pupil_signature_type || null, headTeacherSignatureUrl: saved?.head_teacher_signature_url || null, headTeacherSignatureType: saved?.head_teacher_signature_type || null,
     };
-    if (saved) setCertificate(baseCertificate);
-    else setCertificate({ ...baseCertificate, ...generateLeavingCertificateComments(learnerResults || [], student.club_memberships, ''), conductComment: conductText(baseCertificate.conductCategory, baseCertificate.conductElaboration) });
+    const certificate = saved ? baseCertificate : { ...baseCertificate, ...generateLeavingCertificateComments(learnerResults || [], student.club_memberships, ''), conductComment: conductText(baseCertificate.conductCategory, baseCertificate.conductElaboration) };
+    return { certificate, results: (learnerResults || []) as LeavingCertificateResult[] };
+  };
+
+  const loadCertificate = async (student: StudentRecord | undefined) => {
+    if (!student) return;
+    setSelectedId(student.id);
+    const loaded = await buildCertificate(student);
+    setResults(loaded.results);
+    setCertificate(loaded.certificate);
   };
 
   const generateComments = (learnerResults = results, clubs = selectedStudent?.club_memberships, notes = certificate?.extraNotes || '') => {
@@ -123,15 +131,58 @@ export default function LeavingCertificate() {
     setCertificate((current) => current ? ({ ...current, [kind === 'pupil' ? 'pupilSignatureUrl' : 'headTeacherSignatureUrl']: url, [kind === 'pupil' ? 'pupilSignatureType' : 'headTeacherSignatureType']: type }) : current);
   };
 
+  const toggleBulkStudent = (studentId: string) => setSelectedBulkIds((current) => current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]);
+  const startManualCertificate = () => {
+    setSelectedId('');
+    setResults([]);
+    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), standard: '8', standardLeft: '8', dateOfIssue: today(), conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null });
+  };
+  const generateBulk = async () => {
+    if (!selectedBulkIds.length) return toast.error('Select at least one learner for bulk generation.');
+    setBulkGenerating(true);
+    const records: Array<{ studentId: string; certificate: CertificateState }> = [];
+    for (const studentId of selectedBulkIds) {
+      const student = students.find((item) => item.id === studentId);
+      if (!student) continue;
+      const loaded = await buildCertificate(student);
+      records.push({ studentId, certificate: loaded.certificate });
+    }
+    setBulkCertificates(records);
+  };
+
+  useEffect(() => {
+    if (!bulkCertificates.length || !bulkGenerating) return;
+    (async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      for (const item of bulkCertificates) {
+        const element = bulkRefs.current[item.studentId];
+        if (!element) continue;
+        const learner = students.find((student) => student.id === item.studentId);
+        const filename = `${(learner ? `${learner.first_name || ''}-${learner.last_name || ''}` : item.studentId).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}-leaving-certificate.pdf`;
+        await downloadLeavingCertificate(element, filename);
+      }
+      setBulkCertificates([]);
+      setBulkGenerating(false);
+      toast.success(`Generated ${bulkCertificates.length} leaving certificate${bulkCertificates.length === 1 ? '' : 's'}.`);
+    })();
+  }, [bulkCertificates, bulkGenerating, students]);
+
   return <div className="p-4 md:p-8 space-y-6">
-    <div><div className="flex items-center gap-3"><FileText className="w-8 h-8 text-[#2563EB]" /><h1 className="text-2xl font-bold">Kenya Primary School Leaving Certificate</h1></div><p className="text-sm text-gray-500 mt-1">Prepare, review, sign and print the official one-page certificate. The supplied official certificate artwork is used as the fixed A4 template.</p></div>
+    <div><div className="flex items-center gap-3"><FileText className="w-8 h-8 text-[#2563EB]" /><h1 className="text-2xl font-bold">Kenya Primary School Leaving Certificate</h1></div><p className="text-sm text-gray-500 mt-1">Prepare, review, sign and print the official one-page certificate. The supplied official artwork is used as the fixed Letter-size template.</p></div>
     <div className="grid xl:grid-cols-[360px_1fr] gap-6 items-start">
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <label className="block text-sm font-medium">Select learner</label><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or admission no." className="w-full border rounded-lg px-3 py-2 text-sm" />
         <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose a primary learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
+        <button type="button" onClick={startManualCertificate} className="w-full rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">Enter learner details manually</button>
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><UsersRound className="w-4 h-4" />Bulk certificates</h2><p className="text-[11px] text-blue-800 mt-0.5">Select several learners to download individual filled PDFs.</p></div><span className="text-xs font-semibold text-blue-700">{selectedBulkIds.length} selected</span></div>
+          <div className="flex gap-2"><button type="button" onClick={() => setSelectedBulkIds(filteredStudents.map((student) => student.id))} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Select visible</button><button type="button" onClick={() => setSelectedBulkIds([])} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Clear</button></div>
+          <div className="max-h-44 overflow-y-auto rounded-lg border border-blue-100 bg-white divide-y divide-gray-100">{filteredStudents.length === 0 ? <p className="p-3 text-xs text-gray-500">No primary learners found.</p> : filteredStudents.map((student) => <label key={student.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"><input type="checkbox" checked={selectedBulkIds.includes(student.id)} onChange={() => toggleBulkStudent(student.id)} className="rounded border-gray-300 text-blue-600" /><span className="truncate">{student.first_name} {student.last_name}<span className="text-gray-400"> · {student.admission_number || 'No admission no.'}</span></span></label>)}</div>
+          <button type="button" onClick={generateBulk} disabled={bulkGenerating || !selectedBulkIds.length} className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-700 py-2 text-xs font-semibold text-white disabled:opacity-50">{bulkGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}{bulkGenerating ? 'Generating PDFs…' : `Generate ${selectedBulkIds.length || ''} bulk PDF${selectedBulkIds.length === 1 ? '' : 's'}`}</button>
+        </div>
         {certificate && <>
           <div className="border-t pt-4 space-y-3"><h2 className="font-semibold">Certificate details</h2>
-            {([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['dateOfBirth', 'Date of birth'], ['dateEnrolled', 'Date enrolled'], ['standard', 'Current standard']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} readOnly className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-gray-50" /></label>)}
+            {([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['dateOfBirth', 'Date of birth'], ['dateEnrolled', 'Date enrolled'], ['standard', 'Current standard']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}
             <label className="block text-xs font-medium text-gray-600">Date left<input type="date" value={certificate.dateLeft} onChange={(e) => update('dateLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
             <label className="block text-xs font-medium text-gray-600">Standard left<select value={certificate.standardLeft} onChange={(e) => update('standardLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{[1,2,3,4,5,6,7,8].map((n) => <option key={n}>{n}</option>)}</select></label>
             <label className="block text-xs font-medium text-gray-600">Date of issue<input type="date" value={certificate.dateOfIssue} onChange={(e) => update('dateOfIssue', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
@@ -146,7 +197,8 @@ export default function LeavingCertificate() {
           <div className="flex flex-wrap gap-2"><button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium"><Save className="w-4 h-4" />{saving ? 'Saving…' : 'Save'}</button><button onClick={() => previewRef.current && downloadLeavingCertificate(previewRef.current, `${certificate.learnerName}-leaving-certificate.pdf`)} className="flex-1 flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-2.5 text-sm"><Download className="w-4 h-4" />Download PDF</button><button onClick={() => previewRef.current && printLeavingCertificate(previewRef.current)} className="flex-1 flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-2.5 text-sm"><Printer className="w-4 h-4" />Print</button></div>
         </>}
       </section>
-      <section className="bg-gray-100 rounded-xl p-4 overflow-auto"><div className="min-w-[760px] flex justify-center">{certificate ? <CertificatePreview data={certificate} previewRef={previewRef} schoolName={schoolData?.name || ''} headTeacherName={schoolData?.principal_name || ''} pupilSignatureUrl={certificate.pupilSignatureUrl} headTeacherSignatureUrl={certificate.headTeacherSignatureUrl} /> : <div className="w-full min-h-[420px] flex items-center justify-center text-sm text-gray-500">Select a learner to preview the official certificate.</div>}</div></section>
+      <section className="bg-gray-100 rounded-xl p-4 overflow-auto"><div className="min-w-[816px] flex justify-center">{certificate ? <CertificatePreview data={certificate} previewRef={previewRef} headTeacherName={schoolData?.principal_name || ''} pupilSignatureUrl={certificate.pupilSignatureUrl} headTeacherSignatureUrl={certificate.headTeacherSignatureUrl} /> : <div className="w-full min-h-[420px] flex items-center justify-center text-sm text-gray-500">Select a learner to preview the official certificate.</div>}</div></section>
     </div>
+    {bulkCertificates.length > 0 && <div className="certificate-bulk-renderer" aria-hidden="true">{bulkCertificates.map((item) => <CertificatePreview key={item.studentId} data={item.certificate} previewRef={(element) => { bulkRefs.current[item.studentId] = element; }} headTeacherName={schoolData?.principal_name || ''} pupilSignatureUrl={item.certificate.pupilSignatureUrl} headTeacherSignatureUrl={item.certificate.headTeacherSignatureUrl} />)}</div>}
   </div>;
 }
