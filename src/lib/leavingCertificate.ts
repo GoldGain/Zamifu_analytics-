@@ -4,6 +4,38 @@ import { jsPDF } from 'jspdf';
 export const CONDUCT_CATEGORIES = ['Excellent', 'Very good', 'Good', 'Satisfactory', 'Needs improvement'] as const;
 export type ConductCategory = typeof CONDUCT_CATEGORIES[number];
 
+// These values mirror the curriculum codes and class-level presets in Classes.tsx.
+// The traditional 8-4-4 option is represented by an empty curriculum string.
+export const LEAVING_CERTIFICATE_CBE_CURRICULUM = 'CBE' as const;
+export const LEAVING_CERTIFICATE_TRADITIONAL_CURRICULUM = '' as const;
+
+export interface LeavingCertificateClassLike {
+  name?: string | null;
+  level?: number | null;
+  grade_level?: number | null;
+  curriculum?: string | null;
+}
+
+export function isLeavingCertificateClass(classRecord?: LeavingCertificateClassLike | null, learnerCurriculum?: string | null) {
+  const curriculum = classRecord?.curriculum ?? learnerCurriculum;
+  const level = Number(classRecord?.level ?? classRecord?.grade_level);
+  if (!Number.isInteger(level)) return false;
+
+  if (curriculum === LEAVING_CERTIFICATE_CBE_CURRICULUM) return level === 8 || level === 9;
+  // Classes.tsx currently exposes Form 3/Form 4 for the traditional 8-4-4 option
+  // (levels 11/12). Keep the filter open to any normalized 1..12 traditional
+  // level so schools using another supported 8-4-4 class preset are not hidden.
+  return curriculum === LEAVING_CERTIFICATE_TRADITIONAL_CURRICULUM && level >= 1 && level <= 12;
+}
+
+export function leavingCertificateStandardLabel(value: number | string | null | undefined, curriculum?: string | null) {
+  const level = Number(value);
+  if (!Number.isInteger(level) || level < 1 || level > 12) return '';
+  if (curriculum === LEAVING_CERTIFICATE_TRADITIONAL_CURRICULUM && level === 11) return 'Form 3';
+  if (curriculum === LEAVING_CERTIFICATE_TRADITIONAL_CURRICULUM && level === 12) return 'Form 4';
+  return `Grade ${level}`;
+}
+
 export function truncateAtWord(value: string, limit: number): string {
   if (value.length <= limit) return value;
   const clipped = value.slice(0, limit + 1).replace(/\s+\S*$/, '').trim();

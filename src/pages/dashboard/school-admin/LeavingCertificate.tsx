@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import DigitalSignature from '@/components/DigitalSignature';
-import { CONDUCT_CATEGORIES, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
+import { CONDUCT_CATEGORIES, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, isLeavingCertificateClass, leavingCertificateStandardLabel, LEAVING_CERTIFICATE_CBE_CURRICULUM, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
 import type { LeavingCertificateResult } from '@/lib/leavingCertificate';
 import '@/styles/leavingCertificate.css';
 
@@ -12,7 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
 type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
-type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null; schoolStampUrl: string | null; schoolStampType: string | null };
+type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; schoolName: string; standard: string; standardLeft: string; standardCurriculum: string | null; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null; schoolStampUrl: string | null; schoolStampType: string | null };
 type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
 function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
   return <div ref={previewRef} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
@@ -21,9 +21,10 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     <div className="cert-value cert-admission">{data.admissionNumber}</div>
     <div className="cert-value cert-dob">{formatCertificateDate(data.dateOfBirth)}</div>
     <div className="cert-value cert-enrolled">{formatCertificateDate(data.dateEnrolled)}</div>
+    <div className="cert-value cert-school">{data.schoolName}</div>
     <div className="cert-value cert-standard">{data.standard}</div>
     <div className="cert-value cert-left">{formatCertificateDate(data.dateLeft)}</div>
-    <div className="cert-value cert-standard-left">{data.standardLeft}</div>
+    <div className="cert-value cert-standard-left">{leavingCertificateStandardLabel(data.standardLeft, data.standardCurriculum)}</div>
     <div className="cert-value cert-academic">{data.academicComment}</div>
     <div className="cert-value cert-conduct">{data.conductComment}</div>
     <div className="cert-value cert-cocurricular">{data.cocurricularComment}</div>
@@ -63,8 +64,7 @@ export default function LeavingCertificate() {
       if (error) toast.error(error.message);
       setStudents((data || []).filter((student: StudentRecord) => {
         const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
-        const level = Number(cls?.level ?? cls?.grade_level);
-        return level >= 1 && level <= 8;
+        return isLeavingCertificateClass(cls, student.curriculum);
       }));
       setLoading(false);
     })();
@@ -83,10 +83,13 @@ export default function LeavingCertificate() {
       supabaseUntyped.from('results').select('marks, out_of, percentage, grade_844').eq('student_id', student.id).eq('school_id', user?.schoolId).order('created_at', { ascending: false }).limit(1000),
     ]);
     const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
+    const standardCurriculum = cls?.curriculum ?? student.curriculum;
+    const classLevel = Number(cls?.level ?? cls?.grade_level);
+    const currentStandard = Number.isInteger(classLevel) && classLevel >= 1 && classLevel <= 12 ? classLevel : 8;
     const baseCertificate = {
       learnerName: `${student.first_name || ''} ${student.middle_name || ''} ${student.last_name || ''}`.replace(/\s+/g, ' ').trim(),
       admissionNumber: student.admission_number || '', dateOfBirth: student.date_of_birth || '', dateEnrolled: student.enrollment_date || '',
-      dateLeft: saved?.date_left || student.date_left || today(), standard: String(cls?.level ?? cls?.grade_level ?? 1), standardLeft: String(saved?.standard_left ?? cls?.level ?? cls?.grade_level ?? 1),
+      dateLeft: saved?.date_left || student.date_left || today(), schoolName: schoolData?.name || '', standard: leavingCertificateStandardLabel(currentStandard, standardCurriculum) || String(currentStandard), standardLeft: String(saved?.standard_left ?? currentStandard), standardCurriculum,
       dateOfIssue: saved?.date_of_issue || today(), headTeacherName: saved?.head_teacher_name || schoolData?.principal_name || '', conductCategory: (saved?.conduct_category || 'Good') as ConductCategory, conductElaboration: saved?.conduct_elaboration || '',
       academicComment: saved?.academic_comment || '', cocurricularComment: saved?.cocurricular_comment || '', conductComment: saved?.conduct_comment || '', extraNotes: saved?.extra_notes || '',
       pupilSignatureUrl: saved?.pupil_signature_url || null, pupilSignatureType: saved?.pupil_signature_type || null, headTeacherSignatureUrl: saved?.head_teacher_signature_url || null, headTeacherSignatureType: saved?.head_teacher_signature_type || null, schoolStampUrl: saved?.school_stamp_url || null, schoolStampType: saved?.school_stamp_type || null,
@@ -116,9 +119,11 @@ export default function LeavingCertificate() {
   const save = async () => {
     if (!certificate || !user?.schoolId || !selectedStudent) return;
     if (certificate.conductCategory === 'Needs improvement' && certificate.conductElaboration.length > 140) return toast.error('Conduct elaboration must be 140 characters or fewer.');
+    const standardLeft = Number(certificate.standardLeft);
+    if (!Number.isInteger(standardLeft) || standardLeft < 1 || standardLeft > 12) return toast.error('Standard left must be a whole number from 1 to 12.');
     setSaving(true);
     const payload = {
-      school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: Number(certificate.standardLeft), date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
+      school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: standardLeft, date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
       conduct_category: certificate.conductCategory, conduct_elaboration: certificate.conductElaboration || null, academic_comment: certificate.academicComment, cocurricular_comment: certificate.cocurricularComment,
       conduct_comment: conductText(certificate.conductCategory, certificate.conductElaboration), extra_notes: certificate.extraNotes || null, pupil_signature_url: certificate.pupilSignatureUrl || null,
       pupil_signature_type: certificate.pupilSignatureType || null, head_teacher_signature_url: certificate.headTeacherSignatureUrl || null, head_teacher_signature_type: certificate.headTeacherSignatureType || null, school_stamp_url: certificate.schoolStampUrl || null, school_stamp_type: certificate.schoolStampType || null, updated_at: new Date().toISOString(),
@@ -138,7 +143,7 @@ export default function LeavingCertificate() {
   const startManualCertificate = () => {
     setSelectedId('');
     setResults([]);
-    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), standard: '8', standardLeft: '8', dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
+    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), schoolName: schoolData?.name || '', standard: 'Grade 8', standardLeft: '8', standardCurriculum: LEAVING_CERTIFICATE_CBE_CURRICULUM, dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
   };
   const generateBulk = async () => {
     if (!selectedBulkIds.length) return toast.error('Select at least one learner for bulk generation.');
@@ -175,7 +180,7 @@ export default function LeavingCertificate() {
     <div className="grid xl:grid-cols-[360px_1fr] gap-6 items-start">
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <label className="block text-sm font-medium">Select learner</label><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or admission no." className="w-full border rounded-lg px-3 py-2 text-sm" />
-        <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose a primary learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
+        <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose a leaving-certificate learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
         <button type="button" onClick={startManualCertificate} className="w-full rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">Enter learner details manually</button>
         <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 space-y-3">
           <div className="flex items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><UsersRound className="w-4 h-4" />Bulk certificates</h2><p className="text-[11px] text-blue-800 mt-0.5">Select several learners to download individual filled PDFs.</p></div><span className="text-xs font-semibold text-blue-700">{selectedBulkIds.length} selected</span></div>
@@ -185,10 +190,10 @@ export default function LeavingCertificate() {
         </div>
         {certificate && <>
           <div className="border-t pt-4 space-y-3"><h2 className="font-semibold">Certificate details</h2>
-            <div className="grid sm:grid-cols-2 gap-3">{([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['standard', 'Current standard'], ['headTeacherName', 'Head teacher’s name']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}</div>
+            <div className="grid sm:grid-cols-2 gap-3">{([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['schoolName', 'School name'], ['standard', 'Current standard'], ['headTeacherName', 'Head teacher’s name']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}</div>
             <div className="grid sm:grid-cols-2 gap-3"><label className="block text-xs font-medium text-gray-600">Date of birth<input type="date" value={certificate.dateOfBirth} onChange={(e) => update('dateOfBirth', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Date enrolled<input type="date" value={certificate.dateEnrolled} onChange={(e) => update('dateEnrolled', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label></div>
             <label className="block text-xs font-medium text-gray-600">Date left<input type="date" value={certificate.dateLeft} onChange={(e) => update('dateLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
-            <label className="block text-xs font-medium text-gray-600">Standard left<select value={certificate.standardLeft} onChange={(e) => update('standardLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{[1,2,3,4,5,6,7,8].map((n) => <option key={n}>{n}</option>)}</select></label>
+            <label className="block text-xs font-medium text-gray-600">Standard left<select value={certificate.standardLeft} onChange={(e) => update('standardLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{Array.from({ length: 12 }, (_, index) => index + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, certificate.standardCurriculum)}</option>)}</select></label>
             <label className="block text-xs font-medium text-gray-600">Date of issue<input type="date" value={certificate.dateOfIssue} onChange={(e) => update('dateOfIssue', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
             <label className="block text-xs font-medium text-gray-600">Conduct category<select value={certificate.conductCategory} onChange={(e) => { update('conductCategory', e.target.value); update('conductComment', conductText(e.target.value as ConductCategory, certificate.conductElaboration)); }} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{CONDUCT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
             {certificate.conductCategory === 'Needs improvement' && <label className="block text-xs font-medium text-gray-600">Conduct elaboration ({certificate.conductElaboration.length}/140)<textarea maxLength={140} value={certificate.conductElaboration} onChange={(e) => { update('conductElaboration', e.target.value); update('conductComment', conductText('Needs improvement', e.target.value)); }} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" rows={2} /></label>}
