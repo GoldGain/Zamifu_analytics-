@@ -20,6 +20,7 @@ export interface SchoolInfo {
   next_term_start_date?: string | null;
   school_closes_on?: string | null;
   school_opens_on?: string | null;
+  show_overall_report_positions?: boolean | null;
   report_class?: string;
   report_term?: string;
   report_assessment?: string;
@@ -965,21 +966,22 @@ export function drawStudentInfo(
   y: number = 38,
   assessmentName?: string,
   assessmentNumber?: string,
-  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean; pathway?: string; track?: string; overallGrade?: string; showPathway?: boolean; is844?: boolean }
+  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean; pathway?: string; track?: string; overallGrade?: string; showPathway?: boolean; is844?: boolean; showOverallPositions?: boolean }
 ) {
   const fs = pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8);
   const showPoints = positionDetails?.showPoints !== false;
+  const showOverallPositions = positionDetails?.showOverallPositions !== false;
   const standardRows: string[][] = [
     ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
     ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
-    ['Class Position', positionDetails?.classPosition || position || '—', ...(positionDetails?.streamPosition ? ['Stream Position', positionDetails.streamPosition, 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
+    ['Class Position', showOverallPositions ? (positionDetails?.classPosition || position || '—') : '', ...(positionDetails?.streamPosition ? ['Stream Position', showOverallPositions ? positionDetails.streamPosition : '', 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
   ];
   const showPathway = positionDetails?.showPathway || positionDetails?.is844;
   const rows: string[][] = showPathway ? [
     ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment No.', assessmentNumber || '—'],
     ['Class', className || '—', 'Pathway', positionDetails?.pathway || '—', 'Track', positionDetails?.track || '—'],
     ['Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', positionDetails?.is844 ? 'Overall Grade' : 'Overall Level', positionDetails?.overallGrade || '—'],
-    ['Class Position', positionDetails?.classPosition || position || '—', 'Stream Position', positionDetails?.streamPosition || '—', 'Date', new Date().toLocaleDateString()],
+    ['Class Position', showOverallPositions ? (positionDetails?.classPosition || position || '—') : '', 'Stream Position', showOverallPositions ? (positionDetails?.streamPosition || '—') : '', 'Date', new Date().toLocaleDateString()],
   ] : standardRows;
   const widths = [27, 43, 27, 32, 27, 26];
   doc.setFontSize(fs); doc.setFont('helvetica', 'normal');
@@ -1179,6 +1181,7 @@ export function drawSummaryBox(
   startY: number,
   streamPosition?: string,
   rankingDetails?: { subjects: string[]; totalMarks: number; totalPoints: number },
+  showOverallPositions: boolean = true,
 ): number {
   const hasRankingDetails = Boolean(rankingDetails?.subjects?.length);
   const boxH = hasRankingDetails ? (COMPACT_MODE ? 30 : 40) : (COMPACT_MODE ? 18 : 28);
@@ -1196,11 +1199,11 @@ export function drawSummaryBox(
   doc.text(`${is844Curriculum(classData) ? 'Subjects' : 'Learning Areas'}: ${includedResults.length}`, 20, startY + gap);
   doc.text(`Total Marks: ${hasNumericResults ? totalMarks : '—'}`, 65, startY + gap);
   doc.text(`Average: ${hasNumericResults ? `${avgPercentage.toFixed(1)}%` : 'N/A'}`, 130, startY + gap);
-  doc.text(`Position: ${position}`, 20, startY + gap * 2);
+  doc.text(`Position: ${showOverallPositions ? position : ''}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading?.grade || 'N/A'}`, 65, startY + gap * 2);
   if (!isPrimary) doc.text(`Total Points: ${hasNumericResults && summaryPoints !== null ? `${summaryPoints}${rankingDetails ? ' / 56' : ''}` : '—'}`, 130, startY + gap * 2);
   if (streamPosition) {
-    doc.text(`Stream Position: ${streamPosition}`, 20, startY + gap * 3);
+    doc.text(`Stream Position: ${showOverallPositions ? streamPosition : ''}`, 20, startY + gap * 3);
   }
   if (hasRankingDetails && rankingDetails) {
     doc.setFont('helvetica', 'normal');
@@ -1247,16 +1250,17 @@ export function drawDeviation(
   // blank line competing with the required comment/signature zone.
   if (previousAvg === null || previousAvg === undefined) return startY;
   startY = ensureReportCardSpace(doc, startY, COMPACT_MODE ? 10 : 12);
+  const positionSuffix = previousPosition ? ` - Pos: ${previousPosition}` : '';
   if (deviation !== null && previousAvg !== null) {
     const arrow = deviation >= 0 ? '\u25B2' : '\u25BC';
     const sign = deviation >= 0 ? '+' : '';
     if (deviation >= 0) doc.setTextColor(76, 175, 80); else doc.setTextColor(244, 67, 54);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
-    doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous (Prev: ${previousAvg?.toFixed(1)}% - Pos: ${previousPosition || 'N/A'})`, 14, startY);
+    doc.text(`${arrow} ${sign}${deviation.toFixed(1)}% vs previous (Prev: ${previousAvg?.toFixed(1)}%${positionSuffix})`, 14, startY);
     doc.setTextColor(0, 0, 0);
   } else {
     doc.setTextColor(100, 100, 100); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 7 : 8));
-    doc.text(`Previous performance: ${previousAvg.toFixed(1)}% - Position: ${previousPosition || 'N/A'}`, 14, startY);
+    doc.text(`Previous performance: ${previousAvg.toFixed(1)}%${positionSuffix ? ` - Position: ${previousPosition}` : ''}`, 14, startY);
     doc.setTextColor(0, 0, 0);
   }
   return startY + (COMPACT_MODE ? 7 : 8);

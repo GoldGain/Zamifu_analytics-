@@ -1,6 +1,6 @@
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { Calendar, Save, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
+import { Calendar, Save, Loader2, AlertCircle, CheckCircle, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 
@@ -16,6 +16,7 @@ export default function SchoolSettings() {
   const [form, setForm] = useState({
     school_closes_on: '',
     school_opens_on: '',
+    show_overall_report_positions: true,
   });
 
   useEffect(() => {
@@ -25,7 +26,7 @@ export default function SchoolSettings() {
       try {
         const { data, error } = await supabaseUntyped
           .from('schools')
-          .select('id, name, school_closes_on, school_opens_on, next_term_start_date')
+          .select('id, name, school_closes_on, school_opens_on, next_term_start_date, show_overall_report_positions')
           .eq('id', user.schoolId)
           .single();
         if (error) throw error;
@@ -34,6 +35,7 @@ export default function SchoolSettings() {
         setForm({
           school_closes_on: data?.school_closes_on || '',
           school_opens_on: openingDate,
+          show_overall_report_positions: data?.show_overall_report_positions !== false,
         });
       } catch (err: any) {
         console.error('Error fetching school info:', err);
@@ -47,7 +49,9 @@ export default function SchoolSettings() {
 
   const handleSave = async () => {
     if (!user?.schoolId) return;
-    if ((form.school_closes_on && !form.school_opens_on) || (!form.school_closes_on && form.school_opens_on)) {
+    const datesChanged = form.school_closes_on !== (schoolInfo?.school_closes_on || '')
+      || form.school_opens_on !== (schoolInfo?.school_opens_on || schoolInfo?.next_term_start_date || '');
+    if (datesChanged && ((form.school_closes_on && !form.school_opens_on) || (!form.school_closes_on && form.school_opens_on))) {
       toast.error('Enter both the school closing date and opening date, or clear both fields.');
       return;
     }
@@ -59,12 +63,19 @@ export default function SchoolSettings() {
           school_closes_on: form.school_closes_on || null,
           school_opens_on: form.school_opens_on || null,
           next_term_start_date: form.school_opens_on || null,
+          show_overall_report_positions: form.show_overall_report_positions,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.schoolId);
       if (error) throw error;
-      toast.success('School calendar dates saved successfully!');
-      setSchoolInfo({ ...schoolInfo, school_closes_on: form.school_closes_on || null, school_opens_on: form.school_opens_on || null, next_term_start_date: form.school_opens_on || null });
+      toast.success('School settings saved successfully!');
+      setSchoolInfo({
+        ...schoolInfo,
+        school_closes_on: form.school_closes_on || null,
+        school_opens_on: form.school_opens_on || null,
+        next_term_start_date: form.school_opens_on || null,
+        show_overall_report_positions: form.show_overall_report_positions,
+      });
     } catch (err: any) {
       console.error('Error saving settings:', err);
       toast.error(err.message || 'Failed to save school settings');
@@ -110,10 +121,30 @@ export default function SchoolSettings() {
           </div>
         </div>
 
+        <div className="space-y-4 border-t border-gray-100 pt-6">
+          <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center"><Trophy className="w-5 h-5 text-amber-600" /></div>
+            <div><h2 className="text-lg font-semibold text-gray-900">Report-card ranking</h2><p className="text-sm text-gray-500">Choose whether overall class and stream positions appear on report cards.</p></div>
+          </div>
+          <label htmlFor="show-overall-report-positions" className="flex items-start gap-3 cursor-pointer">
+            <input
+              id="show-overall-report-positions"
+              type="checkbox"
+              checked={form.show_overall_report_positions}
+              onChange={(event) => setForm({ ...form, show_overall_report_positions: event.target.checked })}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-800">Show overall Class Position and Stream Position</span>
+              <span className="mt-1 block text-xs text-gray-500">When disabled, overall positions and rank-based comments are hidden. Subject positions in the learning-area table are not affected.</span>
+            </span>
+          </label>
+        </div>
+
         <div className="flex gap-3 pt-4 border-t border-gray-100"><button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}{saving ? 'Saving...' : 'Save Settings'}</button></div>
       </div>
 
-      <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" /><div><p className="text-sm font-medium text-green-800">How it works</p><p className="text-xs text-green-600 mt-1">Once both dates are saved, the same school closes/opens notice will appear on generated report-card PDFs for learners and parents.</p></div></div>
+      <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" /><div><p className="text-sm font-medium text-green-800">How it works</p><p className="text-xs text-green-600 mt-1">Once both dates are saved, the same school closes/opens notice will appear on generated report-card PDFs for learners and parents. Overall ranking visibility applies to all report-card formats for this school.</p></div></div>
     </div>
   );
 }

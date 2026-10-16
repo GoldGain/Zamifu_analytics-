@@ -109,7 +109,7 @@ export default function ParentChildReportCard() {
         setChildPhotoLoadError(false);
         fetchTerms(firstChild.school_id);
         fetchSchoolPayConfig(firstChild.school_id);
-        fetchSchoolInfo(firstChild.school_id);
+        await fetchSchoolInfo(firstChild.school_id);
         fetchSignatures(firstChild.school_id, firstChild.classes?.class_teacher_id);
         fetchTotalStudents(firstChild.class_id, firstChild.school_id);
       }
@@ -130,7 +130,7 @@ export default function ParentChildReportCard() {
     try {
       const { data } = await supabaseUntyped
         .from('schools')
-        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on')
+        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on, show_overall_report_positions')
         .eq('id', schoolId)
         .maybeSingle();
       if (data) {
@@ -145,6 +145,7 @@ export default function ParentChildReportCard() {
           next_term_start_date: data.next_term_start_date || null,
           school_closes_on: data.school_closes_on || null,
           school_opens_on: data.school_opens_on || data.next_term_start_date || null,
+          show_overall_report_positions: data.show_overall_report_positions,
         });
         setSignatures(prev => ({
           ...prev,
@@ -370,6 +371,7 @@ export default function ParentChildReportCard() {
       // the school's class summary and the learner's own portal.
       const position = classPosition ?? results[0]?.class_position ?? results[0]?.position ?? null;
       const positionStr = formatPosition(position, totalStudents || 0);
+      const showOverallPositions = schoolInfo.show_overall_report_positions !== false;
       // Build subjectScores with `percentage` key (matching SubjectResult interface for pathway logic)
       const subjectScores = results.map(r => ({
         name: r.subjects?.name || 'Unknown',
@@ -386,7 +388,7 @@ export default function ParentChildReportCard() {
       // FIX Issue 2: Pass subjectScores so pathway performance is included in comment
       const aiComment = generateUniqueAIComment(
         studentFullName, avgPercentage, deviation, bestSubject, weakestSubject,
-        position, totalStudents || 0, isNew, classDataForGrading, subjectScores
+        showOverallPositions ? position : null, totalStudents || 0, isNew, classDataForGrading, subjectScores
       );
 
       await drawReportHeader(doc, schoolInfo, {
@@ -394,7 +396,7 @@ export default function ParentChildReportCard() {
         photoUrl: selectedChild.photo_url || null,
       });
       const overallGrade = learnerMetrics?.count ? calculateGradeForClass(avgPercentage, classDataForGrading) : null;
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Curriculum(classDataForGrading) });
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Curriculum(classDataForGrading), showOverallPositions });
       const qrOptions = { assessmentNumber: selectedChild.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
       let currentY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 69 : 62, { showDeviation: previousAvg !== null, rankingDetails }) + 6;
@@ -404,8 +406,8 @@ export default function ParentChildReportCard() {
         currentY = drawPathwayPerformance(doc, results, currentY) + 6;
       }
       
-      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY, undefined, rankingDetails);
-      currentY = drawDeviation(doc, deviation, previousAvg, position, currentY + 6);
+      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY, undefined, rankingDetails, showOverallPositions);
+      currentY = drawDeviation(doc, deviation, previousAvg, showOverallPositions ? position : null, currentY + 6);
       if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, currentY, 38, aiComment, schoolInfo, qrOptions)) {
         currentY = drawTrendGraph(doc, trendData, 14, currentY, 182, 34, getSchoolLevelBand(classDataForGrading)) + 2;
       }
@@ -584,13 +586,13 @@ export default function ParentChildReportCard() {
                     })()}
                   </span>
                 </div>
-                <div className="bg-white p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
+                {schoolInfo.show_overall_report_positions !== false && <div className="bg-white p-5 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] border border-gray-100">
                   <p className="text-xs font-bold text-[#666666] uppercase mb-1">Class Position</p>
                   <span className="text-2xl font-black text-blue-600">
                     {classPosition ?? results[0]?.class_position ?? results[0]?.position ?? 'N/A'}
                     <span className="text-sm font-normal text-gray-400 ml-1">/ {totalStudents}</span>
                   </span>
-                </div>
+                </div>}
               </div>
 
               <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">

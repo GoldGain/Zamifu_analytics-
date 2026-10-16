@@ -105,7 +105,7 @@ export default function StudentReportCard() {
     try {
       const { data } = await supabaseUntyped
         .from('schools')
-        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on')
+        .select('name, motto, logo_url, principal_name, principal_signature_url, address, phone, email, next_term_start_date, school_closes_on, school_opens_on, show_overall_report_positions')
         .eq('id', schoolId)
         .maybeSingle();
       if (data) {
@@ -120,6 +120,7 @@ export default function StudentReportCard() {
           next_term_start_date: data.next_term_start_date || null,
           school_closes_on: data.school_closes_on || null,
           school_opens_on: data.school_opens_on || data.next_term_start_date || null,
+          show_overall_report_positions: data.show_overall_report_positions,
         });
         setSignatures(prev => ({
           ...prev,
@@ -300,6 +301,7 @@ export default function StudentReportCard() {
       // with the portal and class summary; fall back to the stored value.
       const position = classPosition ?? results[0]?.class_position ?? results[0]?.position ?? null;
       const positionStr = formatPosition(position, totalStudents || 0);
+      const showOverallPositions = schoolInfo.show_overall_report_positions !== false;
 
       const subjectScores = results.map(r => ({
         name: r.subjects?.name || 'Unknown',
@@ -315,7 +317,7 @@ export default function StudentReportCard() {
       const studentFullName = `${student.first_name} ${student.last_name}`;
       const aiComment = generateUniqueAIComment(
         studentFullName, avgPercentage, deviation, bestSubject, weakestSubject,
-        position, totalStudents || 0, isNew, classDataForGrading, subjectScores
+        showOverallPositions ? position : null, totalStudents || 0, isNew, classDataForGrading, subjectScores
       );
 
       await drawReportHeader(doc, schoolInfo, {
@@ -334,14 +336,14 @@ export default function StudentReportCard() {
         48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
-        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Class },
+        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Class, showOverallPositions },
       );
 
       const qrOptions = { assessmentNumber: student.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
       let tableEndY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 76 : 70, { showDeviation: previousAvg !== null, rankingDetails });
       if (band === 'junior') tableEndY = drawPathwayPerformance(doc, results, tableEndY + 4) + 6;
-      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10, undefined, rankingDetails);
+      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10, undefined, rankingDetails, showOverallPositions);
       const devEndY = drawDeviation(doc, deviation, previousAvg, null, summaryEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, devEndY, 38, aiComment, schoolInfo, qrOptions)) {
