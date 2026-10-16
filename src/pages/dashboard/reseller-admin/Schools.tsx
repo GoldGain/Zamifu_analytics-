@@ -106,26 +106,41 @@ export default function ResellerSchools() {
     if (!resellerId) return;
     setSaving(true);
     try {
+      const schoolName = form.name.trim();
+      if (!schoolName) throw new Error('School name is required.');
       const payload: any = {
-        name: form.name,
-        code: (form.name.trim().replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10) || 'SCHOOL') + '-' + Math.floor(1000 + Math.random() * 9000),
         county: form.county,
         curriculum: form.curriculum,
         principal_name: form.principal_name,
         phone: form.phone,
         email: form.email,
-        reseller_id: resellerId,
-        status: 'active',
         fee_per_learner_per_term: feeOrDefault(form.fee_per_learner_per_term),
         fee_per_learner_per_year: feeOrDefault(form.fee_per_learner_per_year, DEFAULT_ANNUAL_FEE_PER_LEARNER),
       };
       if (editingId) {
+        const existingSchool = schools.find((school) => school.id === editingId);
+        const nameChanged = schoolName.toLowerCase() !== String(existingSchool?.name || '').trim().toLowerCase();
+        if (nameChanged) {
+          const { data: duplicate, error: duplicateError } = await supabase
+            .from('schools')
+            .select('id')
+            .ilike('name', schoolName)
+            .neq('id', editingId)
+            .maybeSingle();
+          if (duplicateError) throw duplicateError;
+          if (duplicate) throw new Error('Another school already uses this name. Please choose a different name.');
+          payload.name = schoolName;
+        }
         const { error } = await supabase.from('schools').update(payload).eq('id', editingId);
         if (error) throw error;
         toast.success('School updated');
       } else {
         const { error } = await supabase.from('schools').insert({
           ...payload,
+          name: schoolName,
+          code: (schoolName.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 10) || 'SCHOOL') + '-' + Math.floor(1000 + Math.random() * 9000),
+          reseller_id: resellerId,
+          status: 'active',
           subscription_plan: 'basic',
           admin_portal_locked: false,
           dos_portal_locked: false,
