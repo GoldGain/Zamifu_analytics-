@@ -12,7 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
 type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
-type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null };
+type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null };
 type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
 function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
   return <div ref={previewRef} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
@@ -28,7 +28,7 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     <div className="cert-value cert-conduct">{data.conductComment}</div>
     <div className="cert-value cert-cocurricular">{data.cocurricularComment}</div>
     {pupilSignatureUrl && <img className="cert-signature cert-pupil-signature" src={pupilSignatureUrl} alt="Pupil signature" />}
-    <div className="cert-value cert-head-name">{headTeacherName || ''}</div>
+    <div className="cert-value cert-head-name">{data.headTeacherName || headTeacherName || ''}</div>
     {headTeacherSignatureUrl && <img className="cert-signature cert-head-signature" src={headTeacherSignatureUrl} alt="Head teacher signature" />}
     <div className="cert-value cert-issue">{formatCertificateDate(data.dateOfIssue)}</div>
   </div>;
@@ -86,7 +86,7 @@ export default function LeavingCertificate() {
       learnerName: `${student.first_name || ''} ${student.middle_name || ''} ${student.last_name || ''}`.replace(/\s+/g, ' ').trim(),
       admissionNumber: student.admission_number || '', dateOfBirth: student.date_of_birth || '', dateEnrolled: student.enrollment_date || '',
       dateLeft: saved?.date_left || student.date_left || today(), standard: String(cls?.level ?? cls?.grade_level ?? 1), standardLeft: String(saved?.standard_left ?? cls?.level ?? cls?.grade_level ?? 1),
-      dateOfIssue: saved?.date_of_issue || today(), conductCategory: (saved?.conduct_category || 'Good') as ConductCategory, conductElaboration: saved?.conduct_elaboration || '',
+      dateOfIssue: saved?.date_of_issue || today(), headTeacherName: saved?.head_teacher_name || schoolData?.principal_name || '', conductCategory: (saved?.conduct_category || 'Good') as ConductCategory, conductElaboration: saved?.conduct_elaboration || '',
       academicComment: saved?.academic_comment || '', cocurricularComment: saved?.cocurricular_comment || '', conductComment: saved?.conduct_comment || '', extraNotes: saved?.extra_notes || '',
       pupilSignatureUrl: saved?.pupil_signature_url || null, pupilSignatureType: saved?.pupil_signature_type || null, headTeacherSignatureUrl: saved?.head_teacher_signature_url || null, headTeacherSignatureType: saved?.head_teacher_signature_type || null,
     };
@@ -117,7 +117,7 @@ export default function LeavingCertificate() {
     if (certificate.conductCategory === 'Needs improvement' && certificate.conductElaboration.length > 140) return toast.error('Conduct elaboration must be 140 characters or fewer.');
     setSaving(true);
     const payload = {
-      school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: Number(certificate.standardLeft), date_of_issue: certificate.dateOfIssue,
+      school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: Number(certificate.standardLeft), date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
       conduct_category: certificate.conductCategory, conduct_elaboration: certificate.conductElaboration || null, academic_comment: certificate.academicComment, cocurricular_comment: certificate.cocurricularComment,
       conduct_comment: conductText(certificate.conductCategory, certificate.conductElaboration), extra_notes: certificate.extraNotes || null, pupil_signature_url: certificate.pupilSignatureUrl || null,
       pupil_signature_type: certificate.pupilSignatureType || null, head_teacher_signature_url: certificate.headTeacherSignatureUrl || null, head_teacher_signature_type: certificate.headTeacherSignatureType || null, updated_at: new Date().toISOString(),
@@ -135,7 +135,7 @@ export default function LeavingCertificate() {
   const startManualCertificate = () => {
     setSelectedId('');
     setResults([]);
-    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), standard: '8', standardLeft: '8', dateOfIssue: today(), conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null });
+    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), standard: '8', standardLeft: '8', dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null });
   };
   const generateBulk = async () => {
     if (!selectedBulkIds.length) return toast.error('Select at least one learner for bulk generation.');
@@ -182,7 +182,8 @@ export default function LeavingCertificate() {
         </div>
         {certificate && <>
           <div className="border-t pt-4 space-y-3"><h2 className="font-semibold">Certificate details</h2>
-            {([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['dateOfBirth', 'Date of birth'], ['dateEnrolled', 'Date enrolled'], ['standard', 'Current standard']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}
+            <div className="grid sm:grid-cols-2 gap-3">{([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['standard', 'Current standard'], ['headTeacherName', 'Head teacher’s name']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}</div>
+            <div className="grid sm:grid-cols-2 gap-3"><label className="block text-xs font-medium text-gray-600">Date of birth<input type="date" value={certificate.dateOfBirth} onChange={(e) => update('dateOfBirth', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Date enrolled<input type="date" value={certificate.dateEnrolled} onChange={(e) => update('dateEnrolled', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label></div>
             <label className="block text-xs font-medium text-gray-600">Date left<input type="date" value={certificate.dateLeft} onChange={(e) => update('dateLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
             <label className="block text-xs font-medium text-gray-600">Standard left<select value={certificate.standardLeft} onChange={(e) => update('standardLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{[1,2,3,4,5,6,7,8].map((n) => <option key={n}>{n}</option>)}</select></label>
             <label className="block text-xs font-medium text-gray-600">Date of issue<input type="date" value={certificate.dateOfIssue} onChange={(e) => update('dateOfIssue', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
