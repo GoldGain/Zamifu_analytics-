@@ -40,3 +40,25 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Kenya Primary School Leaving Certificate: the supplied official PDF is the immutable visual layer. */
+.leaving-certificate-preview { position: relative; width: 794px; height: 1123px; flex: 0 0 794px; overflow: hidden; background: #fff; font-family: "Times New Roman", Times, serif; color: #111; }
+.leaving-certificate-template { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.cert-value { position: absolute; z-index: 2; background: rgba(255,255,255,.94); padding: 0 2px; font-size: 13px; line-height: 1.18; white-space: nowrap; overflow: hidden; }
+.cert-name { left: 28%; top: 26.5%; max-width: 43%; }
+.cert-admission { left: 78%; top: 26.5%; max-width: 14%; }
+.cert-dob { left: 17%; top: 30.2%; }
+.cert-enrolled { left: 46%; top: 30.2%; }
+.cert-school { left: 8%; top: 34.0%; max-width: 28%; }
+.cert-standard { left: 79%; top: 34.0%; }
+.cert-left { left: 17%; top: 37.8%; }
+.cert-standard-left { left: 34%; top: 41.4%; }
+.cert-academic { left: 10%; top: 45.4%; width: 81%; height: 8.7%; white-space: normal; font-size: 12px; line-height: 1.42; }
+.cert-conduct { left: 10%; top: 57.4%; width: 81%; height: 6.0%; white-space: normal; font-size: 12px; line-height: 1.45; }
+.cert-cocurricular { left: 10%; top: 64.7%; width: 81%; height: 6.0%; white-space: normal; font-size: 12px; line-height: 1.45; }
+.cert-head-name { left: 48%; top: 72.5%; max-width: 41%; }
+.cert-issue { left: 26%; top: 81.1%; }
+.cert-signature { position: absolute; z-index: 3; object-fit: contain; background: rgba(255,255,255,.92); }
+.cert-pupil-signature { left: 20%; top: 71.1%; width: 20%; height: 5%; }
+.cert-head-signature { left: 62%; top: 75.0%; width: 25%; height: 5%; }
+@media print { .leaving-certificate-preview { width: 210mm; height: 297mm; } }

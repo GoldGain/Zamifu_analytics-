@@ -20,6 +20,7 @@ export interface SchoolData {
   address: string | null;
   phone: string | null;
   email: string | null;
+  curriculum: string | null;
   motto: string | null;
   principal_name: string | null;
 }
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Use type cast to avoid TypeScript errors with columns like motto
       const { data, error } = await (supabase as any)
         .from('schools')
-        .select('id, name, logo_url, address, phone, email, motto, principal_name')
+        .select('id, name, logo_url, address, phone, email, curriculum, motto, principal_name')
         .eq('id', schoolId)
         .maybeSingle();
 
@@ -108,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           address: data.address || null,
           phone: data.phone || null,
           email: data.email || null,
+          curriculum: data.curriculum || null,
           motto: data.motto || null,
           principal_name: data.principal_name || null,
         });

@@ -44,6 +44,7 @@ import SuperAdminAnalytics from '@/pages/dashboard/super-admin/Analytics';
 import SuperAdminSettings from '@/pages/dashboard/super-admin/Settings';
 import SchoolAdminDashboard from '@/pages/dashboard/school-admin/Dashboard';
 import SchoolAdminStudents from '@/pages/dashboard/school-admin/Students';
+import SchoolAdminLeavingCertificate from '@/pages/dashboard/school-admin/LeavingCertificate';
 import SchoolAdminBulkStudentImport from '@/pages/dashboard/school-admin/BulkStudentImport';
 import SchoolAdminGraduatedStudents from '@/pages/dashboard/school-admin/GraduatedStudents';
 import SchoolAdminTeachers from '@/pages/dashboard/school-admin/Teachers';
@@ -261,6 +262,7 @@ function AppRoutes() {
       <Route path="/school-admin/promote-next-term" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
       <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><Navigate to="/school-admin/dashboard" replace /></ProtectedRoute>} />
       <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminStudents /></ProtectedRoute>} />
+      <Route path="/school-admin/leaving-certificate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminLeavingCertificate /></ProtectedRoute>} />
       <Route path="/school-admin/recycle-bin" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminRecycleBin /></ProtectedRoute>} />
       <Route path="/school-admin/students/bulk-import" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBulkStudentImport /></ProtectedRoute>} />
       <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminGraduatedStudents /></ProtectedRoute>} />

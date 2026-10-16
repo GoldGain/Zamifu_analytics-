@@ -89,6 +89,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/school-admin/dashboard' },
     { label: 'Promote Next Term', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/promote-next-term' },
     { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/school-admin/students' },
+    { label: 'Leaving Certificate', icon: <FileText className="w-5 h-5" />, path: '/school-admin/leaving-certificate' },
     { label: 'Recycle Bin', icon: <Trash2 className="w-5 h-5" />, path: '/school-admin/recycle-bin' },
     { label: 'Bulk Student Upload', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/school-admin/students/bulk-import' },
     { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/school-admin/attendance' },
@@ -250,6 +251,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const roleKey = user?.role?.replace(/_/g, '-') || '';
   let navItems = [...(navConfig[roleKey] || [])];
+  if (user?.role === 'school_admin' && !['8-4-4', '844'].some((value) => String(schoolData?.curriculum || '').toLowerCase().includes(value))) {
+    navItems = navItems.filter((item) => item.path !== '/school-admin/leaving-certificate');
+  }
 
   // Add Assessments nav link for DoS users
   if (user?.role === 'teacher' && isDoS) {
