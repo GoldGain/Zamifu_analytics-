@@ -251,9 +251,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const roleKey = user?.role?.replace(/_/g, '-') || '';
   let navItems = [...(navConfig[roleKey] || [])];
-  if (user?.role === 'school_admin' && !['8-4-4', '844'].some((value) => String(schoolData?.curriculum || '').toLowerCase().includes(value))) {
-    navItems = navItems.filter((item) => item.path !== '/school-admin/leaving-certificate');
-  }
 
   // Add Assessments nav link for DoS users
   if (user?.role === 'teacher' && isDoS) {

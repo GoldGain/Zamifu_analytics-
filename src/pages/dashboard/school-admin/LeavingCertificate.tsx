@@ -60,15 +60,13 @@ export default function LeavingCertificate() {
       setStudents((data || []).filter((student: StudentRecord) => {
         const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
         const level = Number(cls?.level ?? cls?.grade_level);
-        return level >= 1 && level <= 8 && String(cls?.curriculum || student.curriculum || '').toLowerCase() !== 'cbe';
+        return level >= 1 && level <= 8;
       }));
       setLoading(false);
     })();
   }, [user?.schoolId]);
 
   const selectedStudent = students.find((student) => student.id === selectedId);
-  const schoolCurriculum = String(schoolData?.curriculum || '').toLowerCase();
-  const is844 = Boolean(schoolData) && (schoolCurriculum.includes('8-4-4') || schoolCurriculum.includes('844'));
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return students;
@@ -125,14 +123,12 @@ export default function LeavingCertificate() {
     setCertificate((current) => current ? ({ ...current, [kind === 'pupil' ? 'pupilSignatureUrl' : 'headTeacherSignatureUrl']: url, [kind === 'pupil' ? 'pupilSignatureType' : 'headTeacherSignatureType']: type }) : current);
   };
 
-  if (!is844) return <div className="p-8"><div className="bg-amber-50 border border-amber-200 rounded-xl p-6"><h1 className="text-xl font-bold">Leaving Certificate unavailable</h1><p className="mt-2 text-sm text-amber-800">This feature is available only for schools using the 8-4-4 curriculum.</p></div></div>;
-
   return <div className="p-4 md:p-8 space-y-6">
-    <div><div className="flex items-center gap-3"><FileText className="w-8 h-8 text-[#2563EB]" /><h1 className="text-2xl font-bold">Kenya Primary School Leaving Certificate</h1></div><p className="text-sm text-gray-500 mt-1">Prepare, review, sign and print the official one-page certificate.</p></div>
+    <div><div className="flex items-center gap-3"><FileText className="w-8 h-8 text-[#2563EB]" /><h1 className="text-2xl font-bold">Kenya Primary School Leaving Certificate</h1></div><p className="text-sm text-gray-500 mt-1">Prepare, review, sign and print the official one-page certificate. The supplied official certificate artwork is used as the fixed A4 template.</p></div>
     <div className="grid xl:grid-cols-[360px_1fr] gap-6 items-start">
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <label className="block text-sm font-medium">Select learner</label><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or admission no." className="w-full border rounded-lg px-3 py-2 text-sm" />
-        <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose an 8-4-4 learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
+        <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose a primary learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
         {certificate && <>
           <div className="border-t pt-4 space-y-3"><h2 className="font-semibold">Certificate details</h2>
             {([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['dateOfBirth', 'Date of birth'], ['dateEnrolled', 'Date enrolled'], ['standard', 'Current standard']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} readOnly className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-gray-50" /></label>)}
