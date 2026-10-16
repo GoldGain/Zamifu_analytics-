@@ -11,7 +11,13 @@ export function truncateAtWord(value: string, limit: number): string {
 
 function bounded(value: string, limit: number) { return truncateAtWord(value.replace(/\s+/g, ' ').trim(), limit); }
 
-export function generateLeavingCertificateComments(results: any[], clubs: string | null | undefined, notes = '') {
+export interface LeavingCertificateResult {
+  marks?: number | string | null;
+  out_of?: number | string | null;
+  percentage?: number | string | null;
+}
+
+export function generateLeavingCertificateComments(results: LeavingCertificateResult[], clubs: string | null | undefined, notes = '') {
   const percentages = (results || []).map((row) => {
     const outOf = Number(row.out_of || 100);
     return Number(row.percentage ?? (outOf ? (Number(row.marks || 0) / outOf) * 100 : 0));

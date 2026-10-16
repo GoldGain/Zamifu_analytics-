@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Download, FileText, Loader2, Printer, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import DigitalSignature from '@/components/DigitalSignature';
 import { CONDUCT_CATEGORIES, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
+import type { LeavingCertificateResult } from '@/lib/leavingCertificate';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-function CertificatePreview({ data, previewRef, schoolName, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: any) {
+type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
+type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
+type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null };
+type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; schoolName: string; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
+
+function CertificatePreview({ data, previewRef, schoolName, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
   return <div ref={previewRef} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
     <img className="leaving-certificate-template" src="/certificates/kenya-primary-school-leaving-certificate-official.png" alt="Official Kenya Primary School Leaving Certificate template" />
     <div className="cert-value cert-name">{data.learnerName}</div>
@@ -31,10 +37,10 @@ function CertificatePreview({ data, previewRef, schoolName, headTeacherName, pup
 
 export default function LeavingCertificate() {
   const { user, schoolData } = useAuth();
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<StudentRecord[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [certificate, setCertificate] = useState<any | null>(null);
-  const [results, setResults] = useState<any[]>([]);
+  const [certificate, setCertificate] = useState<CertificateState | null>(null);
+  const [results, setResults] = useState<LeavingCertificateResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -51,7 +57,7 @@ export default function LeavingCertificate() {
         .or('is_active.eq.true,is_active.is.null')
         .order('last_name', { ascending: true }).limit(2000);
       if (error) toast.error(error.message);
-      setStudents((data || []).filter((student: any) => {
+      setStudents((data || []).filter((student: StudentRecord) => {
         const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
         const level = Number(cls?.level ?? cls?.grade_level);
         return level >= 1 && level <= 8 && String(cls?.curriculum || student.curriculum || '').toLowerCase() !== 'cbe';
@@ -61,7 +67,7 @@ export default function LeavingCertificate() {
   }, [user?.schoolId]);
 
   const selectedStudent = students.find((student) => student.id === selectedId);
-  const schoolCurriculum = String((schoolData as any)?.curriculum || '').toLowerCase();
+  const schoolCurriculum = String(schoolData?.curriculum || '').toLowerCase();
   const is844 = Boolean(schoolData) && (schoolCurriculum.includes('8-4-4') || schoolCurriculum.includes('844'));
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -69,7 +75,7 @@ export default function LeavingCertificate() {
     return students.filter((student) => `${student.first_name} ${student.middle_name || ''} ${student.last_name} ${student.admission_number}`.toLowerCase().includes(q));
   }, [students, search]);
 
-  const loadCertificate = async (student: any) => {
+  const loadCertificate = async (student: StudentRecord | undefined) => {
     if (!student) return;
     setSelectedId(student.id);
     const [{ data: saved }, { data: learnerResults }] = await Promise.all([
@@ -79,7 +85,6 @@ export default function LeavingCertificate() {
     setResults(learnerResults || []);
     const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
     const baseCertificate = {
-      previewRef,
       learnerName: `${student.first_name || ''} ${student.middle_name || ''} ${student.last_name || ''}`.replace(/\s+/g, ' ').trim(),
       admissionNumber: student.admission_number || '', dateOfBirth: student.date_of_birth || '', dateEnrolled: student.enrollment_date || '',
       dateLeft: saved?.date_left || student.date_left || today(), standard: String(cls?.level ?? cls?.grade_level ?? 1), standardLeft: String(saved?.standard_left ?? cls?.level ?? cls?.grade_level ?? 1),
@@ -95,11 +100,11 @@ export default function LeavingCertificate() {
     if (!certificate) return;
     setGenerating(true);
     const generated = generateLeavingCertificateComments(learnerResults, clubs, notes);
-    setCertificate((current: any) => ({ ...current, ...generated, conductComment: conductText(current.conductCategory, current.conductElaboration) }));
+    setCertificate((current) => current ? ({ ...current, academicComment: generated.academic_comment, cocurricularComment: generated.cocurricular_comment, conductComment: conductText(current.conductCategory, current.conductElaboration) }) : current);
     setGenerating(false);
   };
 
-  const update = (key: string, value: string) => setCertificate((current: any) => ({ ...current, [key]: value }));
+  const update = (key: keyof CertificateState, value: string) => setCertificate((current) => current ? ({ ...current, [key]: value }) : current);
 
   const save = async () => {
     if (!certificate || !user?.schoolId || !selectedStudent) return;
@@ -117,7 +122,7 @@ export default function LeavingCertificate() {
   };
 
   const saveSignature = async (kind: 'pupil' | 'head', url: string, type: 'drawn' | 'uploaded') => {
-    setCertificate((current: any) => ({ ...current, [kind === 'pupil' ? 'pupilSignatureUrl' : 'headTeacherSignatureUrl']: url, [kind === 'pupil' ? 'pupilSignatureType' : 'headTeacherSignatureType']: type }));
+    setCertificate((current) => current ? ({ ...current, [kind === 'pupil' ? 'pupilSignatureUrl' : 'headTeacherSignatureUrl']: url, [kind === 'pupil' ? 'pupilSignatureType' : 'headTeacherSignatureType']: type }) : current);
   };
 
   if (!is844) return <div className="p-8"><div className="bg-amber-50 border border-amber-200 rounded-xl p-6"><h1 className="text-xl font-bold">Leaving Certificate unavailable</h1><p className="mt-2 text-sm text-amber-800">This feature is available only for schools using the 8-4-4 curriculum.</p></div></div>;
@@ -130,7 +135,7 @@ export default function LeavingCertificate() {
         <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose an 8-4-4 learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
         {certificate && <>
           <div className="border-t pt-4 space-y-3"><h2 className="font-semibold">Certificate details</h2>
-            {([['learnerName','Learner name',true],['admissionNumber','Admission number',true],['dateOfBirth','Date of birth',true],['dateEnrolled','Date enrolled',true],['standard','Current standard',true]] as any[]).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={certificate[key] || ''} readOnly className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-gray-50" /></label>)}
+            {([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['dateOfBirth', 'Date of birth'], ['dateEnrolled', 'Date enrolled'], ['standard', 'Current standard']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} readOnly className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-gray-50" /></label>)}
             <label className="block text-xs font-medium text-gray-600">Date left<input type="date" value={certificate.dateLeft} onChange={(e) => update('dateLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
             <label className="block text-xs font-medium text-gray-600">Standard left<select value={certificate.standardLeft} onChange={(e) => update('standardLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{[1,2,3,4,5,6,7,8].map((n) => <option key={n}>{n}</option>)}</select></label>
             <label className="block text-xs font-medium text-gray-600">Date of issue<input type="date" value={certificate.dateOfIssue} onChange={(e) => update('dateOfIssue', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
