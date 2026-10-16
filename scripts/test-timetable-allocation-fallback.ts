@@ -51,6 +51,7 @@ const werughaCreativeArtsIssues = getExactGridAssignmentIssues({
   totalLessons: 8,
 });
 assert.equal(werughaCreativeArtsIssues.length, 1);
+assert.match(werughaCreativeArtsIssues[0].message, /5 weekly lessons require at least 4 available weekdays, but only 1 weekday is allowed \(Thursday\)\./);
 assert.match(werughaCreativeArtsIssues[0].message, /At most 2 of 5 can fit/);
 assert.match(werughaCreativeArtsIssues[0].message, /3 would remain unscheduled/);
 assert.match(werughaCreativeArtsIssues[0].message, /No timetable is saved/);

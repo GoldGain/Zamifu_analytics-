@@ -442,6 +442,12 @@ export function getExactGridAssignmentIssues(options: {
       const maxSchedulableLessons = Math.min(lessons, allowedDays.length + (canUseDouble ? 1 : 0));
       if (allowedDays.length < requiredDistinctDays) {
         const unscheduled = lessons - maxSchedulableLessons;
+        const lessonLabel = `${lessons} weekly lesson${lessons === 1 ? '' : 's'}`;
+        const lessonVerb = lessons === 1 ? 'requires' : 'require';
+        const requiredDaysLabel = `${requiredDistinctDays} available weekday${requiredDistinctDays === 1 ? '' : 's'}`;
+        const allowedDaysLabel = allowedDays.length === 1
+          ? 'only 1 weekday is'
+          : `only ${allowedDays.length} weekdays are`;
         const capacityNote = unscheduled > 0
           ? ` At most ${maxSchedulableLessons} of ${lessons} can fit these weekdays under the one-appearance-per-day rule${canUseDouble ? ' and one-double-per-week limit' : ''}; ${unscheduled} would remain unscheduled. No timetable is saved until the assignment is corrected.`
           : '';
@@ -449,7 +455,7 @@ export function getExactGridAssignmentIssues(options: {
           classId,
           className: formatClassStream(cls) || `Class ${classId}`,
           subjectName,
-          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: ${lessons} weekly lessons require at least ${requiredDistinctDays} available weekdays, but only ${allowedDays.length} are allowed (${allowedDays.join(', ') || 'none'}).${capacityNote}`,
+          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: ${lessonLabel} ${lessonVerb} at least ${requiredDaysLabel}, but ${allowedDaysLabel} allowed (${allowedDays.join(', ') || 'none'}).${capacityNote}`,
         });
       }
 
