@@ -39,15 +39,15 @@ export function generateLeavingCertificateComments(results: LeavingCertificateRe
         'Demonstrates developing academic ability and a basic understanding of the approved Standard course. The pupil has shown willingness to learn and will benefit from continued practice, encouragement and close guidance in future studies.',
         'Has made worthwhile progress in the approved Standard course and shows developing academic ability. Continued effort, support and regular practice will help the pupil strengthen understanding and achieve further success.',
       ];
-  const academic = bounded(academicTemplates[Math.round(best + average) % academicTemplates.length], 220);
+  const academic = bounded(academicTemplates[Math.round(best + average) % academicTemplates.length], 175);
   const activity = (clubs || '').trim();
   const cocurricular = activity
     ? bounded(`The pupil participated in ${activity} and contributed positively to the wider school community during their time at the school.`, 140)
-    : 'The pupil participated in school activities and contributed positively to the wider school community during their time at the school.';
+    : 'Participated in school activities and contributed positively.';
   const cleanNotes = notes.trim();
   return {
     academic_comment: academic,
-    cocurricular_comment: bounded(cocurricular, 140),
+    cocurricular_comment: bounded(cocurricular, 80),
     notes_hint: cleanNotes ? bounded(cleanNotes, 140) : '',
   };
 }
