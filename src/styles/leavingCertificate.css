@@ -17,5 +17,6 @@
 .cert-signature { position: absolute; z-index: 3; object-fit: contain; background: rgba(255,255,255,.92); }
 .cert-pupil-signature { left: 20%; top: 69.2%; width: 20%; height: 4%; }
 .cert-head-signature { left: 62%; top: 75.0%; width: 25%; height: 5%; }
+.cert-school-stamp { left: 50%; top: 80.2%; width: 38%; height: 9%; opacity: .88; }
 .certificate-bulk-renderer { position: fixed; left: -100000px; top: 0; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
 @media print { .leaving-certificate-preview { width: 8.5in; height: 11in; } }

@@ -12,7 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
 type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
-type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null };
+type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; standard: string; standardLeft: string; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null; schoolStampUrl: string | null; schoolStampType: string | null };
 type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
 function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
   return <div ref={previewRef} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
@@ -30,6 +30,7 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     {pupilSignatureUrl && <img className="cert-signature cert-pupil-signature" src={pupilSignatureUrl} alt="Pupil signature" />}
     <div className="cert-value cert-head-name">{data.headTeacherName || headTeacherName || ''}</div>
     {headTeacherSignatureUrl && <img className="cert-signature cert-head-signature" src={headTeacherSignatureUrl} alt="Head teacher signature" />}
+    {data.schoolStampUrl && <img className="cert-signature cert-school-stamp" src={data.schoolStampUrl} alt="Official school rubber stamp" />}
     <div className="cert-value cert-issue">{formatCertificateDate(data.dateOfIssue)}</div>
   </div>;
 }
@@ -88,7 +89,7 @@ export default function LeavingCertificate() {
       dateLeft: saved?.date_left || student.date_left || today(), standard: String(cls?.level ?? cls?.grade_level ?? 1), standardLeft: String(saved?.standard_left ?? cls?.level ?? cls?.grade_level ?? 1),
       dateOfIssue: saved?.date_of_issue || today(), headTeacherName: saved?.head_teacher_name || schoolData?.principal_name || '', conductCategory: (saved?.conduct_category || 'Good') as ConductCategory, conductElaboration: saved?.conduct_elaboration || '',
       academicComment: saved?.academic_comment || '', cocurricularComment: saved?.cocurricular_comment || '', conductComment: saved?.conduct_comment || '', extraNotes: saved?.extra_notes || '',
-      pupilSignatureUrl: saved?.pupil_signature_url || null, pupilSignatureType: saved?.pupil_signature_type || null, headTeacherSignatureUrl: saved?.head_teacher_signature_url || null, headTeacherSignatureType: saved?.head_teacher_signature_type || null,
+      pupilSignatureUrl: saved?.pupil_signature_url || null, pupilSignatureType: saved?.pupil_signature_type || null, headTeacherSignatureUrl: saved?.head_teacher_signature_url || null, headTeacherSignatureType: saved?.head_teacher_signature_type || null, schoolStampUrl: saved?.school_stamp_url || null, schoolStampType: saved?.school_stamp_type || null,
     };
     const certificate = saved ? baseCertificate : { ...baseCertificate, ...generateLeavingCertificateComments(learnerResults || [], student.club_memberships, ''), conductComment: conductText(baseCertificate.conductCategory, baseCertificate.conductElaboration) };
     return { certificate, results: (learnerResults || []) as LeavingCertificateResult[] };
@@ -120,22 +121,24 @@ export default function LeavingCertificate() {
       school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: Number(certificate.standardLeft), date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
       conduct_category: certificate.conductCategory, conduct_elaboration: certificate.conductElaboration || null, academic_comment: certificate.academicComment, cocurricular_comment: certificate.cocurricularComment,
       conduct_comment: conductText(certificate.conductCategory, certificate.conductElaboration), extra_notes: certificate.extraNotes || null, pupil_signature_url: certificate.pupilSignatureUrl || null,
-      pupil_signature_type: certificate.pupilSignatureType || null, head_teacher_signature_url: certificate.headTeacherSignatureUrl || null, head_teacher_signature_type: certificate.headTeacherSignatureType || null, updated_at: new Date().toISOString(),
+      pupil_signature_type: certificate.pupilSignatureType || null, head_teacher_signature_url: certificate.headTeacherSignatureUrl || null, head_teacher_signature_type: certificate.headTeacherSignatureType || null, school_stamp_url: certificate.schoolStampUrl || null, school_stamp_type: certificate.schoolStampType || null, updated_at: new Date().toISOString(),
     };
     const { error } = await supabaseUntyped.from('leaving_certificates').upsert(payload, { onConflict: 'school_id,student_id' });
     if (error) toast.error(error.message); else { await supabaseUntyped.from('students').update({ date_left: certificate.dateLeft }).eq('id', selectedStudent.id).eq('school_id', user.schoolId); toast.success('Leaving certificate saved.'); }
     setSaving(false);
   };
 
-  const saveSignature = async (kind: 'pupil' | 'head', url: string, type: 'drawn' | 'uploaded') => {
-    setCertificate((current) => current ? ({ ...current, [kind === 'pupil' ? 'pupilSignatureUrl' : 'headTeacherSignatureUrl']: url, [kind === 'pupil' ? 'pupilSignatureType' : 'headTeacherSignatureType']: type }) : current);
+  const saveSignature = async (kind: 'pupil' | 'head' | 'stamp', url: string, type: 'drawn' | 'uploaded') => {
+    const urlKey = kind === 'pupil' ? 'pupilSignatureUrl' : kind === 'head' ? 'headTeacherSignatureUrl' : 'schoolStampUrl';
+    const typeKey = kind === 'pupil' ? 'pupilSignatureType' : kind === 'head' ? 'headTeacherSignatureType' : 'schoolStampType';
+    setCertificate((current) => current ? ({ ...current, [urlKey]: url, [typeKey]: type }) : current);
   };
 
   const toggleBulkStudent = (studentId: string) => setSelectedBulkIds((current) => current.includes(studentId) ? current.filter((id) => id !== studentId) : [...current, studentId]);
   const startManualCertificate = () => {
     setSelectedId('');
     setResults([]);
-    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), standard: '8', standardLeft: '8', dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null });
+    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), standard: '8', standardLeft: '8', dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
   };
   const generateBulk = async () => {
     if (!selectedBulkIds.length) return toast.error('Select at least one learner for bulk generation.');
@@ -195,6 +198,7 @@ export default function LeavingCertificate() {
           <div className="space-y-3"><label className="block text-xs font-medium text-gray-600">Academic ability comment ({certificate.academicComment.length}/220)<textarea maxLength={220} value={certificate.academicComment} onChange={(e) => update('academicComment', e.target.value)} rows={4} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Conduct comment ({certificate.conductComment.length}/140)<textarea maxLength={140} value={certificate.conductComment} onChange={(e) => update('conductComment', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Co-curricular comment ({certificate.cocurricularComment.length}/140)<textarea maxLength={140} value={certificate.cocurricularComment} onChange={(e) => update('cocurricularComment', e.target.value)} rows={3} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label></div>
           <DigitalSignature title="Pupil's signature" subtitle="Draw or upload the pupil's signature." existingSignatureUrl={certificate.pupilSignatureUrl} existingSignatureType={certificate.pupilSignatureType} onSave={(url, type) => saveSignature('pupil', url, type)} />
           <DigitalSignature title="Head teacher's signature" subtitle="Draw or upload the head teacher's signature." existingSignatureUrl={certificate.headTeacherSignatureUrl} existingSignatureType={certificate.headTeacherSignatureType} onSave={(url, type) => saveSignature('head', url, type)} />
+          <DigitalSignature title="Official school rubber stamp" subtitle="Upload the official school stamp image for the stamp box." existingSignatureUrl={certificate.schoolStampUrl} existingSignatureType={certificate.schoolStampType} onSave={(url, type) => saveSignature('stamp', url, type)} />
           <div className="flex flex-wrap gap-2"><button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium"><Save className="w-4 h-4" />{saving ? 'Saving…' : 'Save'}</button><button onClick={() => previewRef.current && downloadLeavingCertificate(previewRef.current, `${certificate.learnerName}-leaving-certificate.pdf`)} className="flex-1 flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-2.5 text-sm"><Download className="w-4 h-4" />Download PDF</button><button onClick={() => previewRef.current && printLeavingCertificate(previewRef.current)} className="flex-1 flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-2.5 text-sm"><Printer className="w-4 h-4" />Print</button></div>
         </>}
       </section>
