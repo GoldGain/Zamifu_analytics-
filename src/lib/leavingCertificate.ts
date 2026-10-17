@@ -115,15 +115,38 @@ export function formatCertificateDate(value?: string | null) {
 }
 
 export async function downloadLeavingCertificate(element: HTMLElement, filename: string) {
+  const width = 816;
+  const height = 1056;
   const canvas = await html2canvas(element, {
     scale: 2,
     useCORS: true,
     backgroundColor: '#fff',
-    width: element.scrollWidth,
-    height: element.scrollHeight,
+    width,
+    height,
+    windowWidth: width,
+    windowHeight: height,
+    scrollX: 0,
+    scrollY: 0,
+    onclone: (clonedDocument) => {
+      const clonedElement = clonedDocument.querySelector('.leaving-certificate-preview') as HTMLElement | null;
+      if (!clonedElement) return;
+      clonedElement.style.width = `${width}px`;
+      clonedElement.style.height = `${height}px`;
+      clonedElement.style.minWidth = `${width}px`;
+      clonedElement.style.maxWidth = `${width}px`;
+      clonedElement.style.transform = 'none';
+      clonedElement.style.margin = '0';
+      const template = clonedElement.querySelector('.leaving-certificate-template') as HTMLImageElement | null;
+      if (template) {
+        template.style.width = `${width}px`;
+        template.style.height = `${height}px`;
+      }
+    },
   });
   const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait', compress: true });
-  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 612, 792, undefined, 'FAST');
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
   pdf.save(filename);
 }
 
