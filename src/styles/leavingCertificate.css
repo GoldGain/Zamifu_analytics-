@@ -35,15 +35,14 @@
   text-overflow: ellipsis;
 }
 
-/* Native coords × 0.64 */
-.cert-name { left: 251px; top: 291px; width: 250px; height: 16px; }
-.cert-admission { left: 579px; top: 291px; width: 90px; height: 16px; font-size: 11px; }
-.cert-dob { left: 198px; top: 331px; width: 96px; height: 16px; font-size: 11px; }
-.cert-enrolled { left: 378px; top: 331px; width: 288px; height: 16px; font-size: 11px; }
-.cert-school { left: 320px; top: 370px; width: 160px; height: 16px; font-size: 11px; }
-.cert-standard { left: 595px; top: 370px; width: 70px; height: 16px; font-size: 11px; }
-.cert-left { left: 186px; top: 410px; width: 179px; height: 16px; font-size: 11px; }
-.cert-standard-left { left: 403px; top: 449px; width: 179px; height: 16px; font-size: 11px; }
+.cert-name { left: 256px; top: 291px; width: 256px; height: 16px; }
+.cert-admission { left: 605px; top: 291px; width: 64px; height: 16px; font-size: 11px; }
+.cert-dob { left: 211px; top: 331px; width: 90px; height: 16px; font-size: 11px; }
+.cert-enrolled { left: 384px; top: 331px; width: 275px; height: 16px; font-size: 11px; }
+.cert-school { left: 326px; top: 370px; width: 154px; height: 16px; font-size: 11px; }
+.cert-standard { left: 611px; top: 370px; width: 58px; height: 16px; font-size: 11px; }
+.cert-left { left: 195px; top: 410px; width: 166px; height: 16px; font-size: 11px; }
+.cert-standard-left { left: 416px; top: 449px; width: 109px; height: 16px; font-size: 11px; }
 
 .cert-academic,
 .cert-conduct,
@@ -59,35 +58,35 @@
 }
 
 .cert-academic {
-  left: 77px;
+  left: 80px;
   top: 487px;
-  width: 595px;
+  width: 590px;
   height: 86px;
   font-size: 11px;
   line-height: 29.4px;
-  text-indent: 406px;
+  text-indent: 438px;
 }
 .cert-conduct {
-  left: 77px;
+  left: 80px;
   top: 595px;
-  width: 595px;
+  width: 590px;
   height: 58px;
   font-size: 11px;
   line-height: 29.4px;
-  text-indent: 121px;
+  text-indent: 150px;
 }
 .cert-cocurricular {
-  left: 77px;
+  left: 80px;
   top: 654px;
-  width: 595px;
+  width: 590px;
   height: 58px;
   font-size: 11px;
   line-height: 29.4px;
-  text-indent: 371px;
+  text-indent: 397px;
 }
 
-.cert-head-name { left: 525px; top: 714px; width: 141px; height: 16px; font-size: 11px; }
-.cert-issue { left: 186px; top: 818px; width: 160px; height: 16px; font-size: 11px; }
+.cert-head-name { left: 550px; top: 714px; width: 112px; height: 16px; font-size: 11px; }
+.cert-issue { left: 195px; top: 818px; width: 147px; height: 16px; font-size: 11px; }
 
 .cert-signature {
   position: absolute;
@@ -96,8 +95,8 @@
   background: transparent;
 }
 .cert-pupil-signature { left: 128px; top: 758px; width: 160px; height: 45px; }
-.cert-head-signature { left: 525px; top: 774px; width: 160px; height: 45px; }
-.cert-school-stamp { left: 525px; top: 870px; width: 160px; height: 58px; }
+.cert-head-signature { left: 531px; top: 774px; width: 154px; height: 45px; }
+.cert-school-stamp { left: 531px; top: 870px; width: 154px; height: 58px; }
 
 .certificate-bulk-renderer {
   position: fixed;

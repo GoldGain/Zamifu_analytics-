@@ -131,11 +131,14 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
     if (!content) return;
     pdf.setFontSize(size);
     let fit = size;
-    while (fit > 8 && pdf.getTextWidth(content) > maxWidth * sx) {
-      fit -= 0.4;
+    while (fit > 7 && pdf.getTextWidth(content) > maxWidth * sx) {
+      fit -= 0.3;
       pdf.setFontSize(fit);
     }
-    const clipped = pdf.splitTextToSize(content, maxWidth * sx)[0] as string;
+    let clipped = content;
+    while (clipped.length > 3 && pdf.getTextWidth(clipped) > maxWidth * sx) {
+      clipped = clipped.slice(0, -2).trimEnd();
+    }
     pdf.text(clipped, x * sx, y * sy, { baseline: 'alphabetic' });
   };
 
@@ -152,25 +155,25 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
     });
   };
 
-  writeLine(value('.cert-name'), 392, 471, 11, 390);
-  writeLine(value('.cert-admission'), 905, 471, 10, 140);
-  writeLine(value('.cert-dob'), 310, 533, 10, 150);
-  writeLine(value('.cert-enrolled'), 590, 533, 10, 450);
-  writeLine(value('.cert-school'), 500, 595, 10, 250);
-  writeLine(value('.cert-standard'), 930, 595, 10, 110);
-  writeLine(value('.cert-left'), 290, 656, 10, 280);
-  writeLine(value('.cert-standard-left'), 630, 718, 10, 280);
+  writeLine(value('.cert-name'), 400, 471, 10, 400);
+  writeLine(value('.cert-admission'), 945, 471, 9.5, 100);
+  writeLine(value('.cert-dob'), 330, 533, 10, 140);
+  writeLine(value('.cert-enrolled'), 600, 533, 10, 430);
+  writeLine(value('.cert-school'), 510, 595, 10, 240);
+  writeLine(value('.cert-standard'), 955, 595, 10, 90);
+  writeLine(value('.cert-left'), 305, 656, 10, 260);
+  writeLine(value('.cert-standard-left'), 650, 718, 10, 170);
 
-  writeWrapped(value('.cert-academic'), 760, 778, 280, 121, 824, 920, 46, 10, 3);
-  writeWrapped(value('.cert-conduct'), 310, 947, 720, 121, 993, 920, 46, 10, 2);
-  writeWrapped(value('.cert-cocurricular'), 700, 1039, 340, 121, 1085, 920, 46, 10, 2);
+  writeWrapped(value('.cert-academic'), 810, 778, 230, 125, 824, 910, 46, 10, 3);
+  writeWrapped(value('.cert-conduct'), 360, 947, 670, 125, 993, 910, 46, 10, 2);
+  writeWrapped(value('.cert-cocurricular'), 745, 1039, 290, 125, 1085, 910, 46, 10, 2);
 
-  writeLine(value('.cert-head-name'), 820, 1131, 10, 220);
-  writeLine(value('.cert-issue'), 290, 1294, 10, 250);
+  writeLine(value('.cert-head-name'), 860, 1131, 10, 175);
+  writeLine(value('.cert-issue'), 305, 1294, 10, 230);
 
   await addOptionalImage(pdf, element.querySelector('.cert-pupil-signature') as HTMLImageElement | null, 200, 1185, 250, 70, sx, sy);
-  await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 820, 1210, 250, 70, sx, sy);
-  await addOptionalImage(pdf, element.querySelector('.cert-school-stamp') as HTMLImageElement | null, 820, 1360, 250, 90, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 830, 1210, 240, 70, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-school-stamp') as HTMLImageElement | null, 830, 1360, 240, 90, sx, sy);
   pdf.save(filename);
 }
 
