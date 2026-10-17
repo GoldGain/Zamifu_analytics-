@@ -77,6 +77,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Payments', icon: <DollarSign className="w-5 h-5" />, path: '/reseller-admin/payments' },
     { label: 'Pricing', icon: <CreditCard className="w-5 h-5" />, path: '/reseller-admin/pricing' },
     { label: 'Access Control', icon: <Shield className="w-5 h-5" />, path: '/reseller-admin/access-control' },
+    { label: 'School Subscriptions', icon: <Shield className="w-5 h-5" />, path: '/reseller-admin/subscriptions' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/reseller-admin/change-password' },
   ],
   'super-admin': [
@@ -96,6 +97,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Graduated Students', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/graduated-students' },
     { label: 'Teachers', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teachers' },
     { label: 'Bursars', icon: <WalletCards className="w-5 h-5" />, path: '/school-admin/bursars' },
+    { label: 'Staff Payroll', icon: <DollarSign className="w-5 h-5" />, path: '/school-admin/payroll' },
     { label: 'Grades', icon: <School className="w-5 h-5" />, path: '/school-admin/classes' },
     { label: 'Learning Areas', icon: <Library className="w-5 h-5" />, path: '/school-admin/subjects' },
     { label: 'Library', icon: <BookOpen className="w-5 h-5" />, path: '/school-admin/library' },

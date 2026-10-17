@@ -130,8 +130,10 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
 export function printLeavingCertificate(element: HTMLElement) {
   const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=1200');
   if (!printWindow) return;
-  printWindow.document.write(`<html><head><title>Kenya Primary School Leaving Certificate</title><style>@page{size:letter portrait;margin:0}body{margin:0;background:white}*{box-sizing:border-box}</style></head><body>${element.outerHTML}</body></html>`);
+  const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]'))
+    .map((node) => node.outerHTML).join('');
+  printWindow.document.write(`<html><head><title>Kenya Primary School Leaving Certificate</title>${styles}<style>@page{size:letter portrait;margin:0}body{margin:0;background:white}*{box-sizing:border-box}</style></head><body>${element.outerHTML}</body></html>`);
   printWindow.document.close();
   printWindow.focus();
-  window.setTimeout(() => { printWindow.print(); printWindow.close(); }, 300);
+  window.setTimeout(() => { printWindow.print(); printWindow.close(); }, 800);
 }

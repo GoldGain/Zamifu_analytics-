@@ -35,6 +35,7 @@ import ResellerPricing from '@/pages/dashboard/reseller-admin/Pricing';
 import ResellerStudents from '@/pages/dashboard/reseller-admin/Students';
 import ResellerCommunicate from '@/pages/dashboard/reseller-admin/Communicate';
 import ResellerSmsUsage from '@/pages/dashboard/reseller-admin/SmsUsage';
+import ResellerSubscriptions from '@/pages/dashboard/reseller-admin/Subscriptions';
 import SchoolPortalLockGate from '@/components/SchoolPortalLockGate';
 import { supabaseUntyped } from '@/lib/supabase/client';
 // Dashboard pages
@@ -76,6 +77,7 @@ import SchoolAdminSubscriptionReceipts from '@/pages/dashboard/school-admin/Subs
 import SchoolAdminActivityHistory from '@/pages/dashboard/school-admin/ActivityHistory';
 import SchoolAdminLibrary from '@/pages/dashboard/school-admin/Library';
 import SchoolAdminInventory from '@/pages/dashboard/school-admin/Inventory';
+import SchoolAdminPayroll from '@/pages/dashboard/school-admin/Payroll';
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
 import TeacherResultsUpload from '@/pages/dashboard/teacher/ResultsUpload';
@@ -249,6 +251,7 @@ function AppRoutes() {
       <Route path="/reseller-admin/students" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerStudents /></ProtectedRoute>} />
       <Route path="/reseller-admin/communicate" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerCommunicate /></ProtectedRoute>} />
       <Route path="/reseller-admin/sms-usage" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSmsUsage /></ProtectedRoute>} />
+      <Route path="/reseller-admin/subscriptions" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSubscriptions /></ProtectedRoute>} />
       <Route path="/reseller-admin/change-password" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerChangePassword /></ProtectedRoute>} />
       {/* Super Admin routes */}
       <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminDashboard /></ProtectedRoute>} />
@@ -268,6 +271,7 @@ function AppRoutes() {
       <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
       <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTeachers /></ProtectedRoute>} />
       <Route path="/school-admin/bursars" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBursars /></ProtectedRoute>} />
+      <Route path="/school-admin/payroll" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPayroll /></ProtectedRoute>} />
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClasses /></ProtectedRoute>} />
       <Route path="/school-admin/results" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminResults /></ProtectedRoute>} />
       <Route path="/school-admin/exam-generator" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><ExamGeneratorPage /></ProtectedRoute>} />

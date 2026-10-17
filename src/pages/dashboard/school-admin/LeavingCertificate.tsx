@@ -20,8 +20,8 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     <div className="cert-value cert-name">{data.learnerName}</div>
     <div className="cert-value cert-admission">{data.admissionNumber}</div>
     <div className="cert-value cert-dob">{formatCertificateDate(data.dateOfBirth)}</div>
-    <div className="cert-value cert-enrolled">{formatCertificateDate(data.dateEnrolled)}</div>
-    <div className="cert-value cert-school">{data.schoolName}</div>
+    <div className="cert-value cert-enrolled">{data.schoolName}</div>
+    <div className="cert-value cert-school">{formatCertificateDate(data.dateEnrolled)}</div>
     <div className="cert-value cert-standard">{data.standard}</div>
     <div className="cert-value cert-left">{formatCertificateDate(data.dateLeft)}</div>
     <div className="cert-value cert-standard-left">{leavingCertificateStandardLabel(data.standardLeft, data.standardCurriculum)}</div>
@@ -125,7 +125,7 @@ export default function LeavingCertificate() {
     const payload = {
       school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: standardLeft, date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
       conduct_category: certificate.conductCategory, conduct_elaboration: certificate.conductElaboration || null, academic_comment: certificate.academicComment, cocurricular_comment: certificate.cocurricularComment,
-      conduct_comment: conductText(certificate.conductCategory, certificate.conductElaboration), extra_notes: certificate.extraNotes || null, pupil_signature_url: certificate.pupilSignatureUrl || null,
+      conduct_comment: certificate.conductComment || conductText(certificate.conductCategory, certificate.conductElaboration), extra_notes: certificate.extraNotes || null, pupil_signature_url: certificate.pupilSignatureUrl || null,
       pupil_signature_type: certificate.pupilSignatureType || null, head_teacher_signature_url: certificate.headTeacherSignatureUrl || null, head_teacher_signature_type: certificate.headTeacherSignatureType || null, school_stamp_url: certificate.schoolStampUrl || null, school_stamp_type: certificate.schoolStampType || null, updated_at: new Date().toISOString(),
     };
     const { error } = await supabaseUntyped.from('leaving_certificates').upsert(payload, { onConflict: 'school_id,student_id' });
