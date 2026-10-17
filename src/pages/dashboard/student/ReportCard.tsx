@@ -33,7 +33,7 @@ import {
   DEFAULT_PDF_FONT_SIZE,
   type PdfFontSize,
 } from '@/lib/pdfFontSize';
-import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum, rankingPointsMaxForClass } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
@@ -336,7 +336,7 @@ export default function StudentReportCard() {
         48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
-        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Class, showOverallPositions },
+        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Class, is844: is844Class, showOverallPositions },
       );
 
       const qrOptions = { assessmentNumber: student.assessment_number };

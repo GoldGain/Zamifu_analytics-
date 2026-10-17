@@ -1,3 +1,4 @@
+import { rankingPointsMaxForClass } from '@/lib/grading';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getSchoolLevelBand, calculateGradeForClass, gradeLabelForClass, gradePointsMaxForClass, generateSubjectSpecificComment, is844Curriculum } from './grading';
@@ -976,7 +977,8 @@ export function drawStudentInfo(
     ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
     ['Class Position', showOverallPositions ? (positionDetails?.classPosition || position || '—') : '', ...(positionDetails?.streamPosition ? ['Stream Position', showOverallPositions ? positionDetails.streamPosition : '', 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
   ];
-  const showPathway = positionDetails?.showPathway || positionDetails?.is844;
+  // 8-4-4 report cards have no Pathway/Track: those belong to CBE only.
+  const showPathway = Boolean(positionDetails?.showPathway) && !positionDetails?.is844;
   const rows: string[][] = showPathway ? [
     ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment No.', assessmentNumber || '—'],
     ['Class', className || '—', 'Pathway', positionDetails?.pathway || '—', 'Track', positionDetails?.track || '—'],
@@ -998,7 +1000,7 @@ export function drawStudentInfo(
       cursor += w;
     });
   });
-  if (positionDetails?.overallDeviation) {
+  if (positionDetails?.overallDeviation && !positionDetails?.is844) {
     const value = positionDetails.overallDeviation;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 7));
     doc.setTextColor(value.startsWith('-') ? 190 : value === '—' ? 100 : 22, value.startsWith('-') ? 45 : value === '—' ? 100 : 128, value.startsWith('-') ? 45 : value === '—' ? 100 : 65);
@@ -1081,7 +1083,7 @@ export function drawResultsTable(
   tableBody.push(totalMarksRow);
   if (pointsMax > 0) {
     const totalPointsRow = new Array(tableHead.length).fill('');
-    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? averageIndex + 1 + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sevenSubjectRanking ? 56 : includedRows.length * pointsMax}`;
+    totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? averageIndex + 1 + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sevenSubjectRanking ? 7 * pointsMax : includedRows.length * pointsMax}`;
     tableBody.push(totalPointsRow);
   }
   doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
@@ -1191,6 +1193,7 @@ export function drawSummaryBox(
   const hasNumericResults = includedResults.length > 0;
   const totalMarks = rankingDetails?.totalMarks ?? includedResults.reduce((s, r) => s + (Number(r.marks || 0)), 0);
   const summaryPoints = rankingDetails?.totalPoints ?? totalPoints;
+  const rankingPointsMax = rankingPointsMaxForClass(classData);
   const overallGrading = hasNumericResults ? gradeFromPercentage(avgPercentage, classData) : null;
   doc.setFillColor(0, 137, 123); doc.rect(14, startY, 182, boxH, 'F');
   const fs = pdfFontSize(doc, COMPACT_MODE ? 7.2 : 8);
@@ -1201,7 +1204,7 @@ export function drawSummaryBox(
   doc.text(`Average: ${hasNumericResults ? `${avgPercentage.toFixed(1)}%` : 'N/A'}`, 130, startY + gap);
   doc.text(`Position: ${showOverallPositions ? position : ''}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading?.grade || 'N/A'}`, 65, startY + gap * 2);
-  if (!isPrimary) doc.text(`Total Points: ${hasNumericResults && summaryPoints !== null ? `${summaryPoints}${rankingDetails ? ' / 56' : ''}` : '—'}`, 130, startY + gap * 2);
+  if (!isPrimary) doc.text(`Total Points: ${hasNumericResults && summaryPoints !== null ? `${summaryPoints}${rankingDetails ? ` / ${rankingPointsMax}` : ''}` : '—'}`, 130, startY + gap * 2);
   if (streamPosition) {
     doc.text(`Stream Position: ${showOverallPositions ? streamPosition : ''}`, 20, startY + gap * 3);
   }
@@ -1209,7 +1212,7 @@ export function drawSummaryBox(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.4 : 6.1));
     const rankLabel = is844Curriculum(classData) ? 'KNEC 7-subject rank' : 'Senior 7-subject rank';
-    const text = `${rankLabel}: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints}/56 points; ${rankingDetails.totalMarks.toFixed(0)}/700 marks`;
+    const text = `${rankLabel}: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints}/${rankingPointsMax} points; ${rankingDetails.totalMarks.toFixed(0)}/700 marks`;
     const lines = doc.splitTextToSize(text, 174);
     doc.text(lines, 20, startY + (COMPACT_MODE ? 25 : 33));
   }

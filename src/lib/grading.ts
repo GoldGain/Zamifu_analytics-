@@ -150,20 +150,19 @@ export function calculateResultGrades(percentage: number, classData?: { curricul
 
 export function calculate844Grade(score: number): NumericGrade844 {
   const percentage = normalizePercentage(score);
-  // Ranking and report totals use the requested seven-subject / 56-point scale.
-  // The KNEC A–E labels remain unchanged; only their ranking points are mapped
-  // to the shared 1–8 range so no report can incorrectly show /84.
-  if (percentage >= 80) return { grade: 'A', points: 8, descriptor: 'Excellent', band: '844' };
-  if (percentage >= 75) return { grade: 'A-', points: 7, descriptor: 'Very Good', band: '844' };
-  if (percentage >= 70) return { grade: 'B+', points: 6, descriptor: 'Good', band: '844' };
-  if (percentage >= 65) return { grade: 'B', points: 5, descriptor: 'Good', band: '844' };
-  if (percentage >= 60) return { grade: 'B-', points: 4, descriptor: 'Good', band: '844' };
-  if (percentage >= 55) return { grade: 'C+', points: 3, descriptor: 'Average', band: '844' };
-  if (percentage >= 50) return { grade: 'C', points: 2, descriptor: 'Average', band: '844' };
-  if (percentage >= 45) return { grade: 'C-', points: 1, descriptor: 'Average', band: '844' };
-  if (percentage >= 40) return { grade: 'D+', points: 1, descriptor: 'Below Average', band: '844' };
-  if (percentage >= 35) return { grade: 'D', points: 1, descriptor: 'Below Average', band: '844' };
-  if (percentage >= 30) return { grade: 'D-', points: 1, descriptor: 'Below Average', band: '844' };
+  // Strict 8-4-4 (KNEC) scale: every grade carries the points below, so a
+  // seven-subject report totals 84 points (12 x 7), not 56.
+  if (percentage >= 80) return { grade: 'A', points: 12, descriptor: 'Excellent', band: '844' };
+  if (percentage >= 75) return { grade: 'A-', points: 11, descriptor: 'Very Good', band: '844' };
+  if (percentage >= 70) return { grade: 'B+', points: 10, descriptor: 'Good', band: '844' };
+  if (percentage >= 65) return { grade: 'B', points: 9, descriptor: 'Good', band: '844' };
+  if (percentage >= 60) return { grade: 'B-', points: 8, descriptor: 'Good', band: '844' };
+  if (percentage >= 55) return { grade: 'C+', points: 7, descriptor: 'Average', band: '844' };
+  if (percentage >= 50) return { grade: 'C', points: 6, descriptor: 'Average', band: '844' };
+  if (percentage >= 45) return { grade: 'C-', points: 5, descriptor: 'Average', band: '844' };
+  if (percentage >= 40) return { grade: 'D+', points: 4, descriptor: 'Below Average', band: '844' };
+  if (percentage >= 35) return { grade: 'D', points: 3, descriptor: 'Below Average', band: '844' };
+  if (percentage >= 30) return { grade: 'D-', points: 2, descriptor: 'Below Average', band: '844' };
   return { grade: 'E', points: 1, descriptor: 'Poor', band: '844' };
 }
 
@@ -200,12 +199,24 @@ export function gradePointsForClass(
 export function gradePointsMaxForClass(
   classData?: Parameters<typeof getSchoolLevelBand>[0],
 ): number {
-  if (is844Curriculum(classData)) return 8;
+  if (is844Curriculum(classData)) return 12;
   return getSchoolLevelBand(classData) === 'primary' ? 0 : 8;
 }
 
 // Descriptive alias for callers that prefer a getter-style helper name.
 export const getMaxPointsForClass = gradePointsMaxForClass;
+
+/**
+ * Maximum points a seven-subject ranking can reach on this class's scale.
+ * 8-4-4 = 84 (12 per subject); CBE senior/junior = 56 (8 per subject);
+ * primary = 0 because primary reports carry no points.
+ */
+export function rankingPointsMaxForClass(
+  classData?: Parameters<typeof getSchoolLevelBand>[0],
+): number {
+  const perSubject = gradePointsMaxForClass(classData);
+  return perSubject > 0 ? 7 * perSubject : 0;
+}
 
 export function gradeDisplayLabel(
   band: SchoolLevelBand,

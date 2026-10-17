@@ -31,7 +31,7 @@ import {
   DEFAULT_PDF_FONT_SIZE,
   type PdfFontSize,
 } from '@/lib/pdfFontSize';
-import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum, rankingPointsMaxForClass } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
@@ -396,7 +396,7 @@ export default function ParentChildReportCard() {
         photoUrl: selectedChild.photo_url || null,
       });
       const overallGrade = learnerMetrics?.count ? calculateGradeForClass(avgPercentage, classDataForGrading) : null;
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of 56` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading), is844: is844Curriculum(classDataForGrading), showOverallPositions });
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Curriculum(classDataForGrading), is844: is844Curriculum(classDataForGrading), showOverallPositions });
       const qrOptions = { assessmentNumber: selectedChild.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
       let currentY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 69 : 62, { showDeviation: previousAvg !== null, rankingDetails }) + 6;

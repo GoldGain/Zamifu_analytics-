@@ -9,7 +9,7 @@ import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
 import { deleteResults } from '@/lib/resultActions';
 
-import { calculateCompetencyGrade, calculateGradeForClass, curriculumCohortKey, gradePointsForClass, gradePointsMaxForClass, getSchoolLevelBand, is844Curriculum, getRequiredLearningAreas, getCanonicalLearningAreas, statusForGrade, gradeLabelsForBand } from '@/lib/grading';
+import { calculateCompetencyGrade, calculateGradeForClass, curriculumCohortKey, gradePointsForClass, gradePointsMaxForClass, getSchoolLevelBand, is844Curriculum, getRequiredLearningAreas, getCanonicalLearningAreas, statusForGrade, gradeLabelsForBand, rankingPointsMaxForClass } from '@/lib/grading';
 import { normalizeLearningAreaName, normalizeLearningAreas } from '@/lib/learningAreas';
 import type { SchoolLevelBand, SubjectResult } from '@/lib/grading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
@@ -329,7 +329,7 @@ function reportCardTotals(
   const totalMarks = rankingDetails?.totalMarks ?? includedRows.reduce((sum, row) => sum + Number(row.percentage ?? 0), 0);
   const totalMarksOutOf = usesSevenSubjectRanking(classData) ? 700 : includedRows.length * 100;
   const resolvedPoints = rankingDetails?.totalPoints ?? totalPoints;
-  const totalPointsOutOf = usesSevenSubjectRanking(classData) ? 56 : includedRows.length * 8;
+  const totalPointsOutOf = usesSevenSubjectRanking(classData) ? rankingPointsMaxForClass(classData) : includedRows.length * 8;
   return {
     marks: `${Math.round(totalMarks)} marks out of ${totalMarksOutOf}`,
     points: isPrimary ? undefined : `${resolvedPoints ?? '—'} points out of ${totalPointsOutOf}`,

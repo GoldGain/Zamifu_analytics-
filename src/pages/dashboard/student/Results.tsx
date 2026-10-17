@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum } from '@/lib/grading';
+import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum, rankingPointsMaxForClass } from '@/lib/grading';
 import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
@@ -255,7 +255,7 @@ export default function StudentResults() {
             <div className="text-[10px] uppercase tracking-wider font-bold text-amber-600 mt-1">Average</div>
           </div>
           <div className="text-center p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-            <div className="text-2xl font-black text-emerald-600">{learnerTotal?.count ? `${totalPoints}${usesSevenSubjectRanking(classData) ? '/56' : ''}` : '—'}</div>
+            <div className="text-2xl font-black text-emerald-600">{learnerTotal?.count ? `${totalPoints}${usesSevenSubjectRanking(classData) ? `/${rankingPointsMaxForClass(classData)}` : ''}` : '—'}</div>
             <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-600 mt-1">Total Points</div>
           </div>
           <div className="text-center p-4 bg-purple-50 rounded-xl border border-purple-100">
