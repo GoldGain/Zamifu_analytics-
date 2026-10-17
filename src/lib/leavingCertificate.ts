@@ -1,4 +1,3 @@
-import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
 export const CONDUCT_CATEGORIES = ['Excellent', 'Very good', 'Good', 'Satisfactory', 'Needs improvement'] as const;
@@ -115,39 +114,53 @@ export function formatCertificateDate(value?: string | null) {
 }
 
 export async function downloadLeavingCertificate(element: HTMLElement, filename: string) {
-  const width = 816;
-  const height = 1056;
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: '#fff',
-    width,
-    height,
-    windowWidth: width,
-    windowHeight: height,
-    scrollX: 0,
-    scrollY: 0,
-    onclone: (clonedDocument) => {
-      const clonedElement = clonedDocument.querySelector('.leaving-certificate-preview') as HTMLElement | null;
-      if (!clonedElement) return;
-      clonedElement.style.width = `${width}px`;
-      clonedElement.style.height = `${height}px`;
-      clonedElement.style.minWidth = `${width}px`;
-      clonedElement.style.maxWidth = `${width}px`;
-      clonedElement.style.transform = 'none';
-      clonedElement.style.margin = '0';
-      const template = clonedElement.querySelector('.leaving-certificate-template') as HTMLImageElement | null;
-      if (template) {
-        template.style.width = `${width}px`;
-        template.style.height = `${height}px`;
-      }
-    },
-  });
   const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait', compress: true });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
-  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+  const nativeWidth = 1275;
+  const nativeHeight = 1650;
+  const sx = pageWidth / nativeWidth;
+  const sy = pageHeight / nativeHeight;
+  const value = (selector: string) => (element.querySelector(selector)?.textContent || '').trim();
+  const templateData = await imageData('/certificates/kenya-primary-school-leaving-certificate-official.png');
+  pdf.addImage(templateData, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
+  pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(20, 20, 20);
+  const erase = (x: number, y: number, w: number, h = 18) => { pdf.setFillColor(255, 255, 255); pdf.rect(x * sx, (y - 13) * sy, w * sx, h * sy, 'F'); };
+  const text = (content: string, x: number, y: number, size = 10, maxWidth?: number) => { if (!content) return; pdf.setFontSize(size); const lines = maxWidth ? pdf.splitTextToSize(content, maxWidth * sx) : [content]; pdf.text(lines, x * sx, y * sy, { baseline: 'alphabetic' }); };
+  const field = (selector: string, x: number, y: number, w: number, size = 10) => { const content = value(selector); if (!content) return; erase(x, y, w); text(content, x + 4, y, size); };
+  field('.cert-name', 375, 470, 405, 10);
+  field('.cert-admission', 870, 470, 170, 9.5);
+  field('.cert-dob', 275, 535, 205, 9.5);
+  field('.cert-enrolled', 565, 535, 460, 9.5);
+  field('.cert-school', 470, 600, 275, 9.5);
+  field('.cert-standard', 860, 600, 180, 9.5);
+  field('.cert-left', 275, 665, 310, 9.5);
+  field('.cert-standard-left', 495, 730, 315, 9.5);
+  const academic = value('.cert-academic');
+  if (academic) { erase(760, 805, 290); erase(115, 850, 930); erase(115, 900, 930); const lines = pdf.splitTextToSize(academic, 270 * sx); text(lines.shift() || '', 764, 805, 9); lines.slice(0, 2).forEach((line, index) => text(line, 119, 850 + index * 50, 9, 920)); }
+  const conduct = value('.cert-conduct');
+  if (conduct) { erase(300, 1000, 745); erase(115, 1050, 930); text(conduct, 304, 1000, 9, 735); }
+  const cocurricular = value('.cert-cocurricular');
+  if (cocurricular) { erase(690, 1100, 355); erase(115, 1150, 930); const lines = pdf.splitTextToSize(cocurricular, 340 * sx); text(lines.shift() || '', 694, 1100, 9); lines.slice(0, 1).forEach((line) => text(line, 119, 1150, 9, 920)); }
+  field('.cert-head-name', 845, 1200, 210, 9.5);
+  field('.cert-issue', 255, 1360, 300, 9.5);
+  await addOptionalImage(pdf, element.querySelector('.cert-pupil-signature') as HTMLImageElement | null, 205, 1190, 260, 70, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 825, 1270, 260, 75, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-school-stamp') as HTMLImageElement | null, 825, 1450, 260, 100, sx, sy);
   pdf.save(filename);
+}
+
+async function imageData(url: string) {
+  const image = new Image(); image.crossOrigin = 'anonymous'; image.src = url;
+  await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error(`Unable to load ${url}`)); });
+  const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+  canvas.getContext('2d')?.drawImage(image, 0, 0); return canvas.toDataURL('image/png');
+}
+
+async function addOptionalImage(pdf: jsPDF, image: HTMLImageElement | null, x: number, y: number, w: number, h: number, sx: number, sy: number) {
+  if (!image?.src) return;
+  try { pdf.addImage(await imageData(image.src), 'PNG', x * sx, y * sy, w * sx, h * sy, undefined, 'FAST'); } catch { /* optional signatures must not block certificate export */ }
 }
 
 export function printLeavingCertificate(element: HTMLElement) {
