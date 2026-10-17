@@ -114,7 +114,7 @@ export function formatCertificateDate(value?: string | null) {
 }
 
 export async function downloadLeavingCertificate(element: HTMLElement, filename: string) {
-  const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait', compress: true });
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const nativeWidth = 1275;
@@ -124,27 +124,47 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
   const value = (selector: string) => (element.querySelector(selector)?.textContent || '').trim();
   const templateData = await imageData('/certificates/kenya-primary-school-leaving-certificate-official.png');
   pdf.addImage(templateData, 'PNG', 0, 0, pageWidth, pageHeight, undefined, 'FAST');
-  pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(20, 20, 20);
-  const erase = (x: number, y: number, w: number, h = 18) => { pdf.setFillColor(255, 255, 255); pdf.rect(x * sx, (y - 13) * sy, w * sx, h * sy, 'F'); };
-  const text = (content: string, x: number, y: number, size = 10, maxWidth?: number) => { if (!content) return; pdf.setFontSize(size); const lines = maxWidth ? pdf.splitTextToSize(content, maxWidth * sx) : [content]; pdf.text(lines, x * sx, y * sy, { baseline: 'alphabetic' }); };
-  const field = (selector: string, x: number, y: number, w: number, size = 10) => { const content = value(selector); if (!content) return; erase(x, y, w); text(content, x + 4, y, size); };
-  field('.cert-name', 375, 470, 405, 10);
-  field('.cert-admission', 870, 470, 170, 9.5);
-  field('.cert-dob', 275, 535, 205, 9.5);
-  field('.cert-enrolled', 565, 535, 460, 9.5);
-  field('.cert-school', 470, 600, 275, 9.5);
-  field('.cert-standard', 860, 600, 180, 9.5);
-  field('.cert-left', 275, 665, 310, 9.5);
-  field('.cert-standard-left', 495, 730, 315, 9.5);
-  const academic = value('.cert-academic');
-  if (academic) { erase(760, 805, 290); erase(115, 850, 930); erase(115, 900, 930); const lines = pdf.splitTextToSize(academic, 270 * sx); text(lines.shift() || '', 764, 805, 9); lines.slice(0, 2).forEach((line, index) => text(line, 119, 850 + index * 50, 9, 920)); }
-  const conduct = value('.cert-conduct');
-  if (conduct) { erase(300, 1000, 745); erase(115, 1050, 930); text(conduct, 304, 1000, 9, 735); }
-  const cocurricular = value('.cert-cocurricular');
-  if (cocurricular) { erase(690, 1100, 355); erase(115, 1150, 930); const lines = pdf.splitTextToSize(cocurricular, 340 * sx); text(lines.shift() || '', 694, 1100, 9); lines.slice(0, 1).forEach((line) => text(line, 119, 1150, 9, 920)); }
-  field('.cert-head-name', 845, 1200, 210, 9.5);
-  field('.cert-issue', 255, 1360, 300, 9.5);
+  pdf.setFont('times', 'normal');
+  pdf.setTextColor(17, 17, 17);
+
+  const writeLine = (content: string, x: number, y: number, size: number, maxWidth: number) => {
+    if (!content) return;
+    pdf.setFontSize(size);
+    const clipped = pdf.splitTextToSize(content, maxWidth * sx)[0] as string;
+    pdf.text(clipped, x * sx, y * sy, { baseline: 'alphabetic' });
+  };
+
+  const writeWrapped = (content: string, firstX: number, firstY: number, firstWidth: number, restX: number, restY: number, restWidth: number, lineGap: number, size: number, maxLines: number) => {
+    if (!content) return;
+    pdf.setFontSize(size);
+    const first = pdf.splitTextToSize(content, firstWidth * sx) as string[];
+    const firstLine = first[0] || '';
+    pdf.text(firstLine, firstX * sx, firstY * sy, { baseline: 'alphabetic' });
+    const used = firstLine.length;
+    const remainder = content.slice(used).replace(/^\s+/, '');
+    if (!remainder || maxLines < 2) return;
+    const rest = pdf.splitTextToSize(remainder, restWidth * sx) as string[];
+    rest.slice(0, maxLines - 1).forEach((line, index) => {
+      pdf.text(line, restX * sx, (restY + index * lineGap) * sy, { baseline: 'alphabetic' });
+    });
+  };
+
+  writeLine(value('.cert-name'), 375, 468, 11, 400);
+  writeLine(value('.cert-admission'), 870, 468, 10, 165);
+  writeLine(value('.cert-dob'), 275, 533, 10, 200);
+  writeLine(value('.cert-enrolled'), 565, 533, 10, 450);
+  writeLine(value('.cert-school'), 470, 598, 10, 270);
+  writeLine(value('.cert-standard'), 860, 598, 10, 175);
+  writeLine(value('.cert-left'), 275, 663, 10, 305);
+  writeLine(value('.cert-standard-left'), 495, 728, 10, 310);
+
+  writeWrapped(value('.cert-academic'), 764, 803, 270, 119, 848, 920, 50, 10, 3);
+  writeWrapped(value('.cert-conduct'), 304, 998, 735, 119, 1048, 920, 50, 10, 2);
+  writeWrapped(value('.cert-cocurricular'), 694, 1098, 340, 119, 1148, 920, 50, 10, 2);
+
+  writeLine(value('.cert-head-name'), 845, 1198, 10, 205);
+  writeLine(value('.cert-issue'), 255, 1358, 10, 295);
+
   await addOptionalImage(pdf, element.querySelector('.cert-pupil-signature') as HTMLImageElement | null, 205, 1190, 260, 70, sx, sy);
   await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 825, 1270, 260, 75, sx, sy);
   await addOptionalImage(pdf, element.querySelector('.cert-school-stamp') as HTMLImageElement | null, 825, 1450, 260, 100, sx, sy);
@@ -168,7 +188,7 @@ export function printLeavingCertificate(element: HTMLElement) {
   if (!printWindow) return;
   const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]'))
     .map((node) => node.outerHTML).join('');
-  printWindow.document.write(`<html><head><title>Kenya Primary School Leaving Certificate</title>${styles}<style>@page{size:letter portrait;margin:0}body{margin:0;background:white}*{box-sizing:border-box}</style></head><body>${element.outerHTML}</body></html>`);
+  printWindow.document.write(`<html><head><title>Kenya Primary School Leaving Certificate</title>${styles}<style>@page{size:A4 portrait;margin:2cm}body{margin:0;background:white}*{box-sizing:border-box}</style></head><body>${element.outerHTML}</body></html>`);
   printWindow.document.close();
   printWindow.focus();
   window.setTimeout(() => { printWindow.print(); printWindow.close(); }, 800);
