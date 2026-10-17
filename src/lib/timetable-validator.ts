@@ -6,6 +6,8 @@ export interface TimetableValidationSlot {
   slot_order: number;
   slot_type?: string | null;
   label?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
 }
 
 export interface TimetableValidationEntry {
@@ -201,7 +203,9 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     const isLegalDouble = entries.length === 2
       && entries.every((entry) => entry.entry_type === 'lesson_double')
       && firstLessonIndex >= 0
-      && secondLessonIndex === firstLessonIndex + 1;
+      && secondLessonIndex === firstLessonIndex + 1
+      && (!ordered[0].end_time || !ordered[1].start_time
+        || String(ordered[0].end_time).slice(0, 5) === String(ordered[1].start_time).slice(0, 5));
     if (!isLegalDouble) {
       issues.push({
         rule: 'once-per-day',

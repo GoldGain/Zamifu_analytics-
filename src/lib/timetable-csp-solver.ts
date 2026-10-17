@@ -44,6 +44,7 @@
 
 import { classifySubject, isValidDoubleLessonStart, strictSubjectAllowsLesson } from './timetable-generator.ts';
 import { formatClassStream } from './class-label';
+import { solveExactTimetable } from './timetable-exact-search';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 const DAY_COUNT = 5;
@@ -2162,6 +2163,37 @@ class LevelSearch {
     return false;
   }
 
+  /** Exact whole-level search; requested doubles remain indivisible units. */
+  solveExact(slots: any[]): boolean {
+    this.resetModel();
+    this.vertexClear();
+    const result = solveExactTimetable({
+      sessions: this.model.sessions,
+      classCount: this.model.classes.length,
+      slotsPerDay: this.slotsPerDay,
+      shortClasses: this.allowBlanks ? this.shortClassIndexes : new Set<number>(),
+      teacherFree: (teacher, day, slot) => this.teacherFree(teacher, day, slot),
+      pairAllowed: (session, _day, start) => {
+        const first = slots[start];
+        const second = slots[start + 1];
+        if (!first || !second || this.lessonNumber(start + 1) !== this.lessonNumber(start) + 1) return false;
+        // Consecutive lesson labels alone are insufficient: L2/L3 straddle a
+        // break. A configured double must have contiguous real start/end times.
+        if (first.end_time && second.start_time
+          && String(first.end_time).slice(0, 5) !== String(second.start_time).slice(0, 5)) return false;
+        return this.model.sessions[session.index].subjectNames.every(name =>
+          isValidDoubleLessonStart(name, this.lessonNumber(start)));
+      },
+    });
+    this.nodes += result.variables;
+    if (!result.units) return false;
+    for (const unit of result.units) {
+      const session = this.model.sessions[unit.sessionIndex];
+      this.placeAt(session.classIndex, unit.day, unit.slot, unit.sessionIndex, unit.size);
+    }
+    return true;
+  }
+
   /** Run the main fill over every cell of the level. */
   solveAll(): boolean {
     // Clear any state left by an earlier attempt before a fresh descent.
@@ -2464,7 +2496,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
   const perClassBudget = Math.max(50_000, options.maxSearchNodesPerClass ?? 500_000);
   const totalBudget = perClassBudget * solvableClassIds.length;
   const reserved = options.reservedTeacherCells || new Set<string>();
-  const attempts = 6;
+  const attempts = 1;
   let deepest = -1;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -2473,13 +2505,9 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
     const search = new LevelSearch(model, reserved, rng, Math.max(10_000, totalBudget - searchNodes),
       allowPartial, shortClassIndexSet);
 
-    // The first attempts decide each weekday as a whole with exact look-aheads;
-    // the later ones rebuild the week with randomized greedy passes, which escape
-    // the ordering traps a single deterministic descent can fall into.
-    const budgetLeft = Math.max(10_000, totalBudget - searchNodes);
-    const ok = attempt < 4
-      ? search.solveConstructive(12, budgetLeft, 6)
-      : search.solveGreedy(60, budgetLeft);
+    // Decide all weekday shapes and shared-teacher bookings together. The old
+    // bounded random restarts could falsely report solvable schools impossible.
+    const ok = search.solveExact(slots);
     searchNodes += search.nodes;
     if (ok) {
       const problem = search.verify(allowPartial);
@@ -2505,18 +2533,13 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
     .map((session) => `${formatClassStream(model.classes[session.classIndex])} / ${session.subjectNames.join(' + ')} `
       + `(${model.remaining[session.index]} left)`)
     .slice(0, 6);
-  const day = deepest >= 0 ? Math.floor(deepest / slotsPerDay) : 0;
-  const slot = deepest >= 0 ? deepest % slotsPerDay : 0;
-
   issues.push(makeIssue('proven-impossible',
-    `No valid ${options.levelKey} timetable exists for the current configuration. The solver could not complete the `
-    + `${options.levelKey} grid past ${DAYS[day]} Lesson ${slot + 1} after applying the exact weekly counts, the Rule 4-7 `
-    + 'placement windows, available weekdays and double-lesson days, Rule 8 (at most one appearance per learning area per '
-    + 'day), Rule 9 (Maths and Integrated Science are never adjacent), Rule 11 (shared teachers) and Rule 12 '
-    + '(Creative Arts and Pre-Tech doubles start at Lesson 3 or later; Kiswahili doubles may not include Lesson 8). '
-    + (outstanding.length ? `Still unscheduled: ${outstanding.join(', ')}. ` : '')
-    + 'Free a teacher for that slot, widen the available weekdays, move a double day, or lower the weekly counts. '
-    + `(${searchNodes.toLocaleString()} search nodes, ${restartCount} attempt(s).)`,
+    `No ${options.levelKey} timetable satisfies all configured constraints. `
+    + 'The exact search checked weekly counts, subject placement windows, available weekdays, '
+    + 'shared-teacher bookings, Maths/Science separation and every requested double. '
+    + 'Double lessons must fit two consecutive periods without crossing a break, lunch or activity. '
+    + 'Nothing was saved. Check teacher availability and the available consecutive lesson periods; '
+    + 'the configuration must be adjusted before generation can succeed.',
     {}));
   return finish([]);
 }

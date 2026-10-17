@@ -219,6 +219,8 @@ export interface LessonUnitSlot {
   slot_order: number;
   slot_type?: string;
   label?: string;
+  start_time?: string | null;
+  end_time?: string | null;
 }
 
 /**
@@ -234,6 +236,8 @@ export function isValidDoubleLessonPair(
   if (!firstSlot || !secondSlot) return false;
   if (firstSlot.slot_type && firstSlot.slot_type !== 'lesson') return false;
   if (secondSlot.slot_type && secondSlot.slot_type !== 'lesson') return false;
+  if (firstSlot.end_time && secondSlot.start_time
+    && String(firstSlot.end_time).slice(0, 5) !== String(secondSlot.start_time).slice(0, 5)) return false;
   const firstLesson = Number(String(firstSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   const secondLesson = Number(String(secondSlot.label || '').match(/lesson\s+(\d+)/i)?.[1]);
   if (!Number.isFinite(firstLesson) || !Number.isFinite(secondLesson)) return false;
