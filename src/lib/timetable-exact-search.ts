@@ -18,6 +18,7 @@ export interface ExactSearchOptions {
   classCount: number;
   slotsPerDay: number;
   shortClasses: ReadonlySet<number>;
+  classFree?: (classIndex: number, day: number, slot: number) => boolean;
   teacherFree: (teacher: number, day: number, slot: number) => boolean;
   pairAllowed: (session: ExactSession, day: number, slot: number) => boolean;
 }
@@ -53,7 +54,9 @@ export function solveExactTimetable(options: ExactSearchOptions): { units: Exact
           if(size===1 && needsDouble && session.lessons===2)continue;
           let legal=true;
           for(let offset=0;offset<size;offset++){
-            if(!session.window[slot+offset]||session.teacherIndexes.some(t=>!options.teacherFree(t,day,slot+offset)))legal=false;
+            if(!session.window[slot+offset]
+              || options.classFree?.(session.classIndex,day,slot+offset) === false
+              || session.teacherIndexes.some(t=>!options.teacherFree(t,day,slot+offset)))legal=false;
           }
           if(!legal)continue;
           const name=`u${units.length}`;

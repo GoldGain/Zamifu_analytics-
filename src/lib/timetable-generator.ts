@@ -438,11 +438,8 @@ export function getExactGridAssignmentIssues(options: {
       const subjectName = String(assignment.subjects?.name || assignment.subject_name || 'Learning area');
       const availableDays = normalizeDays(assignment.available_days);
       const allowedDays = availableDays.length ? availableDays : days;
-      const requiredDistinctDays = assignment.is_double_lesson && lessons >= 2 ? lessons - 1 : lessons;
-      const configuredDoubleDays = normalizeDays(assignment.double_lesson_days);
-      const canUseDouble = Boolean(assignment.is_double_lesson && lessons >= 2 && (
-        configuredDoubleDays.length === 0 || configuredDoubleDays.some((day) => allowedDays.includes(day))
-      ));
+      const canUseDouble = lessons >= 2 && (Boolean(assignment.is_double_lesson) || lessons > allowedDays.length);
+      const requiredDistinctDays = canUseDouble ? lessons - 1 : lessons;
       const maxSchedulableLessons = Math.min(lessons, allowedDays.length + (canUseDouble ? 1 : 0));
       if (allowedDays.length < requiredDistinctDays) {
         const unscheduled = lessons - maxSchedulableLessons;
@@ -463,14 +460,7 @@ export function getExactGridAssignmentIssues(options: {
         });
       }
 
-      if (assignment.is_double_lesson && configuredDoubleDays.length > 0 && !configuredDoubleDays.some((day) => allowedDays.includes(day))) {
-        issues.push({
-          classId,
-          className: formatClassStream(cls) || `Class ${classId}`,
-          subjectName,
-          message: `${formatClassStream(cls) || `Class ${classId}`} — ${subjectName}: the configured double-lesson weekday (${configuredDoubleDays.join(', ')}) is not in the assignment's available weekdays (${allowedDays.join(', ') || 'none'}).`,
-        });
-      }
+      // Double weekdays are chosen automatically from available weekdays.
     }
   }
   return issues;

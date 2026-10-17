@@ -114,6 +114,15 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
     if (!isLessonEntry(entry)) return false;
     return options.levelGroup == null || entry.level_group === options.levelGroup;
   });
+  const activityCells = new Set(options.entries
+    .filter(entry => (entry.entry_type === 'activity' || entry.entry_type === 'activities')
+      && (options.levelGroup == null || entry.level_group === options.levelGroup))
+    .map(entry => entryKey(entry.class_id, entry.day_of_week, entry.time_slot_id)));
+  for (const entry of filteredEntries) {
+    if (activityCells.has(entryKey(entry.class_id, entry.day_of_week, entry.time_slot_id))) {
+      issues.push({ rule: 'activity-overlap', message: `A lesson overlaps a fixed activity for class ${entry.class_id} on day ${entry.day_of_week}.` });
+    }
+  }
   const cellEntries = new Map<string, TimetableValidationEntry[]>();
   const subjectDayEntries = new Map<string, SubjectDayGroup>();
   const doubleEntriesBySubject = new Map<string, TimetableValidationEntry[]>();

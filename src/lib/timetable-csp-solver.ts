@@ -64,6 +64,10 @@ export interface CspTimetableSolverOptions {
   maxSearchNodesPerClass?: number;
   /** Teacher cells already reserved by another selected level in this school. */
   reservedTeacherCells?: ReadonlySet<string>;
+  /** Cross-level reservations use real clock intervals, not lesson indexes. */
+  reservedTeacherPeriods?: { teacherId: string; day: number; startTime: string; endTime: string }[];
+  /** Fixed activity cells keyed by classId|zeroBasedDay|lessonIndex. */
+  blockedClassCells?: ReadonlySet<string>;
   /**
    * Allow classes with fewer assigned lessons than available weekly cells to be
    * scheduled with the unused cells left blank. Over-capacity classes still fail.
@@ -385,7 +389,9 @@ function diagnoseClass(
     });
     // A class whose own lessons fall short of the week does not have to fill every
     // weekday, so this only blocks a class that is meant to fill the whole week.
-    if (!classIsShort && usable.length < slotsPerDay) {
+    const maximumPeriods = usable.reduce((sum, need) => sum
+      + ((need.hasDouble || need.autoDouble) && need.lessons >= 2 ? 2 : 1), 0);
+    if (!classIsShort && maximumPeriods < slotsPerDay) {
       const missing = plan.needs
         .filter((need) => !(need.availableDays.length ? need.availableDays : ALL_DAYS).includes(day))
         .map((need) => need.subjectName);
@@ -400,7 +406,9 @@ function diagnoseClass(
 
   for (const need of plan.needs) {
     const available = need.availableDays.length ? need.availableDays : ALL_DAYS;
-    const doubleDays = need.doubleDays.length ? need.doubleDays : available;
+    // Assignment UI chooses the double weekday automatically; legacy saved
+    // double-day hints must not exclude otherwise available weekdays.
+    const doubleDays = available;
     const subjectCtx = { ...ctx, subjectId: need.subjectId, subjectName: need.subjectName };
 
     // Rule 8 allows one appearance per day, and a double consumes two cells on a
@@ -2164,7 +2172,7 @@ class LevelSearch {
   }
 
   /** Exact whole-level search; requested doubles remain indivisible units. */
-  solveExact(slots: any[]): boolean {
+  solveExact(slots: any[], options: CspTimetableSolverOptions): boolean {
     this.resetModel();
     this.vertexClear();
     const result = solveExactTimetable({
@@ -2172,7 +2180,13 @@ class LevelSearch {
       classCount: this.model.classes.length,
       slotsPerDay: this.slotsPerDay,
       shortClasses: this.allowBlanks ? this.shortClassIndexes : new Set<number>(),
-      teacherFree: (teacher, day, slot) => this.teacherFree(teacher, day, slot),
+      classFree: (classIndex, day, slot) => !options.blockedClassCells?.has(
+        `${this.model.classes[classIndex].id}|${day}|${slot}`),
+      teacherFree: (teacher, day, slot) => this.teacherFree(teacher, day, slot)
+        && !(options.reservedTeacherPeriods || []).some(period =>
+          period.teacherId === this.model.teacherNames[teacher] && period.day === day
+          && String(slots[slot].start_time).slice(0, 5) < period.endTime.slice(0, 5)
+          && period.startTime.slice(0, 5) < String(slots[slot].end_time).slice(0, 5)),
       pairAllowed: (session, _day, start) => {
         const first = slots[start];
         const second = slots[start + 1];
@@ -2507,7 +2521,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
 
     // Decide all weekday shapes and shared-teacher bookings together. The old
     // bounded random restarts could falsely report solvable schools impossible.
-    const ok = search.solveExact(slots);
+    const ok = search.solveExact(slots, options);
     searchNodes += search.nodes;
     if (ok) {
       const problem = search.verify(allowPartial);

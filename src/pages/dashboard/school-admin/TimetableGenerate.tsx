@@ -352,10 +352,27 @@ export default function TimetableGenerate() {
         .select('*, subjects(name, code), teachers(first_name, last_name, teacher_number)')
         .eq('school_id', schoolId)
         .eq('is_active', true);
-      const { data: existingTimetableEntries } = await supabaseUntyped
+      const { data: existingTimetableEntries, error: existingEntriesError } = await supabaseUntyped
         .from('timetable_entries')
         .select('*')
         .eq('school_id', schoolId);
+      if (existingEntriesError) throw new Error('Could not load existing teacher bookings: ' + existingEntriesError.message);
+      const { data: existingTimeSlots, error: existingSlotsError } = await supabaseUntyped
+        .from('timetable_time_slots')
+        .select('id, start_time, end_time')
+        .eq('school_id', schoolId);
+      if (existingSlotsError) throw new Error('Could not load existing lesson times: ' + existingSlotsError.message);
+      const existingSlotById = new Map<string, any>((existingTimeSlots || []).map((slot: any) => [String(slot.id), slot]));
+      const retainedEntries = (existingTimetableEntries || [])
+        .filter((entry: any) => !selectedLevels.has(entry.level_group) && entry.level_group !== 'default'
+          && entry.teacher_id && (entry.entry_type === 'lesson' || entry.entry_type === 'lesson_double'))
+        .map((entry: any) => ({ ...entry,
+          effective_start_time: entry.effective_start_time || existingSlotById.get(String(entry.time_slot_id))?.start_time,
+          effective_end_time: entry.effective_end_time || existingSlotById.get(String(entry.time_slot_id))?.end_time,
+        }));
+      if (retainedEntries.some((entry: any) => !entry.effective_start_time || !entry.effective_end_time)) {
+        throw new Error('An existing timetable has missing lesson times. Include that level when regenerating so teacher bookings can be checked safely.');
+      }
 
       const invalidAssignments = (rawAssignments || []).filter((assignment: any) =>
         !assignment.subject_id || !String(assignment.subjects?.name || '').trim() || isFillerSubject(assignment.subjects?.name),
@@ -423,7 +440,11 @@ export default function TimetableGenerate() {
       }
 
       const teacherBusy = new Set<string>();
-      const cspReservedTeacherCells = new Set<string>();
+      const cspReservedTeacherPeriods = retainedEntries.map((entry: any) => ({
+        teacherId: String(entry.teacher_id), day: Number(entry.day_of_week) - 1,
+        startTime: String(entry.effective_start_time).slice(0, 5),
+        endTime: String(entry.effective_end_time).slice(0, 5),
+      }));
       const classBusy = new Set<string>();
       const allEntries: any[] = [];
       type AssignmentPlacementContext = {
@@ -836,7 +857,10 @@ export default function TimetableGenerate() {
             classes: classesToProcess,
             assignments,
             lessonSlots,
-            reservedTeacherCells: cspReservedTeacherCells,
+            reservedTeacherPeriods: cspReservedTeacherPeriods,
+            blockedClassCells: new Set(allEntries
+              .filter((entry: any) => entry.level_group === levelKey && entry.entry_type === 'activity')
+              .map((entry: any) => `${entry.class_id}|${Number(entry.day_of_week) - 1}|${lessonSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id))}`)),
             // Weekly totals below capacity are normal; place every assigned lesson
             // and leave only each short class's unused cells blank.
             allowIncompleteClasses: true,
@@ -872,8 +896,11 @@ export default function TimetableGenerate() {
           solverResult.entries.forEach((entry: any) => {
             if (entry.teacher_id) teacherBusy.add(`${entry.teacher_id}-${entry.day_of_week}-${entry.time_slot_id}`);
             if (entry.teacher_id) {
-              const lessonIndex = lessonSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id));
-              if (lessonIndex >= 0) cspReservedTeacherCells.add(`${entry.teacher_id}|${Number(entry.day_of_week) - 1}|${lessonIndex}`);
+              cspReservedTeacherPeriods.push({ teacherId: String(entry.teacher_id),
+                day: Number(entry.day_of_week) - 1,
+                startTime: String(entry.effective_start_time).slice(0, 5),
+                endTime: String(entry.effective_end_time).slice(0, 5),
+              });
             }
             classBusy.add(`${entry.class_id}-${entry.day_of_week}-${entry.time_slot_id}`);
           });
@@ -893,16 +920,20 @@ export default function TimetableGenerate() {
         // Any solver error has already aborted before this point. Under-capacity
         // classes are reported as blank slots rather than a confirmation blocker.
       }
-      const teacherTimeSlots = new Map<string, any>();
-      for (const entry of allEntries.filter((candidate: any) =>
+      const teacherTimeSlots = new Map<string, any[]>();
+      for (const entry of [...retainedEntries, ...allEntries].filter((candidate: any) =>
         (candidate.entry_type === 'lesson' || candidate.entry_type === 'lesson_double') && candidate.teacher_id,
       )) {
-        const key = `${entry.teacher_id}-${entry.day_of_week}-${entry.effective_start_time || ''}-${entry.effective_end_time || ''}`;
-        const previous = teacherTimeSlots.get(key);
-        if (previous && String(previous.class_id) !== String(entry.class_id)) {
-          throw new Error(`Timetable generation stopped safely: teacher ${entry.teacher_id} is double-booked between classes ${previous.class_id} and ${entry.class_id} on day ${entry.day_of_week} at ${entry.effective_start_time || 'the same time'}. Adjust assignments or timetable setup and try again.`);
+        const key = `${entry.teacher_id}-${entry.day_of_week}`;
+        const bookings = teacherTimeSlots.get(key) || [];
+        const previous = bookings.find(other => String(other.class_id) !== String(entry.class_id)
+          && String(entry.effective_start_time).slice(0, 5) < String(other.effective_end_time).slice(0, 5)
+          && String(other.effective_start_time).slice(0, 5) < String(entry.effective_end_time).slice(0, 5));
+        if (previous) {
+          throw new Error(`Timetable generation stopped safely: teacher ${entry.teacher_id} is double-booked between classes ${previous.class_id} and ${entry.class_id} on day ${entry.day_of_week} at ${entry.effective_start_time}. Adjust assignments or timetable setup and try again.`);
         }
-        teacherTimeSlots.set(key, entry);
+        bookings.push(entry);
+        teacherTimeSlots.set(key, bookings);
       }
 
       // Commit only after every selected level has passed generation and the
