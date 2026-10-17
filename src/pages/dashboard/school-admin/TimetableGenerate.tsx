@@ -485,6 +485,7 @@ export default function TimetableGenerate() {
       const assignmentContexts = new Map<string, AssignmentPlacementContext>();
       const placementRecords: LessonPlacementRecord[] = [];
       const generatedSummary: string[] = [];
+      const generationWarnings: string[] = [];
       const pendingSlots: any[] = [];
       const pendingClassIds = new Set<string>();
       const underScheduled: Array<{
@@ -867,14 +868,19 @@ export default function TimetableGenerate() {
             onProgress: (message) => console.info(`[timetable] ${message}`),
           });
           const solverWarnings = solverResult.warnings.filter((warning) => !warning.code.startsWith('weekly-total-'));
-          // Weekly-total shortfalls are normal; other warnings indicate a solver
-          // or capacity problem and must still block the write.
-          if (solverWarnings.length > 0) {
-            throw new Error(`${levelLabel} solver error — generation stopped safely before saving:\n${formatCspSolverWarnings(solverWarnings)}`);
+          // An impossible or over-constrained rule must not discard the run.
+          // The best placement the solver found is kept and the rule is
+          // reported to the admin, so no level is ever left ungenerated.
+          if (solverResult.entries.length === 0) {
+            const detail = formatCspSolverIssues(solverResult.issues)
+              || formatCspSolverWarnings(solverWarnings)
+              || 'The CSP solver could not place a single lesson.';
+            throw new Error(`${levelLabel} could not generate any lesson. Check that each class has active teacher assignments with weekly lesson counts.
+${detail}`);
           }
-          if (solverResult.issues.length > 0 || solverResult.entries.length === 0) {
-            const detail = formatCspSolverIssues(solverResult.issues) || 'The CSP solver returned no complete grid.';
-            throw new Error(`${levelLabel} generation stopped safely before saving:\n${detail}`);
+          if (solverWarnings.length > 0 || solverResult.issues.length > 0) {
+            const parts = [formatCspSolverWarnings(solverWarnings), formatCspSolverIssues(solverResult.issues)].filter(Boolean);
+            generationWarnings.push(`${levelLabel}: ${parts.join(' ')}`);
           }
 
           assertTimetableRules({
@@ -885,9 +891,13 @@ export default function TimetableGenerate() {
             levelGroup: levelKey,
             // Only classes below their weekly lesson capacity may keep empty cells.
             requireComplete: true,
-            allowBlankSlotsForClassIds: solverResult.shortClasses
-              .filter((entry) => entry.configuredTotal < entry.expectedTotal)
-              .map((entry) => entry.classId),
+            allowBlankSlotsForClassIds: [
+              ...solverResult.shortClasses
+                .filter((entry) => entry.configuredTotal < entry.expectedTotal)
+                .map((entry) => entry.classId),
+              // Classes the solver could only place partially keep their blanks.
+              ...(((solverResult as any).failedClasses || []) as any[]).map((entry) => String(entry.classId)),
+            ],
             requiredLessonCounts,
             requireReligiousPairing: true,
           });
@@ -996,6 +1006,14 @@ export default function TimetableGenerate() {
         ],
         suggestions: ['Review the timetable for each selected grade before publishing it to teachers and learners.'],
       });
+      if (generationWarnings.length > 0) {
+        toast.warning(
+          `Timetable generated, but some rules could not be fully met:\n${generationWarnings.join('\n')}`,
+          { duration: 20000 },
+        );
+        console.warn('[timetable] generation warnings', generationWarnings);
+        generatedSummary.push(`Adjusted rules: ${generationWarnings.join(' | ')}`);
+      }
       toast.success(
         `Timetable generated for: ${levelLabels}\n${generatedSummary.join('\n')}`,
         { duration: 8000 },
