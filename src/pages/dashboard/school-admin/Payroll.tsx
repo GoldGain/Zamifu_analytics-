@@ -7,13 +7,117 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
 type Staff = { id: string; full_name: string; staff_number?: string | null; position: string; department?: string | null; basic_salary: number; is_active: boolean; version: number };
-type Line = { id: string; staff_name: string; staff_number?: string | null; position: string; basic_salary: number; earnings: Record<string, number>; deductions: Record<string, number>; gross_pay: number; total_deductions: number; net_pay: number; payment_status: string; payment_reference?: string | null; payment_date?: string | null };
+type Line = { id: string; staff_name: string; staff_number?: string | null; position: string; department?: string | null; basic_salary: number; earnings: unknown; deductions: unknown; gross_pay: number; total_deductions: number; net_pay: number; paid_amount?: number; arrears?: number; opening_arrears?: number; payment_status: string; payment_reference?: string | null; payment_date?: string | null };
 type Run = { id: string; payroll_month: string; status: string; revision: number; school_name?: string; lines?: Line[] };
 type SalaryComponent = { kind: 'allowance' | 'deduction'; name: string; amount: number; is_percentage: boolean; percentage_of?: string | null; is_statutory: boolean };
 const emptyForm = { full_name: '', staff_number: '', position: 'Teacher', department: '', basic_salary: '', allowances: '', deductions: '' };
 type FormState = typeof emptyForm;
 const money = (n: number) => `KES ${Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}`;
-const pdf = (line: Line, run: Run, receipt = false) => { const doc = new jsPDF(); doc.setFontSize(18); doc.text('Zamifu Analytics', 20, 20); doc.setFontSize(14); doc.text(receipt ? 'PAYROLL PAYMENT RECEIPT' : 'EMPLOYEE PAYSLIP', 20, 32); autoTable(doc, { startY: 42, head: [['Detail', 'Value']], body: [['Employee', line.staff_name], ['Staff number', line.staff_number || '—'], ['Position', line.position], ['Payroll month', new Date(run.payroll_month).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })], ['Basic salary', money(line.basic_salary)], ['Gross pay', money(line.gross_pay)], ['Deductions', money(line.total_deductions)], ['Net pay', money(line.net_pay)], ...(receipt ? [['Payment status', 'PAID'], ['Payment date', line.payment_date || '—'], ['Reference', line.payment_reference || '—']] : [])] }); doc.save(`${receipt ? 'receipt' : 'payslip'}-${line.staff_name.replace(/[^a-z0-9]+/gi, '-')}-${run.payroll_month}.pdf`); };
+const num = (n: number) => Number(n || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const STATUTORY: { key: string; match: RegExp }[] = [
+  { key: 'NSSF', match: /nssf/i },
+  { key: 'SHIF', match: /shif|nhif/i },
+  { key: 'Housing Levy', match: /housing|levy/i },
+  { key: 'PAYE', match: /paye|income tax/i },
+];
+const asItems = (value: unknown): { name: string; amount: number }[] => {
+  if (Array.isArray(value)) {
+    return value.map((raw: any) => ({ name: String(raw?.name ?? 'Item'), amount: Number(raw?.calculated_amount ?? raw?.amount ?? 0) }));
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).map(([name, amount]) => ({ name, amount: Number(amount) || 0 }));
+  }
+  return [];
+};
+
+const pdf = (line: Line, run: Run, receipt = false) => {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const month = new Date(run.payroll_month).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+  const earnings = asItems(line.earnings);
+  const deductions = asItems(line.deductions);
+  const buckets: Record<string, number> = { NSSF: 0, SHIF: 0, 'Housing Levy': 0, PAYE: 0, Other: 0 };
+  deductions.forEach((d) => {
+    const hit = STATUTORY.find((b) => b.match.test(d.name));
+    buckets[hit ? hit.key : 'Other'] += d.amount;
+  });
+  const netPay = Number(line.net_pay);
+  const paid = Number(line.paid_amount || 0);
+  const owed = Number(line.arrears || 0);
+  const broughtForward = Number(line.opening_arrears || 0);
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text((run.school_name || 'SCHOOL').toUpperCase(), 105, 18, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text(receipt ? 'PAYROLL PAYMENT RECEIPT' : 'EMPLOYEE PAYSLIP', 105, 25, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  doc.text(`Pay period: ${month}`, 105, 30, { align: 'center' });
+
+  autoTable(doc, {
+    startY: 36, theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [0, 61, 92], textColor: 255 },
+    head: [['Employee details', '']],
+    body: [
+      ['Employee ID', line.staff_number || '—'],
+      ['Name', line.staff_name],
+      ['Department', line.department || '—'],
+      ['Position', line.position],
+    ],
+    columnStyles: { 0: { cellWidth: 45, fontStyle: 'bold' }, 1: { cellWidth: 135 } },
+  });
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 4, theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [0, 61, 92], textColor: 255 },
+    head: [['Earnings', 'Amount (KES)']],
+    body: [
+      ['Basic Salary', num(line.basic_salary)],
+      ...earnings.map((e) => [e.name, num(e.amount)]),
+      ['GROSS PAY', num(line.gross_pay)],
+    ],
+    columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, halign: 'right' } },
+  });
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 4, theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [0, 61, 92], textColor: 255 },
+    head: [['Deductions', 'Amount (KES)']],
+    body: [
+      ...STATUTORY.map((b) => [b.key, num(buckets[b.key])]),
+      ['Other', num(buckets.Other)],
+      ['TOTAL DEDUCTIONS', num(line.total_deductions)],
+    ],
+    columnStyles: { 0: { cellWidth: 130 }, 1: { cellWidth: 50, halign: 'right' } },
+  });
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 4, theme: 'grid',
+    styles: { fontSize: 10, cellPadding: 2.5 },
+    headStyles: { fillColor: [0, 61, 92], textColor: 255 },
+    head: [['Summary', 'Amount (KES)']],
+    body: [
+      ['NET PAY', num(netPay)],
+      ['Arrears brought forward', num(broughtForward)],
+      ['Amount paid', line.payment_status === 'paid' ? num(paid) : '—'],
+      ['BALANCE OWED', num(owed)],
+      ['Total outstanding', num(owed + broughtForward)],
+      ...(receipt ? [['Payment date', line.payment_date || '—'], ['Payment reference', line.payment_reference || '—']] : []),
+    ],
+    columnStyles: { 0: { cellWidth: 130, fontStyle: 'bold' }, 1: { cellWidth: 50, halign: 'right' } },
+    didParseCell: (data: any) => {
+      if (data.section === 'body' && (data.row.raw?.[0] === 'NET PAY' || data.row.raw?.[0] === 'BALANCE OWED')) {
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fillColor = [232, 244, 236];
+      }
+    },
+  });
+
+  doc.setFontSize(7.5); doc.setTextColor(110);
+  doc.text(`Generated by Zamifu Analytics on ${new Date().toLocaleDateString('en-KE')}. Record-keeping document only.`, 105, 285, { align: 'center' });
+  doc.save(`${receipt ? 'receipt' : 'payslip'}-${line.staff_name.replace(/[^a-z0-9]+/gi, '-')}-${run.payroll_month}.pdf`);
+};
 
 export default function Payroll() { const { user } = useAuth(); const [tab, setTab] = useState<'staff' | 'run' | 'records'>('staff'); const [staff, setStaff] = useState<Staff[]>([]); const [runs, setRuns] = useState<Run[]>([]); const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -123,8 +227,33 @@ export default function Payroll() { const { user } = useAuth(); const [tab, setT
   };
 
   const build = async () => { const { data, error } = await supabase.rpc('payroll_build_draft', { p_month: `${month}-01`, p_expected_revision: null }); if (error) toast.error(error.message); else { toast.success('Payroll draft generated'); await load(); setTab('records'); } return data as string; };
-  const openRun = async (run: Run) => { const { data, error } = await supabase.from('payroll_lines').select('id,staff_name,staff_number,position,basic_salary,earnings,deductions,gross_pay,total_deductions,net_pay,payment_status,payment_reference,payment_date').eq('run_id', run.id).order('staff_name'); if (error) toast.error(error.message); setRuns(current => current.map(x => x.id === run.id ? { ...x, lines: (data || []) as Line[] } : x)); };
-  const markPaid = async (line: Line, run: Run) => { const reference = window.prompt('Bank reference or M-Pesa code (required except cash):', ''); if (reference === null) return; const { error } = await supabase.rpc('payroll_mark_paid', { p_line_id: line.id, p_payment_date: new Date().toISOString().slice(0, 10), p_payment_method: 'mpesa', p_payment_reference: reference } as never); if (error) toast.error(error.message); else { toast.success('Payment recorded'); await openRun(run); } };
+  const openRun = async (run: Run) => { const { data, error } = await supabase.from('payroll_lines').select('id,staff_name,staff_number,position,department,basic_salary,earnings,deductions,gross_pay,total_deductions,net_pay,paid_amount,arrears,opening_arrears,payment_status,payment_reference,payment_date').eq('run_id', run.id).order('staff_name'); if (error) toast.error(error.message); setRuns(current => current.map(x => x.id === run.id ? { ...x, lines: (data || []) as Line[] } : x)); };
+  const markPaid = async (line: Line, run: Run) => {
+    const reference = window.prompt('Bank reference or M-Pesa code (required except cash):', '');
+    if (reference === null) return;
+    const entered = window.prompt(
+      `Amount actually paid. Net pay is KES ${num(line.net_pay)}. Leave blank for the full amount:`,
+      num(line.net_pay),
+    );
+    if (entered === null) return;
+    const amount = entered.trim() === '' ? Number(line.net_pay) : Number(entered.replace(/,/g, ''));
+    if (!Number.isFinite(amount) || amount < 0 || amount > Number(line.net_pay) + 0.005) {
+      toast.error('Enter an amount between 0 and the net pay.');
+      return;
+    }
+    const { error } = await supabase.rpc('payroll_mark_paid', {
+      p_line_id: line.id,
+      p_payment_date: new Date().toISOString().slice(0, 10),
+      p_payment_method: 'mpesa',
+      p_payment_reference: reference,
+      p_amount_paid: amount,
+    } as never);
+    if (error) { toast.error(error.message); return; }
+    const shortfall = Math.round((Number(line.net_pay) - amount) * 100) / 100;
+    toast.success(shortfall > 0 ? `Payment recorded. Balance owed: KES ${num(shortfall)}` : 'Payment recorded in full');
+    await openRun(run);
+  };
+
   return <div className="space-y-6"><div className="flex items-center justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><WalletCards className="h-6 w-6 text-blue-600" /> Staff Payroll</h1><p className="mt-1 text-sm text-gray-500">Record-keeping only: generate payslips and record payments for school staff.</p></div><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><RefreshCw className="h-4 w-4" />Refresh</button></div><div className="flex gap-2 border-b">{([['staff', 'Staff List'], ['run', 'Run Payroll'], ['records', 'Payslips & Receipts']] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === key ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>{label}</button>)}</div>{tab === 'staff' && (
         <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
           <div className="space-y-3 rounded-xl border bg-white p-4">
@@ -196,5 +325,7 @@ export default function Payroll() { const { user } = useAuth(); const [tab, setT
         </div>
       )}
 
-      {tab === 'run' && <div className="max-w-xl rounded-xl border bg-white p-6"><h2 className="text-lg font-semibold">Generate monthly payroll</h2><p className="mt-1 text-sm text-gray-500">The server snapshots active staff, allowances, deductions, gross pay and net pay.</p><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="mt-5 rounded-lg border px-3 py-2" /><button onClick={() => void build()} className="mt-4 block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"><Save className="mr-1 inline h-4 w-4" />Generate Payslips</button></div>}{tab === 'records' && <div className="space-y-4">{runs.length === 0 ? <div className="rounded-xl border bg-white p-10 text-center text-gray-500">No payroll runs yet.</div> : runs.map(run => <div key={run.id} className="overflow-hidden rounded-xl border bg-white"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><div><p className="font-semibold">{new Date(run.payroll_month).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })}</p><p className="text-xs text-gray-500 capitalize">{run.status}</p></div><button onClick={() => void openRun(run)} className="rounded-lg border px-3 py-1.5 text-xs">Load lines</button></div>{run.lines && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-gray-500"><th className="px-4 py-2">Staff</th><th className="px-4 py-2">Gross</th><th className="px-4 py-2">Net</th><th className="px-4 py-2">Status</th><th className="px-4 py-2">Actions</th></tr></thead><tbody>{run.lines.map(line => <tr key={line.id} className="border-b last:border-0"><td className="px-4 py-3">{line.staff_name}<div className="text-xs text-gray-500">{line.position}</div></td><td className="px-4 py-3">{money(line.gross_pay)}</td><td className="px-4 py-3 font-semibold">{money(line.net_pay)}</td><td className="px-4 py-3 capitalize">{line.payment_status}</td><td className="flex gap-2 px-4 py-3"><button onClick={() => pdf(line, run)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Payslip</button>{line.payment_status === 'pending' ? <button onClick={() => void markPaid(line, run)} className="rounded bg-emerald-600 px-2 py-1 text-xs text-white">Mark paid</button> : <button onClick={() => pdf(line, run, true)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Receipt</button>}</td></tr>)}</tbody></table></div>}</div>)}</div>}</div>;
+      {tab === 'run' && <div className="max-w-xl rounded-xl border bg-white p-6"><h2 className="text-lg font-semibold">Generate monthly payroll</h2><p className="mt-1 text-sm text-gray-500">The server snapshots active staff, allowances, deductions, gross pay and net pay.</p><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="mt-5 rounded-lg border px-3 py-2" /><button onClick={() => void build()} className="mt-4 block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"><Save className="mr-1 inline h-4 w-4" />Generate Payslips</button></div>}{tab === 'records' && <div className="space-y-4">{runs.length === 0 ? <div className="rounded-xl border bg-white p-10 text-center text-gray-500">No payroll runs yet.</div> : runs.map(run => <div key={run.id} className="overflow-hidden rounded-xl border bg-white"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><div><p className="font-semibold">{new Date(run.payroll_month).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })}</p><p className="text-xs text-gray-500 capitalize">{run.status}</p></div><button onClick={() => void openRun(run)} className="rounded-lg border px-3 py-1.5 text-xs">Load lines</button></div>{run.lines && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-gray-500"><th className="px-4 py-2">Staff</th><th className="px-4 py-2">Gross</th><th className="px-4 py-2">Net</th><th className="px-4 py-2">Status</th>
+                        <th className="px-4 py-2">Balance owed</th><th className="px-4 py-2">Actions</th></tr></thead><tbody>{run.lines.map(line => <tr key={line.id} className="border-b last:border-0"><td className="px-4 py-3">{line.staff_name}<div className="text-xs text-gray-500">{line.position}</div></td><td className="px-4 py-3">{money(line.gross_pay)}</td><td className="px-4 py-3 font-semibold">{money(line.net_pay)}</td><td className="px-4 py-3 capitalize">{line.payment_status}</td>
+                          <td className="px-4 py-3">{Number(line.arrears || 0) > 0 ? money(Number(line.arrears)) : "—"}</td><td className="flex gap-2 px-4 py-3"><button onClick={() => pdf(line, run)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Payslip</button>{line.payment_status === 'pending' ? <button onClick={() => void markPaid(line, run)} className="rounded bg-emerald-600 px-2 py-1 text-xs text-white">Mark paid</button> : <button onClick={() => pdf(line, run, true)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Receipt</button>}</td></tr>)}</tbody></table></div>}</div>)}</div>}</div>;
 }
