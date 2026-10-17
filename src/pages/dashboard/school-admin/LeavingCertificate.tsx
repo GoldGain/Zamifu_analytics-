@@ -41,7 +41,6 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     {pupilSignatureUrl && <img className="cert-signature cert-pupil-signature" src={pupilSignatureUrl} alt="Pupil signature" />}
     <div className="cert-value cert-head-name">{data.headTeacherName || headTeacherName || ''}</div>
     {headTeacherSignatureUrl && <img className="cert-signature cert-head-signature" src={headTeacherSignatureUrl} alt="Head teacher signature" />}
-    {data.schoolStampUrl && <img className="cert-signature cert-school-stamp" src={data.schoolStampUrl} alt="Official school rubber stamp" />}
     <div className="cert-value cert-issue">{formatCertificateDate(data.dateOfIssue)}</div>
     </div>
   </div>;
@@ -144,9 +143,9 @@ export default function LeavingCertificate() {
     setSaving(false);
   };
 
-  const saveSignature = async (kind: 'pupil' | 'head' | 'stamp', url: string, type: 'drawn' | 'uploaded') => {
-    const urlKey = kind === 'pupil' ? 'pupilSignatureUrl' : kind === 'head' ? 'headTeacherSignatureUrl' : 'schoolStampUrl';
-    const typeKey = kind === 'pupil' ? 'pupilSignatureType' : kind === 'head' ? 'headTeacherSignatureType' : 'schoolStampType';
+  const saveSignature = async (kind: 'pupil' | 'head', url: string, type: 'drawn' | 'uploaded') => {
+    const urlKey = kind === 'pupil' ? 'pupilSignatureUrl' : 'headTeacherSignatureUrl';
+    const typeKey = kind === 'pupil' ? 'pupilSignatureType' : 'headTeacherSignatureType';
     setCertificate((current) => current ? ({ ...current, [urlKey]: url, [typeKey]: type }) : current);
   };
 
@@ -212,9 +211,9 @@ export default function LeavingCertificate() {
           </div>
           <button onClick={() => generateComments()} disabled={generating} className="w-full flex items-center justify-center gap-2 bg-[#2563EB] text-white rounded-lg py-2.5 text-sm font-medium">{generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Generate Comments</button>
           <div className="space-y-3"><label className="block text-xs font-medium text-gray-600">Academic ability comment ({certificate.academicComment.length}/220)<textarea maxLength={220} value={certificate.academicComment} onChange={(e) => update('academicComment', e.target.value)} rows={4} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Conduct comment ({certificate.conductComment.length}/140)<textarea maxLength={140} value={certificate.conductComment} onChange={(e) => update('conductComment', e.target.value)} rows={2} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Co-curricular comment ({certificate.cocurricularComment.length}/140)<textarea maxLength={140} value={certificate.cocurricularComment} onChange={(e) => update('cocurricularComment', e.target.value)} rows={3} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label></div>
-          <DigitalSignature title="Pupil's signature" subtitle="Draw or upload the pupil's signature." existingSignatureUrl={certificate.pupilSignatureUrl} existingSignatureType={certificate.pupilSignatureType} onSave={(url, type) => saveSignature('pupil', url, type)} />
-          <DigitalSignature title="Head teacher's signature" subtitle="Draw or upload the head teacher's signature." existingSignatureUrl={certificate.headTeacherSignatureUrl} existingSignatureType={certificate.headTeacherSignatureType} onSave={(url, type) => saveSignature('head', url, type)} />
-          <DigitalSignature title="Official school rubber stamp" subtitle="Upload the official school stamp image for the stamp box." existingSignatureUrl={certificate.schoolStampUrl} existingSignatureType={certificate.schoolStampType} onSave={(url, type) => saveSignature('stamp', url, type)} />
+          <DigitalSignature title="Pupil's signature" subtitle="Draw or upload the pupil's signature. It prints on the pupil signature line." existingSignatureUrl={certificate.pupilSignatureUrl} existingSignatureType={certificate.pupilSignatureType} onSave={(url, type) => saveSignature('pupil', url, type)} />
+          <DigitalSignature title="Head teacher's signature" subtitle="Draw or upload the head teacher's signature. It prints on the signature line." existingSignatureUrl={certificate.headTeacherSignatureUrl} existingSignatureType={certificate.headTeacherSignatureType} onSave={(url, type) => saveSignature('head', url, type)} />
+          <p className="text-xs text-gray-600 border border-dashed border-gray-300 rounded-lg px-3 py-2">The official school rubber stamp is left blank. Stamp the printed certificate by hand.</p>
           <div className="flex flex-wrap gap-2"><button onClick={save} disabled={saving} className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white rounded-lg py-2.5 text-sm font-medium"><Save className="w-4 h-4" />{saving ? 'Saving…' : 'Save'}</button><button onClick={() => previewRef.current && downloadLeavingCertificate(previewRef.current, `${certificate.learnerName}-leaving-certificate.pdf`)} className="flex-1 flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-2.5 text-sm"><Download className="w-4 h-4" />Download PDF</button><button onClick={() => previewRef.current && printLeavingCertificate(previewRef.current)} className="flex-1 flex items-center justify-center gap-2 border border-gray-300 rounded-lg py-2.5 text-sm"><Printer className="w-4 h-4" />Print</button></div>
         </>}
       </section>

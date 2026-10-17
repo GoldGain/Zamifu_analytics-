@@ -39,9 +39,8 @@ export const CERTIFICATE_FIELDS: Field[] = [
   { key: 'issue', label: 'Date of issue', slots: [slot(284, 1294, 263)] },
 ];
 export const CERTIFICATE_IMAGES = [
-  { key: 'pupil-signature', x: 332, y: 1101, width: 235, height: 30 },
-  { key: 'head-signature', x: 889, y: 1194, width: 157, height: 29 },
-  { key: 'school-stamp', x: 650, y: 1298, width: 300, height: 65 },
+  { key: 'pupil-signature', x: 330, y: 1092, width: 240, height: 40 },
+  { key: 'head-signature', x: 620, y: 1184, width: 400, height: 42 },
 ];
 export type CertificateLine = CertificateSlot & { text: string; size: number; key: string };
 export type CertificateLayout = { lines: CertificateLine[]; errors: string[] };

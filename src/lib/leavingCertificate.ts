@@ -136,7 +136,7 @@ export function renderLeavingCertificatePreview(element: HTMLElement) {
   const texts = layout.lines.map(line => `${line.extraRule ? `<line x1="${line.x}" y1="${line.y}" x2="${line.x + line.width}" y2="${line.y}" stroke="#555" stroke-width="1" stroke-dasharray="1 3"/>` : ''}<text x="${line.x + 3}" y="${line.y - 1.5}" font-size="${line.size}" font-family="CertificateSerif" fill="#111">${escapeXml(line.text)}</text>`).join('');
   const images = CERTIFICATE_IMAGES.map(box => {
     const img = element.querySelector(`.cert-${box.key}`) as HTMLImageElement | null;
-    return img?.src ? `<image href="${escapeXml(img.src)}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="xMidYMid meet"/>` : '';
+    return img?.src ? `<image href="${escapeXml(img.src)}" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" preserveAspectRatio="xMidYMax meet"/>` : '';
   }).join('');
   host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="A4 leaving certificate with 20 mm margins"><rect width="${width}" height="${height}" fill="white"/><svg x="${CERTIFICATE_ORIGIN.x}" y="${CERTIFICATE_ORIGIN.y}" width="${crop.width * CERTIFICATE_SCALE}" height="${crop.height * CERTIFICATE_SCALE}" viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}"><image href="${escapeXml(imageUrl)}" width="1275" height="1650"/>${texts}${images}</svg></svg>`;
   const warning = element.querySelector('.cert-overflow');
@@ -186,7 +186,7 @@ export async function createLeavingCertificatePdf(element: HTMLElement) {
     c.getContext('2d')!.drawImage(image, 0, 0);
     const ratio = Math.min(box.width / c.width, box.height / c.height);
     const w = c.width * ratio; const h = c.height * ratio;
-    pdf.addImage(c.toDataURL('image/png'), 'PNG', certificateX(box.x + (box.width - w) / 2), certificateY(box.y + (box.height - h) / 2), w * CERTIFICATE_SCALE, h * CERTIFICATE_SCALE);
+    pdf.addImage(c.toDataURL('image/png'), 'PNG', certificateX(box.x + (box.width - w) / 2), certificateY(box.y + box.height - h), w * CERTIFICATE_SCALE, h * CERTIFICATE_SCALE);
   }
   return pdf;
 }
