@@ -1,26 +1,122 @@
-/* Official Kenya Primary School Leaving Certificate: fixed Letter-size visual layer. */
-.leaving-certificate-preview { position: relative; width: 816px; height: 1056px; flex: 0 0 816px; overflow: hidden; background: #fff; font-family: Arial, Helvetica, sans-serif; color: #111; }
-.leaving-certificate-template { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.cert-value { position: absolute; z-index: 2; background: #fff; color: #111; padding: 1px 4px 2px; font-size: 15px; font-weight: 500; line-height: 1.2; white-space: nowrap; overflow: hidden; text-shadow: none; }
-.cert-name { left: 29%; top: 27.4%; width: 40%; }
-.cert-admission { left: 73.2%; top: 27.4%; width: 18%; font-size: 14px; }
-.cert-dob { left: 25%; top: 31.3%; width: 16%; }
-/* The artwork puts the entered school on this row. */
-.cert-enrolled { left: 45.3%; top: 31.3%; width: 37.3%; font-size: 14px; }
-/* The artwork puts the enrollment date after “SCHOOL AND WAS ENROLLED ON”. */
-.cert-school { left: 37.6%; top: 34.8%; width: 21.2%; font-size: 14px; }
-.cert-standard { left: 71.8%; top: 34.8%; width: 10.8%; }
-.cert-left { left: 20%; top: 39%; width: 27.1%; }
-.cert-standard-left { left: 38.8%; top: 42.5%; width: 29.8%; }
-.cert-academic, .cert-conduct, .cert-cocurricular { background: transparent; text-shadow: 0 0 3px #fff, 0 0 3px #fff; white-space: normal; overflow-wrap: anywhere; }
-.cert-academic { left: 9.4%; top: 46.1%; width: 73.2%; height: 8.5%; text-indent: 40%; font-size: 15px; font-weight: 400; line-height: 30px; }
-.cert-conduct { left: 9.4%; top: 56.5%; width: 73.2%; height: 6.2%; text-indent: 21%; font-size: 15px; font-weight: 400; line-height: 32px; }
-.cert-cocurricular { left: 9.4%; top: 62.1%; width: 73.2%; height: 6.2%; text-indent: 63%; font-size: 15px; font-weight: 400; line-height: 30px; }
-.cert-head-name { left: 63.1%; top: 67.6%; width: 19.5%; font-size: 14px; }
-.cert-issue { left: 23.5%; top: 77.4%; width: 19.8%; font-size: 14px; }
-.cert-signature { position: absolute; z-index: 3; object-fit: contain; background: transparent; }
-.cert-pupil-signature { left: 24.2%; top: 68.7%; width: 21%; height: 4.2%; }
-.cert-head-signature { left: 62%; top: 73%; width: 25%; height: 5%; }
-.cert-school-stamp { left: 62%; top: 81.8%; width: 26%; height: 9%; opacity: 1; }
-.certificate-bulk-renderer { position: fixed; left: -100000px; top: 0; display: flex; flex-direction: column; gap: 12px; pointer-events: none; }
-@media print { .leaving-certificate-preview { width: 8.5in; height: 11in; } }
+/* Official Kenya Primary School Leaving Certificate — A4 fill-in-the-blank overlay.
+   Template artwork is 1275×1650. Preview is 816×1056 (×0.64). */
+.leaving-certificate-preview {
+  position: relative;
+  width: 816px;
+  height: 1056px;
+  flex: 0 0 816px;
+  overflow: hidden;
+  background: #fff;
+  font-family: "Times New Roman", Times, serif;
+  color: #111;
+}
+.leaving-certificate-template {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+
+/* Fill-in blanks: text sits on the printed dotted rule (flex-end = baseline). */
+.cert-value {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  background: transparent;
+  color: #111;
+  padding: 0 3px 1px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.cert-name { left: 240px; top: 285px; width: 250px; height: 16px; }
+.cert-admission { left: 557px; top: 285px; width: 108px; height: 16px; font-size: 12px; }
+.cert-dob { left: 176px; top: 327px; width: 130px; height: 16px; font-size: 12px; }
+.cert-enrolled { left: 362px; top: 327px; width: 294px; height: 16px; font-size: 12px; }
+.cert-school { left: 301px; top: 368px; width: 176px; height: 16px; font-size: 12px; }
+.cert-standard { left: 550px; top: 368px; width: 115px; height: 16px; font-size: 12px; }
+.cert-left { left: 176px; top: 410px; width: 198px; height: 16px; font-size: 12px; }
+.cert-standard-left { left: 317px; top: 451px; width: 201px; height: 16px; font-size: 12px; }
+
+.cert-academic,
+.cert-conduct,
+.cert-cocurricular {
+  display: block;
+  white-space: pre-wrap;
+  overflow: hidden;
+  text-overflow: clip;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-weight: 400;
+  padding: 0 4px 0 0;
+  align-items: unset;
+}
+
+/* Line-height matches the printed dotted rows so wrapped text lands on each rule. */
+.cert-academic {
+  left: 76px;
+  top: 500px;
+  width: 595px;
+  height: 86px;
+  font-size: 12px;
+  line-height: 28.8px;
+  text-indent: 412px;
+}
+.cert-conduct {
+  left: 76px;
+  top: 624px;
+  width: 595px;
+  height: 64px;
+  font-size: 12px;
+  line-height: 32px;
+  text-indent: 118px;
+}
+.cert-cocurricular {
+  left: 76px;
+  top: 688px;
+  width: 595px;
+  height: 64px;
+  font-size: 12px;
+  line-height: 32px;
+  text-indent: 368px;
+}
+
+.cert-head-name { left: 541px; top: 752px; width: 134px; height: 16px; font-size: 12px; }
+.cert-issue { left: 163px; top: 854px; width: 192px; height: 16px; font-size: 12px; }
+
+.cert-signature {
+  position: absolute;
+  z-index: 3;
+  object-fit: contain;
+  background: transparent;
+}
+.cert-pupil-signature { left: 131px; top: 762px; width: 166px; height: 45px; }
+.cert-head-signature { left: 528px; top: 813px; width: 166px; height: 48px; }
+.cert-school-stamp { left: 528px; top: 928px; width: 166px; height: 64px; }
+
+.certificate-bulk-renderer {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+@media print {
+  @page { size: A4 portrait; margin: 2cm; }
+  .leaving-certificate-preview {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1275 / 1650;
+  }
+}
