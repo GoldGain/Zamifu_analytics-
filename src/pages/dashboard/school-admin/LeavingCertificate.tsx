@@ -58,6 +58,9 @@ export default function LeavingCertificate() {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkCertificates, setBulkCertificates] = useState<Array<{ studentId: string; certificate: CertificateState }>>([]);
   const [selectedBulkIds, setSelectedBulkIds] = useState<string[]>([]);
+  const [bulkRows, setBulkRows] = useState<Record<string, CertificateState>>({});
+  const [bulkTableLoading, setBulkTableLoading] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [search, setSearch] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
   const bulkRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -155,6 +158,64 @@ export default function LeavingCertificate() {
     setResults([]);
     setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), schoolName: schoolData?.name || '', standard: 'Grade 8', standardLeft: '8', standardCurriculum: LEAVING_CERTIFICATE_CBE_CURRICULUM, dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
   };
+  const loadBulkTable = async () => {
+    const targets = filteredStudents;
+    if (!targets.length) return toast.error('No learners to load.');
+    setBulkTableLoading(true);
+    const next: Record<string, CertificateState> = { ...bulkRows };
+    for (const student of targets) {
+      if (next[student.id]) continue;
+      const loaded = await buildCertificate(student);
+      next[student.id] = loaded.certificate;
+    }
+    setBulkRows(next);
+    setBulkTableLoading(false);
+    toast.success(`Loaded details for ${targets.length} learner${targets.length === 1 ? '' : 's'}. Fill any missing fields, then save.`);
+  };
+
+  const updateBulkRow = (studentId: string, key: keyof CertificateState, value: string) => {
+    setBulkRows((current) => {
+      const row = current[studentId];
+      if (!row) return current;
+      const next = { ...row, [key]: value };
+      if (key === 'conductCategory') next.conductComment = conductText(value as ConductCategory, next.conductElaboration);
+      if (key === 'conductElaboration') next.conductComment = conductText(next.conductCategory, value);
+      return { ...current, [studentId]: next };
+    });
+  };
+
+  const saveBulkRow = async (studentId: string, silent = false) => {
+    const row = bulkRows[studentId];
+    const student = students.find((item) => item.id === studentId);
+    if (!row || !student || !user?.schoolId) return false;
+    const standardLeft = Number(row.standardLeft);
+    if (!Number.isInteger(standardLeft) || standardLeft < 1 || standardLeft > 12) {
+      toast.error(`${row.learnerName || 'Learner'}: standard left must be 1 to 12.`);
+      return false;
+    }
+    const payload = {
+      school_id: user.schoolId, student_id: student.id, date_left: row.dateLeft, standard_left: standardLeft, date_of_issue: row.dateOfIssue, head_teacher_name: row.headTeacherName || null,
+      conduct_category: row.conductCategory, conduct_elaboration: row.conductElaboration || null, academic_comment: row.academicComment, cocurricular_comment: row.cocurricularComment,
+      conduct_comment: row.conductComment || conductText(row.conductCategory, row.conductElaboration), extra_notes: row.extraNotes || null, pupil_signature_url: row.pupilSignatureUrl || null,
+      pupil_signature_type: row.pupilSignatureType || null, head_teacher_signature_url: row.headTeacherSignatureUrl || null, head_teacher_signature_type: row.headTeacherSignatureType || null, school_stamp_url: row.schoolStampUrl || null, school_stamp_type: row.schoolStampType || null, updated_at: new Date().toISOString(),
+    };
+    const { error } = await supabaseUntyped.from('leaving_certificates').upsert(payload, { onConflict: 'school_id,student_id' });
+    if (error) { toast.error(`${row.learnerName}: ${error.message}`); return false; }
+    await supabaseUntyped.from('students').update({ date_of_birth: row.dateOfBirth || null, enrollment_date: row.dateEnrolled || null, date_left: row.dateLeft || null, admission_number: row.admissionNumber || null }).eq('id', student.id).eq('school_id', user.schoolId);
+    if (!silent) toast.success(`Saved ${row.learnerName}.`);
+    return true;
+  };
+
+  const saveAllBulk = async () => {
+    const ids = filteredStudents.filter((student) => bulkRows[student.id]).map((student) => student.id);
+    if (!ids.length) return toast.error('Load the bulk table first.');
+    setBulkSaving(true);
+    let ok = 0;
+    for (const id of ids) { if (await saveBulkRow(id, true)) ok += 1; }
+    setBulkSaving(false);
+    toast.success(`Saved ${ok} of ${ids.length} learner certificate${ids.length === 1 ? '' : 's'}.`);
+  };
+
   const generateBulk = async () => {
     if (!selectedBulkIds.length) return toast.error('Select at least one learner for bulk generation.');
     setBulkGenerating(true);
@@ -162,7 +223,8 @@ export default function LeavingCertificate() {
     for (const studentId of selectedBulkIds) {
       const student = students.find((item) => item.id === studentId);
       if (!student) continue;
-      const loaded = await buildCertificate(student);
+      const edited = bulkRows[studentId];
+      const loaded = edited ? { certificate: edited } : await buildCertificate(student);
       records.push({ studentId, certificate: loaded.certificate });
     }
     setBulkCertificates(records);
@@ -193,7 +255,8 @@ export default function LeavingCertificate() {
         <select value={selectedId} onChange={(e) => loadCertificate(students.find((s) => s.id === e.target.value))} className="w-full border rounded-lg px-3 py-2 text-sm" disabled={loading}><option value="">{loading ? 'Loading learners…' : 'Choose a leaving-certificate learner'}</option>{filteredStudents.map((student) => <option key={student.id} value={student.id}>{student.first_name} {student.last_name} — {student.admission_number}</option>)}</select>
         <button type="button" onClick={startManualCertificate} className="w-full rounded-lg border border-dashed border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50">Enter learner details manually</button>
         <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 space-y-3">
-          <div className="flex items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><UsersRound className="w-4 h-4" />Bulk certificates</h2><p className="text-[11px] text-blue-800 mt-0.5">Select several learners to download individual filled PDFs.</p></div><span className="text-xs font-semibold text-blue-700">{selectedBulkIds.length} selected</span></div>
+          <div className="flex items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><UsersRound className="w-4 h-4" />Bulk certificates</h2><p className="text-[11px] text-blue-800 mt-0.5">Fill missing details in the table below, then select learners and download PDFs.</p></div><span className="text-xs font-semibold text-blue-700">{selectedBulkIds.length} selected</span></div>
+          <button type="button" onClick={loadBulkTable} disabled={bulkTableLoading || !filteredStudents.length} className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50">{bulkTableLoading ? 'Loading learner details…' : 'Open bulk details table'}</button>
           <div className="flex gap-2"><button type="button" onClick={() => setSelectedBulkIds(filteredStudents.map((student) => student.id))} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Select visible</button><button type="button" onClick={() => setSelectedBulkIds([])} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Clear</button></div>
           <div className="max-h-44 overflow-y-auto rounded-lg border border-blue-100 bg-white divide-y divide-gray-100">{filteredStudents.length === 0 ? <p className="p-3 text-xs text-gray-500">No primary learners found.</p> : filteredStudents.map((student) => <label key={student.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"><input type="checkbox" checked={selectedBulkIds.includes(student.id)} onChange={() => toggleBulkStudent(student.id)} className="rounded border-gray-300 text-blue-600" /><span className="truncate">{student.first_name} {student.last_name}<span className="text-gray-400"> · {student.admission_number || 'No admission no.'}</span></span></label>)}</div>
           <button type="button" onClick={generateBulk} disabled={bulkGenerating || !selectedBulkIds.length} className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-700 py-2 text-xs font-semibold text-white disabled:opacity-50">{bulkGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}{bulkGenerating ? 'Generating PDFs…' : `Generate ${selectedBulkIds.length || ''} bulk PDF${selectedBulkIds.length === 1 ? '' : 's'}`}</button>
@@ -219,6 +282,48 @@ export default function LeavingCertificate() {
       </section>
       <section className="bg-gray-100 rounded-xl p-4 overflow-auto"><div className="min-w-[816px] flex justify-center">{certificate ? <CertificatePreview data={certificate} previewRef={previewRef} headTeacherName={schoolData?.principal_name || ''} pupilSignatureUrl={certificate.pupilSignatureUrl} headTeacherSignatureUrl={certificate.headTeacherSignatureUrl} /> : <div className="w-full min-h-[420px] flex items-center justify-center text-sm text-gray-500">Select a learner to preview the official certificate.</div>}</div></section>
     </div>
+    {Object.keys(bulkRows).length > 0 && <section className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Bulk learner details</h2>
+          <p className="text-xs text-gray-500">Enter the same certificate fields as the single-learner form. Empty cells print blank. Save before generating PDFs.</p>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={saveAllBulk} disabled={bulkSaving} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">{bulkSaving ? 'Saving…' : 'Save all visible rows'}</button>
+        </div>
+      </div>
+      <div className="overflow-auto max-h-[70vh] border rounded-lg">
+        <table className="min-w-[2200px] w-full text-xs text-left">
+          <thead className="sticky top-0 bg-gray-50 z-10">
+            <tr>
+              {['Select','Learner name','Admission no.','Date of birth','Date enrolled','Date left','Standard left','Date of issue','Head teacher','Conduct','Academic comment','Conduct comment','Co-curricular','Save'].map((heading) => <th key={heading} className="px-2 py-2 font-semibold border-b whitespace-nowrap">{heading}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredStudents.filter((student) => bulkRows[student.id]).map((student) => {
+              const row = bulkRows[student.id];
+              const cell = (key: keyof CertificateState, type = 'text') => <input type={type} value={String(row[key] || '')} onChange={(e) => updateBulkRow(student.id, key, e.target.value)} className="w-full min-w-[8rem] border rounded px-1.5 py-1" />;
+              return <tr key={student.id} className="border-b align-top hover:bg-blue-50/40">
+                <td className="px-2 py-1"><input type="checkbox" checked={selectedBulkIds.includes(student.id)} onChange={() => toggleBulkStudent(student.id)} /></td>
+                <td className="px-2 py-1">{cell('learnerName')}</td>
+                <td className="px-2 py-1">{cell('admissionNumber')}</td>
+                <td className="px-2 py-1">{cell('dateOfBirth', 'date')}</td>
+                <td className="px-2 py-1">{cell('dateEnrolled', 'date')}</td>
+                <td className="px-2 py-1">{cell('dateLeft', 'date')}</td>
+                <td className="px-2 py-1"><select value={row.standardLeft} onChange={(e) => updateBulkRow(student.id, 'standardLeft', e.target.value)} className="w-full min-w-[7rem] border rounded px-1.5 py-1">{Array.from({ length: 12 }, (_, index) => index + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, row.standardCurriculum)}</option>)}</select></td>
+                <td className="px-2 py-1">{cell('dateOfIssue', 'date')}</td>
+                <td className="px-2 py-1">{cell('headTeacherName')}</td>
+                <td className="px-2 py-1"><select value={row.conductCategory} onChange={(e) => updateBulkRow(student.id, 'conductCategory', e.target.value)} className="w-full min-w-[8rem] border rounded px-1.5 py-1">{CONDUCT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></td>
+                <td className="px-2 py-1"><textarea maxLength={220} value={row.academicComment} onChange={(e) => updateBulkRow(student.id, 'academicComment', e.target.value)} rows={2} className="w-64 border rounded px-1.5 py-1" /></td>
+                <td className="px-2 py-1"><textarea maxLength={140} value={row.conductComment} onChange={(e) => updateBulkRow(student.id, 'conductComment', e.target.value)} rows={2} className="w-56 border rounded px-1.5 py-1" /></td>
+                <td className="px-2 py-1"><textarea maxLength={140} value={row.cocurricularComment} onChange={(e) => updateBulkRow(student.id, 'cocurricularComment', e.target.value)} rows={2} className="w-56 border rounded px-1.5 py-1" /></td>
+                <td className="px-2 py-1"><button type="button" onClick={() => saveBulkRow(student.id)} className="rounded bg-green-600 px-2 py-1 text-white">Save</button></td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>}
     {bulkCertificates.length > 0 && <div className="certificate-bulk-renderer" aria-hidden="true">{bulkCertificates.map((item) => <CertificatePreview key={item.studentId} data={item.certificate} previewRef={(element) => { bulkRefs.current[item.studentId] = element; }} headTeacherName={schoolData?.principal_name || ''} pupilSignatureUrl={item.certificate.pupilSignatureUrl} headTeacherSignatureUrl={item.certificate.headTeacherSignatureUrl} />)}</div>}
   </div>;
 }
