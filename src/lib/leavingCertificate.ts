@@ -155,21 +155,21 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
     });
   };
 
-  writeLine(value('.cert-name'), 400, 471, 10, 400);
-  writeLine(value('.cert-admission'), 945, 471, 9.5, 100);
-  writeLine(value('.cert-dob'), 330, 533, 10, 140);
-  writeLine(value('.cert-enrolled'), 600, 533, 10, 430);
-  writeLine(value('.cert-school'), 510, 595, 10, 240);
-  writeLine(value('.cert-standard'), 955, 595, 10, 90);
-  writeLine(value('.cert-left'), 305, 656, 10, 260);
-  writeLine(value('.cert-standard-left'), 650, 718, 10, 170);
+  writeLine(value('.cert-name'), 430, 471, 10, 340);
+  writeLine(value('.cert-admission'), 1005, 471, 8.5, 80);
+  writeLine(value('.cert-dob'), 350, 533, 10, 120);
+  writeLine(value('.cert-enrolled'), 630, 533, 10, 400);
+  writeLine(value('.cert-school'), 540, 595, 10, 210);
+  writeLine(value('.cert-standard'), 990, 595, 10, 60);
+  writeLine(value('.cert-left'), 330, 656, 10, 240);
+  writeLine(value('.cert-standard-left'), 700, 718, 10, 120);
 
-  writeWrapped(value('.cert-academic'), 810, 778, 230, 125, 824, 910, 46, 10, 3);
-  writeWrapped(value('.cert-conduct'), 360, 947, 670, 125, 993, 910, 46, 10, 2);
-  writeWrapped(value('.cert-cocurricular'), 745, 1039, 290, 125, 1085, 910, 46, 10, 2);
+  writeWrapped(value('.cert-academic'), 900, 778, 140, 125, 824, 910, 46, 10, 3);
+  writeWrapped(value('.cert-conduct'), 450, 947, 580, 125, 993, 910, 46, 10, 2);
+  writeWrapped(value('.cert-cocurricular'), 850, 1039, 185, 125, 1085, 910, 46, 10, 2);
 
-  writeLine(value('.cert-head-name'), 860, 1131, 10, 175);
-  writeLine(value('.cert-issue'), 305, 1294, 10, 230);
+  writeLine(value('.cert-head-name'), 940, 1131, 10, 95);
+  writeLine(value('.cert-issue'), 330, 1294, 10, 200);
 
   await addOptionalImage(pdf, element.querySelector('.cert-pupil-signature') as HTMLImageElement | null, 200, 1185, 250, 70, sx, sy);
   await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 830, 1210, 240, 70, sx, sy);

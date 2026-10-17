@@ -35,14 +35,14 @@
   text-overflow: ellipsis;
 }
 
-.cert-name { left: 256px; top: 291px; width: 256px; height: 16px; }
-.cert-admission { left: 605px; top: 291px; width: 64px; height: 16px; font-size: 11px; }
-.cert-dob { left: 211px; top: 331px; width: 90px; height: 16px; font-size: 11px; }
-.cert-enrolled { left: 384px; top: 331px; width: 275px; height: 16px; font-size: 11px; }
-.cert-school { left: 326px; top: 370px; width: 154px; height: 16px; font-size: 11px; }
-.cert-standard { left: 611px; top: 370px; width: 58px; height: 16px; font-size: 11px; }
-.cert-left { left: 195px; top: 410px; width: 166px; height: 16px; font-size: 11px; }
-.cert-standard-left { left: 416px; top: 449px; width: 109px; height: 16px; font-size: 11px; }
+.cert-name { left: 275px; top: 291px; width: 218px; height: 16px; }
+.cert-admission { left: 643px; top: 291px; width: 51px; height: 16px; font-size: 10px; }
+.cert-dob { left: 224px; top: 331px; width: 77px; height: 16px; font-size: 11px; }
+.cert-enrolled { left: 403px; top: 331px; width: 256px; height: 16px; font-size: 11px; }
+.cert-school { left: 346px; top: 370px; width: 134px; height: 16px; font-size: 11px; }
+.cert-standard { left: 634px; top: 370px; width: 38px; height: 16px; font-size: 11px; }
+.cert-left { left: 211px; top: 410px; width: 154px; height: 16px; font-size: 11px; }
+.cert-standard-left { left: 448px; top: 449px; width: 77px; height: 16px; font-size: 11px; }
 
 .cert-academic,
 .cert-conduct,
@@ -64,7 +64,7 @@
   height: 86px;
   font-size: 11px;
   line-height: 29.4px;
-  text-indent: 438px;
+  text-indent: 496px;
 }
 .cert-conduct {
   left: 80px;
@@ -73,7 +73,7 @@
   height: 58px;
   font-size: 11px;
   line-height: 29.4px;
-  text-indent: 150px;
+  text-indent: 208px;
 }
 .cert-cocurricular {
   left: 80px;
@@ -82,11 +82,11 @@
   height: 58px;
   font-size: 11px;
   line-height: 29.4px;
-  text-indent: 397px;
+  text-indent: 464px;
 }
 
-.cert-head-name { left: 550px; top: 714px; width: 112px; height: 16px; font-size: 11px; }
-.cert-issue { left: 195px; top: 818px; width: 147px; height: 16px; font-size: 11px; }
+.cert-head-name { left: 602px; top: 714px; width: 61px; height: 16px; font-size: 11px; }
+.cert-issue { left: 211px; top: 818px; width: 128px; height: 16px; font-size: 11px; }
 
 .cert-signature {
   position: absolute;
