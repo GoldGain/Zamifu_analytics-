@@ -162,7 +162,8 @@ async function fetchCombinedAssessmentData(
   });
   const columns = (components || []).map((component: any) => ({
     id: String(component.source_exam_id),
-    label: `${sourceExamNames.get(component.source_exam_id) || 'Assessment'} (${Number(component.weight || 0)}%)`,
+    // Weighting still drives the combined mark, but it is never printed on a report card.
+    label: sourceExamNames.get(component.source_exam_id) || 'Assessment',
   }));
   return { columns, values };
 }

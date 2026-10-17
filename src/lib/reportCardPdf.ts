@@ -1027,11 +1027,15 @@ export function drawResultsTable(
   const showDeviation = options.showDeviation !== false;
   const assessmentColumns = options.assessmentColumns || [];
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
-  const assessmentCellCount = assessmentColumns.length * 3;
+  // Primary reports carry no points, so the per-assessment Pts column is
+  // omitted entirely instead of printed with dashes.
+  const assessmentCellCount = assessmentColumns.length * (pointsMax > 0 ? 3 : 2);
   const areaLabel = is844 ? 'Subject' : 'Learning Area';
   const levelLabel = is844 ? 'Grade' : 'Performance Level';
   const tableHead = assessmentColumns.length
-    ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+    ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => pointsMax > 0
+        ? [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]
+        : [`${column.label}\nMarks`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
     : ['No.', areaLabel, 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const excluded = isExcludedResult(r);
@@ -1048,7 +1052,7 @@ export function drawResultsTable(
       assessmentColumns.forEach((column) => {
         const value = r.assessmentValues?.[column.id];
         if (value == null) {
-          row.push('—', '—', '—');
+          row.push(...(pointsMax > 0 ? ['—', '—', '—'] : ['—', '—']));
           return;
         }
         const metric = typeof value === 'object'
@@ -1059,7 +1063,7 @@ export function drawResultsTable(
         const marksLabel = Number(metric.outOf) === 100
           ? Number(metric.marks).toFixed(0)
           : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
-        row.push(marksLabel, pointsMax > 0 ? (examGrade.points ?? '—') : '—', examLevel || '—');
+        row.push(marksLabel, ...(pointsMax > 0 ? [examGrade.points ?? '—'] : []), examLevel || '—');
       });
       row.push(excluded ? excludedCode : `${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
