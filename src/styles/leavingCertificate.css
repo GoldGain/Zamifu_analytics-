@@ -19,7 +19,6 @@
   pointer-events: none;
 }
 
-/* Fill-in blanks: text sits on the printed dotted rule (flex-end = baseline). */
 .cert-value {
   position: absolute;
   z-index: 2;
@@ -27,24 +26,24 @@
   align-items: flex-end;
   background: transparent;
   color: #111;
-  padding: 0 3px 1px;
-  font-size: 13px;
+  padding: 0 2px 0;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.01em;
 }
 
-.cert-name { left: 240px; top: 285px; width: 250px; height: 16px; }
-.cert-admission { left: 557px; top: 285px; width: 108px; height: 16px; font-size: 12px; }
-.cert-dob { left: 176px; top: 327px; width: 130px; height: 16px; font-size: 12px; }
-.cert-enrolled { left: 362px; top: 327px; width: 294px; height: 16px; font-size: 12px; }
-.cert-school { left: 301px; top: 368px; width: 176px; height: 16px; font-size: 12px; }
-.cert-standard { left: 550px; top: 368px; width: 115px; height: 16px; font-size: 12px; }
-.cert-left { left: 176px; top: 410px; width: 198px; height: 16px; font-size: 12px; }
-.cert-standard-left { left: 317px; top: 451px; width: 201px; height: 16px; font-size: 12px; }
+/* Native coords × 0.64 */
+.cert-name { left: 251px; top: 291px; width: 250px; height: 16px; }
+.cert-admission { left: 579px; top: 291px; width: 90px; height: 16px; font-size: 11px; }
+.cert-dob { left: 198px; top: 331px; width: 96px; height: 16px; font-size: 11px; }
+.cert-enrolled { left: 378px; top: 331px; width: 288px; height: 16px; font-size: 11px; }
+.cert-school { left: 320px; top: 370px; width: 160px; height: 16px; font-size: 11px; }
+.cert-standard { left: 595px; top: 370px; width: 70px; height: 16px; font-size: 11px; }
+.cert-left { left: 186px; top: 410px; width: 179px; height: 16px; font-size: 11px; }
+.cert-standard-left { left: 403px; top: 449px; width: 179px; height: 16px; font-size: 11px; }
 
 .cert-academic,
 .cert-conduct,
@@ -52,7 +51,6 @@
   display: block;
   white-space: pre-wrap;
   overflow: hidden;
-  text-overflow: clip;
   word-break: break-word;
   overflow-wrap: anywhere;
   font-weight: 400;
@@ -60,37 +58,36 @@
   align-items: unset;
 }
 
-/* Line-height matches the printed dotted rows so wrapped text lands on each rule. */
 .cert-academic {
-  left: 76px;
-  top: 500px;
+  left: 77px;
+  top: 487px;
   width: 595px;
   height: 86px;
-  font-size: 12px;
-  line-height: 28.8px;
-  text-indent: 412px;
+  font-size: 11px;
+  line-height: 29.4px;
+  text-indent: 406px;
 }
 .cert-conduct {
-  left: 76px;
-  top: 624px;
+  left: 77px;
+  top: 595px;
   width: 595px;
-  height: 64px;
-  font-size: 12px;
-  line-height: 32px;
-  text-indent: 118px;
+  height: 58px;
+  font-size: 11px;
+  line-height: 29.4px;
+  text-indent: 121px;
 }
 .cert-cocurricular {
-  left: 76px;
-  top: 688px;
+  left: 77px;
+  top: 654px;
   width: 595px;
-  height: 64px;
-  font-size: 12px;
-  line-height: 32px;
-  text-indent: 368px;
+  height: 58px;
+  font-size: 11px;
+  line-height: 29.4px;
+  text-indent: 371px;
 }
 
-.cert-head-name { left: 541px; top: 752px; width: 134px; height: 16px; font-size: 12px; }
-.cert-issue { left: 163px; top: 854px; width: 192px; height: 16px; font-size: 12px; }
+.cert-head-name { left: 525px; top: 714px; width: 141px; height: 16px; font-size: 11px; }
+.cert-issue { left: 186px; top: 818px; width: 160px; height: 16px; font-size: 11px; }
 
 .cert-signature {
   position: absolute;
@@ -98,9 +95,9 @@
   object-fit: contain;
   background: transparent;
 }
-.cert-pupil-signature { left: 131px; top: 762px; width: 166px; height: 45px; }
-.cert-head-signature { left: 528px; top: 813px; width: 166px; height: 48px; }
-.cert-school-stamp { left: 528px; top: 928px; width: 166px; height: 64px; }
+.cert-pupil-signature { left: 128px; top: 758px; width: 160px; height: 45px; }
+.cert-head-signature { left: 525px; top: 774px; width: 160px; height: 45px; }
+.cert-school-stamp { left: 525px; top: 870px; width: 160px; height: 58px; }
 
 .certificate-bulk-renderer {
   position: fixed;
@@ -113,10 +110,9 @@
 }
 
 @media print {
-  @page { size: A4 portrait; margin: 2cm; }
+  @page { size: A4 portrait; margin: 0; }
   .leaving-certificate-preview {
-    width: 100%;
-    height: auto;
-    aspect-ratio: 1275 / 1650;
+    width: 210mm;
+    height: 297mm;
   }
 }

@@ -130,6 +130,11 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
   const writeLine = (content: string, x: number, y: number, size: number, maxWidth: number) => {
     if (!content) return;
     pdf.setFontSize(size);
+    let fit = size;
+    while (fit > 8 && pdf.getTextWidth(content) > maxWidth * sx) {
+      fit -= 0.4;
+      pdf.setFontSize(fit);
+    }
     const clipped = pdf.splitTextToSize(content, maxWidth * sx)[0] as string;
     pdf.text(clipped, x * sx, y * sy, { baseline: 'alphabetic' });
   };
@@ -137,11 +142,9 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
   const writeWrapped = (content: string, firstX: number, firstY: number, firstWidth: number, restX: number, restY: number, restWidth: number, lineGap: number, size: number, maxLines: number) => {
     if (!content) return;
     pdf.setFontSize(size);
-    const first = pdf.splitTextToSize(content, firstWidth * sx) as string[];
-    const firstLine = first[0] || '';
+    const firstLine = (pdf.splitTextToSize(content, firstWidth * sx) as string[])[0] || '';
     pdf.text(firstLine, firstX * sx, firstY * sy, { baseline: 'alphabetic' });
-    const used = firstLine.length;
-    const remainder = content.slice(used).replace(/^\s+/, '');
+    const remainder = content.slice(firstLine.length).replace(/^\s+/, '');
     if (!remainder || maxLines < 2) return;
     const rest = pdf.splitTextToSize(remainder, restWidth * sx) as string[];
     rest.slice(0, maxLines - 1).forEach((line, index) => {
@@ -149,25 +152,25 @@ export async function downloadLeavingCertificate(element: HTMLElement, filename:
     });
   };
 
-  writeLine(value('.cert-name'), 375, 468, 11, 400);
-  writeLine(value('.cert-admission'), 870, 468, 10, 165);
-  writeLine(value('.cert-dob'), 275, 533, 10, 200);
-  writeLine(value('.cert-enrolled'), 565, 533, 10, 450);
-  writeLine(value('.cert-school'), 470, 598, 10, 270);
-  writeLine(value('.cert-standard'), 860, 598, 10, 175);
-  writeLine(value('.cert-left'), 275, 663, 10, 305);
-  writeLine(value('.cert-standard-left'), 495, 728, 10, 310);
+  writeLine(value('.cert-name'), 392, 471, 11, 390);
+  writeLine(value('.cert-admission'), 905, 471, 10, 140);
+  writeLine(value('.cert-dob'), 310, 533, 10, 150);
+  writeLine(value('.cert-enrolled'), 590, 533, 10, 450);
+  writeLine(value('.cert-school'), 500, 595, 10, 250);
+  writeLine(value('.cert-standard'), 930, 595, 10, 110);
+  writeLine(value('.cert-left'), 290, 656, 10, 280);
+  writeLine(value('.cert-standard-left'), 630, 718, 10, 280);
 
-  writeWrapped(value('.cert-academic'), 764, 803, 270, 119, 848, 920, 50, 10, 3);
-  writeWrapped(value('.cert-conduct'), 304, 998, 735, 119, 1048, 920, 50, 10, 2);
-  writeWrapped(value('.cert-cocurricular'), 694, 1098, 340, 119, 1148, 920, 50, 10, 2);
+  writeWrapped(value('.cert-academic'), 760, 778, 280, 121, 824, 920, 46, 10, 3);
+  writeWrapped(value('.cert-conduct'), 310, 947, 720, 121, 993, 920, 46, 10, 2);
+  writeWrapped(value('.cert-cocurricular'), 700, 1039, 340, 121, 1085, 920, 46, 10, 2);
 
-  writeLine(value('.cert-head-name'), 845, 1198, 10, 205);
-  writeLine(value('.cert-issue'), 255, 1358, 10, 295);
+  writeLine(value('.cert-head-name'), 820, 1131, 10, 220);
+  writeLine(value('.cert-issue'), 290, 1294, 10, 250);
 
-  await addOptionalImage(pdf, element.querySelector('.cert-pupil-signature') as HTMLImageElement | null, 205, 1190, 260, 70, sx, sy);
-  await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 825, 1270, 260, 75, sx, sy);
-  await addOptionalImage(pdf, element.querySelector('.cert-school-stamp') as HTMLImageElement | null, 825, 1450, 260, 100, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-pupil-signature') as HTMLImageElement | null, 200, 1185, 250, 70, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-head-signature') as HTMLImageElement | null, 820, 1210, 250, 70, sx, sy);
+  await addOptionalImage(pdf, element.querySelector('.cert-school-stamp') as HTMLImageElement | null, 820, 1360, 250, 90, sx, sy);
   pdf.save(filename);
 }
 
