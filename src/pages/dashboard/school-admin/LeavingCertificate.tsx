@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { CheckSquare, Download, FileText, Loader2, Printer, Save, Sparkles, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import DigitalSignature from '@/components/DigitalSignature';
-import { CONDUCT_CATEGORIES, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, isLeavingCertificateClass, leavingCertificateStandardLabel, LEAVING_CERTIFICATE_CBE_CURRICULUM, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
+import { CONDUCT_CATEGORIES, renderLeavingCertificatePreview, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, isLeavingCertificateClass, leavingCertificateStandardLabel, LEAVING_CERTIFICATE_CBE_CURRICULUM, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
 import type { LeavingCertificateResult } from '@/lib/leavingCertificate';
 import '@/styles/leavingCertificate.css';
 
@@ -13,10 +13,20 @@ const today = () => new Date().toISOString().slice(0, 10);
 type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
 type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
 type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; schoolName: string; standard: string; standardLeft: string; standardCurriculum: string | null; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null; schoolStampUrl: string | null; schoolStampType: string | null };
-type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null>; headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
+type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null> | ((element: HTMLDivElement | null) => void); headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
 function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
-  return <div ref={previewRef} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
-    <img className="leaving-certificate-template" src="/certificates/kenya-primary-school-leaving-certificate-official.png" alt="Official Kenya Primary School Leaving Certificate template" />
+  const localRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (localRef.current) renderLeavingCertificatePreview(localRef.current);
+  }, [data, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl]);
+  return <div ref={(element) => {
+    localRef.current = element;
+    if (typeof previewRef === 'function') previewRef(element);
+    else if (previewRef) previewRef.current = element;
+  }} className="leaving-certificate-preview" aria-label="Kenya Primary School Leaving Certificate preview">
+    <p className="cert-overflow" role="alert" hidden />
+    <div className="cert-artwork" />
+    <div className="cert-source" hidden aria-hidden="true">
     <div className="cert-value cert-name">{data.learnerName}</div>
     <div className="cert-value cert-admission">{data.admissionNumber}</div>
     <div className="cert-value cert-dob">{formatCertificateDate(data.dateOfBirth)}</div>
@@ -33,6 +43,7 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     {headTeacherSignatureUrl && <img className="cert-signature cert-head-signature" src={headTeacherSignatureUrl} alt="Head teacher signature" />}
     {data.schoolStampUrl && <img className="cert-signature cert-school-stamp" src={data.schoolStampUrl} alt="Official school rubber stamp" />}
     <div className="cert-value cert-issue">{formatCertificateDate(data.dateOfIssue)}</div>
+    </div>
   </div>;
 }
 
@@ -176,7 +187,7 @@ export default function LeavingCertificate() {
   }, [bulkCertificates, bulkGenerating, students]);
 
   return <div className="p-4 md:p-8 space-y-6">
-    <div><div className="flex items-center gap-3"><FileText className="w-8 h-8 text-[#2563EB]" /><h1 className="text-2xl font-bold">Kenya Primary School Leaving Certificate</h1></div><p className="text-sm text-gray-500 mt-1">Prepare, review, sign and print the official one-page certificate. The supplied official artwork is used as the fixed Letter-size template.</p></div>
+    <div><div className="flex items-center gap-3"><FileText className="w-8 h-8 text-[#2563EB]" /><h1 className="text-2xl font-bold">Kenya Primary School Leaving Certificate</h1></div><p className="text-sm text-gray-500 mt-1">Prepare, review, sign and print the official one-page certificate. Official artwork, one A4 page, 20 mm margins. Long values wrap within their blanks; oversized text must be shortened before export.</p></div>
     <div className="grid xl:grid-cols-[360px_1fr] gap-6 items-start">
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
         <label className="block text-sm font-medium">Select learner</label><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or admission no." className="w-full border rounded-lg px-3 py-2 text-sm" />
