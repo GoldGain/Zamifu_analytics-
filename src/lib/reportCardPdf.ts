@@ -972,9 +972,13 @@ export function drawStudentInfo(
   const fs = pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8);
   const showPoints = positionDetails?.showPoints !== false;
   const showOverallPositions = positionDetails?.showOverallPositions !== false;
+  // 8-4-4 report cards use KNEC terminology: "Exam Name", and no Assessment Number.
+  const is844Card = Boolean(positionDetails?.is844);
   const standardRows: string[][] = [
-    ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
-    ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
+    ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', is844Card ? 'Exam Name' : 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
+    is844Card
+      ? ['Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', 'Class / Stream', className || '—']
+      : ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
     ['Class Position', showOverallPositions ? (positionDetails?.classPosition || position || '—') : '', ...(positionDetails?.streamPosition ? ['Stream Position', showOverallPositions ? positionDetails.streamPosition : '', 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
   ];
   // 8-4-4 report cards have no Pathway/Track: those belong to CBE only.
@@ -1093,7 +1097,7 @@ export function drawResultsTable(
   doc.setFillColor(228, 246, 225); doc.setDrawColor(137, 185, 142);
   doc.rect(9, startY - 6.5, 192, 6.5, 'FD');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 8)); doc.setTextColor(26, 75, 92);
-  doc.text('Learning Area Performance', 11, startY - 2.1);
+  doc.text(is844 ? 'Subject Performance' : 'Learning Area Performance', 11, startY - 2.1);
   const combinedColumnStyles: Record<number, any> = {};
   if (assessmentColumns.length) {
     combinedColumnStyles[0] = { cellWidth: 7 };

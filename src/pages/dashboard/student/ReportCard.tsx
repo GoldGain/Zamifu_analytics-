@@ -487,7 +487,7 @@ export default function StudentReportCard() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learning Area</th>
+                  <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{is844Class ? 'Subject' : 'Learning Area'}</th>
                   <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks</th>
                   <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>
                   <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{is844Class ? '8-4-4 Grade' : 'CBE Grade'}</th>

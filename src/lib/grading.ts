@@ -280,9 +280,15 @@ export function generateSubjectSpecificComment(
 ): string {
   const band = getSchoolLevelBand(classData);
   const isPrimary = band === 'primary';
+  // 8-4-4 (Form 3/4) reports must never quote CBE competency levels such as EE2 or
+  // ME1. They use the KNEC grade scale (A, A-, B+ ... E) instead. CBE keeps its
+  // competency sub-levels exactly as before.
+  const is844 = is844Curriculum(classData);
+  const gradeFor = (pct: number): string => (is844 ? calculate844Grade(pct).grade : getGradeLabel(pct, band));
+  const areasWord = is844 ? 'subjects' : 'learning areas';
 
   if (!subjects || subjects.length === 0) {
-    return `${studentName}, keep working hard and striving for excellence in all your learning areas!`;
+    return `${studentName}, keep working hard and striving for excellence in all your ${areasWord}!`;
   }
 
   // Sort subjects by percentage
@@ -309,12 +315,12 @@ export function generateSubjectSpecificComment(
       subjectName.toLowerCase().includes(s.name.toLowerCase())
     );
     if (subjectResult) {
-      return getGradeLabel(subjectResult.percentage, band);
+      return gradeFor(subjectResult.percentage);
     }
-    return getGradeLabel(avgPct, band);
+    return gradeFor(avgPct);
   };
 
-  const bestGrade = getGradeLabel(best.percentage, band);
+  const bestGrade = gradeFor(best.percentage);
   let comment = '';
   const firstName = studentName.split(' ')[0] || studentName;
 
@@ -336,7 +342,9 @@ export function generateSubjectSpecificComment(
       failingSubjects.forEach(s => {
         comment += `In ${s.name}, ${getSubjectAdvice(s.name, band)}. `;
       });
-      comment += `Let's work together to bring these up to ME level. `;
+      comment += is844
+        ? `Let's work together to raise these grades next term. `
+        : `Let's work together to bring these up to ME level. `;
     } else {
       comment += `However, your performance in ${failNames} needs immediate attention. `;
       failingSubjects.forEach(s => {
@@ -351,7 +359,9 @@ export function generateSubjectSpecificComment(
     }).join(', ');
 
     if (isPrimary) {
-      comment += `Let's work harder on ${weakNames} to bring ${weakSubjects.length === 1 ? 'it' : 'them'} up to ME level. `;
+      comment += is844
+        ? `Let's work harder on ${weakNames} to raise ${weakSubjects.length === 1 ? 'that grade' : 'those grades'} next term. `
+        : `Let's work harder on ${weakNames} to bring ${weakSubjects.length === 1 ? 'it' : 'them'} up to ME level. `;
       weakSubjects.forEach(s => {
         comment += `In ${s.name}, ${getSubjectAdvice(s.name, band)}. `;
       });
@@ -363,7 +373,7 @@ export function generateSubjectSpecificComment(
     }
   } else {
     // All subjects above threshold
-    comment += `Keep maintaining this excellent standard across all your learning areas. `;
+    comment += `Keep maintaining this excellent standard across all your ${areasWord}. `;
   }
 
   // Address dropping subjects (if not already mentioned)
@@ -381,7 +391,8 @@ export function generateSubjectSpecificComment(
   // report-card profile so the advisory always matches the strongest flag.
   const pathwayPerformance = calculatePathwayPerformance(subjects);
   const bestPathway = strongestPathway(pathwayPerformance);
-  if (bestPathway && bestPathway.outOf > 0) {
+  // Pathway/track is a CBE senior-school construct; 8-4-4 report cards have none.
+  if (!is844 && bestPathway && bestPathway.outOf > 0) {
     comment += `Your best-performed pathway is ${bestPathway.pathway} (${bestPathway.percentage.toFixed(1)}%), showing strong potential. `;
   }
 

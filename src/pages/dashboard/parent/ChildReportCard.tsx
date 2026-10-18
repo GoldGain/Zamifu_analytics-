@@ -598,14 +598,14 @@ export default function ParentChildReportCard() {
               <div className="bg-white rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)] overflow-hidden border border-gray-100">
                 <div className="p-6 border-b border-gray-100">
                   <h2 className="text-lg font-bold text-[#111111] flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-blue-600" /> Learning Area Performance
+                    <FileText className="w-5 h-5 text-blue-600" /> {is844Curriculum(classDataForGrading) ? 'Subject Performance' : 'Learning Area Performance'}
                   </h2>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-50/50">
-                        <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">Learning Area</th>
+                        <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">{is844Curriculum(classDataForGrading) ? 'Subject' : 'Learning Area'}</th>
                         <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Score</th>
                         <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider text-center">Grade</th>
                         <th className="px-6 py-4 text-xs font-bold text-[#666666] uppercase tracking-wider">Status</th>
