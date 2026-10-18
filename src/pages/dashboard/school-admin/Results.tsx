@@ -553,6 +553,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [generatingPDF, setGeneratingPDF] = useState(false);
   const [generatingBulk, setGeneratingBulk] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publishingAll, setPublishingAll] = useState(false);
   const [notifyingParents, setNotifyingParents] = useState(false);
   const [scopedClassId, setScopedClassId] = useState('');
   const [showAllStreams, setShowAllStreams] = useState(false);
@@ -788,6 +789,39 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       if (user?.schoolId) void fetchComparisonReadyAssessmentIds(user.schoolId, comparisonClassIds).then(setComparisonReadyExamIds).catch((error) => console.warn('Could not refresh ready comparisons:', error));
     } catch (err: any) { toast.error('Failed to publish results: ' + err.message); console.error(err); }
     setPublishing(false);
+  };
+
+  // School-wide publish: one action for the whole school instead of class by class.
+  const publishAllResults = async () => {
+    if (!user?.schoolId) { toast.error('Your school could not be identified.'); return; }
+    const ok = window.confirm(
+      'Publish ALL results for this school?\n\nEvery assessment and exam in every class and term will become visible to learners and parents immediately.\n\nYou can still hide an individual assessment later by changing its status.',
+    );
+    if (!ok) return;
+    setPublishingAll(true);
+    try {
+      const { count: outstanding, error: countError } = await supabaseUntyped
+        .from('results')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', user.schoolId)
+        .or('status.neq.published,status.is.null');
+      if (countError) throw countError;
+      if (!outstanding) { toast.info('Every result in this school is already published.'); return; }
+      const { error } = await supabaseUntyped
+        .from('results')
+        .update({ status: 'published', published_at: new Date().toISOString() })
+        .eq('school_id', user.schoolId)
+        .or('status.neq.published,status.is.null');
+      if (error) throw error;
+      toast.success(`${outstanding} result${outstanding === 1 ? '' : 's'} published. Learners and parents can see them now.`);
+      void loadScopedResults();
+      if (user?.schoolId) void fetchComparisonReadyAssessmentIds(user.schoolId, comparisonClassIds).then(setComparisonReadyExamIds).catch((error) => console.warn('Could not refresh ready comparisons:', error));
+    } catch (err: any) {
+      toast.error('Failed to publish all results: ' + err.message);
+      console.error(err);
+    } finally {
+      setPublishingAll(false);
+    }
   };
 
   const notifyParents = async () => {
@@ -2770,6 +2804,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-purple-600 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors shadow-sm">
                 {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {publishing ? 'Publishing...' : 'Publish Results'}
+              </button>
+              <button onClick={() => void publishAllResults()} disabled={publishingAll || publishing || !user?.schoolId}
+                title="Publish every assessment and exam in this school at once"
+                className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-emerald-700 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-emerald-800 disabled:opacity-50 transition-colors shadow-sm">
+                {publishingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {publishingAll ? 'Publishing all...' : 'Publish All Results'}
               </button>
               <button onClick={notifyParents} disabled={loading || publishing || notifyingParents || !selectedClass || !selectedTerm}
                 className="min-h-11 flex flex-1 sm:flex-none items-center justify-center gap-2 bg-amber-500 text-white px-4 sm:px-5 py-3 rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors shadow-sm">
