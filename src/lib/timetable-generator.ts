@@ -385,6 +385,8 @@ export function getExactGridAssignmentIssues(options: {
   }>;
   totalLessons: number;
   days?: readonly string[];
+  /** Lower/Upper Primary: a learning area may be taught twice on one weekday. */
+  allowTwoPerDay?: boolean;
 }): ExactGridAssignmentIssue[] {
   const days = options.days?.length
     ? [...options.days]
@@ -439,8 +441,12 @@ export function getExactGridAssignmentIssues(options: {
       const availableDays = normalizeDays(assignment.available_days);
       const allowedDays = availableDays.length ? availableDays : days;
       const canUseDouble = lessons >= 2 && (Boolean(assignment.is_double_lesson) || lessons > allowedDays.length);
-      const requiredDistinctDays = canUseDouble ? lessons - 1 : lessons;
-      const maxSchedulableLessons = Math.min(lessons, allowedDays.length + (canUseDouble ? 1 : 0));
+      const requiredDistinctDays = options.allowTwoPerDay
+        ? Math.ceil(lessons / 2)
+        : canUseDouble ? lessons - 1 : lessons;
+      const maxSchedulableLessons = options.allowTwoPerDay
+        ? Math.min(lessons, allowedDays.length * 2)
+        : Math.min(lessons, allowedDays.length + (canUseDouble ? 1 : 0));
       if (allowedDays.length < requiredDistinctDays) {
         const unscheduled = lessons - maxSchedulableLessons;
         const lessonLabel = `${lessons} weekly lesson${lessons === 1 ? '' : 's'}`;

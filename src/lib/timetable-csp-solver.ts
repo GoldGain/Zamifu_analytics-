@@ -54,6 +54,14 @@ const ALL_DAY_BITS = 0b11111;
 
 
 
+/** Levels where a learning area may be timetabled twice on one weekday. */
+export const TWO_PER_DAY_LEVELS: readonly string[] = ['lower-primary', 'upper-primary'];
+/**
+ * Set by solveTimetableCsp for the level being solved. Pre-Primary and Junior keep the
+ * strict one-appearance-per-day rule and therefore run exactly the same code as before.
+ */
+let allowTwoPerDay = false;
+
 export interface CspTimetableSolverOptions {
   schoolId: string;
   levelKey: string;
@@ -390,7 +398,9 @@ function diagnoseClass(
     // A class whose own lessons fall short of the week does not have to fill every
     // weekday, so this only blocks a class that is meant to fill the whole week.
     const maximumPeriods = usable.reduce((sum, need) => sum
-      + ((need.hasDouble || need.autoDouble) && need.lessons >= 2 ? 2 : 1), 0);
+      + (allowTwoPerDay
+        ? Math.min(2, need.lessons)
+        : ((need.hasDouble || need.autoDouble) && need.lessons >= 2 ? 2 : 1)), 0);
     if (!classIsShort && maximumPeriods < slotsPerDay) {
       const missing = plan.needs
         .filter((need) => !(need.availableDays.length ? need.availableDays : ALL_DAYS).includes(day))
@@ -416,7 +426,9 @@ function diagnoseClass(
     // double per week, so a learning area can cover at most (weekdays + 1) lessons.
     const wantsDouble = (need.hasDouble || need.autoDouble) && need.lessons >= 2;
     const doubleCount = wantsDouble ? 1 : 0;
-    const requiredDays = need.lessons - doubleCount;
+    // Primary levels may timetable a learning area twice in one day (two singles or one
+    // double), so a subject needs at most ceil(lessons / 2) weekdays.
+    const requiredDays = allowTwoPerDay ? Math.ceil(need.lessons / 2) : need.lessons - doubleCount;
     // A short class's lessons are placed even when a learning area cannot reach
     // every weekday, because the cells it has no lessons for are left empty. A
     // class that must fill the week is still blocked by this ceiling.
@@ -425,8 +437,10 @@ function diagnoseClass(
         `${plan.className} / ${need.subjectName}: ${need.lessons} weekly lessons need ${requiredDays} different weekdays `
         + `because a learning area may appear only once per day (Rule 8), but only ${available.length} weekday(s) are `
         + `available (${available.map((day) => DAYS[day]).join(', ') || 'none'}). `
-        + 'A learning area may appear at most once per weekday and may have only one double lesson per week, '
-        + `so ${available.length + 1} is the highest weekly count it can hold on the days it is available. `
+        + (allowTwoPerDay
+          ? `A learning area may appear at most twice per weekday, so ${available.length * 2} is the highest weekly count it can hold. `
+          : 'A learning area may appear at most once per weekday and may have only one double lesson per week, '
+            + `so ${available.length + 1} is the highest weekly count it can hold on the days it is available. `)
         + 'Lower the weekly count, or widen the days it may be taught on.',
         subjectCtx));
     }
@@ -546,14 +560,14 @@ function buildModel(
     const plan = plans.get(classId)!;
 
     const push = (needs: TeacherNeed[], allowedDays: number[], doubleRequested: boolean,
-      autoDouble = false): void => {
+      autoDouble = false, keySuffix = ''): void => {
       const window = new Uint8Array(slotsPerDay);
       for (let slot = 0; slot < slotsPerDay; slot += 1) {
         window[slot] = needs.every((need) =>
           strictSubjectAllowsLesson(need.subjectName, lessonNumberForIndex(slot))) ? 1 : 0;
       }
       const maskKeys = needs.map((need) => {
-        const key = `${classIndex}|${need.subjectId}`;
+        const key = `${classIndex}|${need.subjectId}${keySuffix}`;
         if (!subjectMask.has(key)) subjectMask.set(key, 0);
         return key;
       });
@@ -609,7 +623,23 @@ function buildModel(
     for (const need of plan.needs) {
       if (paired.has(need.subjectId)) continue;
       const available = need.availableDays.length ? need.availableDays : ALL_DAYS;
-      push([need], available, need.hasDouble && need.lessons >= 2, need.autoDouble && need.lessons >= 2);
+      // Lower and Upper Primary may timetable a learning area twice on one weekday, as
+      // two single lessons or as one double. A subject with more lessons than weekdays is
+      // split into two independent once-per-day sessions that the search may place on the
+      // same weekday. Two parts means two appearances at most, so a triple is impossible;
+      // neither part may take a double, because a double plus the other part would be three.
+      const coveredByDouble = need.hasDouble ? need.lessons - 1 : need.lessons;
+      const shouldSplit = allowTwoPerDay
+        && need.lessons <= available.length * 2
+        && coveredByDouble > available.length;
+      if (shouldSplit) {
+        const firstPart = Math.min(available.length, Math.ceil(need.lessons / 2));
+        const secondPart = need.lessons - firstPart;
+        push([{ ...need, lessons: firstPart, hasDouble: false, autoDouble: false }], available, false, false, '#1');
+        if (secondPart > 0) push([{ ...need, lessons: secondPart, hasDouble: false, autoDouble: false }], available, false, false, '#2');
+      } else {
+        push([need], available, need.hasDouble && need.lessons >= 2, need.autoDouble && need.lessons >= 2);
+      }
     }
   }
 
@@ -2455,6 +2485,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
     return finish([]);
   }
 
+  allowTwoPerDay = TWO_PER_DAY_LEVELS.includes(options.levelKey);
   const plans = buildClassPlans(options.classes, options.assignments, issues);
   // Rule 14 is a warning, so a mismatch is recorded before anything can return
   // early: the admin must still be told which classes do not match the level.

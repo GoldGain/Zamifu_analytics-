@@ -1,6 +1,9 @@
 import { isFillerSubject, isValidDoubleLessonStart, strictSubjectAllowsLesson, violatesMathScienceSequence } from './timetable-generator';
 import { formatClassStream } from './class-label';
 
+/** Levels where a learning area may appear twice on one weekday. */
+export const TWO_PER_DAY_LEVELS: readonly string[] = ['lower-primary', 'upper-primary'];
+
 export interface TimetableValidationSlot {
   id: string | number;
   slot_order: number;
@@ -215,7 +218,10 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
       && secondLessonIndex === firstLessonIndex + 1
       && (!ordered[0].end_time || !ordered[1].start_time
         || String(ordered[0].end_time).slice(0, 5) === String(ordered[1].start_time).slice(0, 5));
-    if (!isLegalDouble) {
+    // Lower and Upper Primary may timetable a learning area twice on one weekday as two
+    // separate single lessons. Three or more appearances are never allowed.
+    const allowsTwoSingles = entries.length === 2 && TWO_PER_DAY_LEVELS.includes(String(options.levelGroup || ''));
+    if (!isLegalDouble && !allowsTwoSingles) {
       issues.push({
         rule: 'once-per-day',
         message: `${subjectName || `Subject ${subjectId}`} appears more than once on day ${day} for class ${classId}; only one consecutive configured double is allowed.`,

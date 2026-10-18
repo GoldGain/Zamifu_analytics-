@@ -619,6 +619,8 @@ export default function TimetableGenerate() {
           classes: classesToProcess,
           assignments,
           totalLessons: lessonSlots.length,
+          // Lower and Upper Primary may teach a learning area twice on one weekday.
+          allowTwoPerDay: levelKey === 'lower-primary' || levelKey === 'upper-primary',
         });
         if (exactGridIssues.length > 0) {
           const levelLabel = LEVEL_GROUPS.find((level) => level.key === levelKey)?.label || levelKey;
