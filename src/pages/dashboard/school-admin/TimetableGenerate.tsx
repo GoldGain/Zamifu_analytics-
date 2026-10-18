@@ -870,6 +870,12 @@ export default function TimetableGenerate() {
             onProgress: (message) => console.info(`[timetable] ${message}`),
           });
           const solverWarnings = solverResult.warnings.filter((warning) => !warning.code.startsWith('weekly-total-'));
+          // A class the solver had to leave out is reported individually: a generic
+          // "no timetable" message cannot tell the admin which class or teacher to fix.
+          const omittedReasons = (solverResult.failedClasses || [])
+            .map((entry) => entry.reason)
+            .filter((reason): reason is string => Boolean(reason));
+          if (omittedReasons.length > 0) generationWarnings.push(`${levelLabel}: ${omittedReasons.join(' ')}`);
           // An impossible or over-constrained rule must not discard the run.
           // The best placement the solver found is kept and the rule is
           // reported to the admin, so no level is ever left ungenerated.

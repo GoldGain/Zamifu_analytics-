@@ -777,7 +777,58 @@ function selectAttemptableClasses(
     }
     attemptable.push(classId);
   }
-  return attemptable;
+
+  // A teacher can be in only one class at a time, so a teacher booked for more lessons
+  // than the week holds makes their classes impossible however the days are arranged.
+  // Keep as many of that teacher's classes as the week can actually hold and report the
+  // rest by name, instead of failing the whole level with a message that cannot name the
+  // cause. Teacher collisions themselves stay strict.
+  const weeklyCells = slotsPerDay * DAY_COUNT;
+  const lessonsPerTeacher = new Map<string, Map<string, number>>();
+  for (const classId of attemptable) {
+    const plan = plans.get(classId);
+    if (!plan) continue;
+    for (const need of plan.needs) {
+      for (const teacherId of need.teacherIds) {
+        const perClass = lessonsPerTeacher.get(teacherId) || new Map<string, number>();
+        perClass.set(classId, (perClass.get(classId) || 0) + need.lessons);
+        lessonsPerTeacher.set(teacherId, perClass);
+      }
+    }
+  }
+  const overCapacity = new Map<string, string>();
+  for (const [, perClass] of lessonsPerTeacher) {
+    const total = [...perClass.values()].reduce((sum, lessons) => sum + lessons, 0);
+    if (total <= weeklyCells) continue;
+    let committed = 0;
+    for (const classId of attemptable) {
+      const lessons = perClass.get(classId);
+      if (!lessons) continue;
+      if (committed + lessons > weeklyCells) {
+        if (overCapacity.has(classId)) continue;
+        const plan = plans.get(classId);
+        const others = [...perClass.keys()]
+          .filter((other) => other !== classId)
+          .map((other) => plans.get(other)?.className)
+          .filter(Boolean);
+        overCapacity.set(classId,
+          `${plan?.className || classId} could not be timetabled: one teacher is also assigned to `
+          + `${others.join(' and ') || 'another class'} at this level, and that teacher needs ${total} lessons a week `
+          + `across ${perClass.size} classes while a week only holds ${weeklyCells} lesson slots. `
+          + 'A teacher can only teach one class at a time, so assign a different teacher to one of these classes '
+          + '(Teacher Assignments), then generate again.');
+        continue;
+      }
+      committed += lessons;
+    }
+  }
+  for (const [classId, reason] of overCapacity) {
+    const plan = plans.get(classId);
+    const className = plan?.className || classId;
+    failedClasses.push({ classId, className, reason });
+    warnings.push({ code: 'teacher-over-capacity', message: reason, classId, className });
+  }
+  return attemptable.filter((classId) => !overCapacity.has(classId));
 }
 
 /* ─────────────────────────── the constraint search ─────────────────────────── */
