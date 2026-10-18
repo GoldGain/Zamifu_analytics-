@@ -254,6 +254,27 @@ export default function Payroll() { const { user } = useAuth(); const [tab, setT
     await openRun(run);
   };
 
+  const deleteLine = async (line: Line, run: Run) => {
+    if (run.status !== 'draft') {
+      toast.error('Only draft payslips can be deleted. A confirmed month needs a reversal request.');
+      return;
+    }
+    const period = new Date(run.payroll_month).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+    const ok = window.confirm(
+      `Delete the payslip for ${line.staff_name} from ${period}?\n\nThis removes the line from the draft payroll only. Rebuilding the draft will bring the staff member back.`,
+    );
+    if (!ok) return;
+    setBusyId(line.id);
+    try {
+      const { error } = await supabase.rpc('payroll_delete_line', { p_line_id: line.id } as never);
+      if (error) { toast.error(error.message); return; }
+      toast.success(`${line.staff_name}'s payslip removed from ${period}`);
+      await openRun(run);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return <div className="space-y-6"><div className="flex items-center justify-between"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><WalletCards className="h-6 w-6 text-blue-600" /> Staff Payroll</h1><p className="mt-1 text-sm text-gray-500">Record-keeping only: generate payslips and record payments for school staff.</p></div><button onClick={() => void load()} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"><RefreshCw className="h-4 w-4" />Refresh</button></div><div className="flex gap-2 border-b">{([['staff', 'Staff List'], ['run', 'Run Payroll'], ['records', 'Payslips & Receipts']] as const).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={`border-b-2 px-4 py-2 text-sm font-semibold ${tab === key ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}>{label}</button>)}</div>{tab === 'staff' && (
         <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
           <div className="space-y-3 rounded-xl border bg-white p-4">
@@ -327,5 +348,5 @@ export default function Payroll() { const { user } = useAuth(); const [tab, setT
 
       {tab === 'run' && <div className="max-w-xl rounded-xl border bg-white p-6"><h2 className="text-lg font-semibold">Generate monthly payroll</h2><p className="mt-1 text-sm text-gray-500">The server snapshots active staff, allowances, deductions, gross pay and net pay.</p><input type="month" value={month} onChange={e => setMonth(e.target.value)} className="mt-5 rounded-lg border px-3 py-2" /><button onClick={() => void build()} className="mt-4 block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"><Save className="mr-1 inline h-4 w-4" />Generate Payslips</button></div>}{tab === 'records' && <div className="space-y-4">{runs.length === 0 ? <div className="rounded-xl border bg-white p-10 text-center text-gray-500">No payroll runs yet.</div> : runs.map(run => <div key={run.id} className="overflow-hidden rounded-xl border bg-white"><div className="flex items-center justify-between bg-gray-50 px-4 py-3"><div><p className="font-semibold">{new Date(run.payroll_month).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })}</p><p className="text-xs text-gray-500 capitalize">{run.status}</p></div><button onClick={() => void openRun(run)} className="rounded-lg border px-3 py-1.5 text-xs">Load lines</button></div>{run.lines && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left text-gray-500"><th className="px-4 py-2">Staff</th><th className="px-4 py-2">Gross</th><th className="px-4 py-2">Net</th><th className="px-4 py-2">Status</th>
                         <th className="px-4 py-2">Balance owed</th><th className="px-4 py-2">Actions</th></tr></thead><tbody>{run.lines.map(line => <tr key={line.id} className="border-b last:border-0"><td className="px-4 py-3">{line.staff_name}<div className="text-xs text-gray-500">{line.position}</div></td><td className="px-4 py-3">{money(line.gross_pay)}</td><td className="px-4 py-3 font-semibold">{money(line.net_pay)}</td><td className="px-4 py-3 capitalize">{line.payment_status}</td>
-                          <td className="px-4 py-3">{Number(line.arrears || 0) > 0 ? money(Number(line.arrears)) : "—"}</td><td className="flex gap-2 px-4 py-3"><button onClick={() => pdf(line, run)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Payslip</button>{line.payment_status === 'pending' ? <button onClick={() => void markPaid(line, run)} className="rounded bg-emerald-600 px-2 py-1 text-xs text-white">Mark paid</button> : <button onClick={() => pdf(line, run, true)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Receipt</button>}</td></tr>)}</tbody></table></div>}</div>)}</div>}</div>;
+                          <td className="px-4 py-3">{Number(line.arrears || 0) > 0 ? money(Number(line.arrears)) : "—"}</td><td className="flex gap-2 px-4 py-3"><button onClick={() => pdf(line, run)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Payslip</button>{line.payment_status === 'pending' ? <button onClick={() => void markPaid(line, run)} className="rounded bg-emerald-600 px-2 py-1 text-xs text-white">Mark paid</button> : <button onClick={() => pdf(line, run, true)} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"><Download className="h-3 w-3" />Receipt</button>}{run.status === 'draft' ? <button onClick={() => void deleteLine(line, run)} disabled={busyId === line.id} title="Remove this payslip from the draft" className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"><Trash2 className="h-3 w-3" />{busyId === line.id ? 'Removing…' : 'Delete'}</button> : <button disabled title="Confirmed payroll is immutable. Raise a reversal request instead." className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs opacity-40"><Trash2 className="h-3 w-3" />Delete</button>}</td></tr>)}</tbody></table></div>}</div>)}</div>}</div>;
 }
