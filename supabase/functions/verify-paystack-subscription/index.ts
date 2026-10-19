@@ -102,7 +102,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: school, error: schoolError } = await admin
       .from("schools")
-      .select("id, name, reseller_id, fee_per_learner_per_term, fee_per_learner_per_year")
+      .select("id, name, reseller_id, fee_per_learner_per_term, fee_per_learner_per_year, billing_learner_count")
       .eq("id", profile.school_id)
       .maybeSingle();
     if (schoolError || !school) return json({ error: "School could not be found" }, 404);
@@ -128,10 +128,15 @@ Deno.serve(async (req: Request) => {
     const period = customFieldValue(transaction.metadata, "period") || "One Term";
     const feeFromMetadata = Number(customFieldValue(transaction.metadata, "fee_per_learner"));
     const learnersFromMetadata = Number(customFieldValue(transaction.metadata, "learners_count"));
-    const learnerCount = await activeLearnerCount(admin, String(school.id));
-    if (learnerCount <= 0) return json({ error: "No active learners were found for this school" }, 400);
-    if (learnersFromMetadata > 0 && learnersFromMetadata !== learnerCount) {
-      return json({ error: "The learner count changed before verification. Please restart payment." }, 409);
+    const activeCount = await activeLearnerCount(admin, String(school.id));
+    const learnerCount = Number(school.billing_learner_count) > 0
+      ? Number(school.billing_learner_count)
+      : activeCount;
+    if (!Number.isSafeInteger(learnerCount) || learnerCount <= 0) {
+      return json({ error: "Set a positive billing learner count or add active learners before paying" }, 400);
+    }
+    if (learnersFromMetadata !== learnerCount) {
+      return json({ error: "The billing learner count changed before verification. Please restart payment." }, 409);
     }
 
     const configuredFee = Number(school.fee_per_learner_per_term) || 10;

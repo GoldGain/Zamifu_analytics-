@@ -121,6 +121,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({
           custom_fields: [
             { display_name: 'School', variable_name: 'school_id', value: user?.schoolId || 'unknown' },
             { display_name: 'Learners', variable_name: 'learners_count', value: String(learnersCount) },
+            { display_name: 'Billing learner count', variable_name: 'billing_learner_count', value: String(learnersCount) },
             { display_name: 'Fee per learner', variable_name: 'fee_per_learner', value: isFixedSchoolPlan ? 'N/A' : String(resolvedFee) },
             { display_name: 'Subscription plan', variable_name: 'subscription_plan', value: subscriptionPlan },
             { display_name: 'Period', variable_name: 'period', value: billingPeriod === 'annual' ? 'Annual' : 'One Term' },
