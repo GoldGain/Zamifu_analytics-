@@ -975,7 +975,7 @@ export function drawStudentInfo(
   // 8-4-4 report cards use KNEC terminology: "Exam Name", and no Assessment Number.
   const is844Card = Boolean(positionDetails?.is844);
   const standardRows: string[][] = [
-    ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', is844Card ? 'Exam Name' : 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
+    [is844Card ? "Student's Name" : "Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', is844Card ? 'Exam Name' : 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
     is844Card
       ? ['Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', 'Class / Stream', className || '—']
       : ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],

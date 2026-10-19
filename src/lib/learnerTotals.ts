@@ -1,5 +1,7 @@
 import {
+  calculate844Grade,
   calculateCompetencyGrade,
+  gradePointsForClass,
   getSchoolLevelBand,
   is844Curriculum,
   type SchoolLevelBand,
@@ -16,7 +18,7 @@ export interface LearnerTotals {
   subjects: Record<string, number>;
   /** Sum of effective learning-area percentages used for means and default ranking. */
   totalMarks: number;
-  /** Sum of the current 8-point scale used for CBE and seven-subject 8-4-4 rankings. */
+  /** Sum of class-scale points; KNEC Form 3/4 uses 12 points per subject. */
   totalPoints: number;
   rankingTotalPoints?: number;
   rankingTotalMarks?: number;
@@ -65,7 +67,7 @@ export function rowPercentage(result: any): number {
   return Number.isFinite(marks) ? marks : 0;
 }
 
-/** All senior and 8-4-4 ranking points use the requested 8-point maximum. */
+/** CBE junior/senior and Grade 10 ranking points use the 8-point competency scale. */
 export function rankingPointsForPercentage(percentage: number): number {
   return calculateCompetencyGrade(percentage, 'senior').points;
 }
@@ -83,11 +85,14 @@ const compareBest = (subjects: Record<string, number>) => (a: string, b: string)
 
 /**
  * Form 3/4 rank: Mathematics, the strongest language, then five best remaining
- * subjects. It always exposes an 8-points-per-subject total (maximum 56).
+ * subjects. It exposes the KNEC twelve-points-per-subject scale (maximum 84).
  */
 export function calculateKnecSevenSubjectMetrics(subjects: Record<string, number>): SevenSubjectMetrics {
   const names = Object.keys(subjects);
-  const best = compareBest(subjects);
+  const best = (a: string, b: string) =>
+    calculate844Grade(subjects[b] || 0).points - calculate844Grade(subjects[a] || 0).points
+    || (subjects[b] || 0) - (subjects[a] || 0)
+    || a.localeCompare(b);
   const maths = names.filter(isMathematicsSubject).sort(best);
   const languages = names.filter(isKnecLanguageSubject).sort(best);
   const otherSubjects = names
@@ -97,7 +102,7 @@ export function calculateKnecSevenSubjectMetrics(subjects: Record<string, number
   return {
     subjects: selected,
     totalMarks: selected.reduce((sum, name) => sum + (subjects[name] || 0), 0),
-    totalPoints: selected.reduce((sum, name) => sum + rankingPointsForPercentage(subjects[name] || 0), 0),
+    totalPoints: selected.reduce((sum, name) => sum + calculate844Grade(subjects[name] || 0).points, 0),
   };
 }
 
@@ -183,11 +188,15 @@ function effectiveMeanSubjects(subjects: Record<string, number>): string[] {
  */
 export function aggregateLearnerTotals(rawResults: any[], classObj: any): LearnerTotals[] {
   const band: SchoolLevelBand = getSchoolLevelBand(classObj);
+  const is844 = is844Curriculum(classObj);
   const entries = new Map<string, LearnerTotals>();
   const winners = new Map<string, Map<string, { createdAt: number; index: number; row: any }>>();
 
   (rawResults || []).forEach((result: any, index: number) => {
     if (result?.students?.is_active === false) return;
+    const hasRecordedValue = [result?.marks, result?.percentage, result?.converted_marks, result?.grade_844, result?.cbc_grade, result?.cbc_sublevel, result?.mark_code]
+      .some((value) => value !== null && value !== undefined && String(value).trim() !== '');
+    if (!hasRecordedValue) return;
     const studentId = result?.student_id;
     if (!studentId) return;
     if (!entries.has(studentId)) {
@@ -229,8 +238,8 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
     });
     const effectiveNames = effectiveMeanSubjects(rawSubjects);
     const totalMarks = effectiveNames.reduce((sum, name) => sum + (rawSubjects[name] || 0), 0);
-    const totalPoints = effectiveNames.reduce((sum, name) => sum + (band === 'primary' ? 0 : rankingPointsForPercentage(rawSubjects[name] || 0)), 0);
-    const sevenSubjectMetrics = is844Curriculum(classObj)
+    const totalPoints = effectiveNames.reduce((sum, name) => sum + (band === 'primary' ? 0 : gradePointsForClass(rawSubjects[name] || 0, classObj)), 0);
+    const sevenSubjectMetrics = is844
       ? calculateKnecSevenSubjectMetrics(rawSubjects)
       : isGradeTenClass(classObj)
         ? calculateSeniorSevenSubjectMetrics(rawSubjects, entry.student)
@@ -242,7 +251,9 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
       totalMarks,
       totalPoints,
       count: effectiveNames.length,
-      avgPct: effectiveNames.length ? totalMarks / effectiveNames.length : 0,
+      avgPct: is844 && sevenSubjectMetrics?.subjects.length
+        ? (sevenSubjectMetrics.totalPoints / (sevenSubjectMetrics.subjects.length * 12)) * 100
+        : effectiveNames.length ? totalMarks / effectiveNames.length : 0,
       ...(sevenSubjectMetrics ? {
         rankingTotalMarks: sevenSubjectMetrics.totalMarks,
         rankingTotalPoints: sevenSubjectMetrics.totalPoints,
