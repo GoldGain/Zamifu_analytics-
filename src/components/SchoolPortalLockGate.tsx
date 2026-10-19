@@ -70,7 +70,7 @@ export default function SchoolPortalLockGate({
     return () => {
       cancelled = true;
     };
-  }, [user?.schoolId, target]);
+  }, [user?.schoolId, target, trialStatus?.subscriptionStatus, trialStatus?.subscriptionExpiresAt]);
 
   if (locksLoading || (enforceBilling && billingLoading)) {
     return (
