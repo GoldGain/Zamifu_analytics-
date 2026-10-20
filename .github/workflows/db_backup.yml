@@ -47,7 +47,26 @@ jobs:
           supabase db dump --db-url "$SUPABASE_DB_URL" -f "$DUMP_DIR/roles.sql" --role-only
           supabase db dump --db-url "$SUPABASE_DB_URL" -f "$DUMP_DIR/schema.sql"
           supabase db dump --db-url "$SUPABASE_DB_URL" -f "$DUMP_DIR/data.sql" --data-only --use-copy
-          for dump in roles.sql schema.sql data.sql; do
+          TRIGGER_QUERY="$(cat <<'SQL'
+          SELECT pg_get_triggerdef(t.oid, true) || ';'
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace table_schema ON table_schema.oid = c.relnamespace
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_namespace function_schema ON function_schema.oid = p.pronamespace
+          WHERE NOT t.tgisinternal
+            AND table_schema.nspname IN ('auth', 'storage', 'realtime')
+            AND function_schema.nspname = 'public'
+          ORDER BY table_schema.nspname, c.relname, t.tgname;
+          SQL
+          )"
+          docker run --rm --network host \
+            -e SUPABASE_DB_URL \
+            -e TRIGGER_QUERY \
+            -v "$DUMP_DIR:/backup" \
+            postgres:17-alpine \
+            sh -euc 'psql "$SUPABASE_DB_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --command "$TRIGGER_QUERY" > /backup/managed_schema_custom_triggers.sql'
+          for dump in roles.sql schema.sql data.sql managed_schema_custom_triggers.sql; do
             if [[ ! -s "$DUMP_DIR/$dump" ]]; then
               echo "Expected database dump is missing or empty: $dump" >&2
               exit 1
@@ -64,7 +83,8 @@ jobs:
           mkdir -p "$DEST"
           cp "$RUNNER_TEMP/supabase-db-dump/roles.sql" \
              "$RUNNER_TEMP/supabase-db-dump/schema.sql" \
-             "$RUNNER_TEMP/supabase-db-dump/data.sql" "$DEST/"
+             "$RUNNER_TEMP/supabase-db-dump/data.sql" \
+             "$RUNNER_TEMP/supabase-db-dump/managed_schema_custom_triggers.sql" "$DEST/"
 
           CUTOFF="$(TZ=Africa/Nairobi date -d '30 days ago' +'%Y-%m-%d')"
           for directory in db-backups/backups/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
