@@ -62,7 +62,7 @@ jobs:
           )"
           docker run --rm --network host \
             -e SUPABASE_DB_URL \
-            -e TRIGGER_QUERY \
+            -e "TRIGGER_QUERY=$TRIGGER_QUERY" \
             -v "$DUMP_DIR:/backup" \
             postgres:17-alpine \
             sh -euc 'psql "$SUPABASE_DB_URL" --no-psqlrc --set=ON_ERROR_STOP=1 --tuples-only --no-align --command "$TRIGGER_QUERY" > /backup/managed_schema_custom_triggers.sql'
