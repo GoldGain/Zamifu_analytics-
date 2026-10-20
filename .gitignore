@@ -18,3 +18,7 @@ android/capacitor-cordova-android-plugins/build/
 *.jks
 *.keystore
 keystore.properties
+
+# Supabase database dumps and backup folders
+backups/
+*.sql

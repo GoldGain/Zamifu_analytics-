@@ -1,0 +1,87 @@
+name: Daily Supabase database backup
+
+on:
+  schedule:
+    - cron: '0 23 * * *' # 02:00 East Africa Time (UTC+3)
+  workflow_dispatch:
+
+concurrency:
+  group: zamifu-supabase-database-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Zamifu Analytics
+        uses: actions/checkout@v4
+
+      - name: Check out private database-backup repository
+        uses: actions/checkout@v4
+        with:
+          repository: GoldGain/Zamifu-DB-Backups
+          ref: main
+          token: ${{ secrets.BACKUP_GITHUB_TOKEN }}
+          path: db-backups
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Dump Supabase roles, schema, and data
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SUPABASE_DB_URL:-}" ]]; then
+            echo "SUPABASE_DB_URL secret is not configured" >&2
+            exit 1
+          fi
+          DUMP_DIR="$RUNNER_TEMP/supabase-db-dump"
+          mkdir -p "$DUMP_DIR"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f "$DUMP_DIR/roles.sql" --role-only
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f "$DUMP_DIR/schema.sql"
+          supabase db dump --db-url "$SUPABASE_DB_URL" -f "$DUMP_DIR/data.sql" --data-only --use-copy
+          for dump in roles.sql schema.sql data.sql; do
+            if [[ ! -s "$DUMP_DIR/$dump" ]]; then
+              echo "Expected database dump is missing or empty: $dump" >&2
+              exit 1
+            fi
+          done
+
+      - name: Store backup, prune backups older than 30 days, and push
+        shell: bash
+        run: |
+          set -euo pipefail
+          BACKUP_DATE="$(TZ=Africa/Nairobi date +'%Y-%m-%d')"
+          BACKUP_STAMP="$(TZ=Africa/Nairobi date +'%Y-%m-%d %H:%M:%S EAT')"
+          DEST="db-backups/backups/$BACKUP_DATE"
+          mkdir -p "$DEST"
+          cp "$RUNNER_TEMP/supabase-db-dump/roles.sql" \
+             "$RUNNER_TEMP/supabase-db-dump/schema.sql" \
+             "$RUNNER_TEMP/supabase-db-dump/data.sql" "$DEST/"
+
+          CUTOFF="$(TZ=Africa/Nairobi date -d '30 days ago' +'%Y-%m-%d')"
+          for directory in db-backups/backups/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
+            [[ -d "$directory" ]] || continue
+            directory_date="${directory##*/}"
+            if [[ "$directory_date" < "$CUTOFF" ]]; then
+              echo "Pruning expired backup: $directory"
+              rm -rf -- "$directory"
+            fi
+          done
+
+          git -C db-backups config user.name 'github-actions[bot]'
+          git -C db-backups config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C db-backups add -A backups
+          if [[ -n "$(git -C db-backups status --porcelain)" ]]; then
+            git -C db-backups commit -m "Supabase backup ${BACKUP_DATE} (${BACKUP_STAMP})"
+            git -C db-backups push origin HEAD:main
+          else
+            echo "No backup changes to commit."
+          fi
