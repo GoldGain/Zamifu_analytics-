@@ -81,10 +81,15 @@ jobs:
           BACKUP_STAMP="$(TZ=Africa/Nairobi date +'%Y-%m-%d %H:%M:%S EAT')"
           DEST="db-backups/backups/$BACKUP_DATE"
           mkdir -p "$DEST"
+          DUMP_DIR="$RUNNER_TEMP/supabase-db-dump"
+          gzip -1 -f "$DUMP_DIR/data.sql"
+          split --bytes=90M --numeric-suffixes=0 --suffix-length=3 \
+            "$DUMP_DIR/data.sql.gz" "$DUMP_DIR/data.sql.gz.part-"
+          rm -f "$DUMP_DIR/data.sql.gz"
           cp "$RUNNER_TEMP/supabase-db-dump/roles.sql" \
              "$RUNNER_TEMP/supabase-db-dump/schema.sql" \
-             "$RUNNER_TEMP/supabase-db-dump/data.sql" \
              "$RUNNER_TEMP/supabase-db-dump/managed_schema_custom_triggers.sql" "$DEST/"
+          cp "$DUMP_DIR"/data.sql.gz.part-* "$DEST/"
 
           CUTOFF="$(TZ=Africa/Nairobi date -d '30 days ago' +'%Y-%m-%d')"
           for directory in db-backups/backups/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]; do
