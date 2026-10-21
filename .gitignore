@@ -22,3 +22,6 @@ keystore.properties
 # Supabase database dumps and backup folders
 backups/
 *.sql
+# Keep checked-in Supabase migration sources versioned.
+!supabase/migrations/*.sql
+!supabase/migrations/**/*.sql

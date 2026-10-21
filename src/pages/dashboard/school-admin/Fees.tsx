@@ -8,7 +8,7 @@ import { sortByAdmissionNumber } from '@/lib/student-order';
 import { formatClassStream } from '@/lib/class-label';
 import { calculateReceiptBalance, downloadFeeReceiptPdf } from '@/lib/feeReceiptPdf';
 
-export default function FeeWorkspace() {
+export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean }) {
   const { user, schoolData } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [receiptInvoices, setReceiptInvoices] = useState<any[]>([]);
@@ -605,6 +605,138 @@ export default function FeeWorkspace() {
     acc[key].total += parseFloat(fs.amount) || 0;
     return acc;
   }, {});
+
+  if (readOnly) {
+    const readOnlyTabClass = (tab: typeof activeTab) => `px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${activeTab === tab ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`;
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[#111111]">Fee Overview</h1>
+          <p className="text-sm text-[#666666]">Review invoices, payments, balances and fee structures.</p>
+        </div>
+
+        <div role="note" className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          This is a read-only view. Fee records cannot be created, edited, or retired here.
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Total Invoiced</p>
+            <p className="mt-2 text-2xl font-bold text-blue-950">Ksh {feeTotals.invoiced.toLocaleString()}</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Total Paid</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-950">Ksh {feeTotals.paid.toLocaleString()}</p>
+          </div>
+          <div className="rounded-2xl border border-rose-100 bg-rose-50 p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Total Balance</p>
+            <p className="mt-2 text-2xl font-bold text-rose-950">Ksh {feeTotals.outstanding.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto border-b">
+          <button type="button" aria-pressed={activeTab === 'invoices'} onClick={() => setActiveTab('invoices')} className={readOnlyTabClass('invoices')}>Invoices ({filteredInvoiceRows.length})</button>
+          <button type="button" aria-pressed={activeTab === 'payments'} onClick={() => setActiveTab('payments')} className={readOnlyTabClass('payments')}>Payments ({filteredPaymentRows.length})</button>
+          <button type="button" aria-pressed={activeTab === 'structures'} onClick={() => setActiveTab('structures')} className={readOnlyTabClass('structures')}>Fee Structures ({Object.keys(groupedStructures).length})</button>
+          <button type="button" aria-pressed={activeTab === 'class-balances'} onClick={() => setActiveTab('class-balances')} className={readOnlyTabClass('class-balances')}>Class Fee Balances</button>
+        </div>
+
+        {activeTab === 'invoices' && (
+          <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b bg-gray-50 p-4 md:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input value={feeSearch} onChange={(event) => setFeeSearch(event.target.value)} placeholder="Search admission no., assessment no., or learner name" className="w-full rounded-xl border bg-white py-2.5 pl-9 pr-4 text-sm" />
+              </div>
+              <select value={selectedInvoiceClass} onChange={(event) => setSelectedInvoiceClass(event.target.value)} className="rounded-xl border bg-white px-4 py-2.5 text-sm md:w-56">
+                <option value="">All classes</option>
+                {classes.map((classItem) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
+              </select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead><tr className="border-b bg-gray-50"><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Learner</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Term</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Total</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Paid</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Balance</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Status</th></tr></thead>
+                <tbody>
+                  {loading ? <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-500">Loading...</td></tr> : filteredInvoiceRows.length === 0 ? <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-500">No invoices match the current search or class filter.</td></tr> : filteredInvoiceRows.map((invoice) => (
+                    <tr key={invoice.id} className="border-b hover:bg-gray-50">
+                      <td className="px-5 py-4"><div className="text-sm font-medium">{invoice.students?.first_name} {invoice.students?.last_name}</div><div className="text-xs text-gray-500">Adm: {invoice.students?.admission_number || '-'} · Ass: {invoice.students?.assessment_number || '-'}</div></td>
+                      <td className="px-5 py-4 text-sm text-gray-600">{invoice.terms?.name} {invoice.terms?.academic_year}</td>
+                      <td className="px-5 py-4 text-sm">Ksh {Number(invoice.total_amount || 0).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-sm text-green-600">Ksh {Number(invoice.amount_paid || 0).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-sm font-medium text-red-600">Ksh {invoiceBalance(invoice).toLocaleString()}</td>
+                      <td className="px-5 py-4"><span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColor(invoice.status)}`}>{statusIcon(invoice.status)} {invoice.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'payments' && (
+          <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b bg-gray-50 p-4 md:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input value={feeSearch} onChange={(event) => setFeeSearch(event.target.value)} placeholder="Search admission no., assessment no., or learner name" className="w-full rounded-xl border bg-white py-2.5 pl-9 pr-4 text-sm" />
+              </div>
+              <select value={selectedInvoiceClass} onChange={(event) => setSelectedInvoiceClass(event.target.value)} className="rounded-xl border bg-white px-4 py-2.5 text-sm md:w-56">
+                <option value="">All classes</option>
+                {classes.map((classItem) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
+              </select>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead><tr className="border-b bg-gray-50"><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Learner</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Invoice / Receipt</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Amount</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Method</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Date</th><th className="px-5 py-3 text-xs font-semibold uppercase text-gray-500">Receipt</th></tr></thead>
+                <tbody>
+                  {filteredPaymentRows.length === 0 ? <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-500">No payments match the current search or class filter.</td></tr> : filteredPaymentRows.map((payment) => (
+                    <tr key={payment.id} className="border-b hover:bg-gray-50">
+                      <td className="px-5 py-4"><div className="text-sm font-medium">{payment.student?.first_name} {payment.student?.last_name}</div><div className="text-xs text-gray-500">Adm: {payment.student?.admission_number || '-'} · Ass: {payment.student?.assessment_number || '-'}</div></td>
+                      <td className="px-5 py-4 text-sm text-gray-600">{payment.receipt_number || '-'}<div className="text-xs text-gray-400">{payment.invoice?.terms?.name || ''} {payment.invoice?.terms?.academic_year || ''}</div></td>
+                      <td className="px-5 py-4 text-sm font-semibold text-green-600">Ksh {Number(payment.amount || 0).toLocaleString()}</td>
+                      <td className="px-5 py-4 text-sm capitalize">{payment.payment_method || '-'}</td>
+                      <td className="px-5 py-4 text-sm text-gray-600">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '-'}</td>
+                      <td className="px-5 py-4"><button type="button" onClick={() => downloadHistoricalReceipt(payment)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"><Download className="h-3.5 w-3.5" /> Receipt</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'class-balances' && (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-2xl border bg-white p-5 md:flex-row md:items-center">
+              <select value={selectedFeeClass} onChange={(event) => setSelectedFeeClass(event.target.value)} className="flex-1 rounded-xl border bg-white px-4 py-2.5 text-sm">
+                <option value="">Select a class</option>
+                {classes.map((classItem) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
+              </select>
+              <button type="button" onClick={() => selectedFeeClass && downloadClassFeeBalances(selectedFeeClass)} disabled={!selectedFeeClass} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"><Download className="h-4 w-4" /> Download PDF</button>
+            </div>
+            {selectedFeeClass ? (
+              <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                <div className="border-b p-5"><h3 className="font-semibold">{classes.find((item) => item.id === selectedFeeClass)?.name} Fee Balances</h3><p className="mt-1 text-xs text-gray-500">Learners are sorted by admission number.</p></div>
+                <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b bg-gray-50"><th className="px-5 py-3 text-xs uppercase text-gray-500">Learner</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Total</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Paid</th><th className="px-5 py-3 text-xs uppercase text-gray-500">Outstanding</th></tr></thead><tbody>{classBalanceRows(selectedFeeClass).map((row) => <tr key={row.student.id} className="border-b"><td className="px-5 py-3 text-sm">{row.student.first_name} {row.student.last_name}<div className="text-xs text-gray-500">{row.student.admission_number || '-'}</div></td><td className="px-5 py-3 text-sm">Ksh {row.total.toLocaleString()}</td><td className="px-5 py-3 text-sm text-green-600">Ksh {row.paid.toLocaleString()}</td><td className="px-5 py-3 text-sm font-semibold text-red-600">Ksh {row.balance.toLocaleString()}</td></tr>)}</tbody></table></div>
+              </div>
+            ) : <div className="rounded-2xl border bg-white p-8 text-center text-sm text-gray-500">Select a class to view fee balances.</div>}
+          </div>
+        )}
+
+        {activeTab === 'structures' && (
+          <div className="space-y-4">
+            {Object.keys(groupedStructures).length === 0 ? <div className="rounded-2xl border bg-white p-8 text-center text-sm text-gray-500">No fee structures found.</div> : Object.values(groupedStructures).map((group, index) => (
+              <div key={index} className="rounded-2xl border bg-white p-6 shadow-sm">
+                <div className="mb-3 flex items-center justify-between"><div><h4 className="font-semibold text-[#111111]">{group.class} — {group.term}</h4><p className="text-xs text-gray-500">{group.fees.length} fee type(s)</p></div><p className="text-sm font-bold text-[#2563EB]">Total: Ksh {group.total.toLocaleString()}</p></div>
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-4">{group.fees.map((fee, index: number) => <div key={fee.id || index} className="rounded-lg bg-gray-50 p-3 text-center"><p className="text-xs text-gray-500">{fee.type}</p><p className="text-sm font-semibold">Ksh {Number(fee.amount).toLocaleString()}</p></div>)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
