@@ -5,6 +5,15 @@ export type PdfFontSize = (typeof PDF_FONT_SIZE_OPTIONS)[number];
 
 export const DEFAULT_PDF_FONT_SIZE: PdfFontSize = 14;
 
+// Report-card layouts use compact base sizes; these explicit steps make the
+// Small and Large choices perceptible in the generated print/PDF output.
+const PDF_FONT_SCALE: Record<PdfFontSize, number> = {
+  10: 0.72,
+  12: 0.88,
+  14: 1,
+  16: 1.3,
+};
+
 const PDF_FONT_SCALE_KEY = '__zamifuPdfFontScale' as const;
 type FontAwarePdfDocument = jsPDF & {
   [PDF_FONT_SCALE_KEY]?: number;
@@ -25,7 +34,7 @@ export function configurePdfFontSize(
   fontSize: number | undefined | null = DEFAULT_PDF_FONT_SIZE,
 ): PdfFontSize {
   const normalized = normalizePdfFontSize(fontSize);
-  (doc as FontAwarePdfDocument)[PDF_FONT_SCALE_KEY] = normalized / DEFAULT_PDF_FONT_SIZE;
+  (doc as FontAwarePdfDocument)[PDF_FONT_SCALE_KEY] = PDF_FONT_SCALE[normalized];
   return normalized;
 }
 

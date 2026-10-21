@@ -5,29 +5,50 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+let updateReloadPromptActive = false;
+
 export function usePWA() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches,
+  );
   const [isInstallable, setIsInstallable] = useState(false);
 
   useEffect(() => {
-    // Register service worker
+    let registration: ServiceWorkerRegistration | null = null;
+    const controllerAtLoad = 'serviceWorker' in navigator ? navigator.serviceWorker.controller : null;
+    const handleControllerChange = () => {
+      const currentController = navigator.serviceWorker.controller;
+      if (!controllerAtLoad || !currentController || currentController === controllerAtLoad || updateReloadPromptActive) return;
+      updateReloadPromptActive = true;
+      const reloadNow = window.confirm('A new Zamifu Analytics update is ready. Reload now to get the latest payroll and report-card fixes?');
+      if (reloadNow) window.location.reload();
+    };
+    const checkForUpdates = () => {
+      if (!document.hidden && registration) {
+        void registration.update().catch((err) => console.warn('App update check failed:', err));
+      }
+    };
+
+    // Register and explicitly check for updates when the app opens or returns to the foreground.
     if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange);
       navigator.serviceWorker
-        .register('/sw.js')
+        .register('/sw.js', { updateViaCache: 'none' })
         .then((reg) => {
+          registration = reg;
           console.log('SW registered:', reg.scope);
+          checkForUpdates();
         })
         .catch((err) => {
           console.warn('SW registration failed:', err);
-        });
+      });
     }
+    window.addEventListener('focus', checkForUpdates);
+    document.addEventListener('visibilitychange', checkForUpdates);
 
     // Check if already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsInstalled(true);
-      return;
-    }
+    if (window.matchMedia('(display-mode: standalone)').matches) return;
 
     // Listen for install prompt
     const handler = (e: Event) => {
@@ -38,7 +59,8 @@ export function usePWA() {
     };
 
     // Use capture phase to ensure we catch the event
-    window.addEventListener('beforeinstallprompt', handler, { capture: true });
+    const beforeInstallOptions: AddEventListenerOptions = { capture: true };
+    window.addEventListener('beforeinstallprompt', handler, beforeInstallOptions);
 
     // Listen for app installed
     const installedHandler = () => {
@@ -50,7 +72,10 @@ export function usePWA() {
     window.addEventListener('appinstalled', installedHandler);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handler, { capture: true } as any);
+      if ('serviceWorker' in navigator) navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
+      window.removeEventListener('focus', checkForUpdates);
+      document.removeEventListener('visibilitychange', checkForUpdates);
+      window.removeEventListener('beforeinstallprompt', handler, beforeInstallOptions);
       window.removeEventListener('appinstalled', installedHandler);
     };
   }, []);
@@ -83,7 +108,17 @@ export function usePWA() {
 // Push notification helpers
 export const VAPID_PUBLIC_KEY = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U';
 
-export async function subscribeToPush(userId: string, supabaseClient: any): Promise<boolean> {
+export async function subscribeToPush(
+  userId: string,
+  supabaseClient: {
+    from: (table: 'push_subscriptions') => {
+      upsert: (
+        values: { user_id: string; subscription: object },
+        options: { onConflict: 'user_id' },
+      ) => PromiseLike<{ error: unknown | null }>;
+    };
+  },
+): Promise<boolean> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.warn('Push notifications not supported');
     return false;

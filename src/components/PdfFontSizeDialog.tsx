@@ -99,7 +99,7 @@ export default function PdfFontSizeDialog({
                     <span className="text-sm font-medium text-[#111111]">{option}</span>
                   </span>
                   <span className="text-xs text-gray-500">
-                    {option === 10 ? 'Small' : option === 12 ? 'Compact' : option === 14 ? 'Default · Recommended' : 'Large'}
+                    {option === 10 ? 'Small' : option === 12 ? 'Compact' : option === 14 ? 'Default · Recommended' : 'Large · 30% larger'}
                   </span>
                 </label>
               ))}

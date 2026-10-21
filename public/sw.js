@@ -1,5 +1,5 @@
-// CBE-Analytics Service Worker - v2.0
-const CACHE_NAME = 'eduhub-v3-exact-assignment-counts';
+// Zamifu Analytics Service Worker - v2.1 app-update refresh
+const CACHE_NAME = 'zamifu-v4-payroll-report-card-20261021';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -9,25 +9,26 @@ const STATIC_ASSETS = [
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    Promise.all([
+      caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)),
+      self.skipWaiting(),
+    ])
   );
-  self.skipWaiting();
 });
 
 // Activate event - clean old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(
         cacheNames
           .filter((name) => name !== CACHE_NAME)
           .map((name) => caches.delete(name))
       );
-    })
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
 // Fetch event - network first, fallback to cache
