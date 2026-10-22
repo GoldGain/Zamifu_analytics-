@@ -72,19 +72,58 @@ Deno.serve(async (req) => {
       });
     }
 
+    const requestedRole = String(role).trim().toLowerCase();
+    const profileRole = requestedRole === "learner" ? "student" : requestedRole;
+    const supportedRoles = ["super_admin", "school_admin", "teacher", "student", "parent", "master_super_admin", "reseller_super_admin", "bursar", "librarian"];
+    if (!supportedRoles.includes(profileRole)) {
+      return new Response(JSON.stringify({ error: "Unsupported account role" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const effectiveSchoolId = String(school_id || callerProfile.school_id || "").trim();
+    const schoolScopedRoles = ["teacher", "student", "parent", "bursar", "librarian"];
+    if (schoolScopedRoles.includes(profileRole) && !effectiveSchoolId) {
+      return new Response(JSON.stringify({ error: "A school is required for this account role" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (callerProfile.role === "school_admin") {
+      if (!callerProfile.school_id || effectiveSchoolId !== callerProfile.school_id) {
+        return new Response(JSON.stringify({ error: "You can only create accounts for your own school" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (!schoolScopedRoles.includes(profileRole)) {
+        return new Response(JSON.stringify({ error: "School administrators cannot create platform administrator accounts" }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (profileRole !== "student" && (existing_user_id || legacy_email || student_id)) {
+      return new Response(JSON.stringify({ error: "Existing-account synchronization is supported only for learner accounts" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Learner accounts are keyed by assessment number. Admission numbers remain
     // optional display identifiers and must never become login credentials.
     const effectiveAssessmentNumber = String(assessment_number || metadata?.assessment_number || '').trim();
-    console.log(`Creating user: role=${role}, email=${email}, assessment=${effectiveAssessmentNumber}`);
+    console.log(`Creating user: role=${profileRole}, email=${email}, assessment=${effectiveAssessmentNumber}`);
 
-    if (["learner", "student"].includes(role) && !effectiveAssessmentNumber) {
+    if (profileRole === "student" && !effectiveAssessmentNumber) {
       return new Response(JSON.stringify({ error: "Assessment number is required for learner accounts", code: "ASSESSMENT_NUMBER_REQUIRED" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (["learner", "student"].includes(role) && effectiveAssessmentNumber) {
+    if (profileRole === "student" && effectiveAssessmentNumber) {
       const tempAdminClient = createClient(supabaseUrl, serviceRoleKey, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
@@ -94,7 +133,7 @@ Deno.serve(async (req) => {
         .from("students")
         .select("id, assessment_number")
         .eq("assessment_number", effectiveAssessmentNumber)
-        .eq("school_id", school_id || callerProfile.school_id)
+        .eq("school_id", effectiveSchoolId)
         .maybeSingle();
 
       if (checkError && checkError.code !== "PGRST116") {
@@ -146,7 +185,7 @@ Deno.serve(async (req) => {
         .from("students")
         .select("id, profile_id, school_id")
         .eq("id", student_id)
-        .eq("school_id", school_id || callerProfile.school_id)
+        .eq("school_id", effectiveSchoolId)
         .maybeSingle();
       if (linkedStudent && linkedStudent.profile_id && linkedStudent.profile_id !== accountUserId) {
         return new Response(JSON.stringify({ error: "The existing account is not linked to this learner" }), {
@@ -156,15 +195,18 @@ Deno.serve(async (req) => {
       }
     }
 
+    const safeMetadata = metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata as Record<string, unknown>
+      : {};
     const userMetadata = {
+      ...safeMetadata,
       first_name: first_name || "",
       last_name: last_name || "",
-      role: role,
-      school_id: school_id || callerProfile.school_id,
+      role: profileRole,
+      school_id: effectiveSchoolId || null,
       admission_number: admission_number || null,
       assessment_number: effectiveAssessmentNumber || null,
       class_id: class_id || null,
-      ...metadata,
     };
     const linkLearnerAccount = async (userId: string) => {
       if (!student_id) return null;
@@ -172,7 +214,7 @@ Deno.serve(async (req) => {
         .from("students")
         .update({ profile_id: userId, student_email: email })
         .eq("id", student_id)
-        .eq("school_id", school_id || callerProfile.school_id);
+        .eq("school_id", effectiveSchoolId);
       return linkError;
     };
     if (accountUserId) {

@@ -1354,6 +1354,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const isPrimary = band === 'primary';
       const is844 = is844Curriculum(classObj);
       const summaries = buildStudentSummary(rawResults, classObj);
+      const currentClassId = scope === 'class_teacher' ? scopedClassId : selectedClass;
+      const previousComparison = selectedExam && currentClassId
+        ? await fetchPreviousAssessment([currentClassId], selectedTerm, selectedExam)
+        : null;
+      const previousSummaries = previousComparison ? buildStudentSummary(previousComparison.results, classObj) : [];
+      const previousTotals = new Map<string, number>();
+      previousSummaries.forEach((summary: any) => {
+        previousTotals.set(String(summary.studentId), Number(is844
+          ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
+          : (summary.totalPct ?? 0)));
+      });
       const allSubjectsRaw = Array.from(new Set(summaries.flatMap((summary: any) => Object.keys(summary.subjects || {})))) as string[];
       const allSubjects = sortSubjects(is844 ? allSubjectsRaw : normalizeLearningAreas(allSubjectsRaw));
       const totalStudents = summaries.length;
@@ -1464,8 +1475,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           { label: 'D+ (4 pts)', min: 40, color: [255, 152, 0] }, { label: 'D (3 pts)', min: 35, color: [255, 112, 67] },
           { label: 'D- (2 pts)', min: 30, color: [255, 87, 34] }, { label: 'E (1 pt)', min: 0, color: [244, 67, 54] },
         ] : isPrimary ? [
-          { label: 'EE (Exceeding)', min: 80, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 65, color: [33, 150, 243] },
-          { label: 'AE (Approaching)', min: 50, color: [255, 152, 0] }, { label: 'BE (Below)', min: 0, color: [244, 67, 54] },
+          { label: 'EE (Exceeding)', min: 76, color: [76, 175, 80] }, { label: 'ME (Meeting)', min: 51, color: [33, 150, 243] },
+          { label: 'AE (Approaching)', min: 26, color: [255, 152, 0] }, { label: 'BE (Below)', min: 0, color: [244, 67, 54] },
         ] : [
           { label: 'EE1 (8pts)', min: 90, color: [76, 175, 80] }, { label: 'EE2 (7pts)', min: 75, color: [139, 195, 74] },
           { label: 'ME1 (6pts)', min: 58, color: [33, 150, 243] }, { label: 'ME2 (5pts)', min: 41, color: [3, 169, 244] },
@@ -1475,14 +1486,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         
         let row = 0;
         for (const g of grades) {
-          const count = numericSummaries.filter(s => {
-            if (isPrimary) {
-              const p = s.avgPct;
-              if (g.label.startsWith('EE')) return p >= 80; if (g.label.startsWith('ME')) return p >= 65 && p < 80;
-              if (g.label.startsWith('AE')) return p >= 50 && p < 65; return p < 50;
-            } else {
-              const gr = overallGradeWithBand(s.avgPct, band, classObj); return gr.subLevel === g.label.split(' ')[0];
-            }
+          const count = numericSummaries.filter((summary: any) => {
+            const grade = overallGradeWithBand(summary.avgPct, band, classObj);
+            const gradeKey = isPrimary ? grade.grade : grade.subLevel;
+            return gradeKey === g.label.split(' ')[0];
           }).length;
           const pct = numericSummaries.length > 0 ? count / numericSummaries.length : 0;
           const y = gradeDistY + 10 + row * (isPrimary ? 10 : 8);
@@ -1542,9 +1549,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       doc.setFillColor(245, 166, 35); doc.rect(0, 0, 210, 20, 'F');
       doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 13));
       doc.text('LEARNER RESULTS', 105, 12, { align: 'center' });
+      const deviationHeader = previousComparison
+        ? `${is844 ? 'Points Deviation' : 'Deviation'} (vs ${previousComparison.exam.name})`
+        : (is844 ? 'Points Deviation' : 'Deviation');
       const singleLearnerHeaders = isPrimary
-        ? ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject)), 'Total', 'Avg%', 'Grade']
-        : ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject)), 'Total', 'Avg%', is844 ? 'Points' : 'Pts', 'Grade'];
+        ? ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject)), 'Total', 'Avg%', deviationHeader, 'Grade']
+        : ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject)), 'Total', 'Avg%', is844 ? 'Points' : 'Pts', deviationHeader, 'Grade'];
       const singleLearnerBody = summaries.map((summary: any) => {
         const grade = overallGradeWithBand(summary.avgPct, band, classObj);
         const subjectCells = allSubjects.map((subject) => {
@@ -1559,6 +1569,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           `${Number(summary.avgPct || 0).toFixed(1)}%`,
         ];
         if (!isPrimary) row.push(String(is844 ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0) : (summary.totalPoints || 0)));
+        const previousTotal = previousTotals.get(String(summary.studentId));
+        const currentTotal = Number(is844
+          ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
+          : (summary.totalPct ?? 0));
+        const delta = previousTotal == null ? null : currentTotal - previousTotal;
+        row.push(delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(0)}`);
         row.push(isPrimary ? grade.grade : grade.subLevel);
         return row;
       });
@@ -1569,6 +1585,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, overflow: 'linebreak', halign: 'center' },
         headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' },
         alternateRowStyles: { fillColor: [232, 234, 246] },
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === singleLearnerHeaders.indexOf(deviationHeader)) {
+            const value = String(data.cell.raw || '');
+            data.cell.styles.textColor = value === '—' || value === '0' ? [100, 100, 100] : value.startsWith('+') ? [22, 128, 65] : [190, 45, 45];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        },
         showHead: 'everyPage',
         margin: { left: 8, right: 8 },
       });
@@ -2162,7 +2185,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const gradeBands = is844
       ? [{ label: 'A', min: 80, color: [76, 175, 80] }, { label: 'A-', min: 75, color: [102, 187, 106] }, { label: 'B+', min: 70, color: [139, 195, 74] }, { label: 'B', min: 65, color: [174, 213, 129] }, { label: 'B-', min: 60, color: [33, 150, 243] }, { label: 'C+', min: 55, color: [3, 169, 244] }, { label: 'C', min: 50, color: [0, 188, 212] }, { label: 'C-', min: 45, color: [255, 193, 7] }, { label: 'D+', min: 40, color: [255, 152, 0] }, { label: 'D', min: 35, color: [255, 112, 67] }, { label: 'D-', min: 30, color: [255, 87, 34] }, { label: 'E', min: 0, color: [244, 67, 54] }]
       : isPrimary
-      ? [{ label: 'EE', min: 75, color: [76, 175, 80] }, { label: 'ME', min: 41, color: [33, 150, 243] }, { label: 'AE', min: 21, color: [255, 152, 0] }, { label: 'BE', min: 0, color: [244, 67, 54] }]
+      ? [{ label: 'EE', min: 76, color: [76, 175, 80] }, { label: 'ME', min: 51, color: [33, 150, 243] }, { label: 'AE', min: 26, color: [255, 152, 0] }, { label: 'BE', min: 0, color: [244, 67, 54] }]
       : [{ label: 'EE1', min: 90, color: [76, 175, 80] }, { label: 'EE2', min: 75, color: [139, 195, 74] }, { label: 'ME1', min: 58, color: [33, 150, 243] }, { label: 'ME2', min: 41, color: [3, 169, 244] }, { label: 'AE1', min: 31, color: [255, 152, 0] }, { label: 'AE2', min: 21, color: [255, 193, 7] }, { label: 'BE1', min: 11, color: [255, 87, 34] }, { label: 'BE2', min: 0, color: [244, 67, 54] }];
 
     // ── PAGE 1: CLASS SUMMARY ──────────────────────────────────────────────

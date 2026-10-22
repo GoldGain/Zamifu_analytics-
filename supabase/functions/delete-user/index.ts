@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const ADMIN_ROLES = ["school_admin", "super_admin", "master_super_admin", "reseller_super_admin"];
 const GLOBAL_ROLES = ["super_admin", "master_super_admin", "reseller_super_admin"];
-const MANAGED_RECORD_TYPES = ["student", "learner", "teacher", "parent", "school_admin", "bursar"];
+const MANAGED_RECORD_TYPES = ["student", "learner", "teacher", "parent", "school_admin", "bursar", "librarian"];
 
 type Json = Record<string, unknown>;
 
@@ -134,8 +134,8 @@ Deno.serve(async (req) => {
         resolvedRole = targetProfile.role;
         targetSchoolId = targetProfile.school_id || targetSchoolId;
       }
-      if (targetType === "bursar" && (!targetProfile || targetProfile.role !== "bursar")) {
-        return json(404, { error: "Bursar account not found" });
+      if (["bursar", "librarian"].includes(targetType) && (!targetProfile || targetProfile.role !== targetType)) {
+        return json(404, { error: `${targetType === "bursar" ? "Bursar" : "Librarian"} account not found` });
       }
     }
 
@@ -150,27 +150,28 @@ Deno.serve(async (req) => {
       return json(403, { error: "Protected administrator accounts cannot be deleted from this workflow" });
     }
 
-    // Bursar removal is a reversible access revocation, not a hard delete:
-    // preserve profile references used by historical fee/accounting records.
-    if (targetType === "bursar") {
-      if (!targetUserId || resolvedRole !== "bursar") return json(404, { error: "Bursar account not found" });
+    // Staff removal is a reversible access revocation, not a hard delete:
+    // preserve profile references used by historical school records.
+    if (["bursar", "librarian"].includes(targetType)) {
+      const staffLabel = targetType === "bursar" ? "Bursar" : "Librarian";
+      if (!targetUserId || resolvedRole !== targetType) return json(404, { error: `${staffLabel} account not found` });
 
       const { error: banError } = await adminClient.auth.admin.updateUserById(targetUserId, {
         ban_duration: "876000h",
       });
-      if (banError) return json(500, { error: "Could not revoke the bursar's sign-in access" });
+      if (banError) return json(500, { error: `Could not revoke the ${staffLabel.toLowerCase()}'s sign-in access` });
 
       const { data: deactivatedProfile, error: deactivateError } = await adminClient
         .from("profiles")
         .update({ is_active: false })
         .eq("id", targetUserId)
         .eq("school_id", targetSchoolId)
-        .eq("role", "bursar")
+        .eq("role", targetType)
         .select("id")
         .maybeSingle();
       if (deactivateError || !deactivatedProfile) {
         await adminClient.auth.admin.updateUserById(targetUserId, { ban_duration: "none" });
-        return json(500, { error: "Could not deactivate the bursar profile; sign-in access was restored" });
+        return json(500, { error: `Could not deactivate the ${staffLabel.toLowerCase()} profile; sign-in access was restored` });
       }
 
       return json(200, {

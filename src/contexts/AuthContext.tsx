@@ -82,16 +82,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { return JSON.parse(sessionStorage.getItem('zamifu_impersonation') || 'null'); } catch { return null; }
   });
 
-  const fetchSchoolData = async (schoolId: string) => {
+  const fetchSchoolData = async (schoolId: string, role?: UserRole) => {
     if (!schoolId) return;
     console.log('[AuthContext] fetchSchoolData called with schoolId:', schoolId);
     try {
-      // Use type cast to avoid TypeScript errors with columns like motto
-      const { data, error } = await (supabase as any)
-        .from('schools')
-        .select('id, name, logo_url, address, phone, email, curriculum, motto, principal_name')
-        .eq('id', schoolId)
-        .maybeSingle();
+      let data: any = null;
+      let error: any = null;
+      if (role === 'librarian') {
+        ({ data, error } = await (supabase as any).rpc('get_librarian_portal_context'));
+      } else {
+        ({ data, error } = await (supabase as any)
+          .from('schools')
+          .select('id, name, logo_url, address, phone, email, curriculum, motto, principal_name')
+          .eq('id', schoolId)
+          .maybeSingle());
+      }
 
       console.log('[AuthContext] school fetch result:', { data: data ? { id: data.id, name: data.name } : null, error });
 
@@ -106,12 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: data.id,
           name: data.name, // Always use the actual school name from the database
           logo_url: data.logo_url || null,
-          address: data.address || null,
-          phone: data.phone || null,
-          email: data.email || null,
-          curriculum: data.curriculum || null,
-          motto: data.motto || null,
-          principal_name: data.principal_name || null,
+          address: role === 'librarian' ? null : data.address || null,
+          phone: role === 'librarian' ? null : data.phone || null,
+          email: role === 'librarian' ? null : data.email || null,
+          curriculum: role === 'librarian' ? null : data.curriculum || null,
+          motto: role === 'librarian' ? null : data.motto || null,
+          principal_name: role === 'librarian' ? null : data.principal_name || null,
         });
       }
     } catch (err) {
@@ -143,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         // Fetch school data if user has a school
         if (profileData.school_id) {
-          await fetchSchoolData(profileData.school_id);
+          await fetchSchoolData(profileData.school_id, profileData.role);
         }
       } else {
         const schoolId = metadata?.school_id || null;
@@ -157,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           avatarUrl: null,
         });
         if (schoolId) {
-          await fetchSchoolData(schoolId);
+          await fetchSchoolData(schoolId, metadata?.role as UserRole | undefined);
         }
       }
     } catch (err) {

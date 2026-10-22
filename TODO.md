@@ -12,3 +12,10 @@
 ## Current validation facts
 
 Local grade-format, exact-completeness, provider-retry/chunk, source-content, PDF structure/display/space, table and vector visual suites pass. UI school variants and final live matrix are being checked. Gemini’s configured fallback reports depleted prepayment capacity; this is a fallback-service issue, not a statement about Manus or DeepSeek balances. DeepSeek remains the proven active primary; primary chunk failures are being corrected and retried.
+
+
+## Current request — report consistency, deviation, and Library staff
+
+- [ ] **Performance Distribution grade consistency.** “In the Performance Distribution graph, it says 19 learners (95.0%) got a BE (Below Expectation), but when you look at the Top 10 Performers list right below it, the 2nd place learner (Shantel Akinyi) has 296 marks and is given a grade of ME (Meeting Expectation).” “If 1 learner is AE and 1 learner is ME, that means at least 2 learners are above BE. So the graph claiming that 19 out of 20 learners (95%) got BE is mathematically impossible based on the data shown.” Ensure the distribution uses the same grading thresholds and learner metric as the Top 10 list so the counts and percentages reconcile.
+- [ ] **Class-summary deviation.** “Also put the deviation column. Also in the class summary learners table, just like in the class summary all streams pdf.” Add deviation to the single-class learner table with the same prior-assessment comparison conventions used by the All-Streams summary.
+- [ ] **Librarian account and Library portal.** “Also make it possible to add a library guy just like there's bursar and also let the library be still in school admin portal so when the library guy has been added let him be able to login just like the library guy and also find exactly the things in the school admin portal.” Allow school admins to add and revoke a librarian account; let the librarian sign in to the existing Library workspace with access limited to that school's Library functionality; preserve school-admin Library access.

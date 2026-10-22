@@ -43,11 +43,14 @@ export default function SchoolPortalLockGate({
         return;
       }
       try {
-        const { data } = await (supabase as any)
-          .from('schools')
-          .select('name, admin_portal_locked, dos_portal_locked, lock_reason')
-          .eq('id', user.schoolId)
-          .maybeSingle();
+        const { data, error } = user.role === 'librarian'
+          ? await (supabase as any).rpc('get_librarian_portal_context')
+          : await (supabase as any)
+            .from('schools')
+            .select('name, admin_portal_locked, dos_portal_locked, lock_reason')
+            .eq('id', user.schoolId)
+            .maybeSingle();
+        if (error) throw error;
         if (!cancelled) {
           setLocks(
             data
@@ -70,7 +73,7 @@ export default function SchoolPortalLockGate({
     return () => {
       cancelled = true;
     };
-  }, [user?.schoolId, target, trialStatus?.subscriptionStatus, trialStatus?.subscriptionExpiresAt]);
+  }, [user?.schoolId, user?.role, target, trialStatus?.subscriptionStatus, trialStatus?.subscriptionExpiresAt]);
 
   if (locksLoading || (enforceBilling && billingLoading)) {
     return (

@@ -50,6 +50,7 @@ import SchoolAdminBulkStudentImport from '@/pages/dashboard/school-admin/BulkStu
 import SchoolAdminGraduatedStudents from '@/pages/dashboard/school-admin/GraduatedStudents';
 import SchoolAdminTeachers from '@/pages/dashboard/school-admin/Teachers';
 import SchoolAdminBursars from '@/pages/dashboard/school-admin/Bursars';
+import SchoolAdminLibrarians from '@/pages/dashboard/school-admin/Librarians';
 import SchoolAdminClasses from '@/pages/dashboard/school-admin/Classes';
 import SchoolAdminFees from '@/pages/dashboard/school-admin/Fees';
 import BursarDashboard from '@/pages/dashboard/bursar/Dashboard';
@@ -193,7 +194,7 @@ function ProtectedRoute({
   if (lockTarget === 'dean_of_studies' && user.role === 'teacher' && (dosAuthorization === 'checking' || dosCheckedUserId !== user.id)) return <LoadingSpinner />;
   if (lockTarget === 'dean_of_studies' && dosAuthorization === 'denied') return <Navigate to="/teacher" replace />;
 
-  const schoolScopedRole = ['school_admin', 'bursar', 'teacher', 'student', 'parent'].includes(user.role);
+  const schoolScopedRole = ['school_admin', 'bursar', 'librarian', 'teacher', 'student', 'parent'].includes(user.role);
   const body = schoolScopedRole ? (
     <SchoolPortalLockGate target={lockTarget} enforceBilling>
       {children}
@@ -272,6 +273,7 @@ function AppRoutes() {
       <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
       <Route path="/school-admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminTeachers /></ProtectedRoute>} />
       <Route path="/school-admin/bursars" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBursars /></ProtectedRoute>} />
+      <Route path="/school-admin/librarians" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminLibrarians /></ProtectedRoute>} />
       <Route path="/school-admin/fees" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminFees readOnly /></ProtectedRoute>} />
       <Route path="/school-admin/payroll" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPayroll /></ProtectedRoute>} />
       <Route path="/school-admin/classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClasses /></ProtectedRoute>} />
@@ -309,6 +311,10 @@ function AppRoutes() {
       {/* Bursar routes */}
       <Route path="/bursar" element={<ProtectedRoute allowedRoles={['bursar']}><BursarDashboard /></ProtectedRoute>} />
       <Route path="/bursar/fees" element={<ProtectedRoute allowedRoles={['bursar']}><BursarFees /></ProtectedRoute>} />
+
+      {/* Librarian routes: the existing Library workspace, no school-admin modules */}
+      <Route path="/librarian" element={<ProtectedRoute allowedRoles={['librarian']} lockTarget="school_admin"><Navigate to="/librarian/library" replace /></ProtectedRoute>} />
+      <Route path="/librarian/library" element={<ProtectedRoute allowedRoles={['librarian']} lockTarget="school_admin"><SchoolAdminLibrary /></ProtectedRoute>} />
 
       {/* Teacher routes */}
       <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />

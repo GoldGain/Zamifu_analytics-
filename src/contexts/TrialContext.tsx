@@ -52,11 +52,17 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
 
     if (!silent) setIsLoading(true);
     try {
-      const { data, error } = await (supabase as any)
-        .from('schools')
-        .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, reseller_unlock_at, reseller_unlock_subscription_status, reseller_unlock_subscription_expires_at, reseller_unlock_trial_expires_at, created_at, fee_per_learner_per_term, fee_per_learner_per_year')
-        .eq('id', schoolId)
-        .maybeSingle();
+      let data: any = null;
+      let error: any = null;
+      if (user?.role === 'librarian') {
+        ({ data, error } = await (supabase as any).rpc('get_librarian_portal_context'));
+      } else {
+        ({ data, error } = await (supabase as any)
+          .from('schools')
+          .select('id, subscription_plan, subscription_status, subscription_expires_at, trial_started_at, trial_expires_at, reseller_unlock_at, reseller_unlock_subscription_status, reseller_unlock_subscription_expires_at, reseller_unlock_trial_expires_at, created_at, fee_per_learner_per_term, fee_per_learner_per_year')
+          .eq('id', schoolId)
+          .maybeSingle());
+      }
 
       if (error || !data) {
         if (!silent) {
@@ -84,7 +90,7 @@ export function TrialProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [schoolId]);
+  }, [schoolId, user?.role]);
 
   useEffect(() => {
     void refreshTrialStatus();

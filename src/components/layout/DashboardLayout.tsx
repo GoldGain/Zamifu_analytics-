@@ -97,6 +97,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Graduated Students', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/graduated-students' },
     { label: 'Teachers', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teachers' },
     { label: 'Bursars', icon: <WalletCards className="w-5 h-5" />, path: '/school-admin/bursars' },
+    { label: 'Librarians', icon: <Library className="w-5 h-5" />, path: '/school-admin/librarians' },
     { label: 'Fee Overview (Read-Only)', icon: <CreditCard className="w-5 h-5" />, path: '/school-admin/fees' },
     { label: 'Staff Payroll', icon: <DollarSign className="w-5 h-5" />, path: '/school-admin/payroll' },
     { label: 'Grades', icon: <School className="w-5 h-5" />, path: '/school-admin/classes' },
@@ -130,6 +131,9 @@ const navConfig: Record<string, NavItem[]> = {
   'bursar': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/bursar' },
     { label: 'Fee Management', icon: <CreditCard className="w-5 h-5" />, path: '/bursar/fees' },
+  ],
+  'librarian': [
+    { label: 'Library', icon: <Library className="w-5 h-5" />, path: '/librarian/library' },
   ],
   'teacher': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
@@ -185,6 +189,7 @@ const navConfig: Record<string, NavItem[]> = {
 const ROLE_DASHBOARDS: Record<string, string> = {
   'school_admin': '/school-admin',
   'bursar': '/bursar',
+  'librarian': '/librarian/library',
   'teacher': '/teacher',
   'student': '/student',
   'parent': '/parent',
