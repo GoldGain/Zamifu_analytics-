@@ -1,304 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTrial } from '@/contexts/TrialContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
-import { Clock, AlertTriangle, CheckCircle, CreditCard, Info, Loader2 } from 'lucide-react';
-import { ANNUAL_PRICE_PER_LEARNER, SMS_NON_SUBSCRIBER_PLAN, SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '@/lib/trial';
-import { subscriptionPlanAmount, subscriptionPlanPrice } from '@/lib/subscriptionPricing';
+import { AlertTriangle, CheckCircle, Clock, CreditCard, Loader2 } from 'lucide-react';
+import { ANNUAL_PRICE_PER_LEARNER, PRICE_PER_LEARNER, SMS_NON_SUBSCRIBER_PLAN, SUBSCRIPTION_PLANS, type SubscriptionPlanId } from '@/lib/trial';
 import { PaystackButton } from './Payment/PaystackButton';
 
 export const TrialCountdown: React.FC = () => {
-  const { trialStatus, isLoading, pricePerLearner, annualPricePerLearner } = useTrial();
+  const { trialStatus, isLoading } = useTrial();
   const { user } = useAuth();
   const [showPayment, setShowPayment] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId>('full_access_20');
-
-  // Auto-fetch learners count from Supabase
-  const [learnersCount, setLearnersCount] = useState<number>(0);
-  const [fetchingLearners, setFetchingLearners] = useState<boolean>(false);
+  const [learnersCount, setLearnersCount] = useState(0);
   const [billingLearnerCount, setBillingLearnerCount] = useState<number | null>(null);
+  const [fetchingLearners, setFetchingLearners] = useState(false);
 
   useEffect(() => {
-    const fetchLearnersCount = async () => {
-      if (!user?.schoolId) return;
-      setFetchingLearners(true);
-      try {
-        const { count, error } = await supabase
-          .from('students')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId)
-          .eq('is_active', true)
-          .eq('status', 'active');
-        if (!error && count !== null) {
-          setLearnersCount(count);
-        }
-      } catch (err) {
-        console.error('Error fetching learners count:', err);
-      } finally {
-        setFetchingLearners(false);
-      }
-    };
-    fetchLearnersCount();
+    if (!user?.schoolId) return;
+    setFetchingLearners(true);
+    void Promise.all([
+      supabase.from('students').select('id', { count: 'exact', head: true }).eq('school_id', user.schoolId).eq('is_active', true).eq('status', 'active'),
+      supabase.from('schools').select('billing_learner_count').eq('id', user.schoolId).maybeSingle(),
+    ]).then(([students, school]) => {
+      if (!students.error && students.count !== null) setLearnersCount(students.count);
+      const saved = Number(school.data?.billing_learner_count);
+      setBillingLearnerCount(Number.isSafeInteger(saved) && saved > 0 ? saved : null);
+    }).finally(() => setFetchingLearners(false));
   }, [user?.schoolId]);
 
-  useEffect(() => {
-    const fetchBillingCount = async () => {
-      if (!user?.schoolId) return;
-      const { data, error } = await supabase
-        .from('schools')
-        .select('billing_learner_count')
-        .eq('id', user.schoolId)
-        .maybeSingle();
-      if (error) {
-        console.error('Could not load billing learner count:', error);
-        return;
-      }
-      const savedCount = Number(data?.billing_learner_count);
-      setBillingLearnerCount(Number.isSafeInteger(savedCount) && savedCount > 0 ? savedCount : null);
-    };
-    void fetchBillingCount();
-  }, [user?.schoolId]);
-
-  if (isLoading || !trialStatus) {
-    return (
-      <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 animate-pulse">
-        <div className="h-5 bg-gray-200 rounded w-48"></div>
-      </div>
-    );
-  }
-
-  const { isPaid, isExpired, daysRemaining, progressPercent } = trialStatus;
-  const annualFee = annualPricePerLearner > 0 ? annualPricePerLearner : ANNUAL_PRICE_PER_LEARNER;
+  if (isLoading || !trialStatus) return <div className="h-14 animate-pulse rounded-2xl border bg-gray-50" />;
   const selectedPlan = SUBSCRIPTION_PLANS.find((plan) => plan.id === selectedPlanId) || SUBSCRIPTION_PLANS[0];
-  const selectedPlanPrice = subscriptionPlanPrice(selectedPlan, pricePerLearner, annualFee);
+  const selectedPrice = selectedPlan.period === 'annual' ? ANNUAL_PRICE_PER_LEARNER : PRICE_PER_LEARNER;
   const chargeLearnersCount = billingLearnerCount ?? learnersCount;
-  const selectedPlanAmount = subscriptionPlanAmount(selectedPlan, chargeLearnersCount, pricePerLearner, annualFee);
-  const billingCountControl = user?.role === 'school_admin' ? (
-    <section className="mb-4 rounded-xl border border-blue-100 bg-white p-4 text-left shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-gray-900">Total Learners for Billing</h3>
-          <p className="mt-1 text-xs text-gray-600">Actual active learners: {fetchingLearners ? 'Loading…' : learnersCount}</p>
-        </div>
-        <span className="text-xl font-bold text-gray-900">{chargeLearnersCount.toLocaleString()}</span>
-      </div>
-      <div className="mt-3 flex flex-wrap justify-between gap-2 border-t border-gray-100 pt-3 text-sm">
-        <span className="text-gray-600">Rate: KES {selectedPlanPrice.toLocaleString()} per {selectedPlan.unit === 'learner' ? 'learner' : 'school'} {selectedPlan.period === 'annual' ? 'per year' : 'per term'}</span>
-        <span className="font-bold text-green-700">Estimated total: KES {selectedPlanAmount.toLocaleString()}</span>
-      </div>
-      <p className="mt-2 text-xs text-gray-500">The subscription learner count is read-only here. It uses the saved billing count when present, or the current active learner total.</p>
-    </section>
-  ) : null;
+  const selectedAmount = selectedPrice * chargeLearnersCount;
+  const billing = <div className="rounded-xl border border-blue-100 bg-white p-4 text-sm"><div className="flex justify-between gap-3"><span>Learners billed</span><strong>{fetchingLearners ? 'Loading…' : chargeLearnersCount.toLocaleString()}</strong></div><p className="mt-1 text-xs text-gray-500">Uses the saved billing count, or the current active learner total.</p></div>;
+  const plans = <div className="grid gap-3 sm:grid-cols-2">{SUBSCRIPTION_PLANS.map((plan) => {
+    const price = plan.period === 'annual' ? ANNUAL_PRICE_PER_LEARNER : PRICE_PER_LEARNER;
+    return <button type="button" key={plan.id} onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border-2 p-4 text-left ${selectedPlan.id === plan.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block font-bold">{plan.name}</span><span className="mt-1 block text-sm font-semibold text-blue-700">KES {price} per learner per {plan.period === 'annual' ? 'year' : 'term'}</span><span className="mt-2 block text-xs leading-5 text-gray-600">{plan.featureSummary}</span><span className="mt-2 block text-xs font-bold">Total: KES {(price * chargeLearnersCount).toLocaleString()}</span></button>;
+  })}</div>;
+  const sms = <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-gray-700"><strong>{SMS_NON_SUBSCRIBER_PLAN.name}:</strong> KES {SMS_NON_SUBSCRIBER_PLAN.price} per SMS. Purchase credits from the SMS Wallet.</p>;
+  const payment = showPayment ? <div className="space-y-3 rounded-xl border bg-white p-4">{plans}{sms}<PaystackButton learnersCount={chargeLearnersCount} feePerLearner={selectedPrice} subscriptionPlan={selectedPlan.id} billingPeriod={selectedPlan.period} onSuccess={() => { setShowPayment(false); setExpanded(false); }} onClose={() => setShowPayment(false)} /><button onClick={() => setShowPayment(false)} className="w-full text-xs text-gray-500">Cancel</button></div> : null;
 
-  // Paid users — show success badge
-  if (isPaid) {
-    return (
-      <div>
-      {billingCountControl}
-      <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 flex items-center gap-3">
-        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-green-800">
-            Subscription Active
-          </p>
-          <p className="text-xs text-green-600">
-            Your school has an active subscription. Thank you for your payment!
-          </p>
-        </div>
-      </div>
-      </div>
-    );
-  }
+  if (trialStatus.isPaid) return <div className="space-y-3">{billing}<div className="flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-4"><CheckCircle className="h-5 w-5 text-green-600" /><div><p className="text-sm font-semibold text-green-800">Full-access subscription active</p><p className="text-xs text-green-700">All school features are included. Examination generation is KES 20 per paper.</p></div></div></div>;
+  if (trialStatus.isExpired) return <div className="space-y-4">{billing}<div className="flex gap-3 rounded-2xl border-2 border-red-300 bg-red-50 p-4"><AlertTriangle className="h-6 w-6 text-red-600" /><div><h3 className="font-bold text-red-800">Trial period expired</h3><p className="text-sm text-red-700">Choose term or annual full access to continue.</p></div></div>{payment || <div className="space-y-4 rounded-2xl border bg-white p-6">{plans}{sms}<button onClick={() => setShowPayment(true)} disabled={fetchingLearners || chargeLearnersCount <= 0} className="mx-auto flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white disabled:opacity-50"><CreditCard className="h-4 w-4" />Subscribe — KES {selectedAmount.toLocaleString()}</button></div>}</div>;
 
-  // Trial expired — show payment lock
-  if (isExpired) {
-    return (
-      <div className="space-y-4">
-        {billingCountControl}
-        <div className="bg-red-50 border-2 border-red-300 rounded-2xl px-4 py-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="text-base font-bold text-red-800">
-                Trial Period Expired
-              </h3>
-              <p className="text-sm text-red-700 mt-1">
-                Your 60-day free trial has ended. Subscribe now to continue using the system.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {!showPayment ? (
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center shadow-sm">
-            <CreditCard className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">
-              Subscribe to Zamifu Analytics
-            </h4>
-            <p className="text-sm text-gray-600 mb-4">
-              Choose how you want to pay for each learner.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-w-5xl mx-auto mb-5 text-left">
-              {SUBSCRIPTION_PLANS.map((plan) => {
-                const isSelected = selectedPlan.id === plan.id;
-                const planPrice = subscriptionPlanPrice(plan, pricePerLearner, annualFee);
-                const amount = subscriptionPlanAmount(plan, chargeLearnersCount, pricePerLearner, annualFee);
-                return (
-                  <button type="button" key={plan.id} onClick={() => setSelectedPlanId(plan.id)} className={`rounded-xl border-2 p-4 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white hover:border-blue-300'}`}>
-                    <span className="block font-bold text-gray-900">{plan.name}</span>
-                    <span className="block text-sm text-gray-600">KES {planPrice.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span>
-                    <span className="block text-xs text-gray-500 mt-1">{plan.featureSummary}</span>
-                    <span className="block text-xs font-semibold text-blue-700 mt-2">This payment: KES {amount.toLocaleString()}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mx-auto mb-5 max-w-5xl rounded-xl border border-amber-200 bg-amber-50 p-3 text-left">
-              <span className="block font-bold text-gray-900">{SMS_NON_SUBSCRIBER_PLAN.name}</span>
-              <span className="block text-sm text-gray-600">KES {SMS_NON_SUBSCRIBER_PLAN.price.toLocaleString()} per SMS</span>
-              <span className="block text-xs text-gray-500 mt-1">{SMS_NON_SUBSCRIBER_PLAN.featureSummary}</span>
-            </div>
-
-            {/* Auto-calculated learner count summary */}
-            <div className="bg-gray-50 rounded-xl p-4 mb-5 text-left max-w-xs mx-auto">
-              <div className="flex justify-between py-1.5 border-b border-gray-200">
-                <span className="text-sm text-gray-600">Learners billed</span>
-                <span className="text-sm font-semibold">
-                  {fetchingLearners ? (
-                    <Loader2 className="w-4 h-4 animate-spin inline" />
-                  ) : (
-                    chargeLearnersCount
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-gray-200">
-                <span className="text-sm text-gray-600">Selected Plan</span>
-                <span className="text-sm font-semibold text-right">{selectedPlan.name}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-sm font-bold text-gray-800">Total Amount</span>
-                <span className="text-sm font-bold text-green-600">
-                  {fetchingLearners ? (
-                    <Loader2 className="w-4 h-4 animate-spin inline" />
-                  ) : (
-                    `KES ${selectedPlanAmount.toLocaleString()}`
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowPayment(true)}
-              disabled={fetchingLearners || (selectedPlan.unit === 'learner' && chargeLearnersCount <= 0)}
-              className="bg-green-600 text-white px-8 py-3 rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2 mx-auto"
-            >
-              {fetchingLearners ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <CreditCard className="w-4 h-4" />
-                  Subscribe Now — KES {selectedPlanAmount.toLocaleString()} per {selectedPlan.period === 'annual' ? 'year' : 'term'}
-                </>
-              )}
-            </button>
-            <p className="text-xs text-gray-400 mt-3">
-              Secure payment powered by Paystack
-            </p>
-          </div>
-        ) : (
-          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <PaystackButton
-              learnersCount={chargeLearnersCount}
-              feePerLearner={selectedPlan.unit === 'learner' ? selectedPlanPrice : undefined}
-              fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined}
-              subscriptionPlan={selectedPlan.id}
-              billingPeriod={selectedPlan.period === 'annual' ? 'annual' : selectedPlan.unit === 'school' ? 'school-term' : 'term'}
-              onSuccess={() => setShowPayment(false)}
-              onClose={() => setShowPayment(false)}
-            />
-            <button
-              onClick={() => setShowPayment(false)}
-              className="w-full mt-3 text-sm text-gray-500 hover:text-gray-700 py-2"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Active trial — show countdown
-  const progressColor = daysRemaining <= 7 ? 'bg-red-500' : daysRemaining <= 30 ? 'bg-orange-500' : 'bg-blue-500';
-  const bgColor = daysRemaining <= 7 ? 'bg-red-50 border-red-200' : daysRemaining <= 30 ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-200';
-  const textColor = daysRemaining <= 7 ? 'text-red-800' : daysRemaining <= 30 ? 'text-orange-800' : 'text-blue-800';
-  const subTextColor = daysRemaining <= 7 ? 'text-red-600' : daysRemaining <= 30 ? 'text-orange-600' : 'text-blue-600';
-
-  return (
-    <div className="space-y-3">
-    {billingCountControl}
-    <div className={`${bgColor} border rounded-2xl px-4 py-3`}>
-      <div className="flex items-center gap-3">
-        <Clock className={`w-5 h-5 ${subTextColor} flex-shrink-0`} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <p className={`text-sm font-semibold ${textColor}`}>
-              Free Trial: {daysRemaining} day{daysRemaining !== 1 ? 's' : ''} remaining
-            </p>
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className={`text-xs ${subTextColor} hover:underline ml-2 flex-shrink-0`}
-            >
-              {expanded ? 'Hide' : 'Details'}
-            </button>
-          </div>
-          {/* Progress bar */}
-          <div className="mt-2 h-2 bg-white/60 rounded-full overflow-hidden">
-            <div
-              className={`h-full ${progressColor} rounded-full transition-all duration-500`}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-          {expanded && (
-            <div className="mt-3 pt-3 border-t border-current border-opacity-20">
-              {!showPayment ? (
-                <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0 opacity-60" />
-                  <div className={`text-xs ${subTextColor} space-y-1`}>
-                    <p>Trial started: {new Date(trialStatus.trialData.trialStartDate).toLocaleDateString()}</p>
-                    <p>Trial ends: {new Date(trialStatus.trialData.trialEndDate).toLocaleDateString()}</p>
-                    <p>Six subscription options are available below, including full access, primary or junior exam-analysis, timetabler-only, and generator-only plans.</p>
-                    <button onClick={() => setShowPayment(true)} className="mt-2 text-xs font-medium underline">View subscription plans</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
-                  <p className="text-xs font-semibold text-gray-700">Choose your subscription plan</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left">
-                    {SUBSCRIPTION_PLANS.map((plan) => {
-                      const isSelected = selectedPlan.id === plan.id;
-                      const planPrice = subscriptionPlanPrice(plan, pricePerLearner, annualFee);
-                      const amount = subscriptionPlanAmount(plan, chargeLearnersCount, pricePerLearner, annualFee);
-                      return <button key={plan.id} type="button" onClick={() => setSelectedPlanId(plan.id)} className={`rounded-lg border-2 p-3 transition-colors ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-gray-200 bg-white'}`}><span className="block text-xs font-bold text-gray-900">{plan.name}</span><span className="block text-[11px] text-gray-600">KES {planPrice.toLocaleString()} per {plan.unit} per {plan.period === 'annual' ? 'year' : 'term'}</span><span className="block text-[10px] text-gray-500 mt-1">{plan.featureSummary}</span><span className="block text-[10px] font-semibold text-blue-700 mt-1">This payment: KES {amount.toLocaleString()}</span></button>;
-                    })}
-                  </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-gray-700"><strong>{SMS_NON_SUBSCRIBER_PLAN.name}:</strong> KES {SMS_NON_SUBSCRIBER_PLAN.price.toLocaleString()} per SMS. Purchase credits from the SMS Wallet.</div>
-                  <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3"><span>Selected: {selectedPlan.name}</span><span className="font-bold text-gray-900">KES {selectedPlanAmount.toLocaleString()}</span></div>
-                  <PaystackButton learnersCount={chargeLearnersCount} feePerLearner={selectedPlan.unit === 'learner' ? selectedPlan.price : undefined} fixedAmountKsh={selectedPlan.unit === 'school' ? selectedPlan.price : undefined} subscriptionPlan={selectedPlan.id} billingPeriod={selectedPlan.period === 'annual' ? 'annual' : selectedPlan.unit === 'school' ? 'school-term' : 'term'} onSuccess={() => { setShowPayment(false); setExpanded(false); }} onClose={() => setShowPayment(false)} />
-                  <button onClick={() => setShowPayment(false)} className="w-full mt-2 text-[10px] text-gray-500 hover:text-gray-700">Cancel</button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-    </div>
-  );
+  const urgent = trialStatus.daysRemaining <= 7;
+  return <div className="space-y-3">{billing}<div className={`rounded-2xl border p-4 ${urgent ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'}`}><div className="flex items-center gap-3"><Clock className="h-5 w-5" /><div className="flex-1"><div className="flex justify-between gap-2"><p className="text-sm font-semibold">Free Trial: {trialStatus.daysRemaining} days remaining</p><button onClick={() => setExpanded(!expanded)} className="text-xs underline">{expanded ? 'Hide' : 'Details'}</button></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-white"><div className={`h-full ${urgent ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${trialStatus.progressPercent}%` }} /></div>{expanded && <div className="mt-3 border-t pt-3 text-xs">{payment || <><p>Two full-access options: KES 10 per learner per term, or KES 20 per learner annually.</p><p className="mt-1">Examination generation is separate at KES 20 per paper, including its marking scheme.</p><button onClick={() => setShowPayment(true)} className="mt-2 font-semibold underline">View subscription plans</button></>}</div>}</div></div></div></div>;
 };
-
 export default TrialCountdown;
