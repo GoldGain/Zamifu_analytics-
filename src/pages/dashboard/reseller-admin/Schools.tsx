@@ -131,8 +131,14 @@ export default function ResellerSchools() {
           if (duplicate) throw new Error('Another school already uses this name. Please choose a different name.');
           payload.name = schoolName;
         }
-        const { error } = await supabase.from('schools').update(payload).eq('id', editingId);
+        const { data: updatedSchool, error } = await supabase
+          .from('schools')
+          .update(payload)
+          .eq('id', editingId)
+          .select('id')
+          .maybeSingle();
         if (error) throw error;
+        if (!updatedSchool) throw new Error('No school was updated. Refresh and confirm this school is available to your reseller account.');
         toast.success('School updated');
       } else {
         const { error } = await supabase.from('schools').insert({
@@ -145,8 +151,8 @@ export default function ResellerSchools() {
           admin_portal_locked: false,
           dos_portal_locked: false,
         });
-        if (error) throw error;
-        toast.success('School created');
+      if (error) throw error;
+      toast.success('School created');
       }
       setShowForm(false);
       setEditingId(null);
@@ -190,7 +196,7 @@ export default function ResellerSchools() {
     setLockSaving(true);
     try {
       const anyLocked = lockAdmin || lockDos;
-      const { error } = await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from('schools')
         .update({
           admin_portal_locked: lockAdmin,
@@ -199,8 +205,11 @@ export default function ResellerSchools() {
           locked_at: anyLocked ? new Date().toISOString() : null,
           locked_by_role: anyLocked ? 'reseller_super_admin' : null,
         })
-        .eq('id', lockModal.id);
+        .eq('id', lockModal.id)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('No school was updated. Refresh and confirm this school is available to your reseller account.');
       toast.success('Portal access updated');
       setLockModal(null);
       fetchData();

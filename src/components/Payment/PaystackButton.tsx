@@ -9,12 +9,17 @@ import { ANNUAL_PRICE_PER_LEARNER, PRICE_PER_LEARNER } from '@/lib/trial';
 interface PaystackButtonProps { learnersCount: number; onSuccess: () => void; onClose: () => void; feePerLearner?: number; billingPeriod?: 'term' | 'annual' | 'school-term'; subscriptionPlan?: string; fixedAmountKsh?: number; }
 const PAYSTACK_PUBLIC_KEY = 'pk_live_c15b4c6c95f06f7408326b14395eb727147a8935';
 
-export const PaystackButton: React.FC<PaystackButtonProps> = ({ learnersCount, onSuccess, onClose, billingPeriod = 'term', subscriptionPlan = 'full_access_20' }) => {
+export const PaystackButton: React.FC<PaystackButtonProps> = ({ learnersCount, onSuccess, onClose, feePerLearner, billingPeriod = 'term', subscriptionPlan = 'full_access_20' }) => {
   const { user } = useAuth();
-  const { refreshTrialStatus } = useTrial();
+  const { refreshTrialStatus, pricePerLearner, annualPricePerLearner } = useTrial();
   const [processing, setProcessing] = useState(false);
   const annual = billingPeriod === 'annual';
-  const resolvedFee = annual ? ANNUAL_PRICE_PER_LEARNER : PRICE_PER_LEARNER;
+  const configuredFee = annual ? annualPricePerLearner : pricePerLearner;
+  const fallbackFee = annual ? ANNUAL_PRICE_PER_LEARNER : PRICE_PER_LEARNER;
+  const passedFee = Number(feePerLearner);
+  const resolvedFee = configuredFee > 0
+    ? Math.round(configuredFee)
+    : passedFee > 0 ? Math.round(passedFee) : fallbackFee;
   const amountKsh = learnersCount * resolvedFee;
   const loadPaystackScript = (): Promise<void> => new Promise((resolve, reject) => {
     if (document.getElementById('paystack-script')) { resolve(); return; }
@@ -37,6 +42,7 @@ export const PaystackButton: React.FC<PaystackButtonProps> = ({ learnersCount, o
     try {
       if (!['full_access_20', 'full_access_50'].includes(subscriptionPlan)) throw new Error('Choose a term or annual full-access subscription.');
       if (!Number.isSafeInteger(learnersCount) || learnersCount <= 0) throw new Error('A positive learner count is required.');
+      if (!Number.isSafeInteger(resolvedFee) || resolvedFee <= 0) throw new Error('The school subscription price could not be verified. Refresh and try again.');
       setProcessing(true); await loadPaystackScript();
       const reference = `zamifu_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       let callbackStarted = false;

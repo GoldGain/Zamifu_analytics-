@@ -182,20 +182,35 @@ export async function loadResellerPortfolio(resellerId: string): Promise<Reselle
   };
 }
 
-export async function updateSchoolFee(resellerId: string, schoolId: string, rawFee: number): Promise<number> {
-  const fee = Math.round(Number(rawFee));
-  if (!Number.isFinite(fee) || fee < 1 || fee > 1_000_000) {
+export async function updateSchoolFee(
+  resellerId: string,
+  schoolId: string,
+  rawTermFee: number,
+  rawAnnualFee: number,
+): Promise<{ termFee: number; annualFee: number }> {
+  const termFee = Math.round(Number(rawTermFee));
+  const annualFee = Math.round(Number(rawAnnualFee));
+  if (!Number.isFinite(termFee) || termFee < 1 || termFee > 1_000_000) {
     throw new Error('Enter a fee between 1 and 1,000,000 per learner per term.');
   }
+  if (!Number.isFinite(annualFee) || annualFee < 1 || annualFee > 1_000_000) {
+    throw new Error('Enter a fee between 1 and 1,000,000 per learner per year.');
+  }
 
-  const { error } = await supabaseUntyped
+  const { data, error } = await supabaseUntyped
     .from('schools')
-    .update({ fee_per_learner_per_term: fee })
+    .update({
+      fee_per_learner_per_term: termFee,
+      fee_per_learner_per_year: annualFee,
+    })
     .eq('id', schoolId)
-    .eq('reseller_id', resellerId);
+    .eq('reseller_id', resellerId)
+    .select('id')
+    .maybeSingle();
 
   if (error) throw error;
-  return fee;
+  if (!data) throw new Error('No school was updated. Refresh and confirm the school belongs to your reseller account.');
+  return { termFee, annualFee };
 }
 
 export async function updateSchoolAnnualFee(resellerId: string, schoolId: string, rawFee: number): Promise<number> {

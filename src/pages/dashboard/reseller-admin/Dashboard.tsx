@@ -96,6 +96,7 @@ export default function ResellerDashboard() {
   const [portfolio, setPortfolio] = useState<ResellerPortfolio>(EMPTY_PORTFOLIO);
   const [selectedSchool, setSelectedSchool] = useState<SchoolPortfolioItem | null>(null);
   const [feeInput, setFeeInput] = useState('');
+  const [annualFeeInput, setAnnualFeeInput] = useState('');
   const [savingFee, setSavingFee] = useState(false);
 
   const loadDashboard = useCallback(async () => {
@@ -138,10 +139,15 @@ export default function ResellerDashboard() {
   }, [loadDashboard]);
 
   const selectedFee = Number(feeInput);
+  const selectedAnnualFee = Number(annualFeeInput);
   const feePreview = Number.isFinite(selectedFee) && selectedFee > 0
     ? Math.round(selectedFee)
     : selectedSchool?.feePerLearnerPerTerm || 0;
+  const annualFeePreview = Number.isFinite(selectedAnnualFee) && selectedAnnualFee > 0
+    ? Math.round(selectedAnnualFee)
+    : selectedSchool?.feePerLearnerPerYear || 0;
   const feeIsValid = Number.isFinite(selectedFee) && selectedFee >= 1 && selectedFee <= 1_000_000;
+  const annualFeeIsValid = Number.isFinite(selectedAnnualFee) && selectedAnnualFee >= 1 && selectedAnnualFee <= 1_000_000;
   const portfolioCurrencies = [...new Set(portfolio.schools.map((school) => school.currency))];
   const dashboardCurrency = portfolioCurrencies.length === 1 ? portfolioCurrencies[0] : null;
 
@@ -195,12 +201,14 @@ export default function ResellerDashboard() {
   const openFeeEditor = (school: SchoolPortfolioItem) => {
     setSelectedSchool(school);
     setFeeInput(String(school.feePerLearnerPerTerm));
+    setAnnualFeeInput(String(school.feePerLearnerPerYear));
   };
 
   const closeFeeEditor = () => {
     if (savingFee) return;
     setSelectedSchool(null);
     setFeeInput('');
+    setAnnualFeeInput('');
   };
 
   const saveFee = async () => {
@@ -208,10 +216,11 @@ export default function ResellerDashboard() {
 
     setSavingFee(true);
     try {
-      await updateSchoolFee(resellerId, selectedSchool.id, selectedFee);
-      toast.success(`Fee updated for ${selectedSchool.name}. Revenue projections have been refreshed.`);
+      await updateSchoolFee(resellerId, selectedSchool.id, selectedFee, selectedAnnualFee);
+      toast.success(`Term and annual fees updated for ${selectedSchool.name}. Revenue projections have been refreshed.`);
       setSelectedSchool(null);
       setFeeInput('');
+      setAnnualFeeInput('');
       await loadDashboard();
     } catch (error: unknown) {
       console.error('[reseller-dashboard] update fee', error);
@@ -358,7 +367,7 @@ export default function ResellerDashboard() {
                       <div>
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Fee per learner / term</p>
                         <p className="mt-1 text-lg font-semibold">{money(school.feePerLearnerPerTerm, school.currency)}</p>
-                        <p className="mt-1 text-xs text-slate-400">{money(school.feePerLearnerPerTerm * 3, school.currency)} per learner / year</p>
+                        <p className="mt-1 text-xs text-slate-400">{money(school.feePerLearnerPerYear, school.currency)} per learner / year</p>
                       </div>
                       <div className="sm:border-l sm:border-white/10 sm:pl-4">
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Projected revenue</p>
@@ -410,9 +419,9 @@ export default function ResellerDashboard() {
         <DialogContent className="max-w-xl border-slate-200 bg-white">
           <DialogHeader>
             <DialogTitle>Edit school fees</DialogTitle>
-            <DialogDescription>
-              Update the fee per learner per term. The annual and revenue projections recalculate before you save.
-            </DialogDescription>
+              <DialogDescription>
+              Set the per-learner term fee and annual fee separately. Annual pricing can be discounted from three terms; both rates save together.
+              </DialogDescription>
           </DialogHeader>
 
           {selectedSchool && (
@@ -422,38 +431,53 @@ export default function ResellerDashboard() {
                 <p className="mt-1 font-semibold text-slate-900">{selectedSchool.name}</p>
               </div>
 
-              <div>
-                <label htmlFor="school-fee" className="block text-sm font-semibold text-slate-800">Fee per learner per term</label>
-                <div className="mt-2 flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-blue-500/20">
-                  <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">{selectedSchool.currency === 'KES' ? 'KSh' : selectedSchool.currency}</span>
-                  <input
-                    id="school-fee"
-                    type="number"
-                    min="1"
-                    max="1000000"
-                    step="1"
-                    value={feeInput}
-                    onChange={(event) => setFeeInput(event.target.value)}
-                    className="w-full px-3 py-2.5 text-sm outline-none"
-                    disabled={savingFee}
-                  />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="school-fee-term" className="block text-sm font-semibold text-slate-800">Fee per learner per term</label>
+                  <div className="mt-2 flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-blue-500/20">
+                    <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">{selectedSchool.currency === 'KES' ? 'KSh' : selectedSchool.currency}</span>
+                    <input
+                      id="school-fee-term"
+                      type="number"
+                      min="1"
+                      max="1000000"
+                      step="1"
+                      value={feeInput}
+                      onChange={(event) => setFeeInput(event.target.value)}
+                      className="w-full px-3 py-2.5 text-sm outline-none"
+                      disabled={savingFee}
+                    />
+                  </div>
                 </div>
-                <p className="mt-2 text-xs text-slate-500">Enter a whole amount from 1 to 1,000,000.</p>
+                <div>
+                  <label htmlFor="school-fee-year" className="block text-sm font-semibold text-slate-800">Fee per learner per year</label>
+                  <div className="mt-2 flex overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:ring-2 focus-within:ring-blue-500/20">
+                    <span className="flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-600">{selectedSchool.currency === 'KES' ? 'KSh' : selectedSchool.currency}</span>
+                    <input
+                      id="school-fee-year"
+                      type="number"
+                      min="1"
+                      max="1000000"
+                      step="1"
+                      value={annualFeeInput}
+                      onChange={(event) => setAnnualFeeInput(event.target.value)}
+                      className="w-full px-3 py-2.5 text-sm outline-none"
+                      disabled={savingFee}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 sm:col-span-2">Enter a whole amount from 1 to 1,000,000 for each rate.</p>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-blue-50 p-4">
-                  <p className="text-xs font-medium text-blue-700">Fee per learner per year</p>
-                  <p className="mt-1 text-lg font-bold text-blue-950">{money(feePreview * 3, selectedSchool.currency)}</p>
-                </div>
                 <div className="rounded-xl bg-emerald-50 p-4">
                   <p className="text-xs font-medium text-emerald-700">Revenue per term</p>
                   <p className="mt-1 text-lg font-bold text-emerald-950">{money(feePreview * selectedSchool.learners, selectedSchool.currency)}</p>
                 </div>
-                <div className="rounded-xl bg-violet-50 p-4 sm:col-span-2">
+                <div className="rounded-xl bg-violet-50 p-4">
                   <p className="text-xs font-medium text-violet-700">Projected revenue per year</p>
-                  <p className="mt-1 text-xl font-bold text-violet-950">{money(feePreview * selectedSchool.learners * 3, selectedSchool.currency)}</p>
-                  <p className="mt-1 text-xs text-violet-700">Based on {selectedSchool.learners.toLocaleString('en-KE')} learner{selectedSchool.learners === 1 ? '' : 's'} and three terms.</p>
+                  <p className="mt-1 text-xl font-bold text-violet-950">{money(annualFeePreview * selectedSchool.learners, selectedSchool.currency)}</p>
+                  <p className="mt-1 text-xs text-violet-700">Based on {selectedSchool.learners.toLocaleString('en-KE')} learner{selectedSchool.learners === 1 ? '' : 's'} and the annual rate above.</p>
                 </div>
               </div>
             </div>
@@ -471,7 +495,7 @@ export default function ResellerDashboard() {
             <button
               type="button"
               onClick={() => void saveFee()}
-              disabled={savingFee || !feeIsValid}
+              disabled={savingFee || !feeIsValid || !annualFeeIsValid}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Pencil className="h-4 w-4" />

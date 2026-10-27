@@ -108,14 +108,17 @@ export default function ResellerPricing() {
     try {
       const value = feeOrDefault(defaultFee);
       const annualValue = feeOrDefault(defaultAnnualFee, DEFAULT_ANNUAL_FEE_PER_LEARNER);
-      const { error } = await supabaseUntyped
+      const { data, error } = await supabaseUntyped
         .from('resellers')
         .update({
           default_fee_per_learner: value,
           default_fee_per_learner_per_year: annualValue,
         })
-        .eq('id', resellerId);
+        .eq('id', resellerId)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('No reseller pricing was updated. Refresh the page and try again.');
       toast.success('Default term and annual fees saved (used when creating new schools)');
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Failed to save default');

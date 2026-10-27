@@ -38,7 +38,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const reference = normalize(body?.reference);
     if (!reference) return json({ error: "Payment reference is required" }, 400);
-    const { data: school, error: schoolError } = await admin.from("schools").select("id, name, billing_learner_count").eq("id", profile.school_id).maybeSingle();
+    const { data: school, error: schoolError } = await admin.from("schools").select("id, name, billing_learner_count, fee_per_learner_per_term, fee_per_learner_per_year").eq("id", profile.school_id).maybeSingle();
     if (schoolError || !school) return json({ error: "School could not be found" }, 404);
     const verificationResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: { Authorization: `Bearer ${paystackSecret}`, "Content-Type": "application/json" } });
     const verification = await verificationResponse.json() as PaystackVerification;
@@ -54,16 +54,18 @@ Deno.serve(async (req: Request) => {
     const period = customFieldValue(transaction.metadata, "period") || "One Term";
     const isAnnual = period.toLowerCase().includes("annual") || period.toLowerCase().includes("year");
     if ((isAnnual && plan !== "full_access_50") || (!isAnnual && plan !== "full_access_20")) return json({ error: "Subscription plan and billing period do not match" }, 409);
-    const expectedFee = isAnnual ? 20 : 10;
+    const configuredFee = Number(isAnnual ? school.fee_per_learner_per_year : school.fee_per_learner_per_term);
+    const defaultFee = isAnnual ? 20 : 10;
+    const expectedFee = Number.isFinite(configuredFee) && configuredFee > 0 ? Math.round(configuredFee) : defaultFee;
     const feeFromMetadata = Number(customFieldValue(transaction.metadata, "fee_per_learner"));
-    if (feeFromMetadata !== expectedFee) return json({ error: "Payment price does not match the fixed full-access price" }, 409);
+    if (feeFromMetadata !== expectedFee) return json({ error: "Payment price does not match this school's configured price" }, 409);
     const learnersFromMetadata = Number(customFieldValue(transaction.metadata, "learners_count"));
     const activeCount = await activeLearnerCount(admin, String(school.id));
     const learnerCount = Number(school.billing_learner_count) > 0 ? Number(school.billing_learner_count) : activeCount;
     if (!Number.isSafeInteger(learnerCount) || learnerCount <= 0) return json({ error: "Set a positive billing learner count or add active learners before paying" }, 400);
     if (learnersFromMetadata !== learnerCount) return json({ error: "The billing learner count changed before verification. Please restart payment." }, 409);
     const expectedAmountKsh = learnerCount * expectedFee;
-    if (Number(transaction.amount) !== expectedAmountKsh * 100) return json({ error: "Payment amount does not match the current learner count and fixed pricing" }, 409);
+    if (Number(transaction.amount) !== expectedAmountKsh * 100) return json({ error: "Payment amount does not match the current learner count and configured school pricing" }, 409);
     const { data: activation, error: activationError } = await admin.rpc("record_verified_school_payment", { p_school_id: school.id, p_payment_reference: reference, p_paystack_transaction_id: transaction.id ? String(transaction.id) : null, p_learners_count: learnerCount, p_fee_per_learner: expectedFee, p_amount: expectedAmountKsh, p_currency: "KES", p_term_label: period, p_paid_by_email: profile.email || userData.user.email || null, p_paid_by_name: [profile.first_name, profile.last_name].filter(Boolean).join(" ") || null });
     if (activationError) {
       console.error("Verified Paystack payment activation failed", activationError.message);
