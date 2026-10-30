@@ -623,7 +623,16 @@ async function handleExamGeneration(
     return;
   }
 
+  const parsedBody = parseBody(request.body) as Record<string, unknown> | null;
+  const paymentReference = typeof parsedBody?.paymentReference === 'string' ? parsedBody.paymentReference.trim() : '';
+  if (!/^[A-Za-z0-9._-]{3,100}$/.test(paymentReference)) {
+    jsonError(response, 402, 'A verified KES 20 examination-paper payment is required for each generated paper.');
+    return;
+  }
+
   let generationJobId: string | null = null;
+  let paymentReserved = false;
+  let paperPersisted = false;
   const configuredProvider = String(process.env.AI_EXAM_PROVIDER || '').trim().toLowerCase();
   const useGemini = configuredProvider === 'gemini' || (!configuredProvider && !process.env.DEEPSEEK_API_KEY && Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY));
   const primaryProvider = useGemini ? 'gemini' : 'deepseek';
@@ -638,6 +647,16 @@ async function handleExamGeneration(
       .single();
     if (generationJobError) throw new Error(`Could not start the generation job: ${generationJobError.message}`);
     generationJobId = generationJob?.id || null;
+    const { data: reserved, error: reservationError } = await supabase.rpc('reserve_exam_paper_payment', {
+      p_reference: paymentReference, p_user_id: user.id, p_school_id: profile.school_id, p_job_id: generationJobId,
+    });
+    if (reservationError || reserved !== true) {
+      await supabase.from('exam_generation_jobs').update({ status: 'failed', error_message: 'Payment entitlement unavailable or already used.', updated_at: new Date().toISOString() }).eq('id', generationJobId);
+      generationJobId = null;
+      jsonError(response, 402, 'This KES 20 paper payment is unavailable, already used, or does not belong to your account. Complete a new verified payment.');
+      return;
+    }
+    paymentReserved = true;
     const recentQuestionStems = await loadRecentQuestionStems(supabase, profile, parsedRequest);
     let generationRequest: ExamGenerationRequest = {
       ...parsedRequest,
@@ -812,6 +831,7 @@ async function handleExamGeneration(
 
     if (paperError) throw new Error(`Could not save the exam paper: ${paperError.message}`);
     const paperId = storedPaper?.id;
+    paperPersisted = Boolean(paperId);
     const { error: snapshotError } = await supabase.from('exam_paper_question_snapshots').insert(persistedQuestions.map((question, index) => ({
       paper_id: paperId, question_id: question.id, question_order: index + 1, payload: question,
     })));
@@ -823,6 +843,11 @@ async function handleExamGeneration(
       })));
       if (visualError) throw new Error(`Could not save generated visual metadata: ${visualError.message}`);
     }
+    const { data: consumed, error: consumptionError } = await supabase.rpc('consume_exam_paper_payment', {
+      p_reference: paymentReference, p_user_id: user.id, p_school_id: profile.school_id, p_job_id: generationJobId, p_paper_id: paperId,
+    });
+    if (consumptionError || consumed !== true) throw new Error('The paper was saved, but its payment entitlement requires reconciliation. Do not pay again; contact support.');
+    paymentReserved = false;
     if (generationJobId) {
       await supabase.from('exam_generation_jobs').update({ status: 'ready', result_paper_id: paperId, updated_at: new Date().toISOString() }).eq('id', generationJobId);
     }
@@ -845,6 +870,12 @@ async function handleExamGeneration(
       },
     });
   } catch (error) {
+    if (paymentReserved && !paperPersisted && generationJobId) {
+      const { data: released, error: releaseError } = await supabase.rpc('release_exam_paper_payment', {
+        p_reference: paymentReference, p_user_id: user.id, p_school_id: profile.school_id, p_job_id: generationJobId,
+      });
+      if (releaseError || released !== true) console.error('[exam-gen] could not release failed-generation payment entitlement');
+    }
     if (generationJobId) {
       await supabase.from('exam_generation_jobs').update({ status: 'failed', error_message: error instanceof Error ? error.message : 'Unknown generation failure', updated_at: new Date().toISOString() }).eq('id', generationJobId);
     }
