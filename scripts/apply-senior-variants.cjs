@@ -54,6 +54,25 @@ console.log(`Enabled senior Paper 1 and Paper 2 in ${file}.`);
 applyDeploymentPatches();
 
 function applyDeploymentPatches() {
+  const tsconfigPath = path.join(process.cwd(), 'tsconfig.json');
+  if (fs.existsSync(tsconfigPath)) {
+    const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, 'utf8'));
+    const compilerOptions = tsconfig.compilerOptions || {};
+    if (compilerOptions.module !== 'ESNext' || compilerOptions.moduleResolution !== 'Bundler'
+        || compilerOptions.resolveJsonModule !== true || !Array.isArray(compilerOptions.types)
+        || !compilerOptions.types.includes('node')) {
+      tsconfig.compilerOptions = {
+        ...compilerOptions,
+        module: 'ESNext',
+        moduleResolution: 'Bundler',
+        resolveJsonModule: true,
+        types: [...new Set([...(Array.isArray(compilerOptions.types) ? compilerOptions.types : []), 'node'])],
+      };
+      fs.writeFileSync(tsconfigPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
+      console.log('Enabled Node-compatible serverless module resolution.');
+    }
+  }
+
   const routeCandidates = ['app/api/papers/generate/route.ts', 'api/generate-learn-exam.ts'];
   const routeFile = routeCandidates.find((candidate) => fs.existsSync(path.join(process.cwd(), candidate)));
   if (routeFile) {
