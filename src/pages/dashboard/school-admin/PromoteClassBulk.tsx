@@ -11,6 +11,7 @@ export default function PromoteClassBulk() {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [result, setResult] = useState<{ moved: number; from_class: string; to_class: string } | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -35,6 +36,7 @@ export default function PromoteClassBulk() {
 
   const promote = async () => {
     setBusy(true);
+    setError('');
     try {
       const { data: { session } } = await supabaseUntyped.auth.getSession();
       const res = await fetch('/api/promote-class', {
@@ -42,13 +44,17 @@ export default function PromoteClassBulk() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
         body: JSON.stringify({ fromClassId, toClassId }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not promote that class.');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(`[${res.status}] ${json.error || 'The server did not explain why.'}`);
+        setBusy(false);
+        return;
+      }
       setResult(json.result);
       setConfirming(false);
       toast.success(`${json.result.moved} learner(s) moved to ${json.result.to_class}.`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not promote that class.');
+      setError(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     setBusy(false);
   };
@@ -91,6 +97,12 @@ export default function PromoteClassBulk() {
         {from && to && !valid && (
           <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
             The target class must be a higher level than {from.name}.
+          </p>
+        )}
+
+        {error && (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
+            {error}
           </p>
         )}
 
