@@ -542,6 +542,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTerm, setSelectedTerm] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!selectedExam) { POINTS_ONLY_SUMMARY = false; return; }
+      try {
+        const { data } = await supabaseUntyped.from('school_exams').select('result_input_type').eq('id', selectedExam).maybeSingle();
+        if (alive) POINTS_ONLY_SUMMARY = String((data as any)?.result_input_type || '').toLowerCase() === 'points';
+      } catch { /* keep marks behaviour if the lookup fails */ }
+    })();
+    return () => { alive = false; };
+  }, [selectedExam]);
   const [comparisonClassId, setComparisonClassId] = useState('');
   const [comparisonTermA, setComparisonTermA] = useState('');
   const [comparisonTermB, setComparisonTermB] = useState('');
@@ -1453,8 +1464,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text(`Boys: ${boys}`, 72, statsY + 8);
         doc.text(`Girls: ${girls}`, 108, statsY + 8);
         doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} pts)` : ''}`, 140, statsY + 8);
-        doc.text(`${is844 ? 'Class Mean Marks (Points)' : 'Class Mean Marks'}: ${classMeanMarksValue.toFixed(1)} / ${classMeanMarksOutOf.toFixed(is844 ? 1 : 0)}${is844 ? ' points' : ''}`, 20, statsY + 18);
-        doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 28);
+        if (!POINTS_ONLY_SUMMARY) doc.text(`${is844 ? 'Class Mean Marks (Points)' : 'Class Mean Marks'}: ${classMeanMarksValue.toFixed(1)} / ${classMeanMarksOutOf.toFixed(is844 ? 1 : 0)}${is844 ? ' points' : ''}`, 20, statsY + 18);
+        if (!POINTS_ONLY_SUMMARY) doc.text(`Subject Average Marks: ${subjectAverageMarks.toFixed(1)}%`, 20, statsY + 28);
         doc.text(`${is844 ? 'Subjects' : 'Learning Areas'}: ${allSubjects.length}`, 88, statsY + 28);
         doc.text(`Grading System: ${is844 ? '8-4-4 (KNEC Points)' : isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 125, statsY + 28);
         if (assessmentLabel) {
@@ -1510,7 +1521,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           const topMarks = Math.round(is844 ? (s.rankingTotalMarks ?? s.totalPct ?? 0) : (s.totalPct || 0));
           const topPoints = is844 ? (s.rankingTotalPoints ?? s.totalPoints ?? 0) : (s.totalPoints || 0);
           const topGrade = isPrimary ? gr.grade : gr.subLevel;
-          doc.text(`${i + 1}. ${s.student?.first_name} ${s.student?.last_name} — ${topMarks} — ${topGrade}${!isPrimary ? ` (${topPoints} Points)` : ''}`, 20, top5Y + 7 + i * 6);
+          doc.text(`${i + 1}. ${s.student?.first_name} ${s.student?.last_name}${POINTS_ONLY_SUMMARY ? '' : ` — ${topMarks}`} — ${topGrade}${!isPrimary ? ` (${topPoints} Points)` : ''}`, 20, top5Y + 7 + i * 6);
         });
 
         doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
@@ -2202,11 +2213,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.text(`Total Learners: ${totalStudents}`, 20, statsY + 8);
     doc.text(`Boys: ${boys}`, 72, statsY + 8); doc.text(`Girls: ${girls}`, 110, statsY + 8);
     doc.text(`Class Mean Grade: ${isPrimary ? classGrade.grade : classGrade.subLevel}${!isPrimary ? ` (${classGrade.points} pts)` : ''}`, 140, statsY + 8);
-    doc.text(`${is844 ? 'Class Mean Marks (Points)' : 'Class Mean Marks'}: ${classMeanMarks.toFixed(1)} / ${classMeanMarksOutOf.toFixed(is844 ? 1 : 0)}${is844 ? ' points' : ''}`, 20, statsY + 18);
+    if (!POINTS_ONLY_SUMMARY) doc.text(`${is844 ? 'Class Mean Marks (Points)' : 'Class Mean Marks'}: ${classMeanMarks.toFixed(1)} / ${classMeanMarksOutOf.toFixed(is844 ? 1 : 0)}${is844 ? ' points' : ''}`, 20, statsY + 18);
     doc.text(`${is844 ? 'Subjects' : 'Learning Areas'}: ${displayedLearningAreas.toFixed(is844 ? 1 : 0)}`, 72, statsY + 18);
     doc.text(`Grading System: ${is844 ? '8-4-4 (KNEC Points)' : isPrimary ? 'Primary CBE (Marks Only)' : 'CBE (With Points)'}`, 110, statsY + 18);
     doc.setFontSize(pdfFontSize(doc, 8));
-    doc.text(`Out of: ${classMeanMarksOutOf.toFixed(is844 ? 1 : 0)} ${is844 ? 'points' : 'marks'}`, 20, statsY + 27);
+    if (!POINTS_ONLY_SUMMARY) doc.text(`Out of: ${classMeanMarksOutOf.toFixed(is844 ? 1 : 0)} ${is844 ? 'points' : 'marks'}`, 20, statsY + 27);
 
     // TOP 10
     doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
@@ -2217,7 +2228,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const topPoints = is844 ? (s.rankingTotalPoints ?? s.totalPoints ?? 0) : (s.totalPoints || 0);
       const topGrade = isPrimary ? grade.grade : grade.subLevel;
       const stream = streamLabel(classes.find((item) => item.id === s.classId));
-      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${stream} — ${topMarks} — ${topGrade}${!isPrimary ? ` (${topPoints} Points)` : ''}`, 20, 89 + index * 6);
+      doc.text(`${index + 1}. ${s.student?.first_name || ''} ${s.student?.last_name || ''} — ${stream}${POINTS_ONLY_SUMMARY ? '' : ` — ${topMarks}`} — ${topGrade}${!isPrimary ? ` (${topPoints} Points)` : ''}`, 20, 89 + index * 6);
     });
 
     // PERFORMANCE DISTRIBUTION (current vs previous exam)
