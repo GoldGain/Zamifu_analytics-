@@ -51,7 +51,9 @@ async function main() {
   const actualSha256 = createHash('sha256').update(bytes).digest('hex');
   if (actualSha256 !== expectedSha256) throw new Error('Verified source archive checksum did not match.');
   writeFileSync(archive, bytes);
-  const extracted = spawnSync('tar', ['-xzf', archive], { stdio: 'inherit' });
+  // The repository is the source of truth. Extract the archived snapshot into
+// /tmp so it can never overwrite freshly committed source at build time.
+const extracted = spawnSync('tar', ['-xzf', archive, '-C', '/tmp'], { stdio: 'inherit' });
   if (extracted.error || extracted.status !== 0) {
     throw extracted.error || new Error(`Source extraction exited with status ${extracted.status}.`);
   }
