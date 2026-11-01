@@ -28,6 +28,7 @@ export default async function handler(request: Req, response: Res): Promise<void
   if (!token) { response.status(401).json({ error: 'Sign in to promote a class.' }); return; }
 
   const body = bodyOf(request.body);
+  const mode = String(body.mode || 'promote');
   const fromClass = String(body.fromClassId || '').trim();
   const toClass = String(body.toClassId || '').trim();
   if (!fromClass || !toClass) { response.status(400).json({ error: 'Choose both the current class and the next class.' }); return; }
@@ -52,6 +53,16 @@ export default async function handler(request: Req, response: Res): Promise<void
   const profileSchool = (profile as { school_id?: string } | null)?.school_id || null;
   if (profileSchool && profileSchool !== fromRow.school_id && !['master_super_admin', 'reseller_super_admin', 'super_admin'].includes(role)) {
     response.status(403).json({ error: 'That class belongs to another school.' });
+    return;
+  }
+
+  if (mode === 'graduate') {
+    const { data: graduated, error: gradError } = await supabase.rpc('graduate_class', {
+      p_school_id: fromRow.school_id,
+      p_class_id: fromClass,
+    });
+    if (gradError) { response.status(400).json({ error: gradError.message }); return; }
+    response.status(200).json({ result: graduated });
     return;
   }
 
