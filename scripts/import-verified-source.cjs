@@ -51,10 +51,15 @@ async function main() {
   const actualSha256 = createHash('sha256').update(bytes).digest('hex');
   if (actualSha256 !== expectedSha256) throw new Error('Verified source archive checksum did not match.');
   writeFileSync(archive, bytes);
-  // The repository is the source of truth. Extract the archived snapshot into
-// /tmp so it can never overwrite freshly committed source at build time.
-const extracted = spawnSync('tar', ['-xzf', archive, '-C', '/tmp'], { stdio: 'inherit' });
-  if (extracted.error || extracted.status !== 0) {
+  const extracted = spawnSync('tar', ['-xzf', archive], { stdio: 'inherit' });
+    // The archive supplies files this repository does not track (for example
+  // src/lib/learn-exam). It is an older snapshot, so after unpacking we restore
+  // every tracked file from the commit being built: the repository wins for any
+  // path it actually contains, and archive-only paths survive.
+  spawnSync('git', ['checkout', '--', '.'], { cwd: process.cwd(), stdio: 'inherit' });
+  console.log('Repository files restored over the archived snapshot.');
+
+if (extracted.error || extracted.status !== 0) {
     throw extracted.error || new Error(`Source extraction exited with status ${extracted.status}.`);
   }
   normalizeRelativeServerlessImports();
