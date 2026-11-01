@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 type Req = { method?: string; headers: Record<string, string | string[] | undefined>; body?: unknown };
 type Res = { status: (c: number) => Res; json: (b: unknown) => void; setHeader: (n: string, v: string) => void; end: () => void };
 
+const ADMIN_ROLES = new Set([
+  'school_admin', 'super_admin', 'admin', 'master_super_admin', 'reseller_super_admin', 'dos', 'director_of_studies',
+]);
+
 const bodyOf = (raw: unknown): Record<string, unknown> => {
   if (typeof raw === 'string') { try { return JSON.parse(raw); } catch { return {}; } }
   return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
@@ -33,13 +37,26 @@ export default async function handler(request: Req, response: Res): Promise<void
   if (userError || !user) { response.status(401).json({ error: 'Your session could not be verified. Sign in again.' }); return; }
 
   const { data: profile } = await supabase.from('profiles').select('school_id, role').eq('id', user.id).maybeSingle();
-  if (!profile?.school_id || !['school_admin', 'master_super_admin', 'reseller_super_admin'].includes(profile.role)) {
-    response.status(403).json({ error: 'Only a school administrator can promote a class.' });
+  const role = String((profile as { role?: string } | null)?.role || '').toLowerCase();
+  if (!ADMIN_ROLES.has(role)) {
+    response.status(403).json({ error: `Only a school administrator can promote a class (your role is "${role || 'unknown'}").` });
+    return;
+  }
+
+  // Trust the classes over the profile: some accounts carry no school_id on the profile row.
+  const { data: fromRow } = await supabase.from('classes').select('id, name, school_id, level').eq('id', fromClass).maybeSingle();
+  const { data: toRow } = await supabase.from('classes').select('id, name, school_id, level').eq('id', toClass).maybeSingle();
+  if (!fromRow || !toRow) { response.status(400).json({ error: 'That class could not be found.' }); return; }
+  if (fromRow.school_id !== toRow.school_id) { response.status(400).json({ error: 'Both classes must belong to the same school.' }); return; }
+
+  const profileSchool = (profile as { school_id?: string } | null)?.school_id || null;
+  if (profileSchool && profileSchool !== fromRow.school_id && !['master_super_admin', 'reseller_super_admin', 'super_admin'].includes(role)) {
+    response.status(403).json({ error: 'That class belongs to another school.' });
     return;
   }
 
   const { data, error } = await supabase.rpc('promote_class', {
-    p_school_id: profile.school_id,
+    p_school_id: fromRow.school_id,
     p_from_class: fromClass,
     p_to_class: toClass,
   });
