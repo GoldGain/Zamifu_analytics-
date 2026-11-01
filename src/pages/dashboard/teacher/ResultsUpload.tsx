@@ -327,7 +327,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       const grades = calculateResultGrades(entry.percentage, currentClassData);
       const level = entry.points != null ? levelForPoints(entry.points) : null;
       const cbcGrade = level
-        ? { ...grades.cbeGrade, grade: level.grade, subLevel: level.grade, points: level.points, descriptor: level.descriptor }
+        ? { ...grades.cbeGrade, grade: level.grade.replace(/[0-9]+$/, ''), subLevel: level.grade, points: level.points, descriptor: level.descriptor }
         : grades.cbeGrade;
       return {
         student_id: r.student_id,
@@ -648,7 +648,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
           const grades = calculateResultGrades(entry.percentage, currentClassData);
           const level = entry.points != null ? levelForPoints(entry.points) : null;
           const csvGrade = level
-            ? { ...grades.cbeGrade, grade: level.grade, subLevel: level.grade, points: level.points, descriptor: level.descriptor }
+            ? { ...grades.cbeGrade, grade: level.grade.replace(/[0-9]+$/, ''), subLevel: level.grade, points: level.points, descriptor: level.descriptor }
             : grades.cbeGrade;
           if (Number.isNaN(entry.percentage)) return null;
           return {
