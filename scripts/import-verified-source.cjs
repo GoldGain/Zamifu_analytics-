@@ -14,10 +14,11 @@ function normalizeRelativeServerlessImports() {
     const modulePath = path.join(directory, entry);
     const original = readFileSync(modulePath, 'utf8');
     const patched = original.replace(
-      /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.\.?\/[^'"]+?)\2/g,
-      (match, prefix, quote, specifier) => path.extname(specifier)
-        ? match
-        : `${prefix}${quote}${specifier}.js${quote}`,
+      /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.\.?\/[^'"]+?)\2(?!\s+with\s*\{)/g,
+      (match, prefix, quote, specifier) => {
+        if (specifier.endsWith('.json')) return `${prefix}${quote}${specifier}${quote} with { type: 'json' }`;
+        return path.extname(specifier) ? match : `${prefix}${quote}${specifier}.js${quote}`;
+      },
     );
     if (patched !== original) writeFileSync(modulePath, patched);
   }
