@@ -49,6 +49,7 @@ interface AssessmentForm {
   target_type: AssessmentTargetType;
   target_class_id: string;
   target_grade_level: string;
+  result_input_type: 'marks' | 'points';
 }
 
 const EXAM_TYPES = [
@@ -78,6 +79,7 @@ const defaultForm: AssessmentForm = {
   target_type: 'school',
   target_class_id: '',
   target_grade_level: '',
+  result_input_type: 'marks',
 };
 
 export default function Assessments() {
@@ -170,6 +172,7 @@ export default function Assessments() {
       end_date: exam.end_date || '',
       weightage: exam.weightage != null ? String(exam.weightage) : '',
       target_type: exam.target_type || 'school',
+      result_input_type: (exam as any).result_input_type === 'points' ? 'points' : 'marks',
       target_class_id: exam.target_class_id || '',
       target_grade_level: exam.target_grade_level != null ? String(exam.target_grade_level) : '',
     });
@@ -202,6 +205,7 @@ export default function Assessments() {
         target_type: form.target_type,
         target_class_id: form.target_type === 'class' ? form.target_class_id : null,
         target_grade_level: form.target_type === 'grade' ? parseInt(form.target_grade_level, 10) : null,
+        result_input_type: form.result_input_type,
         sequence_order: editingExam?.sequence_order ?? (exams.length + 1),
         is_active: editingExam ? editingExam.is_active : true,
         created_by: user?.id,
@@ -630,6 +634,34 @@ export default function Assessments() {
                   placeholder="e.g. 30"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              {/* Result input type — marks (0-100) or CBC points (1-8) */}
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Result input type</label>
+                <p className="text-xs text-gray-500 mb-3">
+                  How teachers enter marks for this assessment. This drives grading, ranking and every summary.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { value: 'marks', title: 'Marks (0-100)', hint: 'Teacher enters raw marks; points are derived.' },
+                    { value: 'points', title: 'Points (1-8)', hint: 'Teacher enters CBC points only; marks are hidden.' },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, result_input_type: option.value })}
+                      className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                        form.result_input_type === option.value
+                          ? 'border-blue-600 bg-white ring-2 ring-blue-500/30'
+                          : 'border-gray-300 bg-white hover:border-gray-400'
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold text-gray-800">{option.title}</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug text-gray-500">{option.hint}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="p-6 border-t border-gray-100 flex gap-3 sticky bottom-0 bg-white z-10">
