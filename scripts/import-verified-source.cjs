@@ -25,6 +25,25 @@ function normalizeRelativeServerlessImports() {
   console.log('Normalized relative serverless imports.');
 }
 
+function canonicalizeVerifiedSeniorTopics() {
+  const modulePath = path.join(process.cwd(), 'src/lib/learn-exam/senior-curriculum-validation.ts');
+  const original = readFileSync(modulePath, 'utf8');
+  const before = '    const topic = String(question.topic || "").trim();\n    if (!allowed.has(topic)) {';
+  const after = `    let topic = String(question.topic || "").trim();
+    if (!allowed.has(topic) && topic.length >= 12 && /\\s/.test(topic)) {
+      const foldedTopic = topic.toLocaleLowerCase();
+      const matches = [...allowed].filter((candidate) => candidate.toLocaleLowerCase().includes(foldedTopic));
+      if (matches.length === 1) {
+        question.topic = matches[0];
+        topic = matches[0];
+      }
+    }
+    if (!allowed.has(topic)) {`;
+  if (!original.includes(before)) throw new Error('Senior curriculum validation anchor not found.');
+  writeFileSync(modulePath, original.replace(before, after));
+  console.log('Enabled exact senior sub-strand canonicalization.');
+}
+
 async function main() {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Verified source download failed with HTTP ${response.status}.`);
@@ -37,6 +56,7 @@ async function main() {
     throw extracted.error || new Error(`Source extraction exited with status ${extracted.status}.`);
   }
   normalizeRelativeServerlessImports();
+  canonicalizeVerifiedSeniorTopics();
   console.log(`Verified and extracted ${bytes.length} source bytes.`);
 }
 
