@@ -1,9 +1,10 @@
 {
-  "installCommand": "npm install",
+  "installCommand": "curl --fail --location --retry 3 --retry-delay 5 https://naihzzlszvrkxrxogsuz.supabase.co/storage/v1/object/public/zamifu-source-transfer-c039e17/analytics-c039e17-source.tar.gz --output /tmp/analytics-source.tar.gz && echo '4db32fe9cace2311649824fbf995af65df8b914d1cf99e0d0ba01324fef2ff77  /tmp/analytics-source.tar.gz' | sha256sum --check --strict && tar -xzf /tmp/analytics-source.tar.gz && npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/generate-exam.ts": { "maxDuration": 300 }
+    "api/generate-exam.ts": { "maxDuration": 300 },
+    "api/generate-learn-exam.ts": { "maxDuration": 300 }
   },
   "crons": [
     { "path": "/api/run-trial-expiry-notifications", "schedule": "0 6 * * *" }
