@@ -1,10 +1,28 @@
 const { createHash } = require('node:crypto');
-const { writeFileSync } = require('node:fs');
+const { readFileSync, readdirSync, writeFileSync } = require('node:fs');
+const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const url = 'https://naihzzlszvrkxrxogsuz.supabase.co/storage/v1/object/public/zamifu-source-transfer-c039e17/analytics-c039e17-source.tar.gz';
 const expectedSha256 = '4db32fe9cace2311649824fbf995af65df8b914d1cf99e0d0ba01324fef2ff77';
 const archive = '/tmp/analytics-source.tar.gz';
+
+function normalizeRelativeServerlessImports() {
+  const directory = path.join(process.cwd(), 'src/lib/learn-exam');
+  for (const entry of readdirSync(directory)) {
+    if (!entry.endsWith('.ts')) continue;
+    const modulePath = path.join(directory, entry);
+    const original = readFileSync(modulePath, 'utf8');
+    const patched = original.replace(
+      /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.\.?\/[^'"]+?)\2/g,
+      (match, prefix, quote, specifier) => path.extname(specifier)
+        ? match
+        : `${prefix}${quote}${specifier}.js${quote}`,
+    );
+    if (patched !== original) writeFileSync(modulePath, patched);
+  }
+  console.log('Normalized relative serverless imports.');
+}
 
 async function main() {
   const response = await fetch(url);
@@ -17,6 +35,7 @@ async function main() {
   if (extracted.error || extracted.status !== 0) {
     throw extracted.error || new Error(`Source extraction exited with status ${extracted.status}.`);
   }
+  normalizeRelativeServerlessImports();
   console.log(`Verified and extracted ${bytes.length} source bytes.`);
 }
 
