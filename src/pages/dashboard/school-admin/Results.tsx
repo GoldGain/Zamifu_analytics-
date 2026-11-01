@@ -529,6 +529,10 @@ function outputPdfDocument(doc: jsPDF, filename: string, mode: PdfOutputMode, pr
   target.location.href = pdfUrl;
 }
 
+/** Set when the selected assessment records points only, so summaries hide marks.
+ *  Module scope on purpose: the PDF builders are nested deep in this component. */
+let POINTS_ONLY_SUMMARY = false;
+
 export default function SchoolAdminResults({ scope = 'school' }: { scope?: ResultsScope }) {
   const { user } = useAuth();
   const [results, setResults] = useState<any[]>([]);
