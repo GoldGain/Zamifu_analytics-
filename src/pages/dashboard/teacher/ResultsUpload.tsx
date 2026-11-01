@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { levelForPoints } from '../../../lib/result-input';
 import { Link, useSearchParams } from 'react-router';
 import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -61,6 +62,8 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const [teacherIdentity, setTeacherIdentity] = useState<{ teacherId: string; profileId: string; schoolId: string | null } | null>(null);
   const [isDoS, setIsDoS] = useState(false);
   const [outOf, setOutOf] = useState(100);
+  const selectedExamMeta = useMemo(() => exams.find((e: any) => e.id === selectedExam), [exams, selectedExam]);
+  const usesPoints = selectedExamMeta?.result_input_type === 'points';
 
   const [csvData, setCsvData] = useState<ProcessedRow[]>([]);
   const [preview, setPreview] = useState(false);
@@ -88,7 +91,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       const [{ data: c }, { data: t }, { data: ex }, assignmentResult] = await Promise.all([
         supabase.from('classes').select('*').eq('school_id', schoolId).order('level'),
         supabase.from('terms').select('*').eq('school_id', schoolId).order('academic_year', { ascending: false }),
-        (supabase as any).from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
+        (supabase as any).from('school_exams').select('id, name, type, term_id, target_type, target_class_id, target_grade_level, result_input_type').eq('school_id', schoolId).eq('is_active', true).order('created_at', { ascending: false }),
         fetchTeacherAssignments(user?.id),
       ]);
 
@@ -285,23 +288,56 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     }
   };
 
+  /** Marks <-> points conversion for one entered value, per the assessment mode. */
+  const entryToResult = (raw: string) => {
+    const text = raw.trim();
+    const markCode = /^(X|Y)$/i.test(text) ? (text.toUpperCase() as 'X' | 'Y') : undefined;
+    if (markCode) return { markCode, marks: 0, percentage: 0, points: null as number | null };
+
+    if (usesPoints) {
+      const points = parseInt(text, 10);
+      if (!Number.isFinite(points) || points < 1 || points > 8) {
+        return { markCode: undefined, marks: NaN, percentage: NaN, points: NaN as number | null };
+      }
+      const percentage = Math.round((points / 8) * 100);
+      return { markCode: undefined, marks: Math.round((percentage / 100) * outOf), percentage, points };
+    }
+
+    const marks = parseFloat(text);
+    if (!Number.isFinite(marks) || marks < 0 || marks > outOf) {
+      return { markCode: undefined, marks: NaN, percentage: NaN, points: null };
+    }
+    return { markCode: undefined, marks, percentage: Math.round((marks / outOf) * 100), points: null };
+  };
+
   const calculateManualGrades = () => {
     const filled = manualRows.filter(r => /^(?:\d+(?:\.\d+)?|X|Y)$/i.test(r.marks.trim()));
-    if (filled.length === 0) { toast.error('Please enter marks for at least one student'); return; }
+    if (filled.length === 0) { toast.error(usesPoints ? 'Please enter points for at least one student' : 'Please enter marks for at least one student'); return; }
+
+    const invalid = filled.filter(r => Number.isNaN(entryToResult(r.marks).percentage));
+    if (invalid.length) {
+      toast.error(usesPoints
+        ? `Points must be whole numbers 1 to 8. Check: ${invalid.map(r => r.name).slice(0, 3).join(', ')}`
+        : `Marks must be between 0 and ${outOf}. Check: ${invalid.map(r => r.name).slice(0, 3).join(', ')}`);
+      return;
+    }
+
     const processed: ProcessedRow[] = filled.map(r => {
-      const markCode = /^(X|Y)$/i.test(r.marks.trim()) ? r.marks.trim().toUpperCase() as 'X' | 'Y' : undefined;
-      const marks = markCode ? 0 : parseFloat(r.marks);
-      const percentage = markCode ? 0 : Math.round((marks / outOf) * 100);
-      const grades = calculateResultGrades(percentage, currentClassData);
+      const entry = entryToResult(r.marks);
+      const grades = calculateResultGrades(entry.percentage, currentClassData);
+      const level = entry.points != null ? levelForPoints(entry.points) : null;
+      const cbcGrade = level
+        ? { ...grades.cbeGrade, grade: level.grade, subLevel: level.grade, points: level.points, descriptor: level.descriptor }
+        : grades.cbeGrade;
       return {
         student_id: r.student_id,
         name: r.name,
         admission_number: r.admission_number,
-        marks,
+        marks: entry.marks,
         out_of: outOf,
-        percentage,
-        markCode,
-        cbcGrade: grades.cbeGrade,
+        percentage: entry.percentage,
+        markCode: entry.markCode,
+        cbcGrade,
         grade844: grades.grade844,
       };
     });
@@ -570,13 +606,21 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   // ── CSV helpers ──────────────────────────────────────────────────────────────
   const downloadTemplate = () => {
     if (!students.length) { toast.error('Please select a class first'); return; }
-    const rows = students.map(s => ({
-      student_id: s.id,
-      name: `${s.first_name} ${s.last_name}`,
-      admission_number: s.admission_number || s.assessment_number || '—',
-      marks: '',
-      out_of: outOf,
-    }));
+    const rows = students.map(s => usesPoints
+      ? {
+          'Admission Number': s.admission_number || s.assessment_number || '—',
+          'Learner Name': `${s.first_name} ${s.last_name}`,
+          'Points (1-8)': '',
+          student_id: s.id,
+          name: `${s.first_name} ${s.last_name}`,
+        }
+      : {
+          student_id: s.id,
+          name: `${s.first_name} ${s.last_name}`,
+          admission_number: s.admission_number || s.assessment_number || '—',
+          marks: '',
+          out_of: outOf,
+        });
     const csv = Papa.unparse(rows);
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -598,23 +642,27 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         const valid = (results.data as any[]).filter((row: any) => row.student_id && row.marks !== '');
         if (!valid.length) { setError('No valid rows found. Ensure marks column is filled.'); return; }
         const processed: ProcessedRow[] = valid.map((row: any) => {
-          const markCode = /^(X|Y)$/i.test(String(row.marks).trim()) ? String(row.marks).trim().toUpperCase() as 'X' | 'Y' : undefined;
-          const marks = markCode ? 0 : (parseFloat(row.marks) || 0);
+          const rawValue = String(row.marks ?? row['Points (1-8)'] ?? '').trim();
+          const entry = entryToResult(rawValue);
           const rowOutOf = parseFloat(row.out_of) || outOf;
-          const percentage = markCode ? 0 : Math.round((marks / rowOutOf) * 100);
-          const grades = calculateResultGrades(percentage, currentClassData);
+          const grades = calculateResultGrades(entry.percentage, currentClassData);
+          const level = entry.points != null ? levelForPoints(entry.points) : null;
+          const csvGrade = level
+            ? { ...grades.cbeGrade, grade: level.grade, subLevel: level.grade, points: level.points, descriptor: level.descriptor }
+            : grades.cbeGrade;
+          if (Number.isNaN(entry.percentage)) return null;
           return {
             student_id: row.student_id,
             name: row.name || '',
             admission_number: row.admission_number || row.assessment_number || '—',
-            marks,
+            marks: entry.marks,
             out_of: rowOutOf,
-            percentage,
-            markCode,
-            cbcGrade: grades.cbeGrade,
+            percentage: entry.percentage,
+            markCode: entry.markCode,
+            cbcGrade: csvGrade,
             grade844: grades.grade844,
           };
-        });
+        }).filter(Boolean) as ProcessedRow[];
         const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || b.percentage - a.percentage);
         sorted.forEach((row, i) => { row.position = i + 1; });
         setCsvData(sorted);
@@ -852,7 +900,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learner Name</th> {/* Issue 26 */}
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Adm #</th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Status</th>
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks (out of {outOf})</th>
+                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{usesPoints ? 'Points (1-8)' : `Marks (out of ${outOf})`}</th>
                         {manualPreviewReady && (
                           <>
                             <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>
