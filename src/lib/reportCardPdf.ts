@@ -67,6 +67,8 @@ export interface ReportCardSubjectRow {
 }
 
 export interface ReportCardTableOptions {
+  /** Points-mode assessments hide the marks column; cells print an em dash. */
+  hideMarks?: boolean;
   showStreamPosition?: boolean;
   showDeviation?: boolean;
   previousAssessmentLabel?: string;
@@ -967,18 +969,20 @@ export function drawStudentInfo(
   y: number = 38,
   assessmentName?: string,
   assessmentNumber?: string,
-  positionDetails?: { classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean; pathway?: string; track?: string; overallGrade?: string; showPathway?: boolean; is844?: boolean; showOverallPositions?: boolean }
+  positionDetails?: { hideMarks?: boolean; classPosition?: string; streamPosition?: string; totalMarks?: string; totalPoints?: string; overallDeviation?: string; showPoints?: boolean; pathway?: string; track?: string; overallGrade?: string; showPathway?: boolean; is844?: boolean; showOverallPositions?: boolean }
 ) {
   const fs = pdfFontSize(doc, COMPACT_MODE ? 6.8 : 8);
   const showPoints = positionDetails?.showPoints !== false;
+  const hideMarks = positionDetails?.hideMarks === true;
+  const totalMarksValue = hideMarks ? '—' : (positionDetails?.totalMarks || '—');
   const showOverallPositions = positionDetails?.showOverallPositions !== false;
   // 8-4-4 report cards use KNEC terminology: "Exam Name", and no Assessment Number.
   const is844Card = Boolean(positionDetails?.is844);
   const standardRows: string[][] = [
     [is844Card ? "Student's Name" : "Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', is844Card ? 'Exam Name' : 'Assessment Name', assessmentName || `${termName} ${academicYear}`],
     is844Card
-      ? ['Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', 'Class / Stream', className || '—']
-      : ['Assessment No.', assessmentNumber || '—', 'Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
+      ? ['Total Marks', totalMarksValue, showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', 'Class / Stream', className || '—']
+      : ['Assessment No.', assessmentNumber || '—', 'Total Marks', totalMarksValue, showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : ''],
     ['Class Position', showOverallPositions ? (positionDetails?.classPosition || position || '—') : '', ...(positionDetails?.streamPosition ? ['Stream Position', showOverallPositions ? positionDetails.streamPosition : '', 'Date', new Date().toLocaleDateString()] : ['Class / Stream', className || '—', 'Date', new Date().toLocaleDateString()])],
   ];
   // 8-4-4 report cards have no Pathway/Track: those belong to CBE only.
@@ -986,7 +990,7 @@ export function drawStudentInfo(
   const rows: string[][] = showPathway ? [
     ["Learner's Name", studentName || '—', 'Admission No.', admissionNo || '—', 'Assessment No.', assessmentNumber || '—'],
     ['Class', className || '—', 'Pathway', positionDetails?.pathway || '—', 'Track', positionDetails?.track || '—'],
-    ['Total Marks', positionDetails?.totalMarks || '—', showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', positionDetails?.is844 ? 'Overall Grade' : 'Overall Level', positionDetails?.overallGrade || '—'],
+    ['Total Marks', totalMarksValue, showPoints ? 'Total Points' : '', showPoints ? (positionDetails?.totalPoints || '—') : '', positionDetails?.is844 ? 'Overall Grade' : 'Overall Level', positionDetails?.overallGrade || '—'],
     ['Class Position', showOverallPositions ? (positionDetails?.classPosition || position || '—') : '', 'Stream Position', showOverallPositions ? (positionDetails?.streamPosition || '—') : '', 'Date', new Date().toLocaleDateString()],
   ] : standardRows;
   const widths = [27, 43, 27, 32, 27, 26];
@@ -1030,6 +1034,7 @@ export function drawResultsTable(
   const showStream = options.showStreamPosition === true;
   const showDeviation = options.showDeviation !== false;
   const assessmentColumns = options.assessmentColumns || [];
+  const hideMarks = options.hideMarks === true;
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
   // Primary reports carry no points, so the per-assessment Pts column is
   // omitted entirely instead of printed with dashes.
@@ -1040,7 +1045,7 @@ export function drawResultsTable(
     ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => pointsMax > 0
         ? [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]
         : [`${column.label}\nMarks`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
-    : ['No.', areaLabel, 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
+    : ['No.', areaLabel, hideMarks ? 'Marks' : 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const excluded = isExcludedResult(r);
     const excludedCode = excludedResultCode(r) || 'X';
@@ -1067,12 +1072,12 @@ export function drawResultsTable(
         const marksLabel = Number(metric.outOf) === 100
           ? Number(metric.marks).toFixed(0)
           : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
-        row.push(marksLabel, ...(pointsMax > 0 ? [examGrade.points ?? '—'] : []), examLevel || '—');
+        row.push(hideMarks ? '—' : marksLabel, ...(pointsMax > 0 ? [examGrade.points ?? '—'] : []), examLevel || '—');
       });
       row.push(excluded ? excludedCode : `${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
-      row.push(excluded ? excludedCode : `${pct.toFixed(0)}/100`);
+      row.push(hideMarks ? '—' : (excluded ? excludedCode : `${pct.toFixed(0)}/100`));
       if (showDeviation) row.push(deviation);
     }
     if (pointsMax > 0) row.push(grading?.points ?? '—');
@@ -1087,7 +1092,7 @@ export function drawResultsTable(
   const totalPoints = options.rankingDetails?.totalPoints ?? includedRows.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
   const totalMarksRow = new Array(tableHead.length).fill('');
   const averageIndex = 2 + assessmentCellCount;
-  totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? averageIndex : 2] = totalMarksLabel;
+  totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? averageIndex : 2] = hideMarks ? '—' : totalMarksLabel;
   tableBody.push(totalMarksRow);
   if (pointsMax > 0) {
     const totalPointsRow = new Array(tableHead.length).fill('');
@@ -1192,6 +1197,7 @@ export function drawSummaryBox(
   streamPosition?: string,
   rankingDetails?: { subjects: string[]; totalMarks: number; totalPoints: number },
   showOverallPositions: boolean = true,
+  hideMarks: boolean = false,
 ): number {
   const hasRankingDetails = Boolean(rankingDetails?.subjects?.length);
   const boxH = hasRankingDetails ? (COMPACT_MODE ? 30 : 40) : (COMPACT_MODE ? 18 : 28);
@@ -1208,7 +1214,7 @@ export function drawSummaryBox(
   const gap = COMPACT_MODE ? 5.8 : 8;
   doc.setFontSize(fs); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
   doc.text(`${is844Curriculum(classData) ? 'Subjects' : 'Learning Areas'}: ${includedResults.length}`, 20, startY + gap);
-  doc.text(`Total Marks: ${hasNumericResults ? totalMarks : '—'}`, 65, startY + gap);
+  doc.text(`Total Marks: ${hideMarks ? '—' : (hasNumericResults ? totalMarks : '—')}`, 65, startY + gap);
   doc.text(`Average: ${hasNumericResults ? `${avgPercentage.toFixed(1)}%` : 'N/A'}`, 130, startY + gap);
   doc.text(`Position: ${showOverallPositions ? position : ''}`, 20, startY + gap * 2);
   doc.text(`Grade: ${overallGrading?.grade || 'N/A'}`, 65, startY + gap * 2);
@@ -1220,7 +1226,9 @@ export function drawSummaryBox(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(pdfFontSize(doc, COMPACT_MODE ? 5.4 : 6.1));
     const rankLabel = is844Curriculum(classData) ? 'KNEC 7-subject rank' : 'Senior 7-subject rank';
-    const text = `${rankLabel}: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints}/${rankingPointsMax} points; ${rankingDetails.totalMarks.toFixed(0)}/700 marks`;
+    const text = hideMarks
+      ? `${rankLabel}: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints}/${rankingPointsMax} points`
+      : `${rankLabel}: ${rankingDetails.subjects.join(', ')} — ${rankingDetails.totalPoints}/${rankingPointsMax} points; ${rankingDetails.totalMarks.toFixed(0)}/700 marks`;
     const lines = doc.splitTextToSize(text, 174);
     doc.text(lines, 20, startY + (COMPACT_MODE ? 25 : 33));
   }
