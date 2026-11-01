@@ -396,17 +396,17 @@ export default function ParentChildReportCard() {
         photoUrl: selectedChild.photo_url || null,
       });
       const overallGrade = learnerMetrics?.count ? calculateGradeForClass(avgPercentage, classDataForGrading) : null;
-      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Curriculum(classDataForGrading), is844: is844Curriculum(classDataForGrading), showOverallPositions });
+      drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { hideMarks: (results[0]?.school_exams as any)?.result_input_type === 'points', totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Curriculum(classDataForGrading), is844: is844Curriculum(classDataForGrading), showOverallPositions });
       const qrOptions = { assessmentNumber: selectedChild.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
-      let currentY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 69 : 62, { showDeviation: previousAvg !== null, rankingDetails }) + 6;
+      let currentY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 69 : 62, { hideMarks: (results[0]?.school_exams as any)?.result_input_type === 'points', showDeviation: previousAvg !== null, rankingDetails }) + 6;
       
       // RESTRICTED Pathway Performance: Only for Junior (Grade 6-9)
       if (getSchoolLevelBand(classDataForGrading) === 'junior') {
         currentY = drawPathwayPerformance(doc, results, currentY) + 6;
       }
       
-      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY, undefined, rankingDetails, showOverallPositions);
+      currentY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, currentY, undefined, rankingDetails, showOverallPositions, (results[0]?.school_exams as any)?.result_input_type === 'points');
       currentY = drawDeviation(doc, deviation, previousAvg, showOverallPositions ? position : null, currentY + 6);
       if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, currentY, 38, aiComment, schoolInfo, qrOptions)) {
         currentY = drawTrendGraph(doc, trendData, 14, currentY, 182, 34, getSchoolLevelBand(classDataForGrading)) + 2;

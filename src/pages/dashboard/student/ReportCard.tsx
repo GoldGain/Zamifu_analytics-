@@ -336,14 +336,14 @@ export default function StudentReportCard() {
         48,
         results[0]?.school_exams?.name || undefined,
         student.assessment_number || undefined,
-        { showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Class, is844: is844Class, showOverallPositions },
+        { hideMarks: (results[0]?.school_exams as any)?.result_input_type === 'points', showPoints: !isPrimary, totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: student.pathway, track: student.track, overallGrade: learnerMetrics?.count ? (() => { const grade = calculateGradeForClass(avgPercentage, classDataForGrading); return 'subLevel' in grade ? grade.subLevel : grade.grade; })() : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Class, is844: is844Class, showOverallPositions },
       );
 
       const qrOptions = { assessmentNumber: student.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);
-      let tableEndY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 76 : 70, { showDeviation: previousAvg !== null, rankingDetails });
+      let tableEndY = drawResultsTable(doc, results, classDataForGrading, usesSevenSubjectRanking(classDataForGrading) ? 76 : 70, { hideMarks: (results[0]?.school_exams as any)?.result_input_type === 'points', showDeviation: previousAvg !== null, rankingDetails });
       if (band === 'junior') tableEndY = drawPathwayPerformance(doc, results, tableEndY + 4) + 6;
-      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10, undefined, rankingDetails, showOverallPositions);
+      const summaryEndY = drawSummaryBox(doc, results, avgPercentage, totalPoints, positionStr, classDataForGrading, tableEndY + 10, undefined, rankingDetails, showOverallPositions, (results[0]?.school_exams as any)?.result_input_type === 'points');
       const devEndY = drawDeviation(doc, deviation, previousAvg, null, summaryEndY);
       let trendEndY = devEndY;
       if (trendData.length >= 2 && canFitReportCardOptionalSection(doc, devEndY, 38, aiComment, schoolInfo, qrOptions)) {
