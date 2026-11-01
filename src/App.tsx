@@ -305,8 +305,8 @@ function AppRoutes() {
       <Route path="/school-admin/subscription-receipts" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubscriptionReceipts /></ProtectedRoute>} />
       <Route path="/school-admin/activity" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminActivityHistory /></ProtectedRoute>} />
       <Route path="/school-admin/settings" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSchoolSettings /></ProtectedRoute>} />
-      <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass />
-              <Route path="/school-admin/promote-classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><PromoteClassBulk /></ProtectedRoute>} /></ProtectedRoute>} />
+      <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
+      <Route path="/school-admin/promote-classes" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><PromoteClassBulk /></ProtectedRoute>} />
       <Route path="/school-admin/class-list" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClassList /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><TimetableView /></ProtectedRoute>} />
 
