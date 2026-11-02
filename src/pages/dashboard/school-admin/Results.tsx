@@ -1541,10 +1541,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.setFontSize(pdfFontSize(doc, 10));
         doc.text(`TOP 10 LEARNERS PER ${is844 ? 'SUBJECT' : 'LEARNING AREA'}`, 105, 16, { align: 'center' });
         const topRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10, classObj);
-        const topBody = topRows.map((tr) => [tr.area, String(tr.rank), tr.name, `${tr.marks}`, tr.grade]);
+        const topBody = topRows.map((tr) => POINTS_ONLY_SUMMARY
+          ? [tr.area, String(tr.rank), tr.name, tr.grade]
+          : [tr.area, String(tr.rank), tr.name, `${tr.marks}`, tr.grade]);
         autoTable(doc, {
           startY: 26,
-          head: [[is844 ? 'Subject' : 'Learning Area', 'Rank', is844 ? 'Student' : 'Learner', 'Marks', 'Grade']],
+          head: [[is844 ? 'Subject' : 'Learning Area', 'Rank', is844 ? 'Student' : 'Learner', ...(POINTS_ONLY_SUMMARY ? [] : ['Marks']), 'Grade']],
           body: topBody,
           styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 1.5, halign: 'center' },
           headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' },
@@ -1567,22 +1569,31 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const deviationHeader = previousComparison
         ? `${is844 ? 'Points Deviation' : 'Deviation'} (vs ${previousComparison.exam.name})`
         : (is844 ? 'Points Deviation' : 'Deviation');
-      const singleLearnerHeaders = isPrimary
-        ? ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject)), 'Total', 'Avg%', deviationHeader, 'Grade']
-        : ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject)), 'Total', 'Avg%', is844 ? 'Points' : 'Pts', deviationHeader, 'Grade'];
+      const singleLearnerHeaders = (() => {
+        const headers: string[] = ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject))];
+        if (!POINTS_ONLY_SUMMARY) headers.push('Total', 'Avg%');
+        if (!isPrimary) headers.push(is844 ? 'Points' : 'Pts');
+        headers.push(deviationHeader, 'Grade');
+        return headers;
+      })();
       const singleLearnerBody = summaries.map((summary: any) => {
         const grade = overallGradeWithBand(summary.avgPct, band, classObj);
         const subjectCells = allSubjects.map((subject) => {
           const percentage = summary.subjects[subject];
-          return percentage === undefined ? '—' : `${Number(percentage).toFixed(0)}% ${overallGradeWithBand(Number(percentage), band, classObj).subLevel}`;
+          if (percentage === undefined) return '—';
+          const subLevel = overallGradeWithBand(Number(percentage), band, classObj).subLevel;
+          // Points-only assessments show the level alone; no percentage is printed anywhere.
+          return POINTS_ONLY_SUMMARY ? subLevel : `${Number(percentage).toFixed(0)}% ${subLevel}`;
         });
         const row: any[] = [
           String(summary.position),
           `${summary.student?.first_name || ''} ${summary.student?.last_name || ''}`.trim(),
           ...subjectCells,
-          String(Math.round(is844 ? (summary.rankingTotalMarks ?? summary.totalPct ?? 0) : (summary.totalPct || 0))),
-          `${Number(summary.avgPct || 0).toFixed(1)}%`,
         ];
+        if (!POINTS_ONLY_SUMMARY) {
+          row.push(String(Math.round(is844 ? (summary.rankingTotalMarks ?? summary.totalPct ?? 0) : (summary.totalPct || 0))));
+          row.push(`${Number(summary.avgPct || 0).toFixed(1)}%`);
+        }
         if (!isPrimary) row.push(String(is844 ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0) : (summary.totalPoints || 0)));
         const previousTotal = previousTotals.get(String(summary.studentId));
         const currentTotal = Number(is844
