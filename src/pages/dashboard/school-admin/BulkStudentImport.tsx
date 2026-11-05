@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, Download, FileSpreadsheet, Loader2, Upload, Users, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -175,6 +175,7 @@ export default function BulkStudentImport() {
   const [mode, setMode] = useState<ImportMode>('add');
   const [matchBy, setMatchBy] = useState<MatchBy>('admission');
   const [confirmingUpdates, setConfirmingUpdates] = useState(false);
+  const runningRef = useRef(false);
 
   const loadReferenceData = useCallback(async () => {
     const schoolId = user?.schoolId;
@@ -302,8 +303,25 @@ export default function BulkStudentImport() {
   const pendingUpdates = preview.filter((item) => item.action === 'update');
   const readyAdds = preview.filter((item) => item.action === 'create');
 
+  const findExistingLearner = useCallback(async (schoolId: string, admission: string, assessment: string) => {
+    const filters: string[] = [];
+    if (admission) filters.push(`admission_number.eq.${admission.replace(/[,"]/g, '')}`);
+    if (assessment) filters.push(`assessment_number.eq.${assessment.replace(/[,"]/g, '')}`);
+    if (!filters.length) return null;
+    const { data } = await supabaseUntyped
+      .from('students')
+      .select('id, class_id, stream_id')
+      .eq('school_id', schoolId)
+      .or(filters.join(','))
+      .limit(1)
+      .maybeSingle();
+    return (data || null) as { id: string; class_id: string | null; stream_id: string | null } | null;
+  }, []);
+
   const createStudents = async () => {
     if (!user?.schoolId || !readyAdds.length || blockingCount) return;
+    if (runningRef.current) return;
+    runningRef.current = true;
     setImporting(true);
     setResults([]);
     const completed: ImportResult[] = [];
@@ -314,6 +332,12 @@ export default function BulkStudentImport() {
         const classRow = plan.classRow;
         if (!classRow) {
           completed.push({ row: plan.rowNumber, admission_number: plan.admission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: 'The class/stream could not be resolved. Refresh school reference data and preview again.' });
+          setResults([...completed]);
+          continue;
+        }
+        const existingNow = await findExistingLearner(user.schoolId, plan.admission, plan.assessment);
+        if (existingNow?.id) {
+          completed.push({ row: plan.rowNumber, admission_number: plan.admission, assessment_number: plan.assessment, name: plan.name, status: 'unchanged', message: 'Already exists in this school — skipped, nothing was changed.' });
           setResults([...completed]);
           continue;
         }
@@ -371,17 +395,30 @@ export default function BulkStudentImport() {
           }
           completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, email, password: plan.assessment ? loginIdentifier : '', status: 'created', message: plan.assessment ? undefined : 'Created without assessment number; assign one later to enable Student Portal sign-in.' });
         } catch (error: unknown) {
-          completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: errorMessage(error, 'Import failed') });
+          const message = errorMessage(error, 'Import failed');
+          const existing = /already|duplicate|captured/i.test(message)
+            ? await findExistingLearner(user.schoolId, plan.admission, plan.assessment)
+            : null;
+          if (existing?.id) {
+            completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, status: 'unchanged', message: 'Already exists in this school — skipped, nothing was changed.' });
+          } else {
+            completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message });
+          }
         }
         setResults([...completed]);
       }
-      toast.success(`${completed.filter((item) => item.status === 'created').length} of ${readyAdds.length} learners created.`);
+      const createdCount = completed.filter((item) => item.status === 'created').length;
+      const skippedCount = completed.filter((item) => item.status === 'unchanged').length;
+      const failedCount = completed.filter((item) => item.status === 'failed').length;
+      toast.success(`${createdCount} learner${createdCount === 1 ? '' : 's'} created${skippedCount ? `, ${skippedCount} already existed and were skipped` : ''}${failedCount ? `, ${failedCount} failed` : ''}.`);
       await refreshReferenceData();
-    } finally { setImporting(false); }
+    } finally { runningRef.current = false; setImporting(false); }
   };
 
   const applyUpdates = async () => {
     if (!user?.schoolId || !pendingUpdates.length || blockingCount) return;
+    if (runningRef.current) return;
+    runningRef.current = true;
     setConfirmingUpdates(false);
     setImporting(true);
     const completed: ImportResult[] = [];
@@ -427,7 +464,7 @@ export default function BulkStudentImport() {
       }
       toast.success(`${completed.filter((item) => item.status === 'updated').length} learner records updated; no learners were deleted.`);
       await refreshReferenceData();
-    } finally { setImporting(false); }
+    } finally { runningRef.current = false; setImporting(false); }
   };
 
   const downloadCredentials = () => {
