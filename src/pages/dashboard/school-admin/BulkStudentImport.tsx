@@ -173,6 +173,38 @@ function identifiers(row: ImportRow): { admission: string; assessment: string } 
 
 function displayValue(value?: string | null): string { return String(value ?? '').trim() || '—'; }
 
+// CSV cells are free text; the database columns are not. Normalise the typed
+// ones here so an update never fails on casing or a stray separator.
+function normaliseImportValue(key: string, raw: string): string | null {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  if (key === 'gender') {
+    const g = value.toLowerCase();
+    if (['male', 'female', 'other'].includes(g)) return g;
+    if (g === 'm') return 'male';
+    if (g === 'f') return 'female';
+    return null;
+  }
+  if (key === 'curriculum') {
+    const c = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (c === 'CBE' || c === 'CBC' || c === '844') return c;
+    return null;
+  }
+  if (key === 'date_of_birth') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const dmy = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+    return null;
+  }
+  if (key === 'boarding_status') {
+    const b = value.toLowerCase();
+    if (b === 'boarder' || b === 'boarding') return 'boarding';
+    if (b === 'day') return 'day';
+    return value;
+  }
+  return value;
+}
+
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === 'object' && error !== null && 'message' in error) {
@@ -310,8 +342,10 @@ export default function BulkStudentImport() {
         }
         EDITABLE_FIELDS.forEach(({ key, label }) => {
           if (key === 'class_id') return;
-          const next = row[key]?.trim() || '';
-          if (!next) return; // Blank CSV cells preserve the attached record.
+          const rawNext = row[key]?.trim() || '';
+          if (!rawNext) return; // Blank CSV cells preserve the attached record.
+          const next = normaliseImportValue(key, rawNext);
+          if (next === null) return; // Not a valid value for this column; leave it untouched.
           const current = String(target[key as keyof ExistingStudent] ?? '');
           if (normalized(current) !== normalized(next)) changes.push({
             label,
@@ -390,8 +424,7 @@ export default function BulkStudentImport() {
         const effectiveAdmission = plan.admission || plan.assessment || `PENDING-${Date.now().toString(36).toUpperCase()}`;
         const loginIdentifier = (plan.assessment || effectiveAdmission).toUpperCase();
         const email = (row.student_email?.trim().toLowerCase() || `${loginIdentifier.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`);
-        const genderValue = row.gender?.trim().toLowerCase();
-        const gender = ['male', 'female', 'other'].includes(genderValue || '') ? genderValue : null;
+        const gender = normaliseImportValue('gender', row.gender || '');
         const studentPayload = {
           school_id: user.schoolId,
           admission_number: effectiveAdmission,
@@ -518,8 +551,8 @@ export default function BulkStudentImport() {
             if (classId) payload.class_id = classId;
             return;
           }
-          const value = row[key]?.trim();
-          if (value) payload[key] = value;
+          const value = normaliseImportValue(key, row[key] || '');
+          if (value !== null) payload[key] = value;
         });
         if (classId && plan.target.stream_id) payload.stream_id = classId;
         try {
