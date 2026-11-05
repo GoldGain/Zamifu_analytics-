@@ -1,5 +1,5 @@
 // Zamifu Analytics Service Worker - v2.1 app-update refresh
-const CACHE_NAME = 'zamifu-v4-payroll-report-card-20261021';
+const CACHE_NAME = 'zamifu-v5-referrals-20261105';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

@@ -463,6 +463,7 @@ export default function BulkStudentImport() {
       const failedCount = completed.filter((item) => item.status === 'failed').length;
       toast.success(`${createdCount} learner${createdCount === 1 ? '' : 's'} created${skippedCount ? `, ${skippedCount} already existed and were skipped` : ''}${failedCount ? `, ${failedCount} failed` : ''}.`);
       await refreshReferenceData();
+      if (createdCount > 0) { setRows([]); setFileName(''); }
     } finally { runningRef.current = false; setImporting(false); }
   };
 
