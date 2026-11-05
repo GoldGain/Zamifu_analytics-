@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import DigitalSignature from '@/components/DigitalSignature';
-import { CONDUCT_CATEGORIES, renderLeavingCertificatePreview, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, isLeavingCertificateClass, leavingCertificateStandardLabel, LEAVING_CERTIFICATE_CBE_CURRICULUM, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
+import { CONDUCT_CATEGORIES, renderLeavingCertificatePreview, conductText, downloadLeavingCertificate, formatCertificateDate, generateLeavingCertificateComments, leavingCertificateStandardLabel, LEAVING_CERTIFICATE_CBE_CURRICULUM, printLeavingCertificate, type ConductCategory } from '@/lib/leavingCertificate';
 import type { LeavingCertificateResult } from '@/lib/leavingCertificate';
 import '@/styles/leavingCertificate.css';
 
@@ -76,10 +76,18 @@ export default function LeavingCertificate() {
         .or('is_active.eq.true,is_active.is.null')
         .order('last_name', { ascending: true }).limit(2000);
       if (error) toast.error(error.message);
-      setStudents((data || []).filter((student: StudentRecord) => {
+      const rows = ((data || []) as StudentRecord[]).slice();
+      const levelOf = (student: StudentRecord) => {
         const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
-        return isLeavingCertificateClass(cls, student.curriculum);
-      }));
+        const level = Number(cls?.level ?? cls?.grade_level);
+        return Number.isInteger(level) ? level : -99;
+      };
+      rows.sort((a, b) => {
+        const diff = levelOf(b) - levelOf(a);
+        if (diff !== 0) return diff;
+        return `${a.first_name || ''} ${a.last_name || ''}`.localeCompare(`${b.first_name || ''} ${b.last_name || ''}`);
+      });
+      setStudents(rows);
       setLoading(false);
     })();
   }, [user?.schoolId]);
@@ -172,7 +180,7 @@ export default function LeavingCertificate() {
     setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), schoolName: schoolData?.name || '', classEnrolled: '8', standardLeft: '8', standardCurriculum: LEAVING_CERTIFICATE_CBE_CURRICULUM, dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
   };
   const loadBulkTable = async (targets: StudentRecord[] = filteredStudents) => {
-    if (!targets.length) return toast.error('No learners to load.');
+    if (!targets.length) return toast.error(classFilter ? `No learners in ${classFilter}. Pick another class.` : 'No learners to load. Add learners to a class first.');
     setBulkTableLoading(true);
     const next: Record<string, CertificateState> = { ...bulkRows };
     for (const student of targets) {
@@ -294,7 +302,7 @@ export default function LeavingCertificate() {
           <button type="button" onClick={loadBulkTable} disabled={bulkTableLoading || !filteredStudents.length} className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50">{bulkTableLoading ? 'Loading learner details…' : 'Open bulk details table'}</button>
           <label className="block text-[11px] font-semibold text-blue-900">Class / stream filter<select value={classFilter} onChange={(e) => loadCertificateClass(e.target.value)} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs font-medium text-blue-900"><option value="">All classes ({students.length} learners)</option>{classOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
           <div className="flex gap-2"><button type="button" onClick={() => setSelectedBulkIds(filteredStudents.map((student) => student.id))} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Select visible</button><button type="button" onClick={() => setSelectedBulkIds([])} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Clear</button></div>
-          <div className="max-h-44 overflow-y-auto rounded-lg border border-blue-100 bg-white divide-y divide-gray-100">{filteredStudents.length === 0 ? <p className="p-3 text-xs text-gray-500">No primary learners found.</p> : filteredStudents.map((student) => <label key={student.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"><input type="checkbox" checked={selectedBulkIds.includes(student.id)} onChange={() => toggleBulkStudent(student.id)} className="rounded border-gray-300 text-blue-600" /><span className="truncate">{student.first_name} {student.last_name}<span className="text-gray-400"> · {student.admission_number || 'No admission no.'}</span></span></label>)}</div>
+          <div className="max-h-44 overflow-y-auto rounded-lg border border-blue-100 bg-white divide-y divide-gray-100">{filteredStudents.length === 0 ? <p className="p-3 text-xs text-gray-500">No learners found for this school. Add learners to a class first.</p> : filteredStudents.map((student) => <label key={student.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"><input type="checkbox" checked={selectedBulkIds.includes(student.id)} onChange={() => toggleBulkStudent(student.id)} className="rounded border-gray-300 text-blue-600" /><span className="truncate">{student.first_name} {student.last_name}<span className="text-gray-400"> · {student.admission_number || 'No admission no.'}</span></span></label>)}</div>
           <button type="button" onClick={generateBulk} disabled={bulkGenerating || !selectedBulkIds.length} className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-700 py-2 text-xs font-semibold text-white disabled:opacity-50">{bulkGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}{bulkGenerating ? 'Generating PDFs…' : `Generate ${selectedBulkIds.length || ''} bulk PDF${selectedBulkIds.length === 1 ? '' : 's'}`}</button>
         </div>
         {certificate && <>
