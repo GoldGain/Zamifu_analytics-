@@ -364,46 +364,75 @@ export default function BulkStudentImport() {
         const email = (row.student_email?.trim().toLowerCase() || `${loginIdentifier.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`);
         const genderValue = row.gender?.trim().toLowerCase();
         const gender = ['male', 'female', 'other'].includes(genderValue || '') ? genderValue : null;
+        const studentPayload = {
+          school_id: user.schoolId,
+          admission_number: effectiveAdmission,
+          assessment_number: plan.assessment || null,
+          first_name: row.first_name,
+          middle_name: row.middle_name || null,
+          last_name: row.last_name,
+          class_id: classRow?.id,
+          student_email: email,
+          gender,
+          date_of_birth: row.date_of_birth || null,
+          nationality: row.nationality || 'Kenyan',
+          curriculum: row.curriculum || 'CBE',
+          pathway: row.pathway || null,
+          track: row.track || null,
+          county: row.county || null,
+          sub_county: row.sub_county || null,
+          boarding_status: row.boarding_status || 'day',
+          disability_status: row.disability_status || null,
+          parent_name: row.parent_name || null,
+          parent_phone: row.parent_phone || null,
+          parent_email: row.parent_email || null,
+          parent_id: null,
+          is_active: true,
+          enrollment_date: new Date().toISOString().split('T')[0],
+        };
         try {
-          const authData = await createScopedUser({
-            email,
-            password: loginIdentifier,
-            first_name: row.first_name,
-            last_name: row.last_name,
-            role: 'student',
-            school_id: user.schoolId,
-            admission_number: effectiveAdmission,
-            assessment_number: plan.assessment || undefined,
-            class_id: classRow?.id,
-            metadata: { admission_number: effectiveAdmission, assessment_number: plan.assessment || null, class_id: classRow?.id },
-          });
-          const { data: studentData, error } = await supabaseUntyped.from('students').insert({
-            profile_id: authData.user.id,
-            school_id: user.schoolId,
-            admission_number: effectiveAdmission,
-            assessment_number: plan.assessment || null,
-            first_name: row.first_name,
-            middle_name: row.middle_name || null,
-            last_name: row.last_name,
-            class_id: classRow?.id,
-            student_email: email,
-            gender,
-            date_of_birth: row.date_of_birth || null,
-            nationality: row.nationality || 'Kenyan',
-            curriculum: row.curriculum || 'CBE',
-            pathway: row.pathway || null,
-            track: row.track || null,
-            county: row.county || null,
-            sub_county: row.sub_county || null,
-            boarding_status: row.boarding_status || 'day',
-            disability_status: row.disability_status || null,
-            parent_name: row.parent_name || null,
-            parent_phone: row.parent_phone || null,
-            parent_email: row.parent_email || null,
-            parent_id: null,
-            is_active: true,
-            enrollment_date: new Date().toISOString().split('T')[0],
-          }).select('id').single();
+          const { data: existingProfile } = await supabaseUntyped
+            .from('profiles')
+            .select('id')
+            .eq('school_id', user.schoolId)
+            .eq('email', email)
+            .limit(1)
+            .maybeSingle();
+          let profileId = (existingProfile?.id as string | undefined) || '';
+          let adoptedAccount = false;
+          if (profileId) {
+            const { data: linkedStudent } = await supabaseUntyped
+              .from('students')
+              .select('id')
+              .eq('profile_id', profileId)
+              .limit(1)
+              .maybeSingle();
+            if (linkedStudent?.id) {
+              completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, status: 'unchanged', message: 'Already exists in this school — skipped, nothing was changed.' });
+              setResults([...completed]);
+              continue;
+            }
+            adoptedAccount = true;
+          } else {
+            const authData = await createScopedUser({
+              email,
+              password: loginIdentifier,
+              first_name: row.first_name,
+              last_name: row.last_name,
+              role: 'student',
+              school_id: user.schoolId,
+              admission_number: effectiveAdmission,
+              assessment_number: plan.assessment || undefined,
+              class_id: classRow?.id,
+              metadata: { admission_number: effectiveAdmission, assessment_number: plan.assessment || null, class_id: classRow?.id },
+            });
+            profileId = authData.user.id;
+          }
+          const { data: studentData, error } = await supabaseUntyped
+            .from('students')
+            .insert({ ...studentPayload, profile_id: profileId })
+            .select('id')
+            .single();
           if (error || !studentData?.id) throw new Error(error?.message || 'Learner record was not created.');
           let parentNote = '';
           if (row.parent_name || row.parent_phone || row.parent_email) {
@@ -413,8 +442,9 @@ export default function BulkStudentImport() {
               parentNote = ` Parent account not linked yet: ${errorMessage(parentError, 'unknown error')}. The learner was created and kept.`;
             }
           }
+          const adoptedNote = adoptedAccount ? 'Reused a login account that had no learner record. ' : '';
           const baseNote = plan.assessment ? '' : 'Created without assessment number; assign one later to enable Student Portal sign-in.';
-          completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, email, password: plan.assessment ? loginIdentifier : '', status: 'created', message: `${baseNote}${parentNote}`.trim() || undefined });
+          completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, email, password: plan.assessment ? loginIdentifier : '', status: 'created', message: `${adoptedNote}${baseNote}${parentNote}`.trim() || undefined });
         } catch (error: unknown) {
           const message = errorMessage(error, 'Import failed');
           const existing = /already|duplicate|captured/i.test(message)
