@@ -10,7 +10,7 @@ import { buildClassStreamImportResolver, formatClassStream, type ClassStreamImpo
 
 type ImportRow = Record<string, string>;
 type ImportMode = 'add' | 'update';
-type MatchBy = 'admission' | 'assessment' | 'both';
+type MatchBy = 'admission' | 'assessment' | 'both' | 'either';
 type ResultStatus = 'created' | 'updated' | 'unchanged' | 'failed';
 type ImportResult = {
   row: number;
@@ -172,8 +172,8 @@ export default function BulkStudentImport() {
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<ImportResult[]>([]);
-  const [mode, setMode] = useState<ImportMode>('add');
-  const [matchBy, setMatchBy] = useState<MatchBy>('admission');
+  const [mode, setMode] = useState<ImportMode>(() => (new URLSearchParams(window.location.search).get('mode') === 'update' ? 'update' : 'add'));
+  const [matchBy, setMatchBy] = useState<MatchBy>('either');
   const [confirmingUpdates, setConfirmingUpdates] = useState(false);
   const runningRef = useRef(false);
 
@@ -260,10 +260,16 @@ export default function BulkStudentImport() {
 
       if (streamInput && !classInput) issues.push('include class_name when supplying a separate stream value');
       else if (classInput && !classRow) issues.push(classResolution?.error || 'class/stream not found');
-      if (keys.some((key) => !key)) issues.push(`missing ${matchBy === 'both' ? 'admission and assessment numbers' : `${matchBy} number`} for matching`);
+      if (matchBy === 'either' ? (!admission && !assessment) : keys.some((key) => !key)) issues.push(`missing ${matchBy === 'both' ? 'admission and assessment numbers' : matchBy === 'either' ? 'admission or assessment number' : `${matchBy} number`} for matching`);
       const admissionTarget = admission ? studentByAdmission.get(normalized(admission)) : undefined;
       const assessmentTarget = assessment ? studentByAssessment.get(normalized(assessment)) : undefined;
-      const target = matchBy === 'admission' ? admissionTarget : matchBy === 'assessment' ? assessmentTarget : admissionTarget && assessmentTarget && admissionTarget.id === assessmentTarget.id ? admissionTarget : undefined;
+      const target = matchBy === 'admission'
+        ? admissionTarget
+        : matchBy === 'assessment'
+          ? assessmentTarget
+          : matchBy === 'either'
+            ? (admissionTarget || assessmentTarget)
+            : admissionTarget && assessmentTarget && admissionTarget.id === assessmentTarget.id ? admissionTarget : undefined;
       if (matchBy === 'both' && admissionTarget && assessmentTarget && admissionTarget.id !== assessmentTarget.id) issues.push('admission and assessment numbers match different learners');
       if (!target && !issues.length) issues.push('no existing learner matches the selected key');
       const matchKey = `update:${matchBy}:${keys.map(normalized).join(':')}`;
@@ -541,6 +547,10 @@ export default function BulkStudentImport() {
       <div>
         <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2"><Users className="text-blue-600" /> Bulk Student Upload</h1>
         <p className="text-sm text-gray-500 mt-1">Create learners or safely correct existing learner data without deleting any attached records.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => { setMode('add'); setResults([]); }} className={`rounded-xl border px-4 py-2 text-sm font-bold ${mode === 'add' ? 'border-blue-500 bg-blue-50 text-blue-800' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>Create new learners</button>
+          <button type="button" onClick={() => { setMode('update'); setResults([]); }} className={`rounded-xl border px-4 py-2 text-sm font-bold ${mode === 'update' ? 'border-amber-500 bg-amber-50 text-amber-900' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>Update learners from CSV</button>
+        </div>
       </div>
 
       <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
@@ -562,7 +572,7 @@ export default function BulkStudentImport() {
           </button>
         </div>
         {mode === 'update' && <div className="rounded-xl bg-amber-50 border border-amber-200 p-4"><p className="text-sm font-bold text-amber-900">Match existing learners by</p><div className="mt-2 flex flex-wrap gap-3">{([
-          ['admission', 'Admission Number'], ['assessment', 'Assessment Number'], ['both', 'Both identifiers'],
+          ['either', 'Either identifier (recommended)'], ['admission', 'Admission Number'], ['assessment', 'Assessment Number'], ['both', 'Both identifiers'],
         ] as Array<[MatchBy, string]>).map(([value, label]) => <label key={value} className="inline-flex items-center gap-2 text-sm text-amber-900"><input type="radio" checked={matchBy === value} onChange={() => setMatchBy(value)} /> {label}</label>)}</div></div>}
       </section>
 
