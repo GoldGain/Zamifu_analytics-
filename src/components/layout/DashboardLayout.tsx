@@ -48,6 +48,7 @@ import {
   Trash2,
   Activity,
   Package,
+  Gift,
 } from 'lucide-react';
 
 interface NavItem {
@@ -78,6 +79,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Pricing', icon: <CreditCard className="w-5 h-5" />, path: '/reseller-admin/pricing' },
     { label: 'Access Control', icon: <Shield className="w-5 h-5" />, path: '/reseller-admin/access-control' },
     { label: 'School Subscriptions', icon: <Shield className="w-5 h-5" />, path: '/reseller-admin/subscriptions' },
+    { label: 'Referral Payouts', icon: <Gift className="w-5 h-5" />, path: '/reseller-admin/referral-payouts' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/reseller-admin/change-password' },
   ],
   'super-admin': [
@@ -126,11 +128,13 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Branding & Notifications', icon: <Palette className="w-5 h-5" />, path: '/school-admin/branding' },
     { label: 'School Calendar Settings', icon: <Calendar className="w-5 h-5" />, path: '/school-admin/settings' },
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
+    { label: 'Refer & Earn', icon: <Gift className="w-5 h-5" />, path: '/school-admin/refer-and-earn' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
   ],
   'bursar': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/bursar' },
     { label: 'Fee Management', icon: <CreditCard className="w-5 h-5" />, path: '/bursar/fees' },
+    { label: 'Refer & Earn', icon: <Gift className="w-5 h-5" />, path: '/bursar/refer-and-earn' },
   ],
   'librarian': [
     { label: 'Library', icon: <Library className="w-5 h-5" />, path: '/librarian/library' },
@@ -159,6 +163,7 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Lesson Plans', icon: <Sparkles className="w-5 h-5" />, path: '/teacher/lesson-plan' },
     { label: 'Curriculum Navigator', icon: <Brain className="w-5 h-5" />, path: '/teacher/curriculum' },
     { label: 'Exam Generator', icon: <FileText className="w-5 h-5" />, path: '/teacher/exam-generator' },
+    { label: 'Refer & Earn', icon: <Gift className="w-5 h-5" />, path: '/teacher/refer-and-earn' },
     { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/teacher/profile' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/teacher/change-password' },
   ],

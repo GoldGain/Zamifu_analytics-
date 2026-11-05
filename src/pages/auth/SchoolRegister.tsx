@@ -38,6 +38,7 @@ interface FormState {
   password: string;
   confirm_password: string;
   selected_existing_id: string;
+  referral_code: string;
 }
 
 const initial: FormState = {
@@ -52,6 +53,7 @@ const initial: FormState = {
   password: '',
   confirm_password: '',
   selected_existing_id: '',
+  referral_code: '',
 };
 
 async function callRegister(body: Record<string, unknown>) {
@@ -88,7 +90,10 @@ async function callRegister(body: Record<string, unknown>) {
 export default function SchoolRegister() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>(1);
-  const [form, setForm] = useState<FormState>(initial);
+  const [form, setForm] = useState<FormState>(() => {
+    const incoming = new URLSearchParams(window.location.search).get('ref') || '';
+    return { ...initial, referral_code: incoming.toUpperCase() };
+  });
   const [loading, setLoading] = useState(false);
   const [searchQ, setSearchQ] = useState('');
   const [searching, setSearching] = useState(false);
@@ -235,6 +240,11 @@ export default function SchoolRegister() {
         skip_otp_check: true, // Custom flag to bypass server-side OTP check if needed
         selected_existing_id: form.selected_existing_id || undefined,
       });
+      const referralCode = form.referral_code.trim().toUpperCase();
+      if (referralCode && data?.school?.code) {
+        const { data: redeemed } = await (supabase as any).rpc('redeem_referral_code', { p_code: referralCode, p_school_code: data.school.code });
+        if ((redeemed as any)?.ok) toast.success('Referral code applied.');
+      }
       setResult(data);
       setStep(5);
       toast.success('School registered successfully');
@@ -390,6 +400,10 @@ export default function SchoolRegister() {
                     <input value={form.phone} onChange={(e) => set('phone', e.target.value)} className="input" placeholder="07XXXXXXXX" />
                   </Field>
                 </div>
+
+                <Field label="Referral code (optional)">
+                  <input value={form.referral_code} onChange={(e) => set('referral_code', e.target.value.toUpperCase())} className="input" placeholder="ZMXXXXXX" />
+                </Field>
 
                 {conflicts.length > 0 && (
                   <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 space-y-1">

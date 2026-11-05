@@ -98,7 +98,7 @@ export interface LeavingCertificateData {
   dateEnrolled?: string | null;
   schoolName: string;
   schoolAddress?: string | null;
-  standard: string;
+  classEnrolled: string;
   dateLeft: string;
   standardLeft: string;
   dateOfIssue: string;

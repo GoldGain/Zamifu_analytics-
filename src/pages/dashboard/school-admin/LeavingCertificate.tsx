@@ -12,7 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 type ClassRecord = { name?: string | null; level?: number | null; grade_level?: number | null; curriculum?: string | null };
 type StudentRecord = { id: string; first_name?: string | null; middle_name?: string | null; last_name?: string | null; admission_number?: string | null; date_of_birth?: string | null; enrollment_date?: string | null; date_left?: string | null; club_memberships?: string | null; curriculum?: string | null; classes?: ClassRecord | ClassRecord[] | null };
-type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; schoolName: string; standard: string; standardLeft: string; standardCurriculum: string | null; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null; schoolStampUrl: string | null; schoolStampType: string | null };
+type CertificateState = { learnerName: string; admissionNumber: string; dateOfBirth: string; dateEnrolled: string; dateLeft: string; schoolName: string; classEnrolled: string; standardLeft: string; standardCurriculum: string | null; dateOfIssue: string; headTeacherName: string; conductCategory: ConductCategory; conductElaboration: string; academicComment: string; conductComment: string; cocurricularComment: string; extraNotes: string; pupilSignatureUrl: string | null; pupilSignatureType: string | null; headTeacherSignatureUrl: string | null; headTeacherSignatureType: string | null; schoolStampUrl: string | null; schoolStampType: string | null };
 type CertificatePreviewProps = { data: CertificateState; previewRef: RefObject<HTMLDivElement | null> | ((element: HTMLDivElement | null) => void); headTeacherName: string; pupilSignatureUrl: string | null; headTeacherSignatureUrl: string | null };
 function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureUrl, headTeacherSignatureUrl }: CertificatePreviewProps) {
   const localRef = useRef<HTMLDivElement | null>(null);
@@ -32,7 +32,7 @@ function CertificatePreview({ data, previewRef, headTeacherName, pupilSignatureU
     <div className="cert-value cert-dob">{formatCertificateDate(data.dateOfBirth)}</div>
     <div className="cert-value cert-enrolled">{data.schoolName}</div>
     <div className="cert-value cert-school">{formatCertificateDate(data.dateEnrolled)}</div>
-    <div className="cert-value cert-standard">{data.standard}</div>
+    <div className="cert-value cert-class-enrolled">{leavingCertificateStandardLabel(data.classEnrolled, data.standardCurriculum)}</div>
     <div className="cert-value cert-left">{formatCertificateDate(data.dateLeft)}</div>
     <div className="cert-value cert-standard-left">{leavingCertificateStandardLabel(data.standardLeft, data.standardCurriculum)}</div>
     <div className="cert-value cert-academic">{data.academicComment}</div>
@@ -62,6 +62,7 @@ export default function LeavingCertificate() {
   const [bulkTableLoading, setBulkTableLoading] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const previewRef = useRef<HTMLDivElement>(null);
   const bulkRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -84,11 +85,22 @@ export default function LeavingCertificate() {
   }, [user?.schoolId]);
 
   const selectedStudent = students.find((student) => student.id === selectedId);
+  const classKeyOf = (student: StudentRecord) => {
+    const cls = Array.isArray(student.classes) ? student.classes[0] : student.classes;
+    const name = (cls?.name || '').trim();
+    if (name) return name;
+    const level = Number(cls?.level ?? cls?.grade_level);
+    return Number.isInteger(level) && level > 0 ? `Level ${level}` : 'Unassigned';
+  };
+  const classOptions = useMemo(() => Array.from(new Set(students.map(classKeyOf))).sort((a, b) => a.localeCompare(b, 'en', { numeric: true })), [students]);
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase().trim();
-    if (!q) return students;
-    return students.filter((student) => `${student.first_name} ${student.middle_name || ''} ${student.last_name} ${student.admission_number}`.toLowerCase().includes(q));
-  }, [students, search]);
+    return students.filter((student) => {
+      if (classFilter && classKeyOf(student) !== classFilter) return false;
+      if (!q) return true;
+      return `${student.first_name} ${student.middle_name || ''} ${student.last_name} ${student.admission_number}`.toLowerCase().includes(q);
+    });
+  }, [students, search, classFilter]);
 
   const buildCertificate = async (student: StudentRecord) => {
     const [{ data: saved }, { data: learnerResults }] = await Promise.all([
@@ -102,7 +114,7 @@ export default function LeavingCertificate() {
     const baseCertificate = {
       learnerName: `${student.first_name || ''} ${student.middle_name || ''} ${student.last_name || ''}`.replace(/\s+/g, ' ').trim(),
       admissionNumber: student.admission_number || '', dateOfBirth: student.date_of_birth || '', dateEnrolled: student.enrollment_date || '',
-      dateLeft: saved?.date_left || student.date_left || today(), schoolName: schoolData?.name || '', standard: leavingCertificateStandardLabel(currentStandard, standardCurriculum) || String(currentStandard), standardLeft: String(saved?.standard_left ?? currentStandard), standardCurriculum,
+      dateLeft: saved?.date_left || student.date_left || today(), schoolName: schoolData?.name || '', classEnrolled: String(saved?.standard_enrolled ?? currentStandard), standardLeft: String(saved?.standard_left ?? currentStandard), standardCurriculum,
       dateOfIssue: saved?.date_of_issue || today(), headTeacherName: saved?.head_teacher_name || schoolData?.principal_name || '', conductCategory: (saved?.conduct_category || 'Good') as ConductCategory, conductElaboration: saved?.conduct_elaboration || '',
       academicComment: saved?.academic_comment || '', cocurricularComment: saved?.cocurricular_comment || '', conductComment: saved?.conduct_comment || '', extraNotes: saved?.extra_notes || '',
       pupilSignatureUrl: saved?.pupil_signature_url || null, pupilSignatureType: saved?.pupil_signature_type || null, headTeacherSignatureUrl: saved?.head_teacher_signature_url || null, headTeacherSignatureType: saved?.head_teacher_signature_type || null, schoolStampUrl: saved?.school_stamp_url || null, schoolStampType: saved?.school_stamp_type || null,
@@ -134,9 +146,10 @@ export default function LeavingCertificate() {
     if (certificate.conductCategory === 'Needs improvement' && certificate.conductElaboration.length > 140) return toast.error('Conduct elaboration must be 140 characters or fewer.');
     const standardLeft = Number(certificate.standardLeft);
     if (!Number.isInteger(standardLeft) || standardLeft < 1 || standardLeft > 12) return toast.error('Standard left must be a whole number from 1 to 12.');
+    const standardEnrolled = Number(certificate.classEnrolled) || null;
     setSaving(true);
     const payload = {
-      school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: standardLeft, date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
+      school_id: user.schoolId, student_id: selectedStudent.id, date_left: certificate.dateLeft, standard_left: standardLeft, standard_enrolled: standardEnrolled, date_of_issue: certificate.dateOfIssue, head_teacher_name: certificate.headTeacherName || null,
       conduct_category: certificate.conductCategory, conduct_elaboration: certificate.conductElaboration || null, academic_comment: certificate.academicComment, cocurricular_comment: certificate.cocurricularComment,
       conduct_comment: certificate.conductComment || conductText(certificate.conductCategory, certificate.conductElaboration), extra_notes: certificate.extraNotes || null, pupil_signature_url: certificate.pupilSignatureUrl || null,
       pupil_signature_type: certificate.pupilSignatureType || null, head_teacher_signature_url: certificate.headTeacherSignatureUrl || null, head_teacher_signature_type: certificate.headTeacherSignatureType || null, school_stamp_url: certificate.schoolStampUrl || null, school_stamp_type: certificate.schoolStampType || null, updated_at: new Date().toISOString(),
@@ -156,7 +169,7 @@ export default function LeavingCertificate() {
   const startManualCertificate = () => {
     setSelectedId('');
     setResults([]);
-    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), schoolName: schoolData?.name || '', standard: 'Grade 8', standardLeft: '8', standardCurriculum: LEAVING_CERTIFICATE_CBE_CURRICULUM, dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
+    setCertificate({ learnerName: '', admissionNumber: '', dateOfBirth: '', dateEnrolled: '', dateLeft: today(), schoolName: schoolData?.name || '', classEnrolled: '8', standardLeft: '8', standardCurriculum: LEAVING_CERTIFICATE_CBE_CURRICULUM, dateOfIssue: today(), headTeacherName: schoolData?.principal_name || '', conductCategory: 'Good', conductElaboration: '', academicComment: '', conductComment: 'Good', cocurricularComment: '', extraNotes: '', pupilSignatureUrl: null, pupilSignatureType: null, headTeacherSignatureUrl: null, headTeacherSignatureType: null, schoolStampUrl: null, schoolStampType: null });
   };
   const loadBulkTable = async () => {
     const targets = filteredStudents;
@@ -193,8 +206,9 @@ export default function LeavingCertificate() {
       toast.error(`${row.learnerName || 'Learner'}: standard left must be 1 to 12.`);
       return false;
     }
+    const standardEnrolledRow = Number(row.classEnrolled) || null;
     const payload = {
-      school_id: user.schoolId, student_id: student.id, date_left: row.dateLeft, standard_left: standardLeft, date_of_issue: row.dateOfIssue, head_teacher_name: row.headTeacherName || null,
+      school_id: user.schoolId, student_id: student.id, date_left: row.dateLeft, standard_left: standardLeft, standard_enrolled: standardEnrolledRow, date_of_issue: row.dateOfIssue, head_teacher_name: row.headTeacherName || null,
       conduct_category: row.conductCategory, conduct_elaboration: row.conductElaboration || null, academic_comment: row.academicComment, cocurricular_comment: row.cocurricularComment,
       conduct_comment: row.conductComment || conductText(row.conductCategory, row.conductElaboration), extra_notes: row.extraNotes || null, pupil_signature_url: row.pupilSignatureUrl || null,
       pupil_signature_type: row.pupilSignatureType || null, head_teacher_signature_url: row.headTeacherSignatureUrl || null, head_teacher_signature_type: row.headTeacherSignatureType || null, school_stamp_url: row.schoolStampUrl || null, school_stamp_type: row.schoolStampType || null, updated_at: new Date().toISOString(),
@@ -257,15 +271,17 @@ export default function LeavingCertificate() {
         <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 space-y-3">
           <div className="flex items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold text-blue-950"><UsersRound className="w-4 h-4" />Bulk certificates</h2><p className="text-[11px] text-blue-800 mt-0.5">Fill missing details in the table below, then select learners and download PDFs.</p></div><span className="text-xs font-semibold text-blue-700">{selectedBulkIds.length} selected</span></div>
           <button type="button" onClick={loadBulkTable} disabled={bulkTableLoading || !filteredStudents.length} className="w-full rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-800 disabled:opacity-50">{bulkTableLoading ? 'Loading learner details…' : 'Open bulk details table'}</button>
+          <label className="block text-[11px] font-semibold text-blue-900">Class / stream filter<select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs font-medium text-blue-900"><option value="">All classes ({students.length} learners)</option>{classOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
           <div className="flex gap-2"><button type="button" onClick={() => setSelectedBulkIds(filteredStudents.map((student) => student.id))} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Select visible</button><button type="button" onClick={() => setSelectedBulkIds([])} className="text-[11px] rounded-md border border-blue-200 bg-white px-2 py-1 text-blue-700">Clear</button></div>
           <div className="max-h-44 overflow-y-auto rounded-lg border border-blue-100 bg-white divide-y divide-gray-100">{filteredStudents.length === 0 ? <p className="p-3 text-xs text-gray-500">No primary learners found.</p> : filteredStudents.map((student) => <label key={student.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50 cursor-pointer"><input type="checkbox" checked={selectedBulkIds.includes(student.id)} onChange={() => toggleBulkStudent(student.id)} className="rounded border-gray-300 text-blue-600" /><span className="truncate">{student.first_name} {student.last_name}<span className="text-gray-400"> · {student.admission_number || 'No admission no.'}</span></span></label>)}</div>
           <button type="button" onClick={generateBulk} disabled={bulkGenerating || !selectedBulkIds.length} className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-700 py-2 text-xs font-semibold text-white disabled:opacity-50">{bulkGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}{bulkGenerating ? 'Generating PDFs…' : `Generate ${selectedBulkIds.length || ''} bulk PDF${selectedBulkIds.length === 1 ? '' : 's'}`}</button>
         </div>
         {certificate && <>
           <div className="border-t pt-4 space-y-3"><h2 className="font-semibold">Certificate details</h2>
-            <div className="grid sm:grid-cols-2 gap-3">{([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['schoolName', 'School name'], ['standard', 'Current standard'], ['headTeacherName', 'Head teacher’s name']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}</div>
+            <div className="grid sm:grid-cols-2 gap-3">{([['learnerName', 'Learner name'], ['admissionNumber', 'Admission number'], ['schoolName', 'School name'], ['headTeacherName', 'Head teacher’s name']] as Array<[keyof CertificateState, string]>).map(([key, label]) => <label key={key} className="block text-xs font-medium text-gray-600">{label}<input value={String(certificate[key] || '')} onChange={(e) => update(key, e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>)}</div>
             <div className="grid sm:grid-cols-2 gap-3"><label className="block text-xs font-medium text-gray-600">Date of birth<input type="date" value={certificate.dateOfBirth} onChange={(e) => update('dateOfBirth', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label><label className="block text-xs font-medium text-gray-600">Date enrolled<input type="date" value={certificate.dateEnrolled} onChange={(e) => update('dateEnrolled', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label></div>
             <label className="block text-xs font-medium text-gray-600">Date left<input type="date" value={certificate.dateLeft} onChange={(e) => update('dateLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
+            <label className="block text-xs font-medium text-gray-600">Class enrolled <span className="text-gray-400 font-normal">(the class the learner was in)</span><select value={certificate.classEnrolled} onChange={(e) => update('classEnrolled', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, certificate.standardCurriculum)}</option>)}</select></label>
             <label className="block text-xs font-medium text-gray-600">Standard left<select value={certificate.standardLeft} onChange={(e) => update('standardLeft', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{Array.from({ length: 12 }, (_, index) => index + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, certificate.standardCurriculum)}</option>)}</select></label>
             <label className="block text-xs font-medium text-gray-600">Date of issue<input type="date" value={certificate.dateOfIssue} onChange={(e) => update('dateOfIssue', e.target.value)} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm" /></label>
             <label className="block text-xs font-medium text-gray-600">Conduct category<select value={certificate.conductCategory} onChange={(e) => { update('conductCategory', e.target.value); update('conductComment', conductText(e.target.value as ConductCategory, certificate.conductElaboration)); }} className="mt-1 w-full border rounded-lg px-3 py-2 text-sm">{CONDUCT_CATEGORIES.map((category) => <option key={category}>{category}</option>)}</select></label>
@@ -296,7 +312,7 @@ export default function LeavingCertificate() {
         <table className="min-w-[2200px] w-full text-xs text-left">
           <thead className="sticky top-0 bg-gray-50 z-10">
             <tr>
-              {['Select','Learner name','Admission no.','Date of birth','Date enrolled','Date left','Standard left','Date of issue','Head teacher','Conduct','Academic comment','Conduct comment','Co-curricular','Save'].map((heading) => <th key={heading} className="px-2 py-2 font-semibold border-b whitespace-nowrap">{heading}</th>)}
+              {['Select','Learner name','Admission no.','Date of birth','Date enrolled','Date left','Class enrolled','Standard left','Date of issue','Head teacher','Conduct','Academic comment','Conduct comment','Co-curricular','Save'].map((heading) => <th key={heading} className="px-2 py-2 font-semibold border-b whitespace-nowrap">{heading}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -310,6 +326,7 @@ export default function LeavingCertificate() {
                 <td className="px-2 py-1">{cell('dateOfBirth', 'date')}</td>
                 <td className="px-2 py-1">{cell('dateEnrolled', 'date')}</td>
                 <td className="px-2 py-1">{cell('dateLeft', 'date')}</td>
+                <td className="px-2 py-1"><select value={row.classEnrolled} onChange={(e) => updateBulkRow(student.id, 'classEnrolled', e.target.value)} className="w-full min-w-[7rem] border rounded px-1.5 py-1">{Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, row.standardCurriculum)}</option>)}</select></td>
                 <td className="px-2 py-1"><select value={row.standardLeft} onChange={(e) => updateBulkRow(student.id, 'standardLeft', e.target.value)} className="w-full min-w-[7rem] border rounded px-1.5 py-1">{Array.from({ length: 12 }, (_, index) => index + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, row.standardCurriculum)}</option>)}</select></td>
                 <td className="px-2 py-1">{cell('dateOfIssue', 'date')}</td>
                 <td className="px-2 py-1">{cell('headTeacherName')}</td>

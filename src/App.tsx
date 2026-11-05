@@ -36,6 +36,8 @@ import ResellerStudents from '@/pages/dashboard/reseller-admin/Students';
 import ResellerCommunicate from '@/pages/dashboard/reseller-admin/Communicate';
 import ResellerSmsUsage from '@/pages/dashboard/reseller-admin/SmsUsage';
 import ResellerSubscriptions from '@/pages/dashboard/reseller-admin/Subscriptions';
+import ReferAndEarn from '@/pages/dashboard/referrals/ReferAndEarn';
+import ResellerReferralPayouts from '@/pages/dashboard/reseller-admin/ReferralPayouts';
 import SchoolPortalLockGate from '@/components/SchoolPortalLockGate';
 import { supabaseUntyped } from '@/lib/supabase/client';
 // Dashboard pages
@@ -255,6 +257,7 @@ function AppRoutes() {
       <Route path="/reseller-admin/sms-usage" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSmsUsage /></ProtectedRoute>} />
       <Route path="/reseller-admin/subscriptions" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerSubscriptions /></ProtectedRoute>} />
       <Route path="/reseller-admin/change-password" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerChangePassword /></ProtectedRoute>} />
+          <Route path="/reseller-admin/referral-payouts" element={<ProtectedRoute allowedRoles={['reseller_super_admin']}><ResellerReferralPayouts /></ProtectedRoute>} />
       {/* Super Admin routes */}
       <Route path="/super-admin" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminDashboard /></ProtectedRoute>} />
       <Route path="/super-admin/schools" element={<ProtectedRoute allowedRoles={['super_admin']}><SuperAdminSchools /></ProtectedRoute>} />
@@ -268,6 +271,7 @@ function AppRoutes() {
       <Route path="/school-admin/stream-dashboard" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><Navigate to="/school-admin/dashboard" replace /></ProtectedRoute>} />
       <Route path="/school-admin/students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminStudents /></ProtectedRoute>} />
       <Route path="/school-admin/leaving-certificate" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminLeavingCertificate /></ProtectedRoute>} />
+          <Route path="/school-admin/refer-and-earn" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><ReferAndEarn /></ProtectedRoute>} />
       <Route path="/school-admin/recycle-bin" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminRecycleBin /></ProtectedRoute>} />
       <Route path="/school-admin/students/bulk-import" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminBulkStudentImport /></ProtectedRoute>} />
       <Route path="/school-admin/graduated-students" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminGraduatedStudents /></ProtectedRoute>} />
@@ -311,6 +315,7 @@ function AppRoutes() {
       {/* Bursar routes */}
       <Route path="/bursar" element={<ProtectedRoute allowedRoles={['bursar']}><BursarDashboard /></ProtectedRoute>} />
       <Route path="/bursar/fees" element={<ProtectedRoute allowedRoles={['bursar']}><BursarFees /></ProtectedRoute>} />
+          <Route path="/bursar/refer-and-earn" element={<ProtectedRoute allowedRoles={['bursar']}><ReferAndEarn /></ProtectedRoute>} />
 
       {/* Librarian routes: the existing Library workspace, no school-admin modules */}
       <Route path="/librarian" element={<ProtectedRoute allowedRoles={['librarian']} lockTarget="school_admin"><Navigate to="/librarian/library" replace /></ProtectedRoute>} />
@@ -337,6 +342,7 @@ function AppRoutes() {
       <Route path="/teacher/exam-timetable" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherExamTimetable /></ProtectedRoute>} />
       <Route path="/teacher/change-password" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherChangePassword /></ProtectedRoute>} />
       <Route path="/teacher/profile" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherProfile /></ProtectedRoute>} />
+          <Route path="/teacher/refer-and-earn" element={<ProtectedRoute allowedRoles={['teacher']}><ReferAndEarn /></ProtectedRoute>} />
       <Route path="/teacher/curriculum" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherCurriculumNavigator /></ProtectedRoute>} />
       <Route path="/teacher/exam-generator" element={<ProtectedRoute allowedRoles={['teacher']}><ExamGeneratorPage /></ProtectedRoute>} />
       <Route path="/teacher/marklist" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherMarklist /></ProtectedRoute>} />
@@ -349,6 +355,7 @@ function AppRoutes() {
       <Route path="/dean-of-studies/results" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><DoSResults /></ProtectedRoute>} />
       <Route path="/dean-of-studies/stream-dashboard" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><StreamDashboard /></ProtectedRoute>} />
       <Route path="/dean-of-studies/combine-exams" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><CombineExams /></ProtectedRoute>} />
+          <Route path="/dean-of-studies/refer-and-earn" element={<ProtectedRoute allowedRoles={['teacher']} lockTarget="dean_of_studies"><ReferAndEarn /></ProtectedRoute>} />
 
       {/* Student routes */}
       <Route path="/student" element={<ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>} />

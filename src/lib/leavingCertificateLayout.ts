@@ -29,7 +29,7 @@ export const CERTIFICATE_FIELDS: Field[] = [
   { key: 'dob', label: 'Date of birth', slots: [slot(292, 533, 177)] },
   { key: 'enrolled', label: 'School name', slots: [slot(590, 533, 456)], wrapSlots: [slot(590, 505, 456, true), slot(590, 533, 456)] },
   { key: 'school', label: 'Enrollment date', slots: [slot(480, 595, 276)] },
-  { key: 'standard', label: 'Current standard', slots: [slot(927, 595, 119)] },
+  { key: 'class-enrolled', label: 'Class enrolled', slots: [slot(927, 595, 119)] },
   { key: 'left', label: 'Date left', slots: [slot(278, 656, 309)] },
   { key: 'standard-left', label: 'Standard completed', slots: [slot(510, 718, 319)] },
   { key: 'academic', label: 'Academic comment', slots: [slot(790, 778, 256), slot(125, 824, 921), slot(125, 870, 921)] },
