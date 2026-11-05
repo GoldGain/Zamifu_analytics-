@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Download, FileSpreadsheet, Loader2, Upload, Users, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,6 +6,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import { createScopedUser } from '@/lib/supabase/createUser';
 import { deleteScopedUser, syncParentAccounts } from '@/lib/supabase/accountActions';
 import { SENIOR_PATHWAYS, tracksForSeniorPathway } from '@/lib/seniorPathways';
+import { buildClassStreamImportResolver, formatClassStream, type ClassStreamImportRecord } from '@/lib/class-label';
 
 type ImportRow = Record<string, string>;
 type ImportMode = 'add' | 'update';
@@ -30,6 +31,7 @@ type ExistingStudent = {
   middle_name: string | null;
   last_name: string;
   class_id: string | null;
+  stream_id: string | null;
   student_email: string | null;
   gender: string | null;
   date_of_birth: string | null;
@@ -52,6 +54,7 @@ type PreviewPlan = {
   admission: string;
   assessment: string;
   name: string;
+  classRow?: ClassStreamImportRecord;
   target?: ExistingStudent;
   changes: Array<{ label: string; from: string; to: string }>;
   issues: string[];
@@ -63,7 +66,7 @@ const ASSESSMENT_HEADER = 'assessment_number';
 const LEGACY_IDENTIFIER_HEADER = 'admission_no_assessment_no';
 
 const TEMPLATE_HEADERS = [
-  ADMISSION_HEADER, ASSESSMENT_HEADER, 'first_name', 'middle_name', 'last_name', 'class_name', 'student_email',
+  ADMISSION_HEADER, ASSESSMENT_HEADER, 'first_name', 'middle_name', 'last_name', 'class_name', 'stream', 'student_email',
   'gender', 'date_of_birth', 'nationality', 'county', 'sub_county',
   'boarding_status', 'disability_status', 'curriculum', 'pathway', 'track', 'parent_name', 'parent_phone', 'parent_email',
 ];
@@ -74,7 +77,7 @@ const EDITABLE_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'first_name', label: 'First Name' },
   { key: 'middle_name', label: 'Middle Name' },
   { key: 'last_name', label: 'Last Name' },
-  { key: 'class_id', label: 'Class' },
+  { key: 'class_id', label: 'Class / Stream' },
   { key: 'student_email', label: 'Learner Email' },
   { key: 'gender', label: 'Gender' },
   { key: 'date_of_birth', label: 'Date of Birth' },
@@ -151,41 +154,63 @@ function identifiers(row: ImportRow): { admission: string; assessment: string } 
 
 function displayValue(value?: string | null): string { return String(value ?? '').trim() || '—'; }
 
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return fallback;
+}
+
 export default function BulkStudentImport() {
   const { user } = useAuth();
-  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([]);
+  const [classes, setClasses] = useState<ClassStreamImportRecord[]>([]);
   const [existingStudents, setExistingStudents] = useState<ExistingStudent[]>([]);
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [fileName, setFileName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [mode, setMode] = useState<ImportMode>('add');
   const [matchBy, setMatchBy] = useState<MatchBy>('admission');
   const [confirmingUpdates, setConfirmingUpdates] = useState(false);
 
-  const refreshReferenceData = async () => {
+  const loadReferenceData = useCallback(async () => {
+    const schoolId = user?.schoolId;
+    if (!schoolId) return;
+    try {
+      const [{ data: classData, error: classError }, { data: learnerData, error: learnerError }] = await Promise.all([
+        supabaseUntyped.from('classes').select('id, name, stream, stream_name, level, grade_level').eq('school_id', schoolId).eq('is_active', true).order('name'),
+        supabaseUntyped
+          .from('students')
+          .select('id, admission_number, assessment_number, first_name, middle_name, last_name, class_id, stream_id, student_email, gender, date_of_birth, nationality, county, sub_county, boarding_status, disability_status, parent_name, parent_phone, parent_email, curriculum, pathway, track')
+          .eq('school_id', schoolId)
+          .order('first_name'),
+      ]);
+      if (classError) toast.error(`Could not load classes: ${classError.message}`);
+      if (learnerError) toast.error(`Could not load existing learners: ${learnerError.message}`);
+      setClasses(classData || []);
+      setExistingStudents((learnerData || []) as ExistingStudent[]);
+    } catch (error: unknown) {
+      toast.error(`Could not load school reference data: ${errorMessage(error, 'Unknown error')}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.schoolId]);
+
+  const refreshReferenceData = useCallback(async () => {
     if (!user?.schoolId) return;
     setLoading(true);
-    const [{ data: classData, error: classError }, { data: learnerData, error: learnerError }] = await Promise.all([
-      supabaseUntyped.from('classes').select('id, name').eq('school_id', user.schoolId).eq('is_active', true).order('name'),
-      supabaseUntyped
-        .from('students')
-        .select('id, admission_number, assessment_number, first_name, middle_name, last_name, class_id, student_email, gender, date_of_birth, nationality, county, sub_county, boarding_status, disability_status, parent_name, parent_phone, parent_email, curriculum, pathway, track')
-        .eq('school_id', user.schoolId)
-        .order('first_name'),
-    ]);
-    if (classError) toast.error(`Could not load classes: ${classError.message}`);
-    if (learnerError) toast.error(`Could not load existing learners: ${learnerError.message}`);
-    setClasses(classData || []);
-    setExistingStudents((learnerData || []) as ExistingStudent[]);
-    setLoading(false);
-  };
+    await loadReferenceData();
+  }, [user?.schoolId, loadReferenceData]);
 
-  useEffect(() => { void refreshReferenceData(); }, [user?.schoolId]);
+  // The database request is awaited before this loader updates component state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- async data-load state updates happen after the Supabase response.
+  useEffect(() => { void loadReferenceData(); }, [loadReferenceData]);
 
-  const classByName = useMemo(() => new Map(classes.map((c) => [normalized(c.name), c])), [classes]);
-  const classNameById = useMemo(() => new Map(classes.map((c) => [c.id, c.name])), [classes]);
+  const classResolver = useMemo(() => buildClassStreamImportResolver(classes), [classes]);
+  const classNameById = useMemo(() => new Map(classes.map((c) => [c.id, formatClassStream(c)])), [classes]);
   const studentByAdmission = useMemo(() => new Map(existingStudents.filter((s) => s.admission_number).map((s) => [normalized(s.admission_number), s])), [existingStudents]);
   const studentByAssessment = useMemo(() => new Map(existingStudents.filter((s) => s.assessment_number).map((s) => [normalized(s.assessment_number), s])), [existingStudents]);
 
@@ -207,25 +232,30 @@ export default function BulkStudentImport() {
       const { admission, assessment } = identifiers(row);
       const first = row.first_name?.trim() || '';
       const last = row.last_name?.trim() || '';
-      const className = normalized(row.class_name);
+      const classInput = row.class_name?.trim() || '';
+      const streamInput = row.stream_name?.trim() || row.stream?.trim() || '';
       const issues: string[] = [];
       const name = `${first} ${row.middle_name ? `${row.middle_name.trim()} ` : ''}${last}`.trim() || admission || assessment || `Row ${rowNumber}`;
       const keys = matchBy === 'admission' ? [admission] : matchBy === 'assessment' ? [assessment] : [admission, assessment];
+      const classResolution = classInput ? classResolver(classInput, streamInput) : null;
+      const classRow = classResolution?.classRow || undefined;
 
       if (mode === 'add') {
         if (!admission && !assessment) issues.push('provide admission_number or assessment_number');
         if (!first) issues.push('missing first_name');
         if (!last) issues.push('missing last_name');
-        if (!className) issues.push('missing class_name');
-        else if (!classByName.has(className)) issues.push('class not found');
+        if (!classInput) issues.push('missing class_name');
+        else if (!classRow) issues.push(classResolution?.error || 'class/stream not found');
         if (assessment && studentByAssessment.has(normalized(assessment))) issues.push('assessment number already exists');
         if (admission && studentByAdmission.has(normalized(admission))) issues.push('admission number already exists');
         const duplicateKey = `add:${normalized(admission)}:${normalized(assessment)}`;
         if (seen.has(duplicateKey)) issues.push('duplicate learner identifiers in CSV');
         seen.add(duplicateKey);
-        return { row, rowNumber, admission, assessment, name, changes: [], issues, action: issues.length ? 'conflict' : 'create' };
+        return { row, rowNumber, admission, assessment, name, classRow, changes: [], issues, action: issues.length ? 'conflict' : 'create' };
       }
 
+      if (streamInput && !classInput) issues.push('include class_name when supplying a separate stream value');
+      else if (classInput && !classRow) issues.push(classResolution?.error || 'class/stream not found');
       if (keys.some((key) => !key)) issues.push(`missing ${matchBy === 'both' ? 'admission and assessment numbers' : `${matchBy} number`} for matching`);
       const admissionTarget = admission ? studentByAdmission.get(normalized(admission)) : undefined;
       const assessmentTarget = assessment ? studentByAssessment.get(normalized(assessment)) : undefined;
@@ -238,15 +268,23 @@ export default function BulkStudentImport() {
 
       const changes: PreviewPlan['changes'] = [];
       if (target) {
+        if ((classInput || streamInput) && classRow) {
+          const currentClassId = target.stream_id || target.class_id || '';
+          if (normalized(currentClassId) !== normalized(classRow.id)) changes.push({
+            label: 'Class / Stream',
+            from: displayValue(classNameById.get(currentClassId)),
+            to: formatClassStream(classRow),
+          });
+        }
         EDITABLE_FIELDS.forEach(({ key, label }) => {
-          let next = row[key]?.trim() || '';
-          if (key === 'class_id' && row.class_name?.trim()) next = classByName.get(normalized(row.class_name))?.id || '';
+          if (key === 'class_id') return;
+          const next = row[key]?.trim() || '';
           if (!next) return; // Blank CSV cells preserve the attached record.
-          const current = String((target as any)[key] ?? '');
+          const current = String(target[key as keyof ExistingStudent] ?? '');
           if (normalized(current) !== normalized(next)) changes.push({
             label,
-            from: key === 'class_id' ? displayValue(classNameById.get(current)) : displayValue(current),
-            to: key === 'class_id' ? displayValue(classNameById.get(next)) : displayValue(next),
+            from: displayValue(current),
+            to: displayValue(next),
           });
         });
         const nextAdmission = admission || target.admission_number || '';
@@ -256,9 +294,9 @@ export default function BulkStudentImport() {
         if (admissionOwner && admissionOwner.id !== target.id) issues.push('new admission number belongs to another learner');
         if (assessmentOwner && assessmentOwner.id !== target.id) issues.push('new assessment number belongs to another learner');
       }
-      return { row, rowNumber, admission, assessment, name, target, changes, issues, action: issues.length ? 'conflict' : changes.length ? 'update' : 'unchanged' };
+      return { row, rowNumber, admission, assessment, name, classRow, target, changes, issues, action: issues.length ? 'conflict' : changes.length ? 'update' : 'unchanged' };
     });
-  }, [rows, mode, matchBy, classByName, classNameById, studentByAdmission, studentByAssessment]);
+  }, [rows, mode, matchBy, classResolver, classNameById, studentByAdmission, studentByAssessment]);
 
   const blockingCount = preview.filter((item) => item.action === 'conflict').length;
   const pendingUpdates = preview.filter((item) => item.action === 'update');
@@ -273,7 +311,12 @@ export default function BulkStudentImport() {
     try {
       for (const plan of readyAdds) {
         const row = plan.row;
-        const classRow = classByName.get(normalized(row.class_name));
+        const classRow = plan.classRow;
+        if (!classRow) {
+          completed.push({ row: plan.rowNumber, admission_number: plan.admission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: 'The class/stream could not be resolved. Refresh school reference data and preview again.' });
+          setResults([...completed]);
+          continue;
+        }
         const effectiveAdmission = plan.admission || plan.assessment || `PENDING-${Date.now().toString(36).toUpperCase()}`;
         const loginIdentifier = (plan.assessment || effectiveAdmission).toUpperCase();
         const email = (row.student_email?.trim().toLowerCase() || `${loginIdentifier.toLowerCase().replace(/[^a-z0-9]+/g, '')}.${schoolPrefix}@student.edu`);
@@ -322,13 +365,13 @@ export default function BulkStudentImport() {
           if (error || !studentData?.id) throw new Error(error?.message || 'Learner record was not created.');
           try {
             await syncParentAccounts({ student_id: studentData.id, primary: { name: row.parent_name, phone: row.parent_phone, email: row.parent_email } });
-          } catch (parentError: any) {
+          } catch (parentError: unknown) {
             await deleteScopedUser({ record_id: studentData.id, target_type: 'student', school_id: user.schoolId });
-            throw new Error(`Parent account could not be linked: ${parentError.message}`);
+            throw new Error(`Parent account could not be linked: ${errorMessage(parentError, 'unknown error')}`);
           }
           completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, email, password: plan.assessment ? loginIdentifier : '', status: 'created', message: plan.assessment ? undefined : 'Created without assessment number; assign one later to enable Student Portal sign-in.' });
-        } catch (error: any) {
-          completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: error?.message || 'Import failed' });
+        } catch (error: unknown) {
+          completed.push({ row: plan.rowNumber, admission_number: effectiveAdmission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: errorMessage(error, 'Import failed') });
         }
         setResults([...completed]);
       }
@@ -350,15 +393,22 @@ export default function BulkStudentImport() {
         }
         if (plan.action !== 'update' || !plan.target) continue;
         const row = plan.row;
-        const classId = row.class_name?.trim() ? classByName.get(normalized(row.class_name))?.id : undefined;
+        const classWasProvided = Boolean(row.class_name?.trim() || row.stream?.trim() || row.stream_name?.trim());
+        const classId = classWasProvided ? plan.classRow?.id : undefined;
         const payload: Record<string, unknown> = {};
         EDITABLE_FIELDS.forEach(({ key }) => {
-          const value = key === 'class_id' ? classId : row[key]?.trim();
+          if (key === 'class_id') {
+            if (classId) payload.class_id = classId;
+            return;
+          }
+          const value = row[key]?.trim();
           if (value) payload[key] = value;
         });
+        if (classId && plan.target.stream_id) payload.stream_id = classId;
         try {
-          const { error } = await supabaseUntyped.from('students').update(payload).eq('id', plan.target.id).eq('school_id', user.schoolId);
+          const { data: updatedStudent, error } = await supabaseUntyped.from('students').update(payload).eq('id', plan.target.id).eq('school_id', user.schoolId).select('id').maybeSingle();
           if (error) throw error;
+          if (!updatedStudent) throw new Error('Learner update returned no row; this record may be outside your school or no longer available.');
           // Best-effort persistent audit trail; UI results remain the immediate change log if RLS blocks audit writes.
           await supabaseUntyped.from('audit_logs').insert({
             school_id: user.schoolId,
@@ -370,8 +420,8 @@ export default function BulkStudentImport() {
             new_values: Object.fromEntries(plan.changes.map((change) => [change.label, change.to])),
           });
           completed.push({ row: plan.rowNumber, admission_number: plan.admission || plan.target.admission_number || '', assessment_number: plan.assessment || plan.target.assessment_number || '', name: plan.name, status: 'updated', message: plan.changes.map((change) => `${change.label}: ${change.from} → ${change.to}`).join(' · ') });
-        } catch (error: any) {
-          completed.push({ row: plan.rowNumber, admission_number: plan.admission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: error?.message || 'Update failed' });
+        } catch (error: unknown) {
+          completed.push({ row: plan.rowNumber, admission_number: plan.admission, assessment_number: plan.assessment, name: plan.name, status: 'failed', message: errorMessage(error, 'Update failed') });
         }
         setResults([...completed]);
       }
@@ -427,8 +477,8 @@ export default function BulkStudentImport() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <section className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
-          <div className="flex flex-wrap gap-2 items-center justify-between"><h2 className="font-black text-gray-900 flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={18} /> Step 1: Prepare CSV</h2><button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS, ['ADM001', 'ASM001', 'John', '', 'Kamau', classes[0]?.name || 'Grade 1', '', 'Male', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', 'Jane Kamau', '0712345678', 'parent@example.com']])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button></div>
-          <p className="text-xs text-gray-600">For new learners, provide first_name, last_name, class_name, and at least one identifier. Assessment Number is optional. For updates, include the selected match key and only the columns that should change. Senior pathway options: {SENIOR_PATHWAYS.join(', ')}; track options: {SENIOR_PATHWAYS.flatMap((pathway) => tracksForSeniorPathway(pathway)).join(', ')}.</p>
+          <div className="flex flex-wrap gap-2 items-center justify-between"><h2 className="font-black text-gray-900 flex items-center gap-2"><FileSpreadsheet className="text-blue-600" size={18} /> Step 1: Prepare CSV</h2><button type="button" onClick={() => downloadCsv('zamifu-student-import-template.csv', [TEMPLATE_HEADERS, ['ADM001', 'ASM001', 'John', '', 'Kamau', formatClassStream(classes[0]) || 'Grade 1', '', '', 'Male', '', 'Kenyan', '', '', 'day', '', 'CBE', '', '', 'Jane Kamau', '0712345678', 'parent@example.com']])} className="text-sm font-bold text-blue-700 hover:underline flex items-center gap-1"><Download size={15} /> Download template</button></div>
+          <p className="text-xs text-gray-600">For new learners, provide first_name, last_name, class_name (use the full label shown under Classes, e.g. Grade 5A), and at least one identifier. Optionally use the separate stream column with the base class_name. Updates accept the same class/stream fields and change only reviewed non-blank values. Senior pathway options: {SENIOR_PATHWAYS.join(', ')}; track options: {SENIOR_PATHWAYS.flatMap((pathway) => tracksForSeniorPathway(pathway)).join(', ')}.</p>
           <label className="border-2 border-dashed border-blue-200 rounded-xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-blue-50 transition"><Upload className="text-blue-600 mb-2" /><span className="font-bold text-blue-800">Choose CSV file</span><span className="text-xs text-gray-500 mt-1">{fileName || 'CSV only'}</span><input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => void handleFile(e.target.files?.[0])} /></label>
           {loading && <p className="text-sm text-gray-500">Loading school reference data...</p>}
         </section>
@@ -437,7 +487,18 @@ export default function BulkStudentImport() {
 
       {rows.length > 0 && <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-black text-gray-900">Step 2: Preview {rows.length} rows</h2><p className="text-xs text-gray-500">{blockingCount ? `${blockingCount} row${blockingCount === 1 ? '' : 's'} must be corrected.` : mode === 'add' ? `${readyAdds.length} new learners ready.` : `${pendingUpdates.length} update${pendingUpdates.length === 1 ? '' : 's'} ready; unchanged rows will be logged.`}</p></div><button type="button" disabled={importing || blockingCount > 0 || (mode === 'add' ? !readyAdds.length : !pendingUpdates.length)} onClick={() => mode === 'add' ? void createStudents() : setConfirmingUpdates(true)} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm disabled:opacity-50 flex items-center gap-2">{importing ? <Loader2 className="animate-spin" size={16} /> : <Users size={16} />}{importing ? 'Applying batch...' : actionLabel}</button></div>
-        <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-left border-b"><th className="p-2">Row</th><th className="p-2">Learner</th><th className="p-2">Match / Identifiers</th><th className="p-2">Preview</th><th className="p-2">Status</th></tr></thead><tbody>{preview.slice(0, 200).map((item) => <tr key={item.rowNumber} className="border-b last:border-0 align-top"><td className="p-2">{item.rowNumber}</td><td className="p-2 font-semibold">{item.name}</td><td className="p-2">{item.admission || '—'}<br />{item.assessment || '—'}</td><td className="p-2 max-w-md">{item.changes.length ? <ul className="space-y-1">{item.changes.map((change) => <li key={change.label}><strong>{change.label}:</strong> {change.from} → {change.to}</li>)}</ul> : item.action === 'create' ? 'New learner account and record' : item.action === 'unchanged' ? 'No changes supplied' : 'Resolve the listed conflict'}</td><td className={`p-2 font-semibold ${item.action === 'conflict' ? 'text-red-600' : item.action === 'update' ? 'text-amber-700' : item.action === 'create' ? 'text-green-700' : 'text-gray-500'}`}>{item.issues.length ? item.issues.join(', ') : item.action === 'update' ? 'Ready to update' : item.action === 'create' ? 'Ready to create' : 'Unchanged'}</td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr className="text-left border-b"><th className="p-2">Row</th><th className="p-2">Learner</th><th className="p-2">Match / Identifiers</th><th className="p-2">Preview</th><th className="p-2">Status</th></tr></thead>
+            <tbody>{preview.slice(0, 200).map((item) => <tr key={item.rowNumber} className="border-b last:border-0 align-top">
+              <td className="p-2">{item.rowNumber}</td>
+              <td className="p-2 font-semibold">{item.name}</td>
+              <td className="p-2">{item.admission || '—'}<br />{item.assessment || '—'}</td>
+              <td className="p-2 max-w-md">{item.changes.length ? <ul className="space-y-1">{item.changes.map((change) => <li key={change.label}><strong>{change.label}:</strong> {change.from} → {change.to}</li>)}</ul> : item.action === 'create' ? `New learner in ${item.classRow ? formatClassStream(item.classRow) : 'selected class/stream'}` : item.action === 'unchanged' ? 'No changes supplied' : 'Resolve the listed conflict'}</td>
+              <td className={`p-2 font-semibold ${item.action === 'conflict' ? 'text-red-600' : item.action === 'update' ? 'text-amber-700' : item.action === 'create' ? 'text-green-700' : 'text-gray-500'}`}>{item.issues.length ? item.issues.join(', ') : item.action === 'update' ? 'Ready to update' : item.action === 'create' ? 'Ready to create' : 'Unchanged'}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
       </section>}
 
       {results.length > 0 && <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-4"><div className="flex flex-wrap justify-between items-center gap-3"><div><h2 className="font-black text-gray-900">Step 3: Change log</h2><p className="text-xs text-gray-500">Created passwords are shown only for accounts created in this batch.</p></div><div className="flex gap-3"><button type="button" onClick={downloadChangeLog} className="text-sm font-bold text-blue-700 flex items-center gap-1"><Download size={15} /> Download change log</button>{results.some((result) => result.status === 'created') && <button type="button" onClick={downloadCredentials} className="text-sm font-bold text-blue-700 flex items-center gap-1"><Download size={15} /> Download credentials</button>}</div></div><div className="space-y-2">{results.map((result) => <div key={`${result.row}-${result.status}`} className={`rounded-lg p-3 text-sm ${result.status === 'failed' ? 'bg-red-50 text-red-800' : result.status === 'updated' ? 'bg-amber-50 text-amber-900' : result.status === 'unchanged' ? 'bg-gray-50 text-gray-700' : 'bg-green-50 text-green-800'}`}>{result.status === 'failed' ? <AlertCircle className="inline mr-2" size={16} /> : <CheckCircle2 className="inline mr-2" size={16} />}Row {result.row}: <strong>{result.name || result.admission_number}</strong> — {result.status === 'created' && result.password ? `${result.email} / ${result.password}` : result.message || result.status}</div>)}</div></section>}

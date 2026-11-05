@@ -78,3 +78,106 @@ export function classLabelFilename(classData: ClassLabelInput | null | undefined
     .replace(/^-+|-+$/g, '')
     .toLowerCase() || 'class';
 }
+
+
+export interface ClassStreamImportRecord extends ClassLabelInput {
+  id: string;
+}
+
+export interface ClassStreamImportResolution {
+  classRow: ClassStreamImportRecord | null;
+  error?: string;
+}
+
+/** Normalize CSV whitespace/case without collapsing meaningful punctuation or words. */
+export function normalizeClassImportLabel(value: string | null | undefined): string {
+  const normalized = String(value || '')
+    .normalize('NFKC')
+    .replace(/\u00a0/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase();
+  // These are equivalent spellings of the single-letter labels produced by
+  // formatClassStream: "Grade 5A", "Grade 5 A", and "Grade5A".
+  const gradeStream = normalized.match(/^grade\s*(\d+)\s*[-–—]?\s*([a-z])$/i);
+  return gradeStream ? `grade ${gradeStream[1]}${gradeStream[2]}` : normalized;
+}
+
+/** Build an ID-safe resolver for the school's existing classes/streams. */
+export function buildClassStreamImportResolver(classRows: readonly ClassStreamImportRecord[]) {
+  const exactLabels = new Map<string, Map<string, ClassStreamImportRecord>>();
+  const aliases = new Map<string, Map<string, ClassStreamImportRecord>>();
+
+  const add = (
+    index: Map<string, Map<string, ClassStreamImportRecord>>,
+    label: string | null | undefined,
+    row: ClassStreamImportRecord,
+  ) => {
+    const key = normalizeClassImportLabel(label);
+    if (!key) return;
+    const matches = index.get(key) || new Map<string, ClassStreamImportRecord>();
+    matches.set(row.id, row);
+    index.set(key, matches);
+  };
+
+  for (const row of classRows) {
+    const label = formatClassStream(row);
+    const stream = String(row.stream_name || row.stream || '').normalize('NFKC').trim().replace(/\s+/g, ' ');
+    add(exactLabels, label, row);
+    add(aliases, label, row);
+    add(aliases, row.name, row);
+    if (stream) {
+      add(aliases, `${row.name || ''} Stream ${stream}`, row);
+      add(aliases, label.replace(/^grade\s+/i, ''), row);
+    }
+  }
+
+  const asResult = (
+    matches: Map<string, ClassStreamImportRecord> | undefined,
+    inputLabel: string,
+  ): ClassStreamImportResolution | null => {
+    if (!matches?.size) return null;
+    if (matches.size === 1) return { classRow: matches.values().next().value || null };
+    return {
+      classRow: null,
+      error: `“${inputLabel}” matches more than one class/stream. Use the full stream label (for example, Grade 5A) or specify the class_name and stream columns separately.`,
+    };
+  };
+
+  return (className: string, streamName?: string | null): ClassStreamImportResolution => {
+    const nameKey = normalizeClassImportLabel(className);
+    const streamValue = String(streamName || '').normalize('NFKC').trim().replace(/\s+/g, ' ');
+    const streamKey = normalizeClassImportLabel(streamValue);
+    const inputLabel = streamValue ? `${className.trim()} / ${streamValue}` : className.trim();
+    if (!nameKey) return { classRow: null, error: 'class_name is required.' };
+
+    if (streamKey) {
+      const pairMatches = new Map<string, ClassStreamImportRecord>();
+      for (const row of classRows) {
+        const rowStream = normalizeClassImportLabel(row.stream_name || row.stream);
+        const rowName = normalizeClassImportLabel(row.name);
+        const rowLabel = normalizeClassImportLabel(formatClassStream(row));
+        const shortLabel = normalizeClassImportLabel(formatClassStream(row).replace(/^grade\s+/i, ''));
+        if (rowStream === streamKey && [rowName, rowLabel, shortLabel].includes(nameKey)) {
+          pairMatches.set(row.id, row);
+        }
+      }
+      const pairResult = asResult(pairMatches, inputLabel);
+      if (pairResult) return pairResult;
+      return {
+        classRow: null,
+        error: `Class/stream “${inputLabel}” was not found in this school. Check the class and stream names, or refresh the school reference data.`,
+      };
+    }
+
+    const key = normalizeClassImportLabel(className);
+    const exactResult = asResult(exactLabels.get(key), inputLabel);
+    if (exactResult) return exactResult;
+    const aliasResult = asResult(aliases.get(key), inputLabel);
+    if (aliasResult) return aliasResult;
+    return {
+      classRow: null,
+      error: `Class/stream “${inputLabel}” was not found in this school. Use the full label shown in Classes (for example, Grade 5A), or refresh the school reference data.`,
+    };
+  };
+}
