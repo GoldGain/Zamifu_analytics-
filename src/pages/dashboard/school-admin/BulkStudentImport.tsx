@@ -94,7 +94,7 @@ const EDITABLE_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'parent_email', label: 'Parent Email' },
 ];
 
-function parseCsv(text: string): ImportRow[] {
+function parseCsv(text: string): { rows: ImportRow[]; ignored: string[] } {
   const lines: string[][] = [];
   let row: string[] = [];
   let cell = '';
@@ -115,17 +115,36 @@ function parseCsv(text: string): ImportRow[] {
     cell += ch;
   }
   if (cell || row.length) { row.push(cell.trim()); if (row.some(Boolean)) lines.push(row); }
-  if (lines.length < 2) return [];
+  if (lines.length < 2) return { rows: [], ignored: [] };
+  const aliases: Record<string, string> = {
+    admission: ADMISSION_HEADER, admission_no: ADMISSION_HEADER, adm_no: ADMISSION_HEADER, adm: ADMISSION_HEADER,
+    assessment: ASSESSMENT_HEADER, assessment_no: ASSESSMENT_HEADER, asm_no: ASSESSMENT_HEADER, asm: ASSESSMENT_HEADER,
+    class: 'class_name', grade: 'class_name', form: 'class_name', classname: 'class_name',
+    stream: 'stream', stream_name: 'stream_name',
+    phone: 'parent_phone', phone_number: 'parent_phone', parentphone: 'parent_phone', mobile: 'parent_phone',
+    contact: 'parent_phone', contact_phone: 'parent_phone', guardian_phone: 'parent_phone', parent_mobile: 'parent_phone',
+    parent: 'parent_name', parentname: 'parent_name', guardian: 'parent_name', guardian_name: 'parent_name',
+    email: 'student_email', learner_email: 'student_email', studentemail: 'student_email',
+    parentemail: 'parent_email', guardian_email: 'parent_email', parentemailaddress: 'parent_email',
+    dob: 'date_of_birth', birth_date: 'date_of_birth', dateofbirth: 'date_of_birth',
+    admissionnumber: ADMISSION_HEADER, assessmentnumber: ASSESSMENT_HEADER, admissionnumber_: ADMISSION_HEADER,
+    firstname: 'first_name', middlename: 'middle_name', lastname: 'last_name', surname: 'last_name',
+    gender_: 'gender', sex: 'gender', boarding: 'boarding_status', disability: 'disability_status',
+    county_: 'county', subcounty: 'sub_county', sub_county_: 'sub_county', nationality_: 'nationality',
+  };
+  const knownHeaders = new Set<string>([ADMISSION_HEADER, ASSESSMENT_HEADER, LEGACY_IDENTIFIER_HEADER, 'stream_name', ...TEMPLATE_HEADERS]);
+  const ignored: string[] = [];
   const headers = lines[0].map((h) => {
-    const normalized = h.trim().toLowerCase().replace(/[\s/]+/g, '_');
-    if (['admission_no', 'admission'].includes(normalized)) return ADMISSION_HEADER;
-    if (['assessment_no', 'assessment'].includes(normalized)) return ASSESSMENT_HEADER;
-    return normalized;
+    const normalized = h.trim().toLowerCase().replace(/[\s/\-]+/g, '_').replace(/_+$/, '');
+    const resolved = aliases[normalized] || normalized;
+    if (resolved && !knownHeaders.has(resolved)) ignored.push(h.trim());
+    return resolved;
   });
-  return lines.slice(1).map((values) => headers.reduce<ImportRow>((obj, header, index) => {
+  const rows = lines.slice(1).map((values) => headers.reduce<ImportRow>((obj, header, index) => {
     obj[header] = (values[index] || '').trim();
     return obj;
   }, {}));
+  return { rows, ignored: Array.from(new Set(ignored)) };
 }
 
 function csvEscape(value: string): string {
@@ -217,9 +236,12 @@ export default function BulkStudentImport() {
 
   const handleFile = async (file?: File) => {
     if (!file) return;
-    const parsed = parseCsv(await file.text());
+    const { rows: parsed, ignored } = parseCsv(await file.text());
     if (!parsed.length) { toast.error('The CSV has no learner rows. Download the template and try again.'); return; }
     setRows(parsed);
+    if (ignored.length) {
+      toast.message(`These columns were not recognised and will be ignored: ${ignored.join(', ')}. Use the template headers so nothing is skipped.`);
+    }
     setResults([]);
     setConfirmingUpdates(false);
     setFileName(file.name);
@@ -520,7 +542,16 @@ export default function BulkStudentImport() {
         }
         setResults([...completed]);
       }
-      toast.success(`${completed.filter((item) => item.status === 'updated').length} learner records updated; no learners were deleted.`);
+      const updatedCount = completed.filter((item) => item.status === 'updated').length;
+      const failedItems = completed.filter((item) => item.status === 'failed');
+      const unchangedCount = completed.filter((item) => item.status === 'unchanged').length;
+      if (updatedCount) {
+        toast.success(`${updatedCount} learner record${updatedCount === 1 ? '' : 's'} updated${failedItems.length ? `, ${failedItems.length} failed` : ''}${unchangedCount ? `, ${unchangedCount} unchanged` : ''}.`);
+      } else if (failedItems.length) {
+        toast.error(`No records were updated — ${failedItems.length} row${failedItems.length === 1 ? '' : 's'} failed. ${failedItems[0].message || ''}`.trim());
+      } else {
+        toast.message(`Nothing changed — ${unchangedCount} row${unchangedCount === 1 ? '' : 's'} matched but no supplied value differed from what is already saved.`);
+      }
       await refreshReferenceData();
     } finally { runningRef.current = false; setImporting(false); }
   };
