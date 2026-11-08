@@ -533,6 +533,15 @@ function outputPdfDocument(doc: jsPDF, filename: string, mode: PdfOutputMode, pr
  *  Module scope on purpose: the PDF builders are nested deep in this component. */
 let POINTS_ONLY_SUMMARY = false;
 
+/** Points-only assessments never print marks or percentages: show the band level instead. */
+function bandLevelLabel(pct: number, band: any, classObj: any): string {
+  const grading: any = overallGradeWithBand(Number(pct) || 0, band, classObj);
+  return String(grading?.subLevel ?? grading?.grade ?? '—');
+}
+function scoreLabel(pct: number, band: any, classObj: any): string {
+  return POINTS_ONLY_SUMMARY ? bandLevelLabel(pct, band, classObj) : `${Number(pct).toFixed(1)}%`;
+}
+
 export default function SchoolAdminResults({ scope = 'school' }: { scope?: ResultsScope }) {
   const { user } = useAuth();
   const [results, setResults] = useState<any[]>([]);
@@ -1652,16 +1661,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             doc.setFillColor(225, 230, 240); doc.rect(112 + chartLabelWidth, y, chartWidth, 3, 'F');
             doc.setFillColor(106, 27, 154); doc.rect(112 + chartLabelWidth, y, chartWidth * Math.min(100, previous) / 100, 3, 'F');
           }
-          doc.setFontSize(pdfFontSize(doc, 9)); doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 14 + chartLabelWidth + chartWidth + 2, y + 3);
-          if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(`${previous.toFixed(1)}%`, 112 + chartLabelWidth + chartWidth + 2, y + 3); }
+          doc.setFontSize(pdfFontSize(doc, 9)); doc.setTextColor(37, 99, 235); doc.text(scoreLabel(subject.mean, band, classObj), 14 + chartLabelWidth + chartWidth + 2, y + 3);
+          if (previousTerm) { doc.setTextColor(106, 27, 154); doc.text(scoreLabel(previous, band, classObj), 112 + chartLabelWidth + chartWidth + 2, y + 3); }
         });
 
         const analysisGradeLabels = gradeLabelsForBand(band, classObj);
         const subRows = subjectStats.map((s, i) => {
           const stats = computeSubjectGradeStats(summaries, s.name, band, classObj);
           const displayName = s.name === 'Creative Arts' ? 'C-Arts' : s.name;
-          return [String(i + 1), displayName, ...analysisGradeLabels.map((label) => String(stats.counts[label] || 0)), String(stats.totalLearners), stats.average.toFixed(2)];
-        }).sort((a, b) => Number(b[b.length - 1]) - Number(a[a.length - 1])).map((row, i) => [String(i + 1), ...row.slice(1)]);
+          return [String(i + 1), displayName, ...analysisGradeLabels.map((label) => String(stats.counts[label] || 0)), String(stats.totalLearners), POINTS_ONLY_SUMMARY ? bandLevelLabel(stats.average, band, classObj) : stats.average.toFixed(2)];
+        }).sort((a, b) => (Number(b[b.length - 1]) || 0) - (Number(a[a.length - 1]) || 0)).map((row, i) => [String(i + 1), ...row.slice(1)]);
 
         autoTable(doc, { startY: Math.min(150, chartTop + 20 + subjectStats.length * chartRowHeight), head: [['Rank', is844 ? 'Subject' : 'Learning Area', ...analysisGradeLabels, 'Total', is844 ? 'Average Points' : 'Average']], body: subRows, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, columnStyles: { 1: { halign: 'left' } } });
         doc.setFontSize(pdfFontSize(doc, 14)); doc.setTextColor(150, 150, 150);
@@ -1700,8 +1709,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text(`Male: ${maleCount} (${totalStudents > 0 ? ((maleCount / totalStudents) * 100).toFixed(1) : 0}%)`, 75, gY + 8);
         doc.text(`Female: ${femaleCount} (${totalStudents > 0 ? ((femaleCount / totalStudents) * 100).toFixed(1) : 0}%)`, 130, gY + 8);
         if (unknownCount > 0) doc.text(`Gender not set: ${unknownCount}`, 20, gY + 18);
-        doc.text(`Male Average: ${maleNumeric.length > 0 ? maleAvg.toFixed(1) + '%' : 'N/A'}`, 75, gY + 18);
-        doc.text(`Female Average: ${femaleNumeric.length > 0 ? femaleAvg.toFixed(1) + '%' : 'N/A'}`, 130, gY + 18);
+        doc.text(`Male Average: ${maleNumeric.length > 0 ? scoreLabel(maleAvg, band, classObj) : 'N/A'}`, 75, gY + 18);
+        doc.text(`Female Average: ${femaleNumeric.length > 0 ? scoreLabel(femaleAvg, band, classObj) : 'N/A'}`, 130, gY + 18);
 
         // Visual comparison bar
         const barY = gY + 36;
@@ -1711,13 +1720,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         if (maleNumeric.length > 0) {
           doc.setFillColor(37, 99, 235); doc.rect(14, barY + 8, 8, 8, 'F');
-          doc.setTextColor(0, 0, 0); doc.text(`Male (${maleCount} learners): ${maleAvg.toFixed(1)}% — ${maleGrade ? (isPrimary ? maleGrade.grade : maleGrade.subLevel) : 'N/A'}`, 25, barY + 14);
+          doc.setTextColor(0, 0, 0); doc.text(`Male (${maleCount} learners): ${POINTS_ONLY_SUMMARY ? (maleGrade ? (isPrimary ? maleGrade.grade : maleGrade.subLevel) : 'N/A') : `${maleAvg.toFixed(1)}% — ${maleGrade ? (isPrimary ? maleGrade.grade : maleGrade.subLevel) : 'N/A'}`}`, 25, barY + 14);
           doc.setFillColor(200, 220, 255); doc.rect(14, barY + 18, 182, 6, 'F');
           doc.setFillColor(37, 99, 235); doc.rect(14, barY + 18, Math.max(1, 182 * maleAvg / 100), 6, 'F');
         }
         if (femaleNumeric.length > 0) {
           doc.setFillColor(236, 72, 153); doc.rect(14, barY + 30, 8, 8, 'F');
-          doc.setTextColor(0, 0, 0); doc.text(`Female (${femaleCount} learners): ${femaleAvg.toFixed(1)}% — ${femaleGrade ? (isPrimary ? femaleGrade.grade : femaleGrade.subLevel) : 'N/A'}`, 25, barY + 36);
+          doc.setTextColor(0, 0, 0); doc.text(`Female (${femaleCount} learners): ${POINTS_ONLY_SUMMARY ? (femaleGrade ? (isPrimary ? femaleGrade.grade : femaleGrade.subLevel) : 'N/A') : `${femaleAvg.toFixed(1)}% — ${femaleGrade ? (isPrimary ? femaleGrade.grade : femaleGrade.subLevel) : 'N/A'}`}`, 25, barY + 36);
           doc.setFillColor(255, 200, 230); doc.rect(14, barY + 40, 182, 6, 'F');
           doc.setFillColor(236, 72, 153); doc.rect(14, barY + 40, Math.max(1, 182 * femaleAvg / 100), 6, 'F');
         }
@@ -1729,7 +1738,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           const gapY = barY + 55;
           doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'bold');
           doc.setTextColor(gap > 10 ? 220 : gap > 5 ? 249 : 22, gap > 10 ? 38 : gap > 5 ? 115 : 163, gap > 10 ? 38 : gap > 5 ? 115 : 74);
-          doc.text(`Gender Gap: ${gap.toFixed(1)}% — ${leader} learners lead by ${gap.toFixed(1)}%`, 14, gapY);
+          doc.text(POINTS_ONLY_SUMMARY ? `Gender Gap: ${leader} learners lead` : `Gender Gap: ${gap.toFixed(1)}% — ${leader} learners lead by ${gap.toFixed(1)}%`, 14, gapY);
           doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 8));
           if (gap > 10) doc.text('Significant gender gap detected. Consider targeted support for the lower-performing group.', 14, gapY + 7);
           else if (gap > 5) doc.text('Moderate gender gap. Monitor trends over subsequent terms.', 14, gapY + 7);
@@ -1747,11 +1756,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           const mAvg = maleVals.length ? maleVals.reduce((a, b) => a + b, 0) / maleVals.length : null;
           const fAvg = femaleVals.length ? femaleVals.reduce((a, b) => a + b, 0) / femaleVals.length : null;
           const diff = mAvg !== null && fAvg !== null ? mAvg - fAvg : null;
-          const leader = diff === null ? 'N/A' : diff > 0.5 ? `M +${diff.toFixed(1)}%` : diff < -0.5 ? `F +${Math.abs(diff).toFixed(1)}%` : 'Equal';
+          const leader = diff === null ? 'N/A' : POINTS_ONLY_SUMMARY
+            ? (diff > 0.5 ? 'Male' : diff < -0.5 ? 'Female' : 'Equal')
+            : diff > 0.5 ? `M +${diff.toFixed(1)}%` : diff < -0.5 ? `F +${Math.abs(diff).toFixed(1)}%` : 'Equal';
           return [
             sub === 'Creative Arts' ? 'C-Arts' : sub,
-            mAvg !== null ? `${mAvg.toFixed(1)}%` : 'N/A',
-            fAvg !== null ? `${fAvg.toFixed(1)}%` : 'N/A',
+            mAvg !== null ? scoreLabel(mAvg, band, classObj) : 'N/A',
+            fAvg !== null ? scoreLabel(fAvg, band, classObj) : 'N/A',
             leader,
           ];
         });
@@ -1780,7 +1791,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'bold'); doc.setTextColor(37, 99, 235);
           doc.text('Top Male Learner:', 14, topGenderY);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
-          doc.text(`${topMale.student?.first_name} ${topMale.student?.last_name} — ${topMale.avgPct.toFixed(1)}% — ${isPrimary ? (topMaleGr as any).grade : (topMaleGr as any).subLevel}`, 55, topGenderY);
+          doc.text(`${topMale.student?.first_name} ${topMale.student?.last_name}${POINTS_ONLY_SUMMARY ? '' : ` — ${topMale.avgPct.toFixed(1)}%`} — ${isPrimary ? (topMaleGr as any).grade : (topMaleGr as any).subLevel}`, 55, topGenderY);
         }
         if (femaleSummaries.length > 0) {
           const topFemale = femaleSummaries[0];
@@ -1788,7 +1799,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           doc.setFontSize(pdfFontSize(doc, 9)); doc.setFont('helvetica', 'bold'); doc.setTextColor(236, 72, 153);
           doc.text('Top Female Learner:', 14, topGenderY + 8);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
-          doc.text(`${topFemale.student?.first_name} ${topFemale.student?.last_name} — ${topFemale.avgPct.toFixed(1)}% — ${isPrimary ? (topFemaleGr as any).grade : (topFemaleGr as any).subLevel}`, 55, topGenderY + 8);
+          doc.text(`${topFemale.student?.first_name} ${topFemale.student?.last_name}${POINTS_ONLY_SUMMARY ? '' : ` — ${topFemale.avgPct.toFixed(1)}%`} — ${isPrimary ? (topFemaleGr as any).grade : (topFemaleGr as any).subLevel}`, 55, topGenderY + 8);
         }
         if (unknownCount > 0) {
           doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150);
@@ -2292,12 +2303,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     const femaleNumeric = summaries.filter((s: any) => s.count > 0 && String(s.student?.gender || '').toLowerCase().startsWith('f'));
     const maleAvg = maleNumeric.length > 0 ? maleNumeric.reduce((sum, s) => sum + s.avgPct, 0) / maleNumeric.length : 0;
     const femaleAvg = femaleNumeric.length > 0 ? femaleNumeric.reduce((sum, s) => sum + s.avgPct, 0) / femaleNumeric.length : 0;
-    doc.text(`Boys average: ${maleNumeric.length > 0 ? maleAvg.toFixed(1) + '%' : 'N/A'}`, 20, genderSummaryY + 7);
-    doc.text(`Girls average: ${femaleNumeric.length > 0 ? femaleAvg.toFixed(1) + '%' : 'N/A'}`, 90, genderSummaryY + 7);
+    doc.text(`Boys average: ${maleNumeric.length > 0 ? scoreLabel(maleAvg, band, opts.classObj) : 'N/A'}`, 20, genderSummaryY + 7);
+    doc.text(`Girls average: ${femaleNumeric.length > 0 ? scoreLabel(femaleAvg, band, opts.classObj) : 'N/A'}`, 90, genderSummaryY + 7);
     if (maleNumeric.length > 0 && femaleNumeric.length > 0) {
       const gap = Math.abs(maleAvg - femaleAvg);
       const leader = maleAvg >= femaleAvg ? 'Boys' : 'Girls';
-      doc.text(`Gap: ${gap.toFixed(1)}% — ${leader} lead`, 150, genderSummaryY + 7);
+      doc.text(POINTS_ONLY_SUMMARY ? `Gap: ${leader} lead` : `Gap: ${gap.toFixed(1)}% — ${leader} lead`, 150, genderSummaryY + 7);
     }
     doc.setFontSize(pdfFontSize(doc, 7)); doc.setTextColor(150, 150, 150); doc.text('Generated by Zamifu Analytics School Management System', 105, 290, { align: 'center' });
 
@@ -2335,8 +2346,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.setFillColor(225, 230, 240); doc.rect(142, y - 2, 52, 3, 'F');
         doc.setFillColor(106, 27, 154); doc.rect(142, y - 2, 52 * Math.min(100, previous) / 100, 3, 'F');
       }
-      doc.setTextColor(37, 99, 235); doc.text(`${subject.mean.toFixed(1)}%`, 100, y);
-      if (previousExam) { doc.setTextColor(106, 27, 154); doc.text(previous != null ? `${previous.toFixed(1)}%` : '—', 198, y); }
+      doc.setTextColor(37, 99, 235); doc.text(scoreLabel(subject.mean, band, opts.classObj), 100, y);
+      if (previousExam) { doc.setTextColor(106, 27, 154); doc.text(previous != null ? scoreLabel(previous, band, opts.classObj) : '—', 198, y); }
       doc.setTextColor(0, 0, 0);
     });
 
@@ -2346,8 +2357,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const grade = overallGradeWithBand(subject.mean, band, opts.classObj).subLevel;
       const status = statusForGrade(grade);
       let changeLabel = '—';
-      if (change != null) changeLabel = change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
-      return [String(i + 1), subject.name, `${subject.mean.toFixed(1)}%`, previous != null ? `${previous.toFixed(1)}%` : '—', changeLabel, grade, status];
+      if (change != null && !POINTS_ONLY_SUMMARY) changeLabel = change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`;
+      return [String(i + 1), subject.name, scoreLabel(subject.mean, band, opts.classObj), previous != null ? scoreLabel(previous, band, opts.classObj) : '—', changeLabel, grade, status];
     });
     autoTable(doc, {
       startY: Math.min(190, 32 + subjectStats.length * 6 + 2),
@@ -2370,17 +2381,17 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.text(`Total Learners: ${totalStudents}`, 20, 36);
     doc.text(`Male: ${boys} (${totalStudents ? ((boys / totalStudents) * 100).toFixed(1) : '0.0'}%)`, 75, 36);
     doc.text(`Female: ${girls} (${totalStudents ? ((girls / totalStudents) * 100).toFixed(1) : '0.0'}%)`, 130, 36);
-    doc.text(`Male Average: ${boys > 0 ? maleAvg.toFixed(1) + '%' : 'N/A'}`, 75, 46);
-    doc.text(`Female Average: ${girls > 0 ? femaleAvg.toFixed(1) + '%' : 'N/A'}`, 130, 46);
+    doc.text(`Male Average: ${boys > 0 ? scoreLabel(maleAvg, band, opts.classObj) : 'N/A'}`, 75, 46);
+    doc.text(`Female Average: ${girls > 0 ? scoreLabel(femaleAvg, band, opts.classObj) : 'N/A'}`, 130, 46);
     if (boys > 0) {
       doc.setFillColor(37, 99, 235); doc.rect(14, 64, 8, 8, 'F');
-      doc.setTextColor(0, 0, 0); doc.text(`Male (${boys} learners): ${maleAvg.toFixed(1)}%`, 25, 70);
+      doc.setTextColor(0, 0, 0); doc.text(`Male (${boys} learners): ${scoreLabel(maleAvg, band, opts.classObj)}`, 25, 70);
       doc.setFillColor(200, 220, 255); doc.rect(14, 74, 182, 6, 'F');
       doc.setFillColor(37, 99, 235); doc.rect(14, 74, Math.max(1, 182 * maleAvg / 100), 6, 'F');
     }
     if (girls > 0) {
       doc.setFillColor(236, 72, 153); doc.rect(14, 86, 8, 8, 'F');
-      doc.setTextColor(0, 0, 0); doc.text(`Female (${girls} learners): ${femaleAvg.toFixed(1)}%`, 25, 92);
+      doc.setTextColor(0, 0, 0); doc.text(`Female (${girls} learners): ${scoreLabel(femaleAvg, band, opts.classObj)}`, 25, 92);
       doc.setFillColor(255, 200, 230); doc.rect(14, 96, 182, 6, 'F');
       doc.setFillColor(236, 72, 153); doc.rect(14, 96, Math.max(1, 182 * femaleAvg / 100), 6, 'F');
     }
@@ -2388,7 +2399,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const gap = Math.abs(maleAvg - femaleAvg); const leader = maleAvg >= femaleAvg ? 'Male' : 'Female';
       doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 9));
       doc.setTextColor(gap > 10 ? 220 : gap > 5 ? 249 : 22, gap > 10 ? 38 : gap > 5 ? 115 : 163, gap > 10 ? 38 : gap > 5 ? 115 : 74);
-      doc.text(`Gender Gap: ${gap.toFixed(1)}% — ${leader} learners lead by ${gap.toFixed(1)}%`, 14, 110);
+      doc.text(POINTS_ONLY_SUMMARY ? `Gender Gap: ${leader} learners lead` : `Gender Gap: ${gap.toFixed(1)}% — ${leader} learners lead by ${gap.toFixed(1)}%`, 14, 110);
       doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal'); doc.setFontSize(pdfFontSize(doc, 8));
     }
     const genderSubjectRows = allSubjects.map((sub) => {
@@ -2397,8 +2408,10 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const mAvg = maleVals.length ? maleVals.reduce((a: number, b: number) => a + b, 0) / maleVals.length : null;
       const fAvg = femaleVals.length ? femaleVals.reduce((a: number, b: number) => a + b, 0) / femaleVals.length : null;
       const diff = mAvg !== null && fAvg !== null ? mAvg - fAvg : null;
-      const leader = diff === null ? 'N/A' : diff > 0.5 ? `M +${diff.toFixed(1)}%` : diff < -0.5 ? `F +${Math.abs(diff).toFixed(1)}%` : 'Equal';
-      return [sub === 'Creative Arts' ? 'C-Arts' : sub, mAvg !== null ? `${mAvg.toFixed(1)}%` : 'N/A', fAvg !== null ? `${fAvg.toFixed(1)}%` : 'N/A', leader];
+      const leader = diff === null ? 'N/A' : POINTS_ONLY_SUMMARY
+        ? (diff > 0.5 ? 'Male' : diff < -0.5 ? 'Female' : 'Equal')
+        : diff > 0.5 ? `M +${diff.toFixed(1)}%` : diff < -0.5 ? `F +${Math.abs(diff).toFixed(1)}%` : 'Equal';
+      return [sub === 'Creative Arts' ? 'C-Arts' : sub, mAvg !== null ? scoreLabel(mAvg, band, opts.classObj) : 'N/A', fAvg !== null ? scoreLabel(fAvg, band, opts.classObj) : 'N/A', leader];
     });
     autoTable(doc, {
       startY: 120,
