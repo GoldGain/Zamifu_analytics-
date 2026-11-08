@@ -50,8 +50,8 @@ import {
   Activity,
   Package,
   Gift,
-}   ExternalLink,
-from 'lucide-react';
+  ExternalLink,
+} from 'lucide-react';
 
 interface NavItem {
   label: string;
