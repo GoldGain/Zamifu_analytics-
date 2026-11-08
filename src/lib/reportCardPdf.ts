@@ -1038,14 +1038,17 @@ export function drawResultsTable(
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
   // Primary reports carry no points, so the per-assessment Pts column is
   // omitted entirely instead of printed with dashes.
-  const assessmentCellCount = assessmentColumns.length * (pointsMax > 0 ? 3 : 2);
+  // Points-only assessments print no marks column at all (no header, no cells).
+  const marksColumn = !hideMarks;
+  const assessmentCellCount = assessmentColumns.length * ((pointsMax > 0 ? 3 : 2) - (marksColumn ? 0 : 1));
   const areaLabel = is844 ? 'Subject' : 'Learning Area';
   const levelLabel = is844 ? 'Grade' : 'Performance Level';
   const tableHead = assessmentColumns.length
-    ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => pointsMax > 0
-        ? [`${column.label}\nMarks`, `${column.label}\nPts`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]
-        : [`${column.label}\nMarks`, `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
-    : ['No.', areaLabel, hideMarks ? 'Marks' : 'Marks (/100)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
+    ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => [
+        ...(marksColumn ? [`${column.label}\nMarks`] : []),
+        ...(pointsMax > 0 ? [`${column.label}\nPts`] : []),
+        `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+    : ['No.', areaLabel, ...(marksColumn ? ['Marks (/100)'] : []), ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const excluded = isExcludedResult(r);
     const excludedCode = excludedResultCode(r) || 'X';
@@ -1061,7 +1064,7 @@ export function drawResultsTable(
       assessmentColumns.forEach((column) => {
         const value = r.assessmentValues?.[column.id];
         if (value == null) {
-          row.push(...(pointsMax > 0 ? ['—', '—', '—'] : ['—', '—']));
+          row.push(...(marksColumn ? ['—'] : []), ...(pointsMax > 0 ? ['—', '—'] : ['—']));
           return;
         }
         const metric = typeof value === 'object'
@@ -1072,12 +1075,12 @@ export function drawResultsTable(
         const marksLabel = Number(metric.outOf) === 100
           ? Number(metric.marks).toFixed(0)
           : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
-        row.push(hideMarks ? '—' : marksLabel, ...(pointsMax > 0 ? [examGrade.points ?? '—'] : []), examLevel || '—');
+        row.push(...(marksColumn ? [marksLabel] : []), ...(pointsMax > 0 ? [examGrade.points ?? '—'] : []), examLevel || '—');
       });
       row.push(excluded ? excludedCode : `${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
-      row.push(hideMarks ? '—' : (excluded ? excludedCode : `${pct.toFixed(0)}/100`));
+      if (marksColumn) row.push(excluded ? excludedCode : `${pct.toFixed(0)}/100`);
       if (showDeviation) row.push(deviation);
     }
     if (pointsMax > 0) row.push(grading?.points ?? '—');
@@ -1090,10 +1093,12 @@ export function drawResultsTable(
   const totalMarks = options.rankingDetails?.totalMarks ?? includedRows.reduce((sum, row) => sum + getPercentage(row), 0);
   const totalMarksLabel = `${Math.round(totalMarks)} / ${sevenSubjectRanking ? 700 : includedRows.length * 100}`;
   const totalPoints = options.rankingDetails?.totalPoints ?? includedRows.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
-  const totalMarksRow = new Array(tableHead.length).fill('');
   const averageIndex = 2 + assessmentCellCount;
-  totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? averageIndex : 2] = hideMarks ? '—' : totalMarksLabel;
-  tableBody.push(totalMarksRow);
+  if (marksColumn) {
+    const totalMarksRow = new Array(tableHead.length).fill('');
+    totalMarksRow[1] = 'TOTAL MARKS'; totalMarksRow[assessmentColumns.length ? averageIndex : 2] = totalMarksLabel;
+    tableBody.push(totalMarksRow);
+  }
   if (pointsMax > 0) {
     const totalPointsRow = new Array(tableHead.length).fill('');
     totalPointsRow[1] = 'TOTAL POINTS'; totalPointsRow[assessmentColumns.length ? averageIndex + 1 + (showDeviation ? 1 : 0) : 3 + (showDeviation ? 1 : 0)] = `${totalPoints || '—'} / ${sevenSubjectRanking ? 7 * pointsMax : includedRows.length * pointsMax}`;
@@ -1120,6 +1125,24 @@ export function drawResultsTable(
     const assignedWidth = Object.values(combinedColumnStyles).reduce((sum: number, style: any) => sum + Number(style.cellWidth || 0), 0);
     combinedColumnStyles[nextIndex] = { cellWidth: Math.max(20, 192 - assignedWidth), halign: 'left' };
   }
+  const plainColumnStyles: Record<number, any> = isPrimary
+    ? (showStream
+      ? { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 16 }, ...(showDeviation ? { 3: { cellWidth: 15 } } : {}), 4: { cellWidth: 17 }, 5: { cellWidth: 15 }, 6: { cellWidth: 15 }, 7: { cellWidth: 21, halign: 'left' }, 8: { cellWidth: 62, halign: 'left' } }
+      : { 0: { cellWidth: 7 }, 1: { cellWidth: 25, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 18 }, ...(showDeviation ? { 3: { cellWidth: 16 } } : {}), 4: { cellWidth: 17 }, 5: { cellWidth: 16 }, 6: { cellWidth: 22, halign: 'left' }, 7: { cellWidth: 71, halign: 'left' } })
+    : (showStream
+      ? { 0: { cellWidth: 7 }, 1: { cellWidth: 22, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 15 }, ...(showDeviation ? { 3: { cellWidth: 14 } } : {}), 4: { cellWidth: 13 }, 5: { cellWidth: 16 }, 6: { cellWidth: 15 }, 7: { cellWidth: 15, halign: 'left' }, 8: { cellWidth: 20 }, 9: { cellWidth: 55, halign: 'left' } }
+      : { 0: { cellWidth: 7 }, 1: { cellWidth: 23, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 17 }, ...(showDeviation ? { 3: { cellWidth: 16 } } : {}), 4: { cellWidth: 15 }, 5: { cellWidth: 17 }, 6: { cellWidth: 15, halign: 'left' }, 7: { cellWidth: 22 }, 8: { cellWidth: 60, halign: 'left' } });
+  // When the marks column is dropped, shift the remaining fixed widths left so
+  // the layout stays exact instead of leaving a gap where Marks used to be.
+  const resolvedColumnStyles: Record<number, any> = assessmentColumns.length
+    ? combinedColumnStyles
+    : marksColumn
+      ? plainColumnStyles
+      : Object.fromEntries(Object.entries(plainColumnStyles).flatMap(([key, style]) => {
+          const index = Number(key);
+          if (index === 2) return [];
+          return [[index > 2 ? index - 1 : index, style]];
+        }));
   autoTable(doc, {
     startY,
     head: [tableHead],
@@ -1130,15 +1153,7 @@ export function drawResultsTable(
     headStyles: { fillColor: [223, 242, 216], textColor: [26, 35, 126], fontSize: pdfFontSize(doc, COMPACT_MODE ? 5.3 : 7), cellPadding: 0.55, halign: 'center' },
     alternateRowStyles: { fillColor: [244, 250, 239] }, margin: { left: 9, right: 9 },
     tableLineColor: [74, 112, 117], tableLineWidth: 0.45,
-    columnStyles: assessmentColumns.length
-      ? combinedColumnStyles
-      : isPrimary
-      ? (showStream
-        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 24, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 16 }, ...(showDeviation ? { 3: { cellWidth: 15 } } : {}), 4: { cellWidth: 17 }, 5: { cellWidth: 15 }, 6: { cellWidth: 15 }, 7: { cellWidth: 21, halign: 'left' }, 8: { cellWidth: 62, halign: 'left' } }
-        : { 0: { cellWidth: 7 }, 1: { cellWidth: 25, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 18 }, ...(showDeviation ? { 3: { cellWidth: 16 } } : {}), 4: { cellWidth: 17 }, 5: { cellWidth: 16 }, 6: { cellWidth: 22, halign: 'left' }, 7: { cellWidth: 71, halign: 'left' } })
-      : (showStream
-        ? { 0: { cellWidth: 7 }, 1: { cellWidth: 22, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 15 }, ...(showDeviation ? { 3: { cellWidth: 14 } } : {}), 4: { cellWidth: 13 }, 5: { cellWidth: 16 }, 6: { cellWidth: 15 }, 7: { cellWidth: 15, halign: 'left' }, 8: { cellWidth: 20 }, 9: { cellWidth: 55, halign: 'left' } }
-        : { 0: { cellWidth: 7 }, 1: { cellWidth: 23, fontStyle: 'bold', halign: 'left' }, 2: { cellWidth: 17 }, ...(showDeviation ? { 3: { cellWidth: 16 } } : {}), 4: { cellWidth: 15 }, 5: { cellWidth: 17 }, 6: { cellWidth: 15, halign: 'left' }, 7: { cellWidth: 22 }, 8: { cellWidth: 60, halign: 'left' } }),
+    columnStyles: resolvedColumnStyles,
     didParseCell: (data: any) => {
       const teacherIndex = tableHead.indexOf("Teacher's Name");
       if (data.column.index === teacherIndex) data.cell.styles.halign = 'left';

@@ -199,7 +199,7 @@ export default function StudentReportCard() {
     if (!student || !selectedTerm) return;
     const { data } = await supabaseUntyped
       .from('results')
-      .select('*, subjects(name), terms(name, academic_year), school_exams(name, type)')
+      .select('*, subjects(name), terms(name, academic_year), school_exams(name, type, result_input_type)')
       .eq('student_id', student.id)
       .eq('school_id', student.school_id)
       .eq('term_id', selectedTerm)
@@ -241,7 +241,7 @@ export default function StudentReportCard() {
     if (!student) return;
     const { data: allResults } = await supabaseUntyped
       .from('results')
-        .select('percentage, marks, mark_code, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type)')
+        .select('percentage, marks, mark_code, out_of, term_id, exam_id, terms(name, academic_year), school_exams(name, type, result_input_type)')
         .eq('student_id', student.id)
         .eq('school_id', student.school_id)
       .order('terms(academic_year)', { ascending: true })
