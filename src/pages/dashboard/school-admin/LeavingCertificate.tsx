@@ -201,8 +201,8 @@ export default function LeavingCertificate() {
     void loadBulkTable(targets);
   };
 
-  const [fillValues, setFillValues] = useState({ classEnrolled: '', standardLeft: '', dateLeft: '', dateOfIssue: '' });
-  const applyFill = (key: 'classEnrolled' | 'standardLeft' | 'dateLeft' | 'dateOfIssue') => {
+  const [fillValues, setFillValues] = useState({ classEnrolled: '', standardLeft: '', dateEnrolled: '', dateLeft: '', dateOfIssue: '' });
+  const applyFill = (key: 'classEnrolled' | 'standardLeft' | 'dateEnrolled' | 'dateLeft' | 'dateOfIssue') => {
     const value = fillValues[key];
     if (!value) return toast.error('Choose a value to apply first.');
     const targets = filteredStudents.filter((student) => Boolean(bulkRows[student.id]));
@@ -339,7 +339,7 @@ export default function LeavingCertificate() {
       </div>
       <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 space-y-2">
         <p className="text-xs font-semibold text-blue-950">Fill the selected class at once</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="block text-[11px] font-medium text-blue-900">Class enrolled
             <div className="mt-1 flex gap-1">
               <select value={fillValues.classEnrolled} onChange={(e) => setFillValues((v) => ({ ...v, classEnrolled: e.target.value }))} className="w-full rounded border border-blue-200 bg-white px-2 py-1 text-xs">
@@ -356,6 +356,12 @@ export default function LeavingCertificate() {
                 {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{leavingCertificateStandardLabel(n, certificate?.standardCurriculum)}</option>)}
               </select>
               <button type="button" onClick={() => applyFill('standardLeft')} className="rounded bg-blue-700 px-2 py-1 text-[11px] font-semibold text-white">Apply</button>
+            </div>
+          </label>
+          <label className="block text-[11px] font-medium text-blue-900">Date enrolled
+            <div className="mt-1 flex gap-1">
+              <input type="date" value={fillValues.dateEnrolled} onChange={(e) => setFillValues((v) => ({ ...v, dateEnrolled: e.target.value }))} className="w-full rounded border border-blue-200 bg-white px-2 py-1 text-xs" />
+              <button type="button" onClick={() => applyFill('dateEnrolled')} className="rounded bg-blue-700 px-2 py-1 text-[11px] font-semibold text-white">Apply</button>
             </div>
           </label>
           <label className="block text-[11px] font-medium text-blue-900">Date left
