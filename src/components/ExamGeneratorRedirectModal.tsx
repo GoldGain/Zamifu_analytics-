@@ -39,15 +39,25 @@ export default function ExamGeneratorRedirectModal({ open, onClose }: { open: bo
           <div>
             <h2 className="text-lg font-black text-gray-900">Opening the Exam Generator</h2>
             <p className="mt-1 text-sm text-gray-600">
-              You are being redirected to <strong>Zamifu Learn</strong> to use the Exam Generator.
+              You are being redirected to <strong>Zamifu Smart Learn</strong>, our intelligent tutoring and
+              exam-paper platform, where the generator lives. You will arrive signed in as a teacher - no second password.
             </p>
           </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-          Accessing the exam generator requires a Zamifu Learn subscription:{' '}
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+          <p className="font-bold">What Zamifu Smart Learn gives you</p>
+          <p className="mt-1 leading-relaxed">
+            One subscription covers <strong>everything</strong> in Zamifu Learn, not just the generator:
+            the AI tutor, exam-paper generation and marking, revision notes, topical practice, the library and
+            live lessons with teachers. You are not paying per paper.
+          </p>
+        </div>
+
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Generating papers requires an active Zamifu Learn subscription:{' '}
           <strong>Day pass KES 50</strong>, <strong>Week KES 300</strong>, <strong>Month KES 1000</strong>.
-          You will be signed in automatically — no second password.
+          You will be signed in automatically - no second password.
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
