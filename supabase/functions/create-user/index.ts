@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
 
     const requestedRole = String(role).trim().toLowerCase();
     const profileRole = requestedRole === "learner" ? "student" : requestedRole;
-    const supportedRoles = ["super_admin", "school_admin", "teacher", "student", "parent", "master_super_admin", "reseller_super_admin", "bursar", "librarian"];
+    const supportedRoles = ["super_admin", "school_admin", "teacher", "student", "parent", "master_super_admin", "reseller_super_admin", "bursar", "librarian", "store_keeper"];
     if (!supportedRoles.includes(profileRole)) {
       return new Response(JSON.stringify({ error: "Unsupported account role" }), {
         status: 400,
@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     }
 
     const effectiveSchoolId = String(school_id || callerProfile.school_id || "").trim();
-    const schoolScopedRoles = ["teacher", "student", "parent", "bursar", "librarian"];
+    const schoolScopedRoles = ["teacher", "student", "parent", "bursar", "librarian", "store_keeper"];
     if (schoolScopedRoles.includes(profileRole) && !effectiveSchoolId) {
       return new Response(JSON.stringify({ error: "A school is required for this account role" }), {
         status: 400,
