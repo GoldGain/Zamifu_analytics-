@@ -299,8 +299,8 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
       if (!Number.isFinite(points) || points < 1 || points > 8) {
         return { markCode: undefined, marks: NaN, percentage: NaN, points: NaN as number | null };
       }
-      const percentage = Math.round((points / 8) * 100);
-      return { markCode: undefined, marks: Math.round((percentage / 100) * outOf), percentage, points };
+      // Store the point itself — no marks, no percentage.
+      return { markCode: undefined, marks: 0, percentage: 0, points };
     }
 
     const marks = parseFloat(text);
@@ -341,7 +341,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         grade844: grades.grade844,
       };
     });
-    const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || b.percentage - a.percentage);
+    const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || (usesPoints ? Number(b.cbcGrade?.points ?? 0) - Number(a.cbcGrade?.points ?? 0) : b.percentage - a.percentage));
     sorted.forEach((row, i) => { row.position = i + 1; });
     setManualPreview(sorted);
     setManualPreviewReady(true);
@@ -351,7 +351,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   // ── Download helpers ─────────────────────────────────────────────────────────
   const is844Class = is844Curriculum(currentClassData);
   const getMainGrade = (row: ProcessedRow) => row.markCode || gradeLabelForClass(row.percentage, currentClassData);
-  const getMainPoints = (row: ProcessedRow) => row.markCode ? 0 : gradePointsForClass(row.percentage, currentClassData);
+  const getMainPoints = (row: ProcessedRow) => row.markCode ? 0 : (usesPoints ? Number(row.cbcGrade?.points ?? 0) : gradePointsForClass(row.percentage, currentClassData));
   const getMainDescriptor = (row: ProcessedRow) => row.markCode === 'X' ? 'Missing marks / absent' : row.markCode === 'Y' ? 'Cheated examination' : calculateGradeForClass(row.percentage, currentClassData).descriptor;
 
   const downloadManualPDF = () => {
@@ -476,11 +476,12 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
         term_id: selectedTerm,
         academic_year: new Date().getFullYear().toString(),
         curriculum: currentClassData?.curriculum || 'CBE',
-        marks: row.marks,
+        // Points-only assessments persist the point and nothing derived from it.
+        marks: usesPoints ? null : row.marks,
         mark_code: row.markCode || null,
-        out_of: row.out_of,
-        percentage: row.percentage,
-        converted_marks: row.percentage,
+        out_of: usesPoints ? null : row.out_of,
+        percentage: usesPoints ? null : row.percentage,
+        converted_marks: usesPoints ? null : row.percentage,
         // For primary: sub-level is null (no EE1/ME1 etc.) and points are null
         cbc_sublevel: isPrimaryClass ? null : (row.cbcGrade.subLevel || null),
         cbc_grade: row.cbcGrade.grade,
@@ -663,7 +664,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
             grade844: grades.grade844,
           };
         }).filter(Boolean) as ProcessedRow[];
-        const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || b.percentage - a.percentage);
+        const sorted = [...processed].sort((a, b) => (a.markCode ? 1 : 0) - (b.markCode ? 1 : 0) || (usesPoints ? Number(b.cbcGrade?.points ?? 0) - Number(a.cbcGrade?.points ?? 0) : b.percentage - a.percentage));
         sorted.forEach((row, i) => { row.position = i + 1; });
         setCsvData(sorted);
         setPreview(true);
@@ -828,19 +829,21 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
             )}
           </div>
 
-          {/* Out of */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Out of (max marks)</label>
-            <input
-              type="number"
-              value={outOf}
-              onChange={e => setOutOf(parseInt(e.target.value) || 100)}
-              min={1}
-              max={1000}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
-              placeholder="e.g. 30, 50, 100"
-            />
-          </div>
+          {/* Out of — irrelevant for points-only assessments */}
+          {!usesPoints && (
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Out of (max marks)</label>
+              <input
+                type="number"
+                value={outOf}
+                onChange={e => setOutOf(parseInt(e.target.value) || 100)}
+                min={1}
+                max={1000}
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+                placeholder="e.g. 30, 50, 100"
+              />
+            </div>
+          )}
         </div>
         {students.length > 0 && (
           <p className="text-xs text-green-600 mt-2">{students.length} students found in this class</p>
@@ -903,9 +906,9 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{usesPoints ? 'Points (1-8)' : `Marks (out of ${outOf})`}</th>
                         {manualPreviewReady && (
                           <>
-                            <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>
-                            <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{currentGradeLabel}</th>
-                            <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Points</th>
+                            {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>}
+                            {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{currentGradeLabel}</th>}
+                            {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Points</th>}
                             <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Rank</th>
                           </>
                         )}
@@ -927,26 +930,36 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                             <td className="py-2 px-3">
                               <input
                                 type="text"
+                                inputMode={usesPoints ? 'numeric' : 'text'}
+                                maxLength={usesPoints ? 1 : undefined}
                                 min={0}
-                                max={outOf}
+                                max={usesPoints ? 8 : outOf}
                                 value={row.marks}
-                                onChange={e => updateManualMark(idx, e.target.value)}
+                                onChange={e => {
+                                  const raw = e.target.value;
+                                  // Points mode: whole numbers 1-8 only — 9, 0 and 4.5 are rejected as typed.
+                                  updateManualMark(idx, usesPoints ? raw.replace(/[^1-8]/g, '').slice(0, 1) : raw);
+                                }}
                                 onKeyDown={e => handleMarkKeyDown(e, idx)}
                                 data-mark-idx={idx}
-                                placeholder={`0 - ${outOf} or X/Y`}
+                                placeholder={usesPoints ? '1 - 8' : `0 - ${outOf} or X/Y`}
                                 className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB] text-center"
                                 title="Use Arrow Up/Down or Enter to navigate between students"
                               />
                             </td>
                             {manualPreviewReady && previewRow && (
                               <>
-                                <td className="py-2 px-3 font-semibold">{previewRow.markCode || `${previewRow.percentage}%`}</td>
-                                <td className="py-2 px-3">
-                                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getMainGrade(previewRow))}`}>
-                                    {getMainGrade(previewRow)}
-                                  </span>
-                                </td>
-                                <td className="py-2 px-3">{getMainPoints(previewRow)}</td>
+                                {!usesPoints && (
+                                  <>
+                                    <td className="py-2 px-3 font-semibold">{previewRow.markCode || `${previewRow.percentage}%`}</td>
+                                    <td className="py-2 px-3">
+                                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getMainGrade(previewRow))}`}>
+                                        {getMainGrade(previewRow)}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3">{getMainPoints(previewRow)}</td>
+                                  </>
+                                )}
                                 <td className="py-2 px-3">
                                   {previewRow.position === 1 && <span className="text-yellow-500 font-bold">🥇 1st</span>}
                                   {previewRow.position === 2 && <span className="text-gray-400 font-bold">🥈 2nd</span>}

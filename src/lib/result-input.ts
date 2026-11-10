@@ -74,10 +74,11 @@ export function validateEntry(
     if (!Number.isInteger(value)) return { ok: false, error: 'Points must be a whole number from 1 to 8.' };
     if (value < 1 || value > 8) return { ok: false, error: `Points must be between 1 and 8 (got ${value}).` };
     const level = levelForPoints(value);
+    // Points-only: the point IS the result. Inventing marks/percentage here is
+    // what made 4 points read back as 5 after a round trip.
     return {
       ok: true,
       points: value,
-      marks: Math.round((value / 8) * 100),
       grade: level?.grade,
       descriptor: level?.descriptor,
     };
