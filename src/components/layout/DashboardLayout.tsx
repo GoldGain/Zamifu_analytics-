@@ -134,6 +134,10 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Refer & Earn', icon: <Gift className="w-5 h-5" />, path: '/school-admin/refer-and-earn' },
     { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
   ],
+  'store-keeper': [
+    { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/store-keeper' },
+    { label: 'Inventory', icon: <Package className="w-5 h-5" />, path: '/store-keeper/inventory' },
+  ],
   'bursar': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/bursar' },
     { label: 'Fee Management', icon: <CreditCard className="w-5 h-5" />, path: '/bursar/fees' },

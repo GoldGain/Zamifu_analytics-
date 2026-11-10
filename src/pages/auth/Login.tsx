@@ -44,6 +44,7 @@ export default function Login() {
     else if (role === 'super_admin') navigate('/super-admin', { replace: true });
     else if (role === 'school_admin') navigate('/school-admin', { replace: true });
     else if (role === 'bursar') navigate('/bursar/fees', { replace: true });
+    else if (role === 'store_keeper') navigate('/store-keeper/inventory', { replace: true });
     else if (role === 'librarian') navigate('/librarian/library', { replace: true });
     else if (role === 'teacher') navigate('/teacher', { replace: true });
     else if (role === 'student') navigate('/student', { replace: true });
@@ -153,6 +154,8 @@ export default function Login() {
         navigate('/school-admin', { replace: true });
       } else if (role === 'bursar') {
         navigate('/bursar/fees', { replace: true });
+      } else if (role === 'store_keeper') {
+        navigate('/store-keeper/inventory', { replace: true });
       } else if (role === 'librarian') {
         navigate('/librarian/library', { replace: true });
       } else if (role === 'teacher') {

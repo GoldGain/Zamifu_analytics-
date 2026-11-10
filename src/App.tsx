@@ -82,6 +82,7 @@ import SchoolAdminSubscriptionReceipts from '@/pages/dashboard/school-admin/Subs
 import SchoolAdminActivityHistory from '@/pages/dashboard/school-admin/ActivityHistory';
 import SchoolAdminLibrary from '@/pages/dashboard/school-admin/Library';
 import SchoolAdminInventory from '@/pages/dashboard/school-admin/Inventory';
+import StoreKeeperDashboard from '@/pages/dashboard/store-keeper/Dashboard';
 import SchoolAdminPayroll from '@/pages/dashboard/school-admin/Payroll';
 import DeanOfStudiesDashboard from '@/pages/dashboard/dean-of-studies/Dashboard';
 import TeacherDashboard from '@/pages/dashboard/teacher/Dashboard';
@@ -197,7 +198,7 @@ function ProtectedRoute({
   if (lockTarget === 'dean_of_studies' && user.role === 'teacher' && (dosAuthorization === 'checking' || dosCheckedUserId !== user.id)) return <LoadingSpinner />;
   if (lockTarget === 'dean_of_studies' && dosAuthorization === 'denied') return <Navigate to="/teacher" replace />;
 
-  const schoolScopedRole = ['school_admin', 'bursar', 'librarian', 'teacher', 'student', 'parent'].includes(user.role);
+  const schoolScopedRole = ['school_admin', 'bursar', 'librarian', 'store_keeper', 'teacher', 'student', 'parent'].includes(user.role);
   const body = schoolScopedRole ? (
     <SchoolPortalLockGate target={lockTarget} enforceBilling>
       {children}
@@ -317,6 +318,10 @@ function AppRoutes() {
       {/* Bursar routes */}
       <Route path="/bursar" element={<ProtectedRoute allowedRoles={['bursar']}><BursarDashboard /></ProtectedRoute>} />
       <Route path="/bursar/fees" element={<ProtectedRoute allowedRoles={['bursar']}><BursarFees /></ProtectedRoute>} />
+      
+      {/* Store Keeper routes */}
+      <Route path="/store-keeper" element={<ProtectedRoute allowedRoles={['store_keeper']}><StoreKeeperDashboard /></ProtectedRoute>} />
+      <Route path="/store-keeper/inventory" element={<ProtectedRoute allowedRoles={['store_keeper']}><SchoolAdminInventory /></ProtectedRoute>} />
           <Route path="/bursar/refer-and-earn" element={<ProtectedRoute allowedRoles={['bursar']}><ReferAndEarn /></ProtectedRoute>} />
 
       {/* Librarian routes: the existing Library workspace, no school-admin modules */}
