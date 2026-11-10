@@ -1071,10 +1071,10 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                       <tr className="border-b border-gray-100 bg-gray-50">
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Rank</th>
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Learner</th> {/* Issue 26 */}
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks</th>
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Out Of</th>
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>
-                        <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{currentGradeLabel}</th>
+                        {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Marks</th>}
+                        {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Out Of</th>}
+                        {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">%</th>}
+                        {!usesPoints && <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">{currentGradeLabel}</th>}
                         <th className="text-left text-xs font-medium text-[#666666] uppercase py-2 px-3">Points</th>
                       </tr>
                     </thead>
@@ -1088,10 +1088,14 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
                             {(row.position || 0) > 3 && <span className="text-gray-500">#{row.position}</span>}
                           </td>
                           <td className="py-2 px-3 font-medium">{row.name}</td>
-                          <td className="py-2 px-3">{row.markCode || row.marks}</td>
-                          <td className="py-2 px-3">{row.out_of}</td>
-                          <td className="py-2 px-3 font-semibold">{row.markCode || `${row.percentage}%`}</td>
-                          <td className="py-2 px-3"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getMainGrade(row))}`}>{getMainGrade(row)}</span></td>
+                          {!usesPoints && (
+                            <>
+                              <td className="py-2 px-3">{row.markCode || row.marks}</td>
+                              <td className="py-2 px-3">{row.out_of}</td>
+                              <td className="py-2 px-3 font-semibold">{row.markCode || `${row.percentage}%`}</td>
+                              <td className="py-2 px-3"><span className={`text-xs font-bold px-2.5 py-1 rounded-full ${gradeColor(getMainGrade(row))}`}>{getMainGrade(row)}</span></td>
+                            </>
+                          )}
                           <td className="py-2 px-3">{getMainPoints(row)}</td>
                         </tr>
                       ))}
