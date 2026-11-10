@@ -352,7 +352,7 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const is844Class = is844Curriculum(currentClassData);
   const getMainGrade = (row: ProcessedRow) => row.markCode || gradeLabelForClass(row.percentage, currentClassData);
   const getMainPoints = (row: ProcessedRow) => row.markCode ? 0 : (usesPoints ? Number(row.cbcGrade?.points ?? 0) : gradePointsForClass(row.percentage, currentClassData));
-  const getMainDescriptor = (row: ProcessedRow) => row.markCode === 'X' ? 'Missing marks / absent' : row.markCode === 'Y' ? 'Cheated examination' : calculateGradeForClass(row.percentage, currentClassData).descriptor;
+  const getMainDescriptor = (row: ProcessedRow) => row.markCode === 'X' ? 'Missing marks / absent' : row.markCode === 'Y' ? 'Cheated examination' : (usesPoints ? (levelForPoints(getMainPoints(row))?.descriptor ?? '') : calculateGradeForClass(row.percentage, currentClassData).descriptor);
 
   const downloadManualPDF = () => {
     if (!manualPreview.length) return;
@@ -364,14 +364,13 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     doc.text('Zamifu Analytics - Results Report', 14, 15);
     doc.setFontSize(11);
     doc.text(`Class: ${className} | Learning Area: ${subjectName} | Term: ${termName}`, 14, 25);
-    doc.text(`Out of: ${outOf} marks | Date: ${new Date().toLocaleDateString()}`, 14, 32);
+    doc.text(usesPoints ? `Points (1-8) | Date: ${new Date().toLocaleDateString()}` : `Out of: ${outOf} marks | Date: ${new Date().toLocaleDateString()}`, 14, 32);
     autoTable(doc, {
       startY: 40,
-      head: [['Pos', 'Student Name', 'Adm #', 'Marks', 'Out Of', '%', currentGradeLabel, 'Points']],
-      body: manualPreview.map(row => [
-        row.position, row.name, row.admission_number, row.markCode || row.marks, row.out_of,
-        row.markCode || `${row.percentage}%`, getMainGrade(row), getMainPoints(row),
-      ]),
+      head: [usesPoints ? ['Pos', 'Student Name', 'Adm #', 'Points'] : ['Pos', 'Student Name', 'Adm #', 'Marks', 'Out Of', '%', currentGradeLabel, 'Points']],
+      body: manualPreview.map(row => usesPoints
+        ? [row.position, row.name, row.admission_number, getMainPoints(row)]
+        : [row.position, row.name, row.admission_number, row.markCode || row.marks, row.out_of, row.markCode || `${row.percentage}%`, getMainGrade(row), getMainPoints(row)]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [37, 99, 235] },
     });
@@ -382,7 +381,13 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     if (!manualPreview.length) return;
     const subjectName = subjects.find(s => s.id === selectedSubject)?.name || 'Subject';
     const className = formatClassStream(classes.find(c => c.id === selectedClass)) || 'Class';
-    const ws = XLSX.utils.json_to_sheet(manualPreview.map(row => ({
+    const ws = XLSX.utils.json_to_sheet(manualPreview.map(row => (usesPoints ? {
+      Position: row.position,
+      'Student Name': row.name,
+      'Admission #': row.admission_number,
+      Points: getMainPoints(row),
+      Descriptor: getMainDescriptor(row),
+    } : {
       Position: row.position,
       'Student Name': row.name,
       'Admission #': row.admission_number,
@@ -681,14 +686,13 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
     doc.text('Zamifu Analytics - Results Report', 14, 15);
     doc.setFontSize(11);
     doc.text(`Class: ${className} | Learning Area: ${subjectName} | Term: ${termName}`, 14, 25);
-    doc.text(`Out of: ${outOf} marks | Date: ${new Date().toLocaleDateString()}`, 14, 32);
+    doc.text(usesPoints ? `Points (1-8) | Date: ${new Date().toLocaleDateString()}` : `Out of: ${outOf} marks | Date: ${new Date().toLocaleDateString()}`, 14, 32);
     autoTable(doc, {
       startY: 40,
-      head: [['Pos', 'Student Name', 'Adm #', 'Marks', 'Out Of', '%', currentGradeLabel, 'Points']],
-      body: csvData.map(row => [
-        row.position, row.name, row.admission_number, row.markCode || row.marks, row.out_of,
-        row.markCode || `${row.percentage}%`, getMainGrade(row), getMainPoints(row),
-      ]),
+      head: [usesPoints ? ['Pos', 'Student Name', 'Adm #', 'Points'] : ['Pos', 'Student Name', 'Adm #', 'Marks', 'Out Of', '%', currentGradeLabel, 'Points']],
+      body: csvData.map(row => usesPoints
+        ? [row.position, row.name, row.admission_number, getMainPoints(row)]
+        : [row.position, row.name, row.admission_number, row.markCode || row.marks, row.out_of, row.markCode || `${row.percentage}%`, getMainGrade(row), getMainPoints(row)]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [37, 99, 235] },
     });
@@ -698,7 +702,13 @@ export default function TeacherResultsUpload({ privileged = false }: { privilege
   const downloadExcel = () => {
     const subjectName = subjects.find(s => s.id === selectedSubject)?.name || 'Subject';
     const className = formatClassStream(classes.find(c => c.id === selectedClass)) || 'Class';
-    const ws = XLSX.utils.json_to_sheet(csvData.map(row => ({
+    const ws = XLSX.utils.json_to_sheet(csvData.map(row => (usesPoints ? {
+      Position: row.position,
+      'Student Name': row.name,
+      'Admission #': row.admission_number,
+      Points: getMainPoints(row),
+      Descriptor: getMainDescriptor(row),
+    } : {
       Position: row.position,
       'Student Name': row.name,
       'Admission #': row.admission_number,
