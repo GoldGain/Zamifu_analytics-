@@ -740,7 +740,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const rows = await fetchAllRows((from, to) => {
         let query = supabaseUntyped
           .from('results')
-          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students!inner(is_active, id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
+          .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students!inner(is_active, id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(curriculum, grade_level, level, name, stream, stream_name), school_exams(name, type)').or('is_active.eq.true,is_active.is.null,status.eq.graduated', { foreignTable: 'students' })
           .in('class_id', classIds)
           .eq('term_id', selectedTerm)
           .eq('school_id', schoolId)
@@ -1093,7 +1093,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     return fetchAllRows((from, to) => {
       let query = supabaseUntyped
         .from('results')
-        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students!inner(is_active, id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
+        .select('id, school_id, student_id, class_id, subject_id, term_id, exam_id, marks, out_of, percentage, converted_marks, cbc_grade, cbc_sublevel, cbc_points, grade_844, status, created_at, published_at, students!inner(is_active, id, first_name, last_name, admission_number, assessment_number, photo_url, gender), subjects(name), classes(name, curriculum, grade_level, level, stream, stream_name), school_exams(name, type)').or('is_active.eq.true,is_active.is.null,status.eq.graduated', { foreignTable: 'students' })
         .eq('class_id', effectiveClassId)
         .eq('term_id', selectedTerm)
         .eq('school_id', user?.schoolId)
@@ -2100,7 +2100,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     while (true) {
       let q = supabaseUntyped.from('results')
         .select(selected)
-        .or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
+        .or('is_active.eq.true,is_active.is.null,status.eq.graduated', { foreignTable: 'students' })
         .in('class_id', classIds)
         .eq('term_id', termId)
         .eq('school_id', user?.schoolId)

@@ -77,6 +77,14 @@ export default function PromoteClass() {
   const topLevel = classes.reduce((max, c) => Math.max(max, levelOf(c)), 0);
   const fromIsFinal = Boolean(from) && levelOf(from) === topLevel && topLevel > 0;
   const canPromote = Boolean(from && to && levelOf(to) > levelOf(from));
+  // Grade 9 (CBE) and Form 3 (8-4-4) finish school: no destination class exists.
+  const isGraduationClass = (cls: any) => {
+    if (!cls) return false;
+    const name = String(cls.name || '').toLowerCase();
+    const level = Number(cls.level ?? cls.grade_level ?? 0);
+    return level === 9 || /\bgrade\s*9\b/.test(name) || /\bform\s*3\b/.test(name) || /\bform\s*three\b/.test(name);
+  };
+  const fromGraduates = Boolean(from) && (isGraduationClass(from) || fromIsFinal);
 
   const runClassAction = async (mode: 'promote' | 'graduate') => {
     setBusy(true);
@@ -135,22 +143,24 @@ export default function PromoteClass() {
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">Move them to</span>
-            <select value={toClassId} onChange={(e) => { setToClassId(e.target.value); setLastResult(null); setClassError(''); }}
-              disabled={fromIsFinal}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400">
-              <option value="">Select the next class</option>
-              {classes.filter((c) => !from || levelOf(c) > levelOf(from)).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}{c.stream ? ` · ${c.stream}` : ''}</option>
-              ))}
-            </select>
-          </label>
+          {!fromGraduates && (
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">Move them to</span>
+              <select value={toClassId} onChange={(e) => { setToClassId(e.target.value); setLastResult(null); setClassError(''); }}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-400">
+                <option value="">Select the next class</option>
+                {classes.filter((c) => !from || levelOf(c) > levelOf(from)).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}{c.stream ? ` · ${c.stream}` : ''}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
-        {fromIsFinal && (
-          <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            {from?.name} is the final class — learners leave school from here, so use graduation instead of promotion.
+        {fromGraduates && (
+          <p className="mt-3 rounded-lg bg-purple-50 px-3 py-2 text-sm text-purple-900">
+            {from?.name} is a graduation class. Learners finish school here, so there is no destination class — they are
+            marked as graduated and moved to the Graduated Learners list. Their results stay in the system.
           </p>
         )}
         {from && to && !canPromote && (
@@ -164,14 +174,16 @@ export default function PromoteClass() {
         )}
 
         <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" onClick={() => setClassConfirm('promote')} disabled={!canPromote || busy}
-            className="rounded-full bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-            Promote whole class
-          </button>
-          {fromIsFinal && (
+          {!fromGraduates && (
+            <button type="button" onClick={() => setClassConfirm('promote')} disabled={!canPromote || busy}
+              className="rounded-full bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              Promote whole class
+            </button>
+          )}
+          {fromGraduates && (
             <button type="button" onClick={() => setClassConfirm('graduate')} disabled={busy}
-              className="inline-flex items-center gap-2 rounded-full border border-purple-300 px-6 py-2.5 text-sm font-semibold text-purple-700 disabled:opacity-50">
-              <GraduationCap className="h-4 w-4" /> Graduate {from?.name}
+              className="inline-flex items-center gap-2 rounded-full bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+              <GraduationCap className="h-4 w-4" /> Graduate learners from {from?.name}
             </button>
           )}
         </div>
