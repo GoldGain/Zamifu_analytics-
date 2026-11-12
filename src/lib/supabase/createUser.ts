@@ -25,6 +25,29 @@ interface CreateUserResult {
   message?: string;
 }
 
+
+/**
+ * Account creation runs on /api/create-user (Vercel, service role) instead of the
+ * Supabase Edge Function, keeping the same { data, error } contract for callers.
+ */
+async function invokeCreateUser(payload: Record<string, unknown>): Promise<{ data: CreateUserResult | null; error: Error | null }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) return { data: null, error: new Error('Your session has expired. Please sign in again.') };
+  try {
+    const res = await fetch('/api/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json().catch(() => ({} as { error?: string; user?: { id: string; email: string } }));
+    if (!res.ok) return { data: null, error: new Error((json as { error?: string })?.error || `Account service returned ${res.status}.`) };
+    return { data: json as CreateUserResult, error: null };
+  } catch {
+    return { data: null, error: new Error('Could not reach the account service. Check your connection and try again.') };
+  }
+}
+
 export async function createScopedUser(input: CreateUserInput): Promise<CreateUserResult> {
   const { data: sessionData } = await supabase.auth.getSession();
   const session = sessionData.session;
@@ -36,22 +59,20 @@ export async function createScopedUser(input: CreateUserInput): Promise<CreateUs
     throw new Error('Your school-admin session could not be refreshed. Please sign in again before importing learners.');
   }
 
-  const { data, error } = await supabase.functions.invoke<CreateUserResult>('create-user', {
-    body: {
-      email: input.email.trim().toLowerCase(),
-      password: input.password,
-      first_name: input.first_name || '',
-      last_name: input.last_name || '',
-      role: input.role,
-      school_id: input.school_id || null,
-      admission_number: input.admission_number || null,
-      assessment_number: input.assessment_number || null,
-      class_id: input.class_id || null,
-      student_id: input.student_id || null,
-      existing_user_id: input.existing_user_id || null,
-      legacy_email: input.legacy_email || null,
-      metadata: input.metadata || {},
-    },
+  const { data, error } = await invokeCreateUser({
+    email: input.email.trim().toLowerCase(),
+    password: input.password,
+    first_name: input.first_name || '',
+    last_name: input.last_name || '',
+    role: input.role,
+    school_id: input.school_id || null,
+    admission_number: input.admission_number || null,
+    assessment_number: input.assessment_number || null,
+    class_id: input.class_id || null,
+    student_id: input.student_id || null,
+    existing_user_id: input.existing_user_id || null,
+    legacy_email: input.legacy_email || null,
+    metadata: input.metadata || {},
   });
 
   if (error) {
