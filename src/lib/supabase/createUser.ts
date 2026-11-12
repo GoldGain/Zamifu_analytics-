@@ -31,6 +31,9 @@ interface CreateUserResult {
  * Supabase Edge Function, keeping the same { data, error } contract for callers.
  */
 async function invokeCreateUser(payload: Record<string, unknown>): Promise<{ data: CreateUserResult | null; error: Error | null }> {
+  // Prefer the (now healthy) Edge Function; the API route stays as a fallback.
+  const viaEdge = await supabase.functions.invoke<CreateUserResult>('create-user', { body: payload });
+  if (!viaEdge.error && viaEdge.data?.user?.id) return { data: viaEdge.data, error: null };
   const { data: sessionData } = await supabase.auth.getSession();
   const accessToken = sessionData.session?.access_token;
   if (!accessToken) return { data: null, error: new Error('Your session has expired. Please sign in again.') };
