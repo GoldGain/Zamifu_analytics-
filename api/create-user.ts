@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 const SUPPORTED = ['super_admin','school_admin','teacher','student','parent','master_super_admin','reseller_super_admin','bursar','librarian','store_keeper'];
-const SCOPED = ['teacher','student','parent','bursar','librarian','store_keeper'];
+const SCOPED = ['school_admin','teacher','student','parent','bursar','librarian','store_keeper'];
 const CALLERS = ['school_admin','super_admin','master_super_admin','reseller_super_admin'];
 
 export default async function handler(req, res) {

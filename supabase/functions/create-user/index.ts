@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     }
 
     const effectiveSchoolId = String(school_id || callerProfile.school_id || "").trim();
-    const schoolScopedRoles = ["teacher", "student", "parent", "bursar", "librarian", "store_keeper"];
+    const schoolScopedRoles = ["school_admin", "teacher", "student", "parent", "bursar", "librarian", "store_keeper"];
     if (schoolScopedRoles.includes(profileRole) && !effectiveSchoolId) {
       return new Response(JSON.stringify({ error: "A school is required for this account role" }), {
         status: 400,
