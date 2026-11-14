@@ -1,7 +1,3 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
-
-/**
  * Paystack webhook for Zamifu Analytics school subscriptions.
  *
  * The shared Paystack account delivers every charge.success event to the Zamifu
@@ -10,8 +6,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
  * reference, so duplicate deliveries return already_processed instead of
  * extending a subscription twice.
  *
- * Deploy with JWT verification disabled: Paystack cannot send a Supabase token,
- * and every request is instead authenticated with the Paystack HMAC signature.
+ * Deliberately dependency-free: it talks to PostgREST with fetch so the function
+ * boots from a plain source upload without an import map.
  */
 
 type CustomField = { variable_name?: string; value?: string | number | null };
@@ -25,7 +21,8 @@ type Transaction = {
   metadata?: { custom_fields?: CustomField[] } | CustomField[] | null;
 };
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const trimmed = (value: unknown) => String(value ?? "").trim();
 
 async function hexHmacSha512(secret: string, payload: string): Promise<string> {
@@ -60,9 +57,9 @@ Deno.serve(async (request: Request) => {
   if (!supabaseUrl || !serviceRoleKey || !paystackSecret) return json({ error: "Webhook is not configured." }, 503);
 
   const raw = await request.text();
-  const provided = request.headers.get("x-paystack-signature") ?? "";
+  const provided = (request.headers.get("x-paystack-signature") ?? "").toLowerCase();
   const expected = await hexHmacSha512(paystackSecret, raw);
-  if (!provided || !constantTimeEqual(expected, provided.toLowerCase())) return json({ error: "Invalid signature." }, 401);
+  if (!provided || !constantTimeEqual(expected, provided)) return json({ error: "Invalid signature." }, 401);
 
   let event: { event?: string; data?: Transaction } | null = null;
   try { event = JSON.parse(raw); } catch { return json({ error: "Invalid JSON." }, 400); }
@@ -113,25 +110,32 @@ Deno.serve(async (request: Request) => {
     return json({ ok: false, reference, manual_review: problems });
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: activation, error: activationError } = await admin.rpc("record_verified_school_payment", {
-    p_school_id: schoolId,
-    p_payment_reference: reference,
-    p_paystack_transaction_id: transaction.id ? String(transaction.id) : null,
-    p_learners_count: learnersCount,
-    p_fee_per_learner: feePerLearner,
-    p_amount: learnersCount * feePerLearner,
-    p_currency: "KES",
-    p_term_label: period,
-    p_paid_by_email: transaction.customer?.email ?? null,
-    p_paid_by_name: null,
+  const activation = await fetch(`${supabaseUrl}/rest/v1/rpc/record_verified_school_payment`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      p_school_id: schoolId,
+      p_payment_reference: reference,
+      p_paystack_transaction_id: transaction.id ? String(transaction.id) : null,
+      p_learners_count: learnersCount,
+      p_fee_per_learner: feePerLearner,
+      p_amount: learnersCount * feePerLearner,
+      p_currency: "KES",
+      p_term_label: period,
+      p_paid_by_email: transaction.customer?.email ?? null,
+      p_paid_by_name: null,
+    }),
   });
-
-  if (activationError) {
-    console.error("Paystack webhook activation failed", reference, activationError.message);
+  const result = await activation.json().catch(() => null);
+  if (!activation.ok) {
+    console.error("Paystack webhook activation failed", reference, JSON.stringify(result).slice(0, 300));
     return json({ error: "Subscription activation failed." }, 500);
   }
 
   console.log("Paystack webhook activated school subscription", reference, schoolId);
-  return json({ ok: true, reference, subscription: activation });
+  return json({ ok: true, reference, subscription: result });
 });
