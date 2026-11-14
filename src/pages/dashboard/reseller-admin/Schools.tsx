@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { Plus, Edit, RefreshCw, Trash2, Lock, Unlock, Shield, Loader2 } from 'lucide-react';
+import { Plus, Edit, RefreshCw, Trash2, Lock, Unlock, Shield, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DEFAULT_ANNUAL_FEE_PER_LEARNER,
@@ -56,6 +56,7 @@ export default function ResellerSchools() {
   const [lockDos, setLockDos] = useState(false);
   const [lockSaving, setLockSaving] = useState(false);
   const [portfolioMap, setPortfolioMap] = useState<Map<string, { learners: number; teachers: number; parents: number; admins: number }>>(new Map());
+  const [schoolSearch, setSchoolSearch] = useState('');
 
   useEffect(() => {
     if (user) fetchData();
@@ -250,6 +251,16 @@ export default function ResellerSchools() {
     }
   };
 
+  // Instant, client-side filter: as the reseller types, the school list narrows
+  // by name (and code) without refetching.
+  const searchTerm = schoolSearch.trim().toLowerCase();
+  const visibleSchools = searchTerm
+    ? schools.filter((s) => (
+        String(s.name || '').toLowerCase().includes(searchTerm)
+        || String(s.code || '').toLowerCase().includes(searchTerm)
+      ))
+    : schools;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -441,6 +452,25 @@ export default function ResellerSchools() {
         </div>
       )}
 
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="search"
+            value={schoolSearch}
+            onChange={(e) => setSchoolSearch(e.target.value)}
+            placeholder="Search schools by name or code..."
+            aria-label="Search schools"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          />
+        </div>
+        {schoolSearch.trim() && (
+          <p className="mt-2 text-xs text-gray-500">
+            Showing {visibleSchools.length} of {schools.length} schools
+          </p>
+        )}
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-40">
@@ -448,6 +478,8 @@ export default function ResellerSchools() {
           </div>
         ) : schools.length === 0 ? (
           <div className="text-center py-12 text-gray-400">No schools yet. Add your first school.</div>
+        ) : visibleSchools.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">No school matches “{schoolSearch.trim()}”.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -470,7 +502,7 @@ export default function ResellerSchools() {
                 </tr>
               </thead>
               <tbody>
-                {schools.map((s) => (
+                {visibleSchools.map((s) => (
                   <tr key={s.id} className="border-b last:border-0 hover:bg-gray-50">
                     <td className="px-4 py-3 font-medium">
                       <div>{s.name}</div>
