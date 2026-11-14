@@ -9,6 +9,7 @@ import { normalizeLearningAreaName } from '@/lib/learningAreas';
 import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { aggregateLearnerTotals } from '@/lib/learnerTotals';
 import { isSeniorCbeClass } from '@/lib/seniorPathways';
+import { gradeFromPoints } from '@/lib/pointsGrading';
 
 export type AssessmentLearnerSummary = {
   studentId: string;
@@ -20,6 +21,10 @@ export type AssessmentLearnerSummary = {
   totalMarks?: number;
   count: number;
   avgPct: number;
+  /** Mean recorded point (1-8) when this summary came from a points-only assessment. */
+  avgPoints?: number;
+  /** True when the summarised rows were points, not marks. */
+  pointsOnly?: boolean;
   totalPoints: number;
   rankingTotalMarks?: number;
   rankingTotalPoints?: number;
@@ -100,7 +105,11 @@ export function buildAssessmentLearnerSummaries(rawResults: any[], classObj: any
   // first and marks as tie-break; Primary remains marks-only. Form 3/4 carries
   // its KNEC seven-subject ranking metrics through this same path.
   const summaries = aggregateLearnerTotals(rawResults, classObj).map((entry) => {
-    const grade = calculateGradeForClass(entry.avgPct, classObj);
+    // Points-only assessments grade straight from the recorded point so 8 is
+    // EE1. Marks-based assessments keep their existing percentage grading.
+    const grade = entry.pointsOnly
+      ? gradeFromPoints(Number(entry.avgPoints ?? 0), classObj)
+      : calculateGradeForClass(entry.avgPct, classObj);
     return {
       ...entry,
       // Kept for existing consumers that read totalPct.

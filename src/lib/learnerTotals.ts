@@ -7,6 +7,7 @@ import {
   type SchoolLevelBand,
 } from '@/lib/grading';
 import { normalizeLearningAreaName } from '@/lib/learningAreas';
+import { isPointsOnlyResult, pointsOfResult } from '@/lib/pointsGrading';
 import { isGradeTenClass, normalizeSeniorPathway } from '@/lib/seniorPathways';
 
 /** One learner's aggregated totals for a class, term and assessment filter. */
@@ -26,6 +27,10 @@ export interface LearnerTotals {
   count: number;
   /** Mean of actual counted subject slots; paired alternatives consume one slot. */
   avgPct: number;
+  /** Mean of recorded points when the assessment was points-only (1-8). */
+  avgPoints?: number;
+  /** True when every counted row held a CBC point instead of marks. */
+  pointsOnly?: boolean;
   gender: string | null;
   examName: string;
   /** Preserves exceptional X/Y status so these learners rank after numeric results. */
@@ -227,18 +232,31 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
 
   return Array.from(entries.values()).map((entry) => {
     const rawSubjects: Record<string, number> = {};
+    const pointsAreas = new Set<string>();
     let markCode: 'X' | 'Y' | null = null;
     winners.get(entry.studentId)?.forEach((winner, area) => {
       const excludedCode = excludedResultCode(winner.row);
       if (excludedCode) {
         if (excludedCode === 'Y' || markCode === null) markCode = excludedCode;
       } else {
-        rawSubjects[area] = rowPercentage(winner.row);
+        // A points-only row has no marks, out_of or percentage at all - the
+        // recorded point (1-8) IS the result. Reading a percentage here is what
+        // made 8 points read back as 8% (BE2) instead of EE1.
+        const point = isPointsOnlyResult(winner.row) ? pointsOfResult(winner.row) : null;
+        if (point !== null) {
+          rawSubjects[area] = point;
+          pointsAreas.add(area);
+        } else {
+          rawSubjects[area] = rowPercentage(winner.row);
+        }
       }
     });
     const effectiveNames = effectiveMeanSubjects(rawSubjects);
     const totalMarks = effectiveNames.reduce((sum, name) => sum + (rawSubjects[name] || 0), 0);
-    const totalPoints = effectiveNames.reduce((sum, name) => sum + (band === 'primary' ? 0 : gradePointsForClass(rawSubjects[name] || 0, classObj)), 0);
+    const pointsOnly = effectiveNames.length > 0 && effectiveNames.every((name) => pointsAreas.has(name));
+    const totalPoints = pointsOnly
+      ? totalMarks
+      : effectiveNames.reduce((sum, name) => sum + (band === 'primary' ? 0 : gradePointsForClass(rawSubjects[name] || 0, classObj)), 0);
     const sevenSubjectMetrics = is844
       ? calculateKnecSevenSubjectMetrics(rawSubjects)
       : isGradeTenClass(classObj)
@@ -251,6 +269,8 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
       totalMarks,
       totalPoints,
       count: effectiveNames.length,
+      pointsOnly,
+      avgPoints: pointsOnly && effectiveNames.length ? totalMarks / effectiveNames.length : 0,
       avgPct: is844 && sevenSubjectMetrics?.subjects.length
         ? (sevenSubjectMetrics.totalPoints / (sevenSubjectMetrics.subjects.length * 12)) * 100
         : effectiveNames.length ? totalMarks / effectiveNames.length : 0,

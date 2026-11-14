@@ -32,6 +32,7 @@ import {
   type PdfFontSize,
 } from '@/lib/pdfFontSize';
 import { calculateGradeForClass, gradePointsForClass, getSchoolLevelBand, is844Curriculum, rankingPointsMaxForClass } from '@/lib/grading';
+import { gradeFromPoints } from '@/lib/pointsGrading';
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
@@ -363,9 +364,14 @@ export default function ParentChildReportCard() {
       const term = terms.find(t => t.id === selectedTerm);
       const learnerMetrics = aggregateLearnerTotals(results.map((row: any) => ({ ...row, students: selectedChild })), classDataForGrading)[0];
       const rankingDetails = learnerMetrics?.rankingSubjects?.length ? { subjects: learnerMetrics.rankingSubjects, totalMarks: learnerMetrics.rankingTotalMarks || 0, totalPoints: learnerMetrics.rankingTotalPoints || 0 } : undefined;
-      const avgPercentage = learnerMetrics?.count ? learnerMetrics.avgPct : 0;
+      // Points-only papers grade from the point (8 = EE1), never from 8%.
+      const pointsOnlyCard = learnerMetrics?.pointsOnly === true
+        || (results[0]?.school_exams as any)?.result_input_type === 'points';
+      const avgPercentage = learnerMetrics?.count
+        ? Number(pointsOnlyCard ? (learnerMetrics.avgPoints ?? 0) : learnerMetrics.avgPct)
+        : 0;
       const totalPoints = isPrimary ? null : (rankingDetails?.totalPoints ?? learnerMetrics?.totalPoints ?? 0);
-      const deviation = learnerMetrics?.count && previousAvg !== null ? avgPercentage - previousAvg : null;
+      const deviation = learnerMetrics?.count && !pointsOnlyCard && previousAvg !== null ? avgPercentage - previousAvg : null;
       const isNew = deviation === null;
       // Prefer the unified ranking position so the parent sees the same rank as
       // the school's class summary and the learner's own portal.
@@ -395,7 +401,9 @@ export default function ParentChildReportCard() {
         name: studentFullName,
         photoUrl: selectedChild.photo_url || null,
       });
-      const overallGrade = learnerMetrics?.count ? calculateGradeForClass(avgPercentage, classDataForGrading) : null;
+      const overallGrade = learnerMetrics?.count
+        ? (pointsOnlyCard ? gradeFromPoints(avgPercentage, classDataForGrading) : calculateGradeForClass(avgPercentage, classDataForGrading))
+        : null;
       drawStudentInfo(doc, studentFullName, selectedChild.admission_number || 'N/A', formatClassStream(classDataForGrading), term?.name || '', term?.academic_year || '', positionStr, 48, results[0]?.school_exams?.name || undefined, selectedChild.assessment_number || undefined, { hideMarks: (results[0]?.school_exams as any)?.result_input_type === 'points', totalMarks: rankingDetails ? `${Math.round(rankingDetails.totalMarks)} marks out of 700` : undefined, totalPoints: rankingDetails ? `${rankingDetails.totalPoints} points out of ${rankingPointsMaxForClass(classDataForGrading)}` : undefined, pathway: selectedChild.pathway, track: selectedChild.track, overallGrade: overallGrade ? ('subLevel' in overallGrade ? overallGrade.subLevel : overallGrade.grade) : 'N/A', showPathway: usesSevenSubjectRanking(classDataForGrading) && !is844Curriculum(classDataForGrading), is844: is844Curriculum(classDataForGrading), showOverallPositions });
       const qrOptions = { assessmentNumber: selectedChild.assessment_number };
       const commentBottomY = getReportCardCommentBottomY(doc, schoolInfo, qrOptions);

@@ -48,6 +48,7 @@ import { formatClassStream } from '@/lib/class-label';
 import { fetchAllRows } from '@/lib/paginatedQuery';
 import { buildComparisonData, generateComparisonPdf, type ComparisonData } from '@/lib/compareExamsPdf';
 import { buildAssessmentLearnerSummaries } from '@/lib/assessmentAnalytics';
+import { gradeFromPoints } from '@/lib/pointsGrading';
 import { rankByPathway, rankByUnifiedRule } from '@/lib/ranking';
 import { calculateKnecSevenSubjectMetrics, excludedResultCode, isExcludedResult, usesSevenSubjectRanking } from '@/lib/learnerTotals';
 import { isSeniorCbeClass } from '@/lib/seniorPathways';
@@ -377,10 +378,14 @@ function applyExamDeviationRows(currentRows: any[], previousRows: any[]) {
   }));
 }
 
-function overallGradeWithBand(avgPct: number, band: SchoolLevelBand, classData?: any) {
-  const g = is844Curriculum(classData)
-    ? calculate844Grade(avgPct)
-    : calculateCompetencyGrade(avgPct, band);
+function overallGradeWithBand(avgPct: number, band: SchoolLevelBand, classData?: any, pointsOnly = false) {
+  // Points-only assessments are graded from the recorded point (8 -> EE1);
+  // marks-based assessments keep the percentage bands exactly as before.
+  const g: any = pointsOnly
+    ? gradeFromPoints(avgPct, classData)
+    : is844Curriculum(classData)
+      ? calculate844Grade(avgPct)
+      : calculateCompetencyGrade(avgPct, band);
   return { subLevel: 'subLevel' in g ? g.subLevel : g.grade, grade: g.grade, points: g.points, descriptor: g.descriptor };
 }
 
@@ -420,7 +425,7 @@ function mergedLearningAreas(canonical: string[], dynamic: string[]) {
   return out;
 }
 
-function computeTopLearnersPerArea(summaries: any[], areas: string[], band: SchoolLevelBand, topN: number, classData?: any) {
+function computeTopLearnersPerArea(summaries: any[], areas: string[], band: SchoolLevelBand, topN: number, classData?: any, pointsOnly = false) {
   const rows: { area: string; rank: number; name: string; stream: string; marks: number; grade: string }[] = [];
   areas.forEach((area) => {
     summaries
@@ -429,7 +434,7 @@ function computeTopLearnersPerArea(summaries: any[], areas: string[], band: Scho
       .slice(0, topN)
       .forEach((s: any, i: number) => {
         const pct = Number(s.subjects[area]);
-        const gr = overallGradeWithBand(pct, band, classData);
+        const gr = overallGradeWithBand(pct, band, classData, pointsOnly);
         rows.push({
           area,
           rank: i + 1,
@@ -443,7 +448,7 @@ function computeTopLearnersPerArea(summaries: any[], areas: string[], band: Scho
   return rows;
 }
 
-function computeSubjectGradeStats(summaries: any[], subject: string, band: SchoolLevelBand, classData?: any) {
+function computeSubjectGradeStats(summaries: any[], subject: string, band: SchoolLevelBand, classData?: any, pointsOnly = false) {
   const labels = gradeLabelsForBand(band, classData);
   const counts = Object.fromEntries(labels.map((label) => [label, 0])) as Record<string, number>;
   let totalLearners = 0;
@@ -453,7 +458,8 @@ function computeSubjectGradeStats(summaries: any[], subject: string, band: Schoo
     const value = summary.subjects[subject];
     if (value === undefined || value === null || !Number.isFinite(Number(value))) return;
     const percentage = Number(value);
-    const grade = calculateGradeForClass(percentage, classData);
+    // Points-only: grade the point itself (8 -> EE1) instead of 8%.
+    const grade: any = pointsOnly ? gradeFromPoints(percentage, classData) : calculateGradeForClass(percentage, classData);
     const label = 'subLevel' in grade ? grade.subLevel : grade.grade;
     if (counts[label] !== undefined) counts[label] += 1;
     totalLearners += 1;
@@ -466,7 +472,7 @@ function computeSubjectGradeStats(summaries: any[], subject: string, band: Schoo
     totalPoints,
     totalMarks,
     average: totalLearners > 0
-      ? (band === 'primary' ? totalMarks / totalLearners : totalPoints / totalLearners)
+      ? (pointsOnly || band === 'primary' ? totalMarks / totalLearners : totalPoints / totalLearners)
       : 0,
   };
 }
@@ -535,7 +541,7 @@ let POINTS_ONLY_SUMMARY = false;
 
 /** Points-only assessments never print marks or percentages: show the band level instead. */
 function bandLevelLabel(pct: number, band: any, classObj: any): string {
-  const grading: any = overallGradeWithBand(Number(pct) || 0, band, classObj);
+  const grading: any = overallGradeWithBand(Number(pct) || 0, band, classObj, POINTS_ONLY_SUMMARY);
   return String(grading?.subLevel ?? grading?.grade ?? '—');
 }
 function scoreLabel(pct: number, band: any, classObj: any): string {
@@ -1385,9 +1391,11 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const previousSummaries = previousComparison ? buildStudentSummary(previousComparison.results, classObj) : [];
       const previousTotals = new Map<string, number>();
       previousSummaries.forEach((summary: any) => {
-        previousTotals.set(String(summary.studentId), Number(is844
-          ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
-          : (summary.totalPct ?? 0)));
+        previousTotals.set(String(summary.studentId), Number(POINTS_ONLY_SUMMARY
+          ? (summary.totalPoints ?? 0)
+          : is844
+            ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
+            : (summary.totalPct ?? 0)));
       });
       const allSubjectsRaw = Array.from(new Set(summaries.flatMap((summary: any) => Object.keys(summary.subjects || {})))) as string[];
       const allSubjects = sortSubjects(is844 ? allSubjectsRaw : normalizeLearningAreas(allSubjectsRaw));
@@ -1469,7 +1477,12 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           ? (numericSummaries.reduce((sum: number, summary: any) => sum + Number(summary.rankingTotalPoints ?? summary.totalPoints ?? 0), 0)
             / Math.max(1, numericSummaries.reduce((sum: number, summary: any) => sum + (summary.rankingSubjects?.length || 0) * 12, 0))) * 100
           : (classMeanMarksOutOf > 0 ? (classMeanMarksValue / classMeanMarksOutOf) * 100 : 0);
-        const classGrade = overallGradeWithBand(classMeanPercentage, band, classObj);
+        const classMeanPoints = numericSummaries.length > 0
+          ? numericSummaries.reduce((sum: number, summary: any) => sum + Number(summary.avgPoints ?? 0), 0) / numericSummaries.length
+          : 0;
+        const classGrade = POINTS_ONLY_SUMMARY
+          ? overallGradeWithBand(classMeanPoints, band, classObj, true)
+          : overallGradeWithBand(classMeanPercentage, band, classObj);
 
         doc.setFillColor(232, 234, 246); doc.rect(14, statsY, 182, 68, 'F');
         doc.setFontSize(pdfFontSize(doc, 8.5)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
@@ -1511,7 +1524,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         let row = 0;
         for (const g of grades) {
           const count = numericSummaries.filter((summary: any) => {
-            const grade = overallGradeWithBand(summary.avgPct, band, classObj);
+            const grade = POINTS_ONLY_SUMMARY
+              ? overallGradeWithBand(Number(summary.avgPoints ?? 0), band, classObj, true)
+              : overallGradeWithBand(summary.avgPct, band, classObj);
             const gradeKey = isPrimary ? grade.grade : grade.subLevel;
             return gradeKey === g.label.split(' ')[0];
           }).length;
@@ -1530,7 +1545,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.setFontSize(pdfFontSize(doc, 10)); doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 35, 126);
         doc.text('TOP 10 PERFORMERS', 14, top5Y); doc.setFontSize(pdfFontSize(doc, 8)); doc.setFont('helvetica', 'normal'); doc.setTextColor(0, 0, 0);
         numericSummaries.slice(0, 10).forEach((s: any, i: number) => {
-          const gr = overallGradeWithBand(s.avgPct, band, classObj);
+          const gr = POINTS_ONLY_SUMMARY
+            ? overallGradeWithBand(Number(s.avgPoints ?? 0), band, classObj, true)
+            : overallGradeWithBand(s.avgPct, band, classObj);
           const topMarks = Math.round(is844 ? (s.rankingTotalMarks ?? s.totalPct ?? 0) : (s.totalPct || 0));
           const topPoints = is844 ? (s.rankingTotalPoints ?? s.totalPoints ?? 0) : (s.totalPoints || 0);
           const topGrade = isPrimary ? gr.grade : gr.subLevel;
@@ -1549,7 +1566,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         doc.text(displaySchoolName, 105, 8, { align: 'center' });
         doc.setFontSize(pdfFontSize(doc, 10));
         doc.text(`TOP 10 LEARNERS PER ${is844 ? 'SUBJECT' : 'LEARNING AREA'}`, 105, 16, { align: 'center' });
-        const topRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10, classObj);
+        const topRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10, classObj, POINTS_ONLY_SUMMARY);
         const topBody = topRows.map((tr) => POINTS_ONLY_SUMMARY
           ? [tr.area, String(tr.rank), tr.name, tr.grade]
           : [tr.area, String(tr.rank), tr.name, `${tr.marks}`, tr.grade]);
@@ -1587,11 +1604,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         return headers;
       })();
       const singleLearnerBody = summaries.map((summary: any) => {
-        const grade = overallGradeWithBand(summary.avgPct, band, classObj);
+        const grade = POINTS_ONLY_SUMMARY
+          ? overallGradeWithBand(Number(summary.avgPoints ?? 0), band, classObj, true)
+          : overallGradeWithBand(summary.avgPct, band, classObj);
         const subjectCells = allSubjects.map((subject) => {
           const percentage = summary.subjects[subject];
           if (percentage === undefined) return '—';
-          const subLevel = overallGradeWithBand(Number(percentage), band, classObj).subLevel;
+          // Points-only: 8 is EE1. The point is never converted to a percentage.
+          const subLevel = POINTS_ONLY_SUMMARY
+            ? (gradeFromPoints(Number(percentage), classObj) as any).subLevel ?? gradeFromPoints(Number(percentage), classObj).grade
+            : overallGradeWithBand(Number(percentage), band, classObj).subLevel;
           // Points-only assessments show the level alone; no percentage is printed anywhere.
           return POINTS_ONLY_SUMMARY ? subLevel : `${Number(percentage).toFixed(0)}% ${subLevel}`;
         });
@@ -1606,12 +1628,16 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         }
         if (!isPrimary) row.push(String(is844 ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0) : (summary.totalPoints || 0)));
         const previousTotal = previousTotals.get(String(summary.studentId));
-        const currentTotal = Number(is844
-          ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
-          : (summary.totalPct ?? 0));
+        // Deviation uses the same scale as the report: points on a points-only
+        // assessment, total percentage marks otherwise.
+        const currentTotal = Number(POINTS_ONLY_SUMMARY
+          ? (summary.totalPoints ?? 0)
+          : is844
+            ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
+            : (summary.totalPct ?? 0));
         const delta = previousTotal == null ? null : currentTotal - previousTotal;
         if (!POINTS_ONLY_SUMMARY) row.push(delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(0)}`);
-        row.push(isPrimary ? grade.grade : grade.subLevel);
+        row.push(isPrimary ? grade.grade : (grade as any).subLevel ?? grade.grade);
         return row;
       });
       autoTable(doc, {
@@ -1668,7 +1694,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
 
         const analysisGradeLabels = gradeLabelsForBand(band, classObj);
         const subRows = subjectStats.map((s, i) => {
-          const stats = computeSubjectGradeStats(summaries, s.name, band, classObj);
+          const stats = computeSubjectGradeStats(summaries, s.name, band, classObj, POINTS_ONLY_SUMMARY);
           const displayName = s.name === 'Creative Arts' ? 'C-Arts' : s.name;
           return [String(i + 1), displayName, ...analysisGradeLabels.map((label) => String(stats.counts[label] || 0)), String(stats.totalLearners), POINTS_ONLY_SUMMARY ? bandLevelLabel(stats.average, band, classObj) : stats.average.toFixed(2)];
         }).sort((a, b) => (Number(b[b.length - 1]) || 0) - (Number(a[a.length - 1]) || 0)).map((row, i) => [String(i + 1), ...row.slice(1)]);
@@ -1699,8 +1725,8 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const maleAvg = maleNumeric.length > 0 ? maleNumeric.reduce((sum, s) => sum + s.avgPct, 0) / maleNumeric.length : 0;
         const femaleAvg = femaleNumeric.length > 0 ? femaleNumeric.reduce((sum, s) => sum + s.avgPct, 0) / femaleNumeric.length : 0;
 
-        const maleGrade = maleNumeric.length > 0 ? overallGradeWithBand(maleAvg, band, classObj) : null;
-        const femaleGrade = femaleNumeric.length > 0 ? overallGradeWithBand(femaleAvg, band, classObj) : null;
+        const maleGrade = maleNumeric.length > 0 ? overallGradeWithBand(maleAvg, band, classObj, POINTS_ONLY_SUMMARY) : null;
+        const femaleGrade = femaleNumeric.length > 0 ? overallGradeWithBand(femaleAvg, band, classObj, POINTS_ONLY_SUMMARY) : null;
 
         // Overview stats
         const gY = 28;
@@ -1723,13 +1749,13 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
           doc.setFillColor(37, 99, 235); doc.rect(14, barY + 8, 8, 8, 'F');
           doc.setTextColor(0, 0, 0); doc.text(`Male (${maleCount} learners): ${POINTS_ONLY_SUMMARY ? (maleGrade ? (isPrimary ? maleGrade.grade : maleGrade.subLevel) : 'N/A') : `${maleAvg.toFixed(1)}% — ${maleGrade ? (isPrimary ? maleGrade.grade : maleGrade.subLevel) : 'N/A'}`}`, 25, barY + 14);
           doc.setFillColor(200, 220, 255); doc.rect(14, barY + 18, 182, 6, 'F');
-          doc.setFillColor(37, 99, 235); doc.rect(14, barY + 18, Math.max(1, 182 * maleAvg / 100), 6, 'F');
+          doc.setFillColor(37, 99, 235); doc.rect(14, barY + 18, Math.max(1, 182 * maleAvg / (POINTS_ONLY_SUMMARY ? 8 : 100)), 6, 'F');
         }
         if (femaleNumeric.length > 0) {
           doc.setFillColor(236, 72, 153); doc.rect(14, barY + 30, 8, 8, 'F');
           doc.setTextColor(0, 0, 0); doc.text(`Female (${femaleCount} learners): ${POINTS_ONLY_SUMMARY ? (femaleGrade ? (isPrimary ? femaleGrade.grade : femaleGrade.subLevel) : 'N/A') : `${femaleAvg.toFixed(1)}% — ${femaleGrade ? (isPrimary ? femaleGrade.grade : femaleGrade.subLevel) : 'N/A'}`}`, 25, barY + 36);
           doc.setFillColor(255, 200, 230); doc.rect(14, barY + 40, 182, 6, 'F');
-          doc.setFillColor(236, 72, 153); doc.rect(14, barY + 40, Math.max(1, 182 * femaleAvg / 100), 6, 'F');
+          doc.setFillColor(236, 72, 153); doc.rect(14, barY + 40, Math.max(1, 182 * femaleAvg / (POINTS_ONLY_SUMMARY ? 8 : 100)), 6, 'F');
         }
 
         // Gap analysis
@@ -2319,7 +2345,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.setTextColor(26, 35, 126); doc.setFont('helvetica', 'bold'); doc.setFontSize(pdfFontSize(doc, 14));
     doc.text(schoolInfo.name || schoolName || 'School', 105, 8, { align: 'center' });
     doc.setFontSize(pdfFontSize(doc, 10)); doc.text(`TOP 10 LEARNERS PER ${is844 ? 'SUBJECT' : 'LEARNING AREA'}`, 105, 16, { align: 'center' });
-    const topAreaRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10, opts.classObj).map((row) => POINTS_ONLY_SUMMARY
+    const topAreaRows = computeTopLearnersPerArea(summaries, allSubjects, band, 10, opts.classObj, POINTS_ONLY_SUMMARY).map((row) => POINTS_ONLY_SUMMARY
       ? [row.area, String(row.rank), row.name, row.stream, row.grade]
       : [row.area, String(row.rank), row.name, row.stream, String(row.marks), row.grade]);
     autoTable(doc, { startY: 26, head: [[is844 ? 'Subject' : 'Learning Area', 'Rank', is844 ? 'Student' : 'Learner', 'Stream', ...(POINTS_ONLY_SUMMARY ? [] : ['Marks']), 'Grade']], body: topAreaRows, styles: { fontSize: pdfFontSize(doc, 8), cellPadding: 1.5, halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 8), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, columnStyles: { 0: { halign: 'left', cellWidth: 38 }, 2: { halign: 'left' }, 3: { halign: 'left' } }, showHead: 'everyPage', margin: { left: 10, right: 10 } });
@@ -2435,7 +2461,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
     doc.text(`${opts.label} — ${opts.termObj?.name || 'Term'} ${opts.termObj?.academic_year || ''}`, 14, 26);
     const gradeLabels = gradeLabelsForBand(band, opts.classObj);
     const gradeDistribution = allSubjects.map((subject) => {
-      const stats = computeSubjectGradeStats(summaries, subject, band, opts.classObj);
+      const stats = computeSubjectGradeStats(summaries, subject, band, opts.classObj, POINTS_ONLY_SUMMARY);
       return [subject.length > 18 ? `${subject.slice(0, 17)}…` : subject, ...gradeLabels.map((label) => String(stats.counts[label] || 0)), String(stats.totalLearners), stats.average.toFixed(2)];
     }).sort((a, b) => Number(b[b.length - 1]) - Number(a[a.length - 1]));
     autoTable(doc, {
@@ -2535,22 +2561,28 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       return list;
     })();
     const body = summaries.map((s: any) => {
-      const gr = overallGradeWithBand(s.avgPct, band, opts.classObj);
+      const gr = POINTS_ONLY_SUMMARY
+        ? overallGradeWithBand(Number(s.avgPoints ?? 0), band, opts.classObj, true)
+        : overallGradeWithBand(s.avgPct, band, opts.classObj);
       const studentClass = classes.find((c: any) => c.id === s.classId);
       const cells = allSubjects.map((sub) => {
         const p = s.subjects[sub];
         if (p === undefined) return '—';
-        const level = overallGradeWithBand(p, band, studentClass).subLevel;
+        const level = POINTS_ONLY_SUMMARY
+          ? (gradeFromPoints(Number(p), studentClass) as any).subLevel ?? gradeFromPoints(Number(p), studentClass).grade
+          : overallGradeWithBand(p, band, studentClass).subLevel;
         return POINTS_ONLY_SUMMARY ? level : `${p.toFixed(0)}% ${level}`;
       });
       const previousTotal = previousTotals.get(s.studentId);
-      const currentDeviationValue = is844 ? Number(s.rankingTotalPoints ?? s.totalPoints ?? 0) : s.totalPct;
+      const currentDeviationValue = POINTS_ONLY_SUMMARY
+        ? Number(s.totalPoints ?? 0)
+        : is844 ? Number(s.rankingTotalPoints ?? s.totalPoints ?? 0) : s.totalPct;
       const deviation = previousTotal == null ? '—' : `${currentDeviationValue - previousTotal > 0 ? '+' : ''}${(currentDeviationValue - previousTotal).toFixed(0)}`;
       const row: any[] = [String(s.position), `${s.student?.first_name || ''} ${s.student?.last_name || ''}`, streamLabel(studentClass), ...cells];
       if (!POINTS_ONLY_SUMMARY) row.push(Number(is844 ? (s.rankingTotalMarks ?? s.totalPct) : s.totalPct).toFixed(0), `${s.avgPct.toFixed(1)}%`);
       if (!isPrimary) row.push(String(is844 ? (s.rankingTotalPoints ?? s.totalPoints) : s.totalPoints));
       if (!POINTS_ONLY_SUMMARY) row.push(deviation);
-      row.push(isPrimary ? gr.grade : gr.subLevel);
+      row.push(isPrimary ? gr.grade : (gr as any).subLevel ?? gr.grade);
       return row;
     });
     autoTable(doc, { startY: 26, head: [headers], body, styles: { fontSize: pdfFontSize(doc, 7), cellPadding: 1.3, overflow: 'linebreak', halign: 'center' }, headStyles: { fillColor: [106, 27, 154], textColor: 255, fontSize: pdfFontSize(doc, 7), fontStyle: 'bold' }, alternateRowStyles: { fillColor: [232, 234, 246] }, showHead: 'everyPage', margin: { left: 8, right: 8 }, didParseCell: (data: any) => { if (data.section === 'body' && data.column.index === headers.indexOf(deviationHeader)) { const value = String(data.cell.raw || ''); data.cell.styles.textColor = value === '—' || value === '0' ? [100, 100, 100] : value.startsWith('+') ? [22, 128, 65] : [190, 45, 45]; data.cell.styles.fontStyle = 'bold'; } } });

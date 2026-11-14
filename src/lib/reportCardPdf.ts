@@ -2,6 +2,7 @@ import { rankingPointsMaxForClass } from '@/lib/grading';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getSchoolLevelBand, calculateGradeForClass, gradeLabelForClass, gradePointsMaxForClass, generateSubjectSpecificComment, is844Curriculum } from './grading';
+import { gradeFromPoints, pointsOfResult } from './pointsGrading';
 import type { SchoolLevelBand, SubjectResult } from './grading';
 import { pdfFontSize } from './pdfFontSize';
 import QRCode from 'qrcode';
@@ -1035,7 +1036,11 @@ export function drawResultsTable(
   const showDeviation = options.showDeviation !== false;
   const assessmentColumns = options.assessmentColumns || [];
   const hideMarks = options.hideMarks === true;
+  // Points-only report cards hide marks AND grade from the recorded point.
+  const pointsOnly = hideMarks;
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
+  // A points-only paper has no percentage to average, so the same column shows the point.
+  const averageHead = pointsOnly ? 'Points (1-8)' : averageHead;
   // Primary reports carry no points, so the per-assessment Pts column is
   // omitted entirely instead of printed with dashes.
   // Points-only assessments print no marks column at all (no header, no cells).
@@ -1047,16 +1052,22 @@ export function drawResultsTable(
     ? ['No.', areaLabel, ...assessmentColumns.flatMap(column => [
         ...(marksColumn ? [`${column.label}\nMarks`] : []),
         ...(pointsMax > 0 ? [`${column.label}\nPts`] : []),
-        `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), 'Average (%)', ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
+        `${column.label}\n${is844 ? 'Grade' : 'Level'}`]), averageHead, ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"]
     : ['No.', areaLabel, ...(marksColumn ? ['Marks (/100)'] : []), ...deviationHead, ...(pointsMax > 0 ? [`Points (Out of ${pointsMax})`] : []), levelLabel, ...(showStream ? ['Stream Position'] : []), 'Class Position', "Teacher's Name", "Teacher's Comment"];
   const tableBody = sorted.map((r, i) => {
     const excluded = isExcludedResult(r);
     const excludedCode = excludedResultCode(r) || 'X';
     const pct = excluded ? 0 : getPercentage(r);
-    const grading = excluded ? null : gradeFromPercentage(pct, classData);
+    const recordedPoints = pointsOnly ? pointsOfResult(r) : null;
+    const grading: any = excluded
+      ? null
+      : recordedPoints !== null
+        ? gradeFromPoints(recordedPoints, classData)
+        : gradeFromPercentage(pct, classData);
+    const gradingLabel = grading ? (grading.subLevel ?? grading.grade ?? '—') : '—';
     const subjectName = r.subjects?.name === 'Creative Arts' ? 'C-Arts' : (r.subjects?.name || 'N/A');
     const previous = r.previousPercentage === null || r.previousPercentage === undefined ? null : Number(r.previousPercentage);
-    const deviation = excluded || previous === null ? '—' : `${pct - previous >= 0 ? '+' : ''}${(pct - previous).toFixed(1)}%`;
+    const deviation = excluded || pointsOnly || previous === null ? '—' : `${pct - previous >= 0 ? '+' : ''}${(pct - previous).toFixed(1)}%`;
     const position = r.classPosition ? `${r.classPosition}/${r.classTotal || '—'}` : '—';
     const streamPosition = r.streamPosition ? `${r.streamPosition}/${r.streamTotal || '—'}` : '—';
     const row: any[] = [i + 1, subjectName];
@@ -1077,14 +1088,14 @@ export function drawResultsTable(
           : `${Number(metric.marks).toFixed(0)}/${Number(metric.outOf).toFixed(0)}`;
         row.push(...(marksColumn ? [marksLabel] : []), ...(pointsMax > 0 ? [examGrade.points ?? '—'] : []), examLevel || '—');
       });
-      row.push(excluded ? excludedCode : `${pct.toFixed(0)}%`);
+      row.push(excluded ? excludedCode : pointsOnly ? (recordedPoints ?? '—') : `${pct.toFixed(0)}%`);
       if (showDeviation) row.push(deviation);
     } else {
       if (marksColumn) row.push(excluded ? excludedCode : `${pct.toFixed(0)}/100`);
       if (showDeviation) row.push(deviation);
     }
     if (pointsMax > 0) row.push(grading?.points ?? '—');
-    row.push(excluded ? excludedCode : grading?.grade || '—');
+    row.push(excluded ? excludedCode : gradingLabel);
     if (showStream) row.push(streamPosition);
     row.push(position, r.teacherName || '—', r.teacherComment || '—');
     return row;
@@ -1092,7 +1103,11 @@ export function drawResultsTable(
   const includedRows = sorted.filter((row) => !isExcludedResult(row));
   const totalMarks = options.rankingDetails?.totalMarks ?? includedRows.reduce((sum, row) => sum + getPercentage(row), 0);
   const totalMarksLabel = `${Math.round(totalMarks)} / ${sevenSubjectRanking ? 700 : includedRows.length * 100}`;
-  const totalPoints = options.rankingDetails?.totalPoints ?? includedRows.reduce((sum, row) => sum + (Number(gradeFromPercentage(getPercentage(row), classData).points) || 0), 0);
+  const totalPoints = options.rankingDetails?.totalPoints ?? includedRows.reduce((sum, row) => {
+    const recorded = pointsOnly ? pointsOfResult(row) : null;
+    const derived = Number(gradeFromPercentage(getPercentage(row), classData).points) || 0;
+    return sum + (recorded ?? derived);
+  }, 0);
   const averageIndex = 2 + assessmentCellCount;
   if (marksColumn) {
     const totalMarksRow = new Array(tableHead.length).fill('');
