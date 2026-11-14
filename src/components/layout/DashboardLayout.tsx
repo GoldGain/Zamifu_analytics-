@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import ExamGeneratorRedirectModal from '@/components/ExamGeneratorRedirectModal';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,8 +57,15 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   path: string;
+  /** Section header this item sits under. Roles without groups stay flat. */
+  group?: string;
   children?: { label: string; path: string }[];
 }
+
+/** Sidebar entry with a section header. */
+const nav = (group: string, label: string, icon: React.ReactNode, path: string): NavItem => ({
+  group, label, icon, path,
+});
 
 const navConfig: Record<string, NavItem[]> = {
   'master-super-admin': [
@@ -91,48 +98,56 @@ const navConfig: Record<string, NavItem[]> = {
     { label: 'Settings', icon: <Settings className="w-5 h-5" />, path: '/super-admin/settings' },
   ],
   'school-admin': [
-    { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/school-admin/dashboard' },
-    { label: 'Promote Next Term', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/promote-next-term' },
-    { label: 'Learners', icon: <Users className="w-5 h-5" />, path: '/school-admin/students' },
-    { label: 'Leaving Certificate', icon: <FileText className="w-5 h-5" />, path: '/school-admin/leaving-certificate' },
-    { label: 'Recycle Bin', icon: <Trash2 className="w-5 h-5" />, path: '/school-admin/recycle-bin' },
-    { label: 'Bulk Student Upload', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/school-admin/students/bulk-import' },
-    { label: 'Attendance', icon: <ClipboardList className="w-5 h-5" />, path: '/school-admin/attendance' },
-    { label: 'Graduated Students', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/graduated-students' },
-    { label: 'Teachers', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teachers' },
-    { label: 'Bursars', icon: <WalletCards className="w-5 h-5" />, path: '/school-admin/bursars' },
-    { label: 'Librarians', icon: <Library className="w-5 h-5" />, path: '/school-admin/librarians' },
-    { label: 'Fee Overview (Read-Only)', icon: <CreditCard className="w-5 h-5" />, path: '/school-admin/fees' },
-    { label: 'Staff Payroll', icon: <DollarSign className="w-5 h-5" />, path: '/school-admin/payroll' },
-    { label: 'Grades', icon: <School className="w-5 h-5" />, path: '/school-admin/classes' },
-    { label: 'Learning Areas', icon: <Library className="w-5 h-5" />, path: '/school-admin/subjects' },
-    { label: 'Library', icon: <BookOpen className="w-5 h-5" />, path: '/school-admin/library' },
-    { label: 'Inventory', icon: <Package className="w-5 h-5" />, path: '/school-admin/inventory' },
-    { label: 'Communicate', icon: <MessageSquare className="w-5 h-5" />, path: '/school-admin/communicate' },
-    { label: 'SMS Wallet', icon: <WalletCards className="w-5 h-5" />, path: '/school-admin/sms-wallet' },
-    { label: 'Subscription & Receipts', icon: <CreditCard className="w-5 h-5" />, path: '/school-admin/subscription-receipts' },
-    { label: 'Activity History', icon: <Activity className="w-5 h-5" />, path: '/school-admin/activity' },
-    { label: 'SMS Settings', icon: <Settings className="w-5 h-5" />, path: '/school-admin/sms-settings' },
-    { label: 'Teacher Assignments', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/teacher-assignments' },
-    { label: 'Store Keepers', icon: <Package className="w-5 h-5" />, path: '/school-admin/store-keepers' },
-    { label: 'Timetable Setup', icon: <Settings className="w-5 h-5" />, path: '/school-admin/timetable/setup' },
-    { label: 'Generate Timetable', icon: <Zap className="w-5 h-5" />, path: '/school-admin/timetable/generate' },
-    { label: 'View Timetable', icon: <Calendar className="w-5 h-5" />, path: '/school-admin/timetable/view' },
-    { label: 'Results', icon: <FileText className="w-5 h-5" />, path: '/school-admin/results' },
-    { label: 'Upload Results', icon: <Upload className="w-5 h-5" />, path: '/school-admin/upload-results' },
-    { label: 'Combine Exams', icon: <FilePlus2 className="w-5 h-5" />, path: '/school-admin/combine-exams' },
-    { label: 'Exam Generator', icon: <FileText className="w-5 h-5" />, path: '/school-admin/exam-generator' },
-    { label: 'Assessments', icon: <BookOpen className="w-5 h-5" />, path: '/school-admin/assessments' },
-    { label: 'Assessment Progress', icon: <BarChart3 className="w-5 h-5" />, path: '/school-admin/assessment-progress' },
-    { label: 'Assign Roles', icon: <UserCheck className="w-5 h-5" />, path: '/school-admin/assign-roles' },
-    { label: 'Promote Grade', icon: <GraduationCap className="w-5 h-5" />, path: '/school-admin/promote-class' },
-    { label: 'Class List', icon: <FileSpreadsheet className="w-5 h-5" />, path: '/school-admin/class-list' },
-    { label: 'Announcements', icon: <Bell className="w-5 h-5" />, path: '/school-admin/announcements' },
-    { label: 'Branding & Notifications', icon: <Palette className="w-5 h-5" />, path: '/school-admin/branding' },
-    { label: 'School Calendar Settings', icon: <Calendar className="w-5 h-5" />, path: '/school-admin/settings' },
-    { label: 'My Profile', icon: <User className="w-5 h-5" />, path: '/school-admin/profile' },
-    { label: 'Refer & Earn', icon: <Gift className="w-5 h-5" />, path: '/school-admin/refer-and-earn' },
-    { label: 'Change Password', icon: <Settings className="w-5 h-5" />, path: '/school-admin/change-password' },
+    nav('Overview', 'Dashboard', <LayoutDashboard className="w-5 h-5" />, '/school-admin/dashboard'),
+
+    nav('Learners', 'Learners', <Users className="w-5 h-5" />, '/school-admin/students'),
+    nav('Learners', 'Class List', <FileSpreadsheet className="w-5 h-5" />, '/school-admin/class-list'),
+    nav('Learners', 'Bulk Student Upload', <FileSpreadsheet className="w-5 h-5" />, '/school-admin/students/bulk-import'),
+    nav('Learners', 'Attendance', <ClipboardList className="w-5 h-5" />, '/school-admin/attendance'),
+    nav('Learners', 'Promote Grade', <GraduationCap className="w-5 h-5" />, '/school-admin/promote-class'),
+    nav('Learners', 'Promote Next Term', <GraduationCap className="w-5 h-5" />, '/school-admin/promote-next-term'),
+    nav('Learners', 'Graduated Students', <GraduationCap className="w-5 h-5" />, '/school-admin/graduated-students'),
+    nav('Learners', 'Leaving Certificate', <FileText className="w-5 h-5" />, '/school-admin/leaving-certificate'),
+    nav('Learners', 'Recycle Bin', <Trash2 className="w-5 h-5" />, '/school-admin/recycle-bin'),
+
+    nav('Results & Assessments', 'Results', <FileText className="w-5 h-5" />, '/school-admin/results'),
+    nav('Results & Assessments', 'Upload Results', <Upload className="w-5 h-5" />, '/school-admin/upload-results'),
+    nav('Results & Assessments', 'Combine Exams', <FilePlus2 className="w-5 h-5" />, '/school-admin/combine-exams'),
+    nav('Results & Assessments', 'Assessments', <BookOpen className="w-5 h-5" />, '/school-admin/assessments'),
+    nav('Results & Assessments', 'Assessment Progress', <BarChart3 className="w-5 h-5" />, '/school-admin/assessment-progress'),
+    nav('Results & Assessments', 'Exam Generator', <FileText className="w-5 h-5" />, '/school-admin/exam-generator'),
+
+    nav('Classes & Timetable', 'Grades', <School className="w-5 h-5" />, '/school-admin/classes'),
+    nav('Classes & Timetable', 'Learning Areas', <Library className="w-5 h-5" />, '/school-admin/subjects'),
+    nav('Classes & Timetable', 'Timetable Setup', <Settings className="w-5 h-5" />, '/school-admin/timetable/setup'),
+    nav('Classes & Timetable', 'Generate Timetable', <Zap className="w-5 h-5" />, '/school-admin/timetable/generate'),
+    nav('Classes & Timetable', 'View Timetable', <Calendar className="w-5 h-5" />, '/school-admin/timetable/view'),
+    nav('Classes & Timetable', 'School Calendar Settings', <Calendar className="w-5 h-5" />, '/school-admin/settings'),
+
+    nav('Finance', 'Fee Overview (Read-Only)', <CreditCard className="w-5 h-5" />, '/school-admin/fees'),
+    nav('Finance', 'Subscription & Receipts', <CreditCard className="w-5 h-5" />, '/school-admin/subscription-receipts'),
+
+    nav('Staff & Payroll', 'Teachers', <UserCheck className="w-5 h-5" />, '/school-admin/teachers'),
+    nav('Staff & Payroll', 'Teacher Assignments', <UserCheck className="w-5 h-5" />, '/school-admin/teacher-assignments'),
+    nav('Staff & Payroll', 'Bursars', <WalletCards className="w-5 h-5" />, '/school-admin/bursars'),
+    nav('Staff & Payroll', 'Librarians', <Library className="w-5 h-5" />, '/school-admin/librarians'),
+    nav('Staff & Payroll', 'Store Keepers', <Package className="w-5 h-5" />, '/school-admin/store-keepers'),
+    nav('Staff & Payroll', 'Staff Payroll', <DollarSign className="w-5 h-5" />, '/school-admin/payroll'),
+    nav('Staff & Payroll', 'Assign Roles', <UserCheck className="w-5 h-5" />, '/school-admin/assign-roles'),
+
+    nav('Communication', 'Communicate', <MessageSquare className="w-5 h-5" />, '/school-admin/communicate'),
+    nav('Communication', 'Announcements', <Bell className="w-5 h-5" />, '/school-admin/announcements'),
+    nav('Communication', 'SMS Wallet', <WalletCards className="w-5 h-5" />, '/school-admin/sms-wallet'),
+    nav('Communication', 'SMS Settings', <Settings className="w-5 h-5" />, '/school-admin/sms-settings'),
+    nav('Communication', 'Branding & Notifications', <Palette className="w-5 h-5" />, '/school-admin/branding'),
+
+    nav('Library & Inventory', 'Library', <BookOpen className="w-5 h-5" />, '/school-admin/library'),
+    nav('Library & Inventory', 'Inventory', <Package className="w-5 h-5" />, '/school-admin/inventory'),
+
+    nav('Account', 'My Profile', <User className="w-5 h-5" />, '/school-admin/profile'),
+    nav('Account', 'Refer & Earn', <Gift className="w-5 h-5" />, '/school-admin/refer-and-earn'),
+    nav('Account', 'Change Password', <Settings className="w-5 h-5" />, '/school-admin/change-password'),
+    nav('Account', 'Activity History', <Activity className="w-5 h-5" />, '/school-admin/activity'),
   ],
   'store-keeper': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/store-keeper' },
@@ -366,11 +381,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           <nav className="space-y-1 flex-1 overflow-y-auto">
-            {navItems.map((item) => {
+            {navItems.map((item, index) => {
               const opensLearnGenerator = item.path === '/school-admin/exam-generator' || item.path === '/teacher/exam-generator';
+              const previousGroup = index > 0 ? navItems[index - 1].group : undefined;
+              const showGroupHeader = Boolean(item.group) && item.group !== previousGroup;
               return (
+                <Fragment key={item.path}>
+                {showGroupHeader && (
+                  <p className="px-3 pb-1 pt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-500">
+                    {item.group}
+                  </p>
+                )}
                 <Link
-                  key={item.path}
                   to={item.path}
                   onClick={(event) => {
                     setSidebarOpen(false);
@@ -389,6 +411,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   <span className="flex-1">{item.label}</span>
                   {opensLearnGenerator && <ExternalLink className="h-3.5 w-3.5 opacity-60" />}
                 </Link>
+                </Fragment>
               );
             })}
           </nav>
