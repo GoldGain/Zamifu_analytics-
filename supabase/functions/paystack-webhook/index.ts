@@ -1,3 +1,4 @@
+/**
  * Paystack webhook for Zamifu Analytics school subscriptions.
  *
  * The shared Paystack account delivers every charge.success event to the Zamifu
