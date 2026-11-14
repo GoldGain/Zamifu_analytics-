@@ -1599,7 +1599,9 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
         const headers: string[] = ['POS', is844 ? 'Student' : 'Learner', ...allSubjects.map((subject) => shortName(subject))];
         if (!POINTS_ONLY_SUMMARY) headers.push('Total', 'Avg%');
         if (!isPrimary) headers.push(is844 ? 'Points' : 'Pts');
-        if (!POINTS_ONLY_SUMMARY) headers.push(deviationHeader);
+        // Deviation belongs in the individual Class Summary as well as the
+        // All-Streams report, on marks and points-only assessments alike.
+        headers.push(deviationHeader);
         headers.push('Grade');
         return headers;
       })();
@@ -1636,7 +1638,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
             ? (summary.rankingTotalPoints ?? summary.totalPoints ?? 0)
             : (summary.totalPct ?? 0));
         const delta = previousTotal == null ? null : currentTotal - previousTotal;
-        if (!POINTS_ONLY_SUMMARY) row.push(delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(0)}`);
+        row.push(delta == null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(0)}`);
         row.push(isPrimary ? grade.grade : (grade as any).subLevel ?? grade.grade);
         return row;
       });
@@ -2556,7 +2558,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const list: string[] = ['POS', is844 ? 'Student' : 'Learner', 'Stream', ...subjectShorts];
       if (!POINTS_ONLY_SUMMARY) list.push('Total', 'Avg%');
       if (!isPrimary) list.push(is844 ? 'Points' : 'Pts');
-      if (!POINTS_ONLY_SUMMARY) list.push(deviationHeader);
+      list.push(deviationHeader);
       list.push('Grade');
       return list;
     })();
@@ -2581,7 +2583,7 @@ export default function SchoolAdminResults({ scope = 'school' }: { scope?: Resul
       const row: any[] = [String(s.position), `${s.student?.first_name || ''} ${s.student?.last_name || ''}`, streamLabel(studentClass), ...cells];
       if (!POINTS_ONLY_SUMMARY) row.push(Number(is844 ? (s.rankingTotalMarks ?? s.totalPct) : s.totalPct).toFixed(0), `${s.avgPct.toFixed(1)}%`);
       if (!isPrimary) row.push(String(is844 ? (s.rankingTotalPoints ?? s.totalPoints) : s.totalPoints));
-      if (!POINTS_ONLY_SUMMARY) row.push(deviation);
+      row.push(deviation);
       row.push(isPrimary ? gr.grade : (gr as any).subLevel ?? gr.grade);
       return row;
     });
