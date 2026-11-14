@@ -49,9 +49,23 @@ const headerOf = (headers: RequestLike["headers"], name: string): string | null 
 };
 
 const readRawBody = (request: RequestLike): Promise<string> => {
-  const body = request.body;
+  const body = request.body as unknown;
   if (typeof body === "string") return Promise.resolve(body);
   if (Buffer.isBuffer(body)) return Promise.resolve(body.toString("utf8"));
+  const stream = body as { getReader?: () => ReadableStreamDefaultReader<Uint8Array> } | null;
+  if (stream && typeof stream.getReader === "function") {
+    return (async () => {
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+      }
+      return text + decoder.decode();
+    })();
+  }
   if (body && typeof body === "object") return Promise.resolve(JSON.stringify(body));
   return new Promise((resolve, reject) => {
     if (!request.on) { resolve(""); return; }
