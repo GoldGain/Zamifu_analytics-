@@ -103,6 +103,36 @@ Deno.serve(async (request: Request) => {
   if (!Number.isSafeInteger(feePerLearner) || feePerLearner <= 0) problems.push("invalid fee_per_learner");
   if (!Number.isSafeInteger(learnersCount) || learnersCount <= 0) problems.push("invalid learners_count");
   if (problems.length === 0 && Math.round(amountKsh) !== learnersCount * feePerLearner) problems.push("amount does not match learners x fee");
+
+  // Never trust the amount alone: compare the quoted price and learner count
+  // with the school's own billing configuration, exactly as the in-app
+  // verification does, so a crafted checkout cannot buy a term for less.
+  if (problems.length === 0) {
+    const serviceHeaders = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` };
+    const fields = "id,billing_learner_count,fee_per_learner_per_term,fee_per_learner_per_year";
+    const schoolResponse = await fetch(`${supabaseUrl}/rest/v1/schools?id=eq.${encodeURIComponent(schoolId)}&select=${fields}`, { headers: serviceHeaders });
+    const schools = await schoolResponse.json().catch(() => null);
+    const school = Array.isArray(schools) ? schools[0] : null;
+    if (!schoolResponse.ok || !school) {
+      console.error("Paystack webhook school lookup failed", reference, schoolId);
+      return json({ ok: false, reference, manual_review: ["school not found"] });
+    }
+    const configuredFee = Number(isAnnual ? school.fee_per_learner_per_year : school.fee_per_learner_per_term);
+    const expectedFee = Number.isFinite(configuredFee) && configuredFee > 0 ? Math.round(configuredFee) : (isAnnual ? 20 : 10);
+    if (feePerLearner !== expectedFee) problems.push(`fee ${feePerLearner} does not match this school's price ${expectedFee}`);
+
+    let billedLearners = Number(school.billing_learner_count) || 0;
+    if (billedLearners <= 0) {
+      const countResponse = await fetch(
+        `${supabaseUrl}/rest/v1/students?school_id=eq.${encodeURIComponent(schoolId)}&is_active=eq.true&status=eq.active&select=id`,
+        { headers: { ...serviceHeaders, Prefer: "count=exact", Range: "0-0" } },
+      );
+      const range = countResponse.headers.get("content-range") || "";
+      billedLearners = Number(range.split("/")[1] || 0);
+    }
+    if (billedLearners <= 0) problems.push("school has no billable learners");
+    else if (learnersCount !== billedLearners) problems.push(`learners ${learnersCount} does not match the billed count ${billedLearners}`);
+  }
   if (problems.length) {
     // Redelivery cannot fix a mismatched payment, so acknowledge it and surface
     // it for a human instead of letting Paystack retry indefinitely.
