@@ -239,7 +239,29 @@ function createReportCardSubjectRows(
   });
 }
 
+/** One in-flight materialisation per exam/term/class set. */
+const combinedMaterializationLocks = new Map<string, Promise<number>>();
+
+/**
+ * Rebuild the combined-exam result rows for a class scope.
+ *
+ * Callers overlap in practice: a double tap, a React effect re-run, or two
+ * tabs. Each run deletes its scope and then inserts, so two runs interleaving
+ * made the second insert violate results_student_subject_term_exam_idx.
+ * Overlapping calls for the same scope now share one promise, and a run that
+ * still loses the race retries once after clearing its scope.
+ */
 async function materializeCombinedResults(schoolId: string, combinedExamId: string, termId: string, classIds: string[]) {
+  const key = [schoolId, combinedExamId, termId, [...classIds].sort().join(',')].join('|');
+  const inFlight = combinedMaterializationLocks.get(key);
+  if (inFlight) return inFlight;
+  const run = runMaterializeCombinedResults(schoolId, combinedExamId, termId, classIds)
+    .finally(() => { combinedMaterializationLocks.delete(key); });
+  combinedMaterializationLocks.set(key, run);
+  return run;
+}
+
+async function runMaterializeCombinedResults(schoolId: string, combinedExamId: string, termId: string, classIds: string[]) {
   const safeClassIds = classIds.filter(isUuid);
   if (!isUuid(schoolId) || !isUuid(combinedExamId) || !isUuid(termId) || !safeClassIds.length) {
     throw new Error('Combined assessment is missing a valid school, exam, term, or class identifier.');
@@ -306,18 +328,39 @@ async function materializeCombinedResults(schoolId: string, combinedExamId: stri
     };
   });
   if (!payload.length) throw new Error('The source assessments contain no usable learner-subject rows.');
-  const { error: deleteError } = await supabaseUntyped
-    .from('results')
-    .delete()
-    .eq('school_id', schoolId)
-    .eq('exam_id', combinedExamId)
-    .in('class_id', safeClassIds);
-  if (deleteError) throw deleteError;
-  for (let offset = 0; offset < payload.length; offset += 500) {
-    const { error } = await supabaseUntyped.from('results').insert(payload.slice(offset, offset + 500));
+  // The unique index is (student_id, class_id, subject_id, term_id, exam_id):
+  // never send the same key twice in one statement.
+  const uniquePayload = Array.from(
+    new Map(payload.map((row) => [`${row.student_id}|${row.class_id}|${row.subject_id}`, row])).values(),
+  );
+
+  const clearScope = async () => {
+    const { error } = await supabaseUntyped
+      .from('results')
+      .delete()
+      .eq('school_id', schoolId)
+      .eq('exam_id', combinedExamId)
+      .in('class_id', safeClassIds);
     if (error) throw error;
+  };
+  const writeScope = async () => {
+    for (let offset = 0; offset < uniquePayload.length; offset += 500) {
+      const { error } = await supabaseUntyped.from('results').insert(uniquePayload.slice(offset, offset + 500));
+      if (error) throw error;
+    }
+  };
+
+  await clearScope();
+  try {
+    await writeScope();
+  } catch (error: any) {
+    // Another tab or device materialised this exam between our delete and
+    // insert. Clear our scope and write once more; anything else rethrows.
+    if (String(error?.code) !== '23505') throw error;
+    await clearScope();
+    await writeScope();
   }
-  return payload.length;
+  return uniquePayload.length;
 }
 
 function reportCardTotals(
