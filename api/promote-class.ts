@@ -29,9 +29,12 @@ export default async function handler(request: Req, response: Res): Promise<void
 
   const body = bodyOf(request.body);
   const mode = String(body.mode || 'promote');
+  const studentIds = Array.isArray(body.studentIds)
+    ? (body.studentIds as unknown[]).map((id) => String(id || '').trim()).filter(Boolean)
+    : [];
   const fromClass = String(body.fromClassId || '').trim();
   const toClass = String(body.toClassId || '').trim();
-  if (!fromClass || !toClass) { response.status(400).json({ error: 'Choose both the current class and the next class.' }); return; }
+  if (mode !== 'undo' && (!fromClass || !toClass)) { response.status(400).json({ error: 'Choose both the current class and the next class.' }); return; }
 
   const supabase = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: { user }, error: userError } = await supabase.auth.getUser(token);
@@ -41,6 +44,38 @@ export default async function handler(request: Req, response: Res): Promise<void
   const role = String((profile as { role?: string } | null)?.role || '').toLowerCase();
   if (!ADMIN_ROLES.has(role)) {
     response.status(403).json({ error: `Only a school administrator can promote a class (your role is "${role || 'unknown'}").` });
+    return;
+  }
+
+  // ── Undo graduation ────────────────────────────────────────────────────────
+  // Kept on this endpoint so the project stays within the Hobby plan's 12-function limit.
+  if (mode === 'undo') {
+    if (!studentIds.length) { response.status(400).json({ error: 'Select at least one learner.' }); return; }
+    if (studentIds.length > 1000) { response.status(400).json({ error: 'Undo at most 1000 learners at a time.' }); return; }
+
+    const { data: learners, error: learnerError } = await supabase
+      .from('students').select('id, school_id').in('id', studentIds);
+    if (learnerError) { response.status(400).json({ error: learnerError.message }); return; }
+    if (!learners || learners.length === 0) { response.status(404).json({ error: 'Those learners could not be found.' }); return; }
+
+    const schools = new Set(learners.map((row) => String((row as { school_id?: string }).school_id || '')));
+    if (schools.size !== 1) { response.status(400).json({ error: 'All selected learners must belong to the same school.' }); return; }
+    const undoSchool = [...schools][0];
+    if (!undoSchool) { response.status(400).json({ error: 'Those learners are not attached to a school.' }); return; }
+
+    const undoProfileSchool = (profile as { school_id?: string } | null)?.school_id || null;
+    const undoSuperRoles = new Set(['master_super_admin', 'reseller_super_admin', 'super_admin']);
+    if (undoProfileSchool && undoProfileSchool !== undoSchool && !undoSuperRoles.has(role)) {
+      response.status(403).json({ error: 'Those learners belong to another school.' });
+      return;
+    }
+
+    const { data: undoResult, error: undoError } = await supabase.rpc('undo_graduation', {
+      p_school_id: undoSchool,
+      p_student_ids: learners.map((row) => (row as { id: string }).id),
+    });
+    if (undoError) { response.status(400).json({ error: undoError.message }); return; }
+    response.status(200).json({ result: undoResult });
     return;
   }
 

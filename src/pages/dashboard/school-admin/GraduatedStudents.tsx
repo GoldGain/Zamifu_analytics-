@@ -112,9 +112,9 @@ export default function GraduatedStudents() {
     setUndoing(true);
     try {
       const { data: { session } } = await supabaseUntyped.auth.getSession();
-      const res = await fetch('/api/undo-graduation', {
+      const res = await fetch('/api/promote-class', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
-        body: JSON.stringify({ studentIds: ids }),
+        body: JSON.stringify({ mode: 'undo', studentIds: ids }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'The server did not explain why.');
