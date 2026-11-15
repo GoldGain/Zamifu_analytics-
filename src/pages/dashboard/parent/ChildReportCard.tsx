@@ -285,7 +285,7 @@ export default function ParentChildReportCard() {
     // exceeds that, so an unpaged read would truncate the ranking cohort.
     const classResults = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
-      .select('*, students!inner(is_active, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
+      .select('*, students!inner(is_active, status, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
       .eq('class_id', selectedChild.class_id)
       .eq('term_id', selectedTerm)
       .order('created_at')

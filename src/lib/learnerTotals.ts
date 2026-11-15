@@ -198,7 +198,11 @@ export function aggregateLearnerTotals(rawResults: any[], classObj: any): Learne
   const winners = new Map<string, Map<string, { createdAt: number; index: number; row: any }>>();
 
   (rawResults || []).forEach((result: any, index: number) => {
-    if (result?.students?.is_active === false) return;
+    // Graduated learners keep their results visible — the query already keeps
+    // them via students!inner; only drop learners who genuinely left.
+    const rowStudent = result?.students;
+    const rowGraduated = String(rowStudent?.status || '').toLowerCase() === 'graduated';
+    if (rowStudent?.is_active === false && !rowGraduated) return;
     const hasRecordedValue = [result?.marks, result?.percentage, result?.converted_marks, result?.grade_844, result?.cbc_grade, result?.cbc_sublevel, result?.mark_code]
       .some((value) => value !== null && value !== undefined && String(value).trim() !== '');
     if (!hasRecordedValue) return;

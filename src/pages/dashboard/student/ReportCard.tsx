@@ -211,7 +211,7 @@ export default function StudentReportCard() {
     // exceeds that, so an unpaged read would truncate the ranking cohort.
     const classResults = await fetchAllRows((from, to) => supabaseUntyped
       .from('results')
-      .select('*, students!inner(is_active, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
+      .select('*, students!inner(is_active, status, id, first_name, last_name), subjects(name)').or('is_active.eq.true,is_active.is.null', { foreignTable: 'students' })
       .eq('class_id', student.class_id)
       .eq('school_id', student.school_id)
       .eq('term_id', selectedTerm)
