@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { GraduationCap, Loader2, Search, Filter, Users } from 'lucide-react';
+import { AlertTriangle, GraduationCap, Loader2, Search, Filter, Undo2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface GraduatedStudent {
@@ -31,6 +31,9 @@ export default function GraduatedStudents() {
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState<string>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [undoing, setUndoing] = useState(false);
 
   useEffect(() => {
     if (user?.schoolId) fetchGraduates();
@@ -90,6 +93,40 @@ export default function GraduatedStudents() {
       return true;
     });
   }, [students, search, yearFilter, levelFilter]);
+
+  const allVisibleSelected = filtered.length > 0 && filtered.every((s) => selected.has(s.id));
+  const toggleOne = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleAllVisible = () => setSelected((prev) => {
+    const next = new Set(prev);
+    if (allVisibleSelected) filtered.forEach((s) => next.delete(s.id));
+    else filtered.forEach((s) => next.add(s.id));
+    return next;
+  });
+  const performUndo = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    setUndoing(true);
+    try {
+      const { data: { session } } = await supabaseUntyped.auth.getSession();
+      const res = await fetch('/api/undo-graduation', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ studentIds: ids }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'The server did not explain why.');
+      const restored = Number(json.result?.restored || 0);
+      toast.success(`${restored} learner(s) moved back to their active class.`);
+      setSelected(new Set());
+      setConfirmOpen(false);
+      await fetchGraduates();
+    } catch (err: any) {
+      toast.error('Could not undo graduation: ' + (err?.message || 'Unknown error'));
+    } finally { setUndoing(false); }
+  };
 
   return (
     <div className="space-y-6">
@@ -155,6 +192,18 @@ export default function GraduatedStudents() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+          <p className="text-sm text-gray-600">{selected.size > 0 ? `${selected.size} learner(s) selected` : 'Select a learner to undo their graduation'}</p>
+          <div className="flex items-center gap-2">
+            {selected.size > 0 && (
+              <button type="button" onClick={() => setSelected(new Set())} className="rounded-xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Clear</button>
+            )}
+            <button type="button" onClick={() => setConfirmOpen(true)} disabled={selected.size === 0 || undoing}
+              className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-40">
+              <Undo2 className="h-4 w-4" /> Undo Graduation
+            </button>
+          </div>
+        </div>
         {loading ? (
           <div className="p-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-600" /></div>
         ) : filtered.length === 0 ? (
@@ -166,6 +215,9 @@ export default function GraduatedStudents() {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-left">
                 <tr>
+                  <th className="px-4 py-3">
+                    <input type="checkbox" aria-label="Select all visible learners" checked={allVisibleSelected} onChange={toggleAllVisible} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                  </th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Adm No.</th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Name</th>
                   <th className="px-4 py-3 font-semibold text-gray-600">Gender</th>
@@ -180,7 +232,10 @@ export default function GraduatedStudents() {
                 {filtered.map((s) => {
                   const year = s.graduation_year || (s.graduation_date ? new Date(s.graduation_date).getFullYear() : '—');
                   return (
-                    <tr key={s.id} className="border-t border-gray-50 hover:bg-slate-50/70">
+                    <tr key={s.id} className={selected.has(s.id) ? 'border-t border-gray-50 bg-amber-50/60' : 'border-t border-gray-50 hover:bg-slate-50/70'}>
+                      <td className="px-4 py-3">
+                        <input type="checkbox" aria-label={`Select ${s.first_name} ${s.last_name}`} checked={selected.has(s.id)} onChange={() => toggleOne(s.id)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                      </td>
                       <td className="px-4 py-3 font-mono text-xs">{s.admission_number}</td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {s.first_name} {s.middle_name ? `${s.middle_name} ` : ''}{s.last_name}
@@ -204,7 +259,26 @@ export default function GraduatedStudents() {
             </table>
           </div>
         )}
-      </div>
+            </div>
+
+      {confirmOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700"><AlertTriangle className="h-5 w-5" /></span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Undo graduation?</h2>
+                <p className="mt-2 text-sm text-gray-600">Are you sure you want to revert this graduation? The learner will be moved back to their active class.</p>
+                <p className="mt-2 text-xs text-gray-500">{selected.size} learner(s) will return to their last class and appear on the active roll again. Their results are not touched.</p>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+              <button type="button" onClick={() => setConfirmOpen(false)} disabled={undoing} className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void performUndo()} disabled={undoing} className="flex-1 rounded-xl bg-amber-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{undoing ? 'Reverting…' : 'Yes, undo graduation'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

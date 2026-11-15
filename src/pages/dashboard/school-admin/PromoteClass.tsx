@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabaseUntyped } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertCircle, ArrowRight, CalendarDays, CheckCircle, GraduationCap, Loader2, Users } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarDays, CheckCircle, GraduationCap, Loader2, Undo2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { promoteSchoolToNextTerm } from '@/lib/term-promotion';
 
@@ -35,6 +35,8 @@ export default function PromoteClass() {
   const [classConfirm, setClassConfirm] = useState<null | 'promote' | 'graduate'>(null);
   const [lastResult, setLastResult] = useState<{ kind: 'promote' | 'graduate'; text: string } | null>(null);
   const [classError, setClassError] = useState('');
+  const [undoConfirm, setUndoConfirm] = useState(false);
+  const [undoBusy, setUndoBusy] = useState(false);
 
   const loadCurrentTerm = async () => {
     if (!user?.schoolId) return;
@@ -114,6 +116,31 @@ export default function PromoteClass() {
     setBusy(false);
   };
 
+  const undoGraduation = async () => {
+    if (!user?.schoolId || !fromClassId) return;
+    setUndoBusy(true);
+    setClassError('');
+    try {
+      const { data: rows, error } = await supabaseUntyped.from('students').select('id').eq('school_id', user.schoolId).eq('class_id', fromClassId).or('status.eq.graduated,learner_status.ilike.%graduat%');
+      if (error) throw error;
+      const ids = (rows || []).map((r: any) => r.id);
+      if (!ids.length) { setClassError('No graduated learners were found in that class.'); setUndoBusy(false); return; }
+      const { data: { session } } = await supabaseUntyped.auth.getSession();
+      const res = await fetch('/api/undo-graduation', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ studentIds: ids }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { setClassError(`[${res.status}] ${json.error || 'The server did not explain why.'}`); setUndoBusy(false); return; }
+      const restored = Number(json.result?.restored || 0);
+      toast.success(`${restored} learner(s) restored to ${from?.name || 'their class'}.`);
+      setLastResult({ kind: 'promote', text: `${restored} learner(s) restored to ${from?.name || 'their class'}. Their results are untouched.` });
+      setUndoConfirm(false);
+      await loadClasses();
+    } catch (err) { setClassError(`Request failed: ${err instanceof Error ? err.message : String(err)}`); }
+    setUndoBusy(false);
+  };
+
   const next = nextTermFor(currentTerm);
 
   return (
@@ -186,6 +213,12 @@ export default function PromoteClass() {
               <GraduationCap className="h-4 w-4" /> Graduate learners from {from?.name}
             </button>
           )}
+          {fromGraduates && (
+            <button type="button" onClick={() => setUndoConfirm(true)} disabled={busy || undoBusy}
+              className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-6 py-2.5 text-sm font-semibold text-amber-800 disabled:opacity-50">
+              <Undo2 className="h-4 w-4" /> Undo graduation
+            </button>
+          )}
         </div>
       </div>
 
@@ -250,6 +283,19 @@ export default function PromoteClass() {
                 className="flex-1 rounded-xl bg-purple-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
                 {busy ? 'Working…' : 'Yes, continue'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+          {undoConfirm && from && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-gray-900">Undo graduation for {from.name}?</h2>
+            <p className="mt-3 text-sm text-gray-600">Are you sure you want to revert this graduation? The learner will be moved back to their active class.</p>
+            <p className="mt-2 text-sm text-gray-500">Every graduated learner in {from.name} returns to the active roll in that class. Their results are not touched.</p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+              <button type="button" onClick={() => setUndoConfirm(false)} disabled={undoBusy} className="flex-1 rounded-xl border px-4 py-3 text-sm font-medium disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void undoGraduation()} disabled={undoBusy} className="flex-1 rounded-xl bg-amber-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{undoBusy ? 'Reverting…' : 'Yes, undo graduation'}</button>
             </div>
           </div>
         </div>
