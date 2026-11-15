@@ -1040,7 +1040,7 @@ export function drawResultsTable(
   const pointsOnly = hideMarks;
   const deviationHead = showDeviation ? ['Deviation (%)'] : [];
   // A points-only paper has no percentage to average, so the same column shows the point.
-  const averageHead = pointsOnly ? 'Points (1-8)' : averageHead;
+  const averageHead = pointsOnly ? 'Points (1-8)' : 'Average (%)';
   // Primary reports carry no points, so the per-assessment Pts column is
   // omitted entirely instead of printed with dashes.
   // Points-only assessments print no marks column at all (no header, no cells).
