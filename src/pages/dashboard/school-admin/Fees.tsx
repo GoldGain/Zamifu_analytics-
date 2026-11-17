@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabaseUntyped } from "@/lib/supabase/client";
 import { sendSMS } from '@/lib/sms';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,10 +36,10 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
   const [bulkSending, setBulkSending] = useState(false);
   const [retiredInvoiceConfirmation, setRetiredInvoiceConfirmation] = useState<{ studentName: string; retiredAt: string } | null>(null);
 
-  // Fee structure form: multiple fee types per class/term
+  // Fee structure form: one row per fee type, any names the school uses.
   const [structureData, setStructureData] = useState({
     class_id: '', term_id: '',
-    tuition_fee: '', activity_fee: '', exam_fee: '', other_fee: '',
+    items: [{ name: '', amount: '' }] as { name: string; amount: string }[],
     description: '',
   });
 
@@ -298,79 +298,90 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
     } finally { setBulkSending(false); }
   };
 
-  // Add fee structure: insert multiple rows (one per fee type)
+  // Save the whole set of fee items for one class + term (add, update, remove together).
   const handleAddStructure = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!structureData.class_id || !structureData.term_id) {
-      toast.error('Please select class and term');
-      return;
+    if (!structureData.class_id || !structureData.term_id) { toast.error('Please select class and term'); return; }
+    if (!user?.schoolId) return;
+
+    const cleaned = structureData.items
+      .map((item) => ({ name: item.name.trim(), amount: Number(String(item.amount).replace(/[^0-9.]/g, '')) || 0 }))
+      .filter((item) => item.name && item.amount > 0);
+    if (!cleaned.length) { toast.error('Add at least one fee item with a name and an amount.'); return; }
+
+    const seen = new Set<string>();
+    for (const item of cleaned) {
+      const key = item.name.toLowerCase();
+      if (seen.has(key)) { toast.error(`"${item.name}" is listed twice — keep one line per fee type.`); return; }
+      seen.add(key);
     }
 
-    const feeTypes = [
-      { type: 'Tuition', amount: parseFloat(structureData.tuition_fee) || 0 },
-      { type: 'Activity', amount: parseFloat(structureData.activity_fee) || 0 },
-      { type: 'Exam', amount: parseFloat(structureData.exam_fee) || 0 },
-      { type: 'Other', amount: parseFloat(structureData.other_fee) || 0 },
-    ].filter(f => f.amount > 0);
+    const termRow = terms.find((term: any) => term.id === structureData.term_id);
+    const academicYear = String(termRow?.academic_year || new Date().getFullYear());
+    const existing = feeStructures.filter((row: any) => row.class_id === structureData.class_id && row.term_id === structureData.term_id);
+    const byName = new Map<string, any>();
+    existing.forEach((row: any) => byName.set(String(row.fee_type || '').toLowerCase(), row));
 
-    if (feeTypes.length === 0) {
-      toast.error('Please enter at least one fee amount');
-      return;
-    }
+    const keptIds = new Set<string>();
+    const rowsToInsert: any[] = [];
+    const rowsToUpdate: { id: string; amount: number }[] = [];
 
-    if (editingStructureId) {
-      if (feeTypes.length !== 1) {
-        toast.error('Edit one fee type at a time. Enter only the amount you want to change.');
-        return;
-      }
-      const { error } = await supabaseUntyped
-        .from('fee_structures')
-        .update({
+    cleaned.forEach((item) => {
+      const match = byName.get(item.name.toLowerCase());
+      if (match) {
+        keptIds.add(match.id);
+        if (Number(match.amount) !== item.amount) rowsToUpdate.push({ id: match.id, amount: item.amount });
+      } else {
+        rowsToInsert.push({
+          school_id: user.schoolId,
           class_id: structureData.class_id,
           term_id: structureData.term_id,
-          fee_type: feeTypes[0].type,
-          amount: feeTypes[0].amount,
+          academic_year: academicYear,
+          fee_type: item.name,
+          amount: item.amount,
+          is_mandatory: true,
           description: structureData.description || null,
-        })
-        .eq('id', editingStructureId)
-        .eq('school_id', user?.schoolId);
-      if (error) { toast.error('Failed to update fee structure: ' + error.message); return; }
-      toast.success('Fee structure updated successfully.');
-    } else {
-      const rows = feeTypes.map(f => ({
-        school_id: user?.schoolId,
-        class_id: structureData.class_id,
-        term_id: structureData.term_id,
-        academic_year: new Date().getFullYear().toString(),
-        fee_type: f.type,
-        amount: f.amount,
-        is_mandatory: true,
-        description: structureData.description || null,
-      }));
-      const { error } = await supabaseUntyped.from('fee_structures').insert(rows);
-      if (error) { toast.error('Failed to add fee structure: ' + error.message); return; }
-      toast.success(`Fee structure added! ${feeTypes.length} fee type(s) saved.`);
+        });
+      }
+    });
+
+    const idsToDelete = existing.filter((row: any) => !keptIds.has(row.id)).map((row: any) => row.id);
+
+    try {
+      for (const row of rowsToUpdate) {
+        const { error } = await supabaseUntyped.from('fee_structures')
+          .update({ amount: row.amount, description: structureData.description || null })
+          .eq('id', row.id).eq('school_id', user.schoolId);
+        if (error) throw error;
+      }
+      if (idsToDelete.length) {
+        const { error } = await supabaseUntyped.from('fee_structures').delete().in('id', idsToDelete).eq('school_id', user.schoolId);
+        if (error) throw error;
+      }
+      if (rowsToInsert.length) {
+        const { error } = await supabaseUntyped.from('fee_structures').insert(rowsToInsert);
+        if (error) throw error;
+      }
+    } catch (error: any) {
+      toast.error('Could not save the fee structure: ' + (error?.message || 'Unknown error'));
+      return;
     }
+
+    const summary = [`${rowsToInsert.length} added`, `${rowsToUpdate.length} updated`, `${idsToDelete.length} removed`];
+    toast.success(`Fee structure saved — ${summary.join(', ')}.`);
     setEditingStructureId(null);
     setShowStructure(false);
-    setStructureData({ class_id: '', term_id: '', tuition_fee: '', activity_fee: '', exam_fee: '', other_fee: '', description: '' });
+    setStructureData({ class_id: '', term_id: '', items: [{ name: '', amount: '' }], description: '' });
     fetchData();
   };
 
-  const handleEditStructure = (fee: any, group: any) => {
-    const fieldByType: Record<string, 'tuition_fee' | 'activity_fee' | 'exam_fee' | 'other_fee'> = {
-      Tuition: 'tuition_fee', Activity: 'activity_fee', Exam: 'exam_fee', Other: 'other_fee',
-    };
-    const field = fieldByType[fee.type];
-    setEditingStructureId(fee.id);
+  const handleEditStructure = (_fee: any, group: any) => {
+    setEditingStructureId(`${group.class_id}_${group.term_id}`);
     setStructureData({
       class_id: group.class_id,
       term_id: group.term_id,
-      tuition_fee: field === 'tuition_fee' ? String(fee.amount) : '',
-      activity_fee: field === 'activity_fee' ? String(fee.amount) : '',
-      exam_fee: field === 'exam_fee' ? String(fee.amount) : '',
-      other_fee: field === 'other_fee' ? String(fee.amount) : '',
-      description: fee.description || '',
+      items: (group.fees || []).map((row: any) => ({ name: String(row.type || ''), amount: String(Number(row.amount) || '') })),
+      description: group.fees?.[0]?.description || '',
     });
     setShowStructure(true);
   };
@@ -605,6 +616,42 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
     acc[key].total += parseFloat(fs.amount) || 0;
     return acc;
   }, {});
+  const structureTotal = () => structureData.items.reduce((sum, item) => sum + (Number(String(item.amount).replace(/[^0-9.]/g, '')) || 0), 0);
+  const addFeeItem = () => setStructureData((prev) => ({ ...prev, items: [...prev.items, { name: '', amount: '' }] }));
+  const updateFeeItem = (index: number, patch: Partial<{ name: string; amount: string }>) =>
+    setStructureData((prev) => ({ ...prev, items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)) }));
+  const removeFeeItem = (index: number) =>
+    setStructureData((prev) => ({ ...prev, items: prev.items.length === 1 ? prev.items : prev.items.filter((_, i) => i !== index) }));
+
+  // Every fee type this school already uses, plus a catalogue for new ones.
+  const knownFeeTypes = useMemo(() => {
+    const catalogue = [
+      'Tuition', 'Activity', 'Exam', 'Boarding', 'Transport', 'Lunch', 'Motivation', 'Development',
+      'Library', 'Laboratory', 'Uniform', 'Admission', 'Assessment', 'Caution money', 'Trip',
+      'Graduation', 'Extra tuition', 'Other',
+    ];
+    const used = new Map<string, string>();
+    feeStructures.forEach((row: any) => {
+      const name = String(row.fee_type || '').trim();
+      if (name && !used.has(name.toLowerCase())) used.set(name.toLowerCase(), name);
+    });
+    catalogue.forEach((name) => { if (!used.has(name.toLowerCase())) used.set(name.toLowerCase(), name); });
+    return [...used.values()].sort((a, b) => a.localeCompare(b));
+  }, [feeStructures]);
+
+  const invoiceStudent = students.find((row: any) => row.id === invoiceData.student_id);
+  const suggestedInvoiceTotal = useMemo(() => {
+    const classId = invoiceStudent?.class_id;
+    if (!classId || !invoiceData.term_id) return 0;
+    return feeStructures
+      .filter((row: any) => row.class_id === classId && row.term_id === invoiceData.term_id)
+      .reduce((sum: number, row: any) => sum + (Number(row.amount) || 0), 0);
+  }, [invoiceStudent?.class_id, invoiceData.term_id, feeStructures]);
+  const applyStructureTotal = () => {
+    if (!suggestedInvoiceTotal) { toast.error('No fee structure found for that class and term.'); return; }
+    setInvoiceData((prev) => ({ ...prev, total_amount: String(suggestedInvoiceTotal) }));
+    toast.success(`Filled Ksh ${suggestedInvoiceTotal.toLocaleString()} from the fee structure.`);
+  };
 
   if (readOnly) {
     const readOnlyTabClass = (tab: typeof activeTab) => `px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${activeTab === tab ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`;
@@ -788,24 +835,58 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
       {/* Add Fee Structure Form */}
       {showStructure && (
         <div className="bg-white rounded-2xl p-6 shadow-sm border">
-          <h3 className="text-lg font-semibold mb-4">{editingStructureId ? 'Edit Fee Structure' : 'Add Fee Structure'}</h3>
-          <form onSubmit={handleAddStructure} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <select value={structureData.class_id} onChange={e => setStructureData({...structureData, class_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
-              <option value="">Select Class *</option>
-              {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
-            </select>
-            <select value={structureData.term_id} onChange={e => setStructureData({...structureData, term_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
-              <option value="">Select Term *</option>
-              {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
-            </select>
-            <input type="number" placeholder="Tuition Fee (Ksh)" value={structureData.tuition_fee} onChange={e => setStructureData({...structureData, tuition_fee: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" min="0" />
-            <input type="number" placeholder="Activity Fee (Ksh)" value={structureData.activity_fee} onChange={e => setStructureData({...structureData, activity_fee: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" min="0" />
-            <input type="number" placeholder="Exam Fee (Ksh)" value={structureData.exam_fee} onChange={e => setStructureData({...structureData, exam_fee: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" min="0" />
-            <input type="number" placeholder="Other Fee (Ksh)" value={structureData.other_fee} onChange={e => setStructureData({...structureData, other_fee: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" min="0" />
-            <input placeholder="Description (optional)" value={structureData.description} onChange={e => setStructureData({...structureData, description: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm md:col-span-2" />
-            <div className="flex gap-3 md:col-span-3">
-              <button type="submit" className="bg-[#2563EB] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8]">{editingStructureId ? 'Update Structure' : 'Save Structure'}</button>
-              <button type="button" onClick={() => { setShowStructure(false); setEditingStructureId(null); }} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
+          <h3 className="text-lg font-semibold mb-1">{editingStructureId ? 'Edit Fee Structure' : 'Add Fee Structure'}</h3>
+          <p className="mb-4 text-sm text-gray-500">Add every fee for this class and term — Tuition, Activity, Exam, Motivation, anything the school charges.</p>
+          <form onSubmit={handleAddStructure} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <select value={structureData.class_id} onChange={e => setStructureData({...structureData, class_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
+                <option value="">Select Class *</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
+              </select>
+              <select value={structureData.term_id} onChange={e => setStructureData({...structureData, term_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
+                <option value="">Select Term *</option>
+                {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
+              </select>
+            </div>
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-900">Fee items</p>
+                <p className="text-xs text-gray-500">{structureData.items.length} item(s)</p>
+              </div>
+              <datalist id="fee-type-options">
+                {knownFeeTypes.map((type) => <option key={type} value={type} />)}
+              </datalist>
+              <div className="mt-3 space-y-2">
+                {structureData.items.map((item, index) => (
+                  <div key={index} className="flex flex-col gap-2 sm:flex-row">
+                    <input list="fee-type-options" value={item.name} onChange={(e) => updateFeeItem(index, { name: e.target.value })}
+                      placeholder="Fee type — e.g. Motivation" aria-label={`Fee type ${index + 1}`}
+                      className="w-full flex-1 rounded-xl border px-4 py-2.5 text-sm" />
+                    <div className="flex gap-2">
+                      <input type="number" min="0" inputMode="decimal" value={item.amount} onChange={(e) => updateFeeItem(index, { amount: e.target.value })}
+                        placeholder="Amount (Ksh)" aria-label={`Amount for fee ${index + 1}`}
+                        className="w-40 rounded-xl border px-4 py-2.5 text-sm" />
+                      <button type="button" onClick={() => removeFeeItem(index)} aria-label={`Remove fee ${index + 1}`}
+                        disabled={structureData.items.length === 1}
+                        className="rounded-xl border px-3 text-gray-500 hover:bg-gray-50 disabled:opacity-40">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={addFeeItem} className="mt-3 w-full rounded-xl border border-dashed px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+                + Add another fee
+              </button>
+              <div className="mt-3 flex items-center justify-between border-t pt-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total per learner</span>
+                <span className="text-lg font-bold text-gray-900">Ksh {structureTotal().toLocaleString()}</span>
+              </div>
+            </div>
+            <input placeholder="Description (optional)" value={structureData.description} onChange={e => setStructureData({ ...structureData, description: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
+            <div className="flex flex-wrap gap-3">
+              <button type="submit" className="bg-[#2563EB] text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-[#1d4ed8]">{editingStructureId ? 'Save all changes' : 'Save structure'}</button>
+              <button type="button" onClick={() => { setShowStructure(false); setEditingStructureId(null); setStructureData({ class_id: '', term_id: '', items: [{ name: '', amount: '' }], description: '' }); }} className="border px-6 py-2.5 rounded-xl text-sm hover:bg-gray-50">Cancel</button>
             </div>
           </form>
         </div>
@@ -837,6 +918,14 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
               {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
             </select>
             <input type="number" placeholder="Total Amount (Ksh) *" value={invoiceData.total_amount} onChange={e => setInvoiceData({...invoiceData, total_amount: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" required min="1" />
+            <div className="md:col-span-2 -mt-1 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={applyStructureTotal} disabled={!suggestedInvoiceTotal}
+                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50">
+                <FileText className="h-3.5 w-3.5" />
+                Use this class&apos;s fee total{suggestedInvoiceTotal ? ` (Ksh ${suggestedInvoiceTotal.toLocaleString()})` : ''}
+              </button>
+              <span className="text-xs text-gray-500">Fills the amount from the fee structure for the selected learner&apos;s class and term.</span>
+            </div>
             <input type="date" placeholder="Due Date" value={invoiceData.due_date} onChange={e => setInvoiceData({...invoiceData, due_date: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm" />
             <div className="flex gap-3 md:col-span-2">
               <button type="submit" className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700">Generate Invoice</button>
