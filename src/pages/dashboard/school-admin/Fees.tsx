@@ -299,6 +299,7 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
   };
 
   // Save the whole set of fee items for one class + term (add, update, remove together).
+  // A whole-grade selection applies the same set to every stream in that grade.
   const handleAddStructure = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!structureData.class_id || !structureData.term_id) { toast.error('Please select class and term'); return; }
@@ -316,59 +317,73 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
       seen.add(key);
     }
 
+    const targetClassIds = resolveStructureTargets(structureData.class_id);
+    if (!targetClassIds.length) { toast.error('That class could not be found — reload the page and try again.'); return; }
+
     const termRow = terms.find((term: any) => term.id === structureData.term_id);
     const academicYear = String(termRow?.academic_year || new Date().getFullYear());
-    const existing = feeStructures.filter((row: any) => row.class_id === structureData.class_id && row.term_id === structureData.term_id);
-    const byName = new Map<string, any>();
-    existing.forEach((row: any) => byName.set(String(row.fee_type || '').toLowerCase(), row));
 
-    const keptIds = new Set<string>();
-    const rowsToInsert: any[] = [];
-    const rowsToUpdate: { id: string; amount: number }[] = [];
-
-    cleaned.forEach((item) => {
-      const match = byName.get(item.name.toLowerCase());
-      if (match) {
-        keptIds.add(match.id);
-        if (Number(match.amount) !== item.amount) rowsToUpdate.push({ id: match.id, amount: item.amount });
-      } else {
-        rowsToInsert.push({
-          school_id: user.schoolId,
-          class_id: structureData.class_id,
-          term_id: structureData.term_id,
-          academic_year: academicYear,
-          fee_type: item.name,
-          amount: item.amount,
-          is_mandatory: true,
-          description: structureData.description || null,
-        });
-      }
-    });
-
-    const idsToDelete = existing.filter((row: any) => !keptIds.has(row.id)).map((row: any) => row.id);
+    let added = 0;
+    let updated = 0;
+    let removed = 0;
 
     try {
-      for (const row of rowsToUpdate) {
-        const { error } = await supabaseUntyped.from('fee_structures')
-          .update({ amount: row.amount, description: structureData.description || null })
-          .eq('id', row.id).eq('school_id', user.schoolId);
-        if (error) throw error;
-      }
-      if (idsToDelete.length) {
-        const { error } = await supabaseUntyped.from('fee_structures').delete().in('id', idsToDelete).eq('school_id', user.schoolId);
-        if (error) throw error;
-      }
-      if (rowsToInsert.length) {
-        const { error } = await supabaseUntyped.from('fee_structures').insert(rowsToInsert);
-        if (error) throw error;
+      for (const classId of targetClassIds) {
+        const existing = feeStructures.filter((row: any) => row.class_id === classId && row.term_id === structureData.term_id);
+        const byName = new Map<string, any>();
+        existing.forEach((row: any) => byName.set(String(row.fee_type || '').toLowerCase(), row));
+
+        const keptIds = new Set<string>();
+        const rowsToInsert: any[] = [];
+        const rowsToUpdate: { id: string; amount: number }[] = [];
+
+        cleaned.forEach((item) => {
+          const match = byName.get(item.name.toLowerCase());
+          if (match) {
+            keptIds.add(match.id);
+            if (Number(match.amount) !== item.amount) rowsToUpdate.push({ id: match.id, amount: item.amount });
+          } else {
+            rowsToInsert.push({
+              school_id: user.schoolId,
+              class_id: classId,
+              term_id: structureData.term_id,
+              academic_year: academicYear,
+              fee_type: item.name,
+              amount: item.amount,
+              is_mandatory: true,
+              description: structureData.description || null,
+            });
+          }
+        });
+
+        const idsToDelete = existing.filter((row: any) => !keptIds.has(row.id)).map((row: any) => row.id);
+
+        for (const row of rowsToUpdate) {
+          const { error } = await supabaseUntyped.from('fee_structures')
+            .update({ amount: row.amount, description: structureData.description || null })
+            .eq('id', row.id).eq('school_id', user.schoolId);
+          if (error) throw error;
+        }
+        if (idsToDelete.length) {
+          const { error } = await supabaseUntyped.from('fee_structures').delete().in('id', idsToDelete).eq('school_id', user.schoolId);
+          if (error) throw error;
+        }
+        if (rowsToInsert.length) {
+          const { error } = await supabaseUntyped.from('fee_structures').insert(rowsToInsert);
+          if (error) throw error;
+        }
+
+        added += rowsToInsert.length;
+        updated += rowsToUpdate.length;
+        removed += idsToDelete.length;
       }
     } catch (error: any) {
       toast.error('Could not save the fee structure: ' + (error?.message || 'Unknown error'));
       return;
     }
 
-    const summary = [`${rowsToInsert.length} added`, `${rowsToUpdate.length} updated`, `${idsToDelete.length} removed`];
-    toast.success(`Fee structure saved — ${summary.join(', ')}.`);
+    const scope = targetClassIds.length > 1 ? ` across ${targetClassIds.length} streams` : '';
+    toast.success(`Fee structure saved${scope} — ${added} added, ${updated} updated, ${removed} removed.`);
     setEditingStructureId(null);
     setShowStructure(false);
     setStructureData({ class_id: '', term_id: '', items: [{ name: '', amount: '' }], description: '' });
@@ -653,6 +668,35 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
     toast.success(`Filled Ksh ${suggestedInvoiceTotal.toLocaleString()} from the fee structure.`);
   };
 
+  // Grade cohorts: classes that share a name and level are streams of the same grade
+  // (Grade 1A, 1B, 1C), so a bursar can set one fee structure for the whole grade.
+  const gradeKeyOf = (row: any) => `${String(row?.name || '').trim().toLowerCase()}|${Number(row?.level ?? row?.grade_level ?? 0)}`;
+  const gradeCohorts = useMemo(() => {
+    const map = new Map<string, any[]>();
+    classes.forEach((row: any) => {
+      const name = String(row?.name || '').trim();
+      if (!name) return;
+      const key = gradeKeyOf(row);
+      map.set(key, [...(map.get(key) || []), row]);
+    });
+    return [...map.entries()]
+      .map(([key, rows]) => ({ key, name: String(rows[0]?.name || 'Class'), streams: rows }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [classes]);
+  const resolveStructureTargets = (value: string): string[] => {
+    if (!value) return [];
+    if (value.startsWith('grade:')) {
+      const cohort = gradeCohorts.find((row) => row.key === value.slice(6));
+      return cohort ? cohort.streams.map((row: any) => row.id) : [];
+    }
+    return [value];
+  };
+  const structureTargetClasses = resolveStructureTargets(structureData.class_id);
+  const structureTargetLabel = structureTargetClasses
+    .map((id) => formatClassStream(classes.find((row: any) => row.id === id)))
+    .filter(Boolean)
+    .join(', ');
+
   if (readOnly) {
     const readOnlyTabClass = (tab: typeof activeTab) => `px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${activeTab === tab ? 'border-[#2563EB] text-[#2563EB]' : 'border-transparent text-gray-500 hover:text-gray-700'}`;
 
@@ -841,13 +885,27 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <select value={structureData.class_id} onChange={e => setStructureData({...structureData, class_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
                 <option value="">Select Class *</option>
-                {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
+                <optgroup label="Whole grade — applies to every stream">
+                  {gradeCohorts.map((cohort) => (
+                    <option key={cohort.key} value={`grade:${cohort.key}`}>
+                      {cohort.name}{cohort.streams.length > 1 ? ` — all ${cohort.streams.length} streams` : ' — all learners'}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Single stream">
+                  {classes.map(c => <option key={c.id} value={c.id}>{formatClassStream(c)}</option>)}
+                </optgroup>
               </select>
               <select value={structureData.term_id} onChange={e => setStructureData({...structureData, term_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
                 <option value="">Select Term *</option>
                 {terms.map(t => <option key={t.id} value={t.id}>{t.name} {t.academic_year}</option>)}
               </select>
             </div>
+            {structureData.class_id.startsWith('grade:') && (
+              <p className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-900">
+                Applies to <strong>{structureTargetClasses.length} stream(s)</strong>: {structureTargetLabel || 'no streams found'}. Each stream keeps its own copy, so you can still adjust one stream later.
+              </p>
+            )}
             <div className="rounded-2xl border border-gray-200 p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-900">Fee items</p>
