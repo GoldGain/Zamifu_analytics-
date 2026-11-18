@@ -683,11 +683,17 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
       .map(([key, rows]) => ({ key, name: String(rows[0]?.name || 'Class'), streams: rows }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [classes]);
+  // A grade may hold both a stream-less row and real streams; write to the real
+  // streams when they exist so fee rows never land on an empty placeholder class.
+  const cohortTargets = (cohort: { streams: any[] }) => {
+    const streamed = cohort.streams.filter((row: any) => String(row.stream || row.stream_name || '').trim());
+    return streamed.length ? streamed : cohort.streams;
+  };
   const resolveStructureTargets = (value: string): string[] => {
     if (!value) return [];
     if (value.startsWith('grade:')) {
       const cohort = gradeCohorts.find((row) => row.key === value.slice(6));
-      return cohort ? cohort.streams.map((row: any) => row.id) : [];
+      return cohort ? cohortTargets(cohort).map((row: any) => row.id) : [];
     }
     return [value];
   };
@@ -888,7 +894,7 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
                 <optgroup label="Whole grade — applies to every stream">
                   {gradeCohorts.map((cohort) => (
                     <option key={cohort.key} value={`grade:${cohort.key}`}>
-                      {cohort.name}{cohort.streams.length > 1 ? ` — all ${cohort.streams.length} streams` : ' — all learners'}
+                      {cohort.name}{cohortTargets(cohort).length > 1 ? ` — all ${cohortTargets(cohort).length} streams` : ' — all learners'}
                     </option>
                   ))}
                 </optgroup>
