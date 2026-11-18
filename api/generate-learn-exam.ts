@@ -55,6 +55,38 @@ function allowRate(key: string): boolean {
   return true;
 }
 
+const firstHeaderValue = (value: string | string[] | undefined): string =>
+  (Array.isArray(value) ? value[0] : value || '').split(',')[0].trim();
+
+/**
+ * Per-IP sliding-window limiter for the AI routes, backed by public.bump_rate_limit().
+ * Inlined per route: files under api/_lib are not bundled by Vercel.
+ * Fails open so a limiter outage can never take generation down.
+ */
+async function allowAiRequest(
+  request: RequestLike,
+  bucket: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return true;
+  const ip = firstHeaderValue(request.headers?.['x-forwarded-for']) || firstHeaderValue(request.headers?.['x-real-ip']) || 'unknown';
+  try {
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data, error } = await admin.rpc('bump_rate_limit', {
+      p_key: `${bucket}:${ip}`,
+      p_limit: limit,
+      p_window_seconds: windowSeconds,
+    });
+    if (error) return true;
+    return data !== false;
+  } catch {
+    return true;
+  }
+}
+
 export default async function handler(request: RequestLike, response: ResponseLike): Promise<void> {
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
   response.setHeader('Cache-Control', 'no-store');
@@ -66,6 +98,11 @@ export default async function handler(request: RequestLike, response: ResponseLi
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST, OPTIONS');
     response.status(405).json({ error: 'Method not allowed.' });
+    return;
+  }
+
+  if (!(await allowAiRequest(request, 'generate-learn-exam', 20, 60))) {
+    response.status(429).json({ error: 'Too many generation requests. Please wait a minute and try again.' });
     return;
   }
 
