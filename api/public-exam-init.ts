@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { allowRequest } from './_lib/rate-limit';
 
 const PRICE_KOBO = 2000; // KES 20
 
-type Req = { method?: string; body?: unknown };
+type Req = { method?: string; body?: unknown; headers?: Record<string, string | string[] | undefined> };
 type Res = { status: (c: number) => Res; json: (b: unknown) => void; setHeader: (n: string, v: string) => void; end: () => void };
 
 const bodyOf = (raw: unknown): Record<string, unknown> => {
@@ -16,6 +17,11 @@ export default async function handler(request: Req, response: Res): Promise<void
   response.setHeader('Cache-Control', 'no-store');
   if (request.method === 'OPTIONS') { response.status(204).end(); return; }
   if (request.method !== 'POST') { response.status(405).json({ error: 'Method not allowed.' }); return; }
+
+  if (!(await allowRequest(request, 'public-exam-init', 20, 60))) {
+    response.status(429).json({ error: 'Too many requests. Please wait a minute and try again.' });
+    return;
+  }
 
   const url = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

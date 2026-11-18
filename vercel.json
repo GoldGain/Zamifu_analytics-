@@ -3,16 +3,59 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/generate-exam.ts": { "maxDuration": 300 },
-    "api/generate-learn-exam.ts": { "maxDuration": 300 }
+    "api/generate-exam.ts": {
+      "maxDuration": 300
+    },
+    "api/generate-learn-exam.ts": {
+      "maxDuration": 300
+    }
   },
   "crons": [
-    { "path": "/api/run-trial-expiry-notifications", "schedule": "0 6 * * *" }
+    {
+      "path": "/api/run-trial-expiry-notifications",
+      "schedule": "0 6 * * *"
+    }
   ],
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
     }
   ]
 }
