@@ -1,5 +1,37 @@
 import { createClient } from '@supabase/supabase-js';
-import { allowRequest } from './_lib/rate-limit';
+
+const firstHeaderValue = (value: string | string[] | undefined): string =>
+  (Array.isArray(value) ? value[0] : value || '').split(',')[0].trim();
+
+/**
+ * Per-IP sliding-window limiter backed by public.bump_rate_limit().
+ * Inlined per route on purpose: files under api/_lib are not bundled by Vercel.
+ * Fails open so a limiter outage can never take the endpoint down.
+ */
+async function allowRequest(
+  request: { headers?: Record<string, string | string[] | undefined> },
+  bucket: string,
+  limit: number,
+  windowSeconds: number,
+): Promise<boolean> {
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return true;
+  const ip = firstHeaderValue(request.headers?.['x-forwarded-for']) || firstHeaderValue(request.headers?.['x-real-ip']) || 'unknown';
+  try {
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const { data, error } = await admin.rpc('bump_rate_limit', {
+      p_key: `${bucket}:${ip}`,
+      p_limit: limit,
+      p_window_seconds: windowSeconds,
+    });
+    if (error) return true;
+    return data !== false;
+  } catch {
+    return true;
+  }
+}
+
 
 const PRICE_KOBO = 2000; // KES 20
 
