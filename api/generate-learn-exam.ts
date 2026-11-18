@@ -101,15 +101,18 @@ export default async function handler(request: RequestLike, response: ResponseLi
     return;
   }
 
-  if (!(await allowAiRequest(request, 'generate-learn-exam', 20, 60))) {
-    response.status(429).json({ error: 'Too many generation requests. Please wait a minute and try again.' });
-    return;
-  }
-
   const url = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
     response.status(503).json({ error: 'The secure examination generator is not configured.' });
+    return;
+  }
+
+  // Placed after the service-key check on purpose: scripts/apply-senior-variants.cjs
+  // anchors on the exact text between the method guard and `const url`, so nothing
+  // may be inserted there.
+  if (!(await allowAiRequest(request, 'generate-learn-exam', 20, 60))) {
+    response.status(429).json({ error: 'Too many generation requests. Please wait a minute and try again.' });
     return;
   }
   const rawAuthorization = request.headers.authorization;
