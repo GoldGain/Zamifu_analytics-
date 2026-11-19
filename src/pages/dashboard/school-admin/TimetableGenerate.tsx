@@ -854,6 +854,11 @@ export default function TimetableGenerate() {
               Number(assignment.lessons_per_week || 0),
             ));
 
+          const { data: strokedRows } = await supabaseUntyped
+            .from('timetable_stroked_subjects')
+            .select('level_group, subject_id')
+            .eq('school_id', schoolId)
+            .eq('level_group', levelKey);
           const solverResult = solveTimetableCsp({
             schoolId,
             levelKey,
@@ -867,6 +872,7 @@ export default function TimetableGenerate() {
             // Weekly totals below capacity are normal; place every assigned lesson
             // and leave only each short class's unused cells blank.
             allowIncompleteClasses: true,
+            strokedSubjects: (strokedRows || []).map((row: any) => ({ subjectId: String(row.subject_id) })),
             onProgress: (message) => console.info(`[timetable] ${message}`),
           });
           const solverWarnings = solverResult.warnings.filter((warning) => !warning.code.startsWith('weekly-total-'));

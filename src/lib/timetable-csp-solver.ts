@@ -76,6 +76,15 @@ export interface CspTimetableSolverOptions {
   reservedTeacherPeriods?: { teacherId: string; day: number; startTime: string; endTime: string }[];
   /** Fixed activity cells keyed by classId|zeroBasedDay|lessonIndex. */
   blockedClassCells?: ReadonlySet<string>;
+
+  /**
+   * Learning areas taught to every stream of this level in ONE shared period
+   * ("stroked" subjects such as CRE, IRE, HRE or History). The solver reserves a
+   * common cell for every class that offers the subject, books the teacher once,
+   * removes one lesson of the subject from each class plan and injects the shared
+   * lesson afterwards, so the weekly counts stay exact.
+   */
+  strokedSubjects?: readonly { subjectId: string }[];
   /**
    * Allow classes with fewer assigned lessons than available weekly cells to be
    * scheduled with the unused cells left blank. Over-capacity classes still fail.
@@ -2495,6 +2504,98 @@ function buildEntries(search: LevelSearch, options: CspTimetableSolverOptions, s
 
 /* ──────────────────────────────── entry point ──────────────────────────────── */
 
+/**
+ * Reserve one common period per stroked subject and remove one lesson of it from
+ * every participating class, so the injected lesson keeps each class's weekly
+ * total exact. Religious learning areas keep their IRE/CRE pairing (Rule 10): the
+ * counterpart is injected into the same period, which is how IRE learners are
+ * covered while the CRE group is together.
+ */
+function planStrokedSubjects(
+  plans: Map<string, ClassPlan>,
+  options: CspTimetableSolverOptions,
+  slots: any[],
+  issues: CspSolverIssue[],
+): { blockedCells: Set<string>; reservedTeacherCells: Set<string>; injections: any[] } {
+  const blockedCells = new Set<string>();
+  const reservedTeacherCells = new Set<string>();
+  const injections: any[] = [];
+  const selections = options.strokedSubjects || [];
+  if (!selections.length) return { blockedCells, reservedTeacherCells, injections };
+
+  const slotsPerDay = slots.length;
+  const takenCells = new Set<string>();
+  const dayOrder = [1, 0, 2, 3, 4];
+
+  for (const selection of selections) {
+    const subjectId = String(selection?.subjectId || '');
+    if (!subjectId) continue;
+
+    const participating = [...plans.values()]
+      .filter((plan) => plan.needs.some((need) => need.subjectId === subjectId && need.lessons > 0));
+    if (!participating.length) continue;
+
+    let chosen: { day: number; slot: number } | null = null;
+    for (const day of dayOrder) {
+      for (let slot = 0; slot < slotsPerDay && !chosen; slot += 1) {
+        if (takenCells.has(`${day}|${slot}`)) continue;
+        const freeForEveryStream = participating.every((plan) => {
+          const cell = `${plan.classId}|${day}|${slot}`;
+          return !options.blockedClassCells?.has(cell) && !blockedCells.has(cell);
+        });
+        if (freeForEveryStream) chosen = { day, slot };
+      }
+      if (chosen) break;
+    }
+
+    if (!chosen) {
+      const subjectName = participating[0].needs.find((need) => need.subjectId === subjectId)?.subjectName || 'the stroked subject';
+      issues.push(makeIssue('stroked-no-shared-period',
+        `${subjectName} is marked as a stroked subject, but no single period is free in every stream at once. Clear an activity or free a period and generate again.`));
+      continue;
+    }
+
+    takenCells.add(`${chosen.day}|${chosen.slot}`);
+    const slotRow = slots[chosen.slot];
+
+    for (const plan of participating) {
+      const need = plan.needs.find((entry) => entry.subjectId === subjectId && entry.lessons > 0);
+      if (!need) continue;
+
+      const paired = isReligiousName(need.subjectName)
+        ? plan.needs.find((entry) => entry !== need && isReligiousName(entry.subjectName) && entry.lessons > 0)
+        : undefined;
+      const placed = paired ? [need, paired] : [need];
+
+      for (const entry of placed) {
+        entry.lessons -= 1;
+        plan.configuredTotal -= 1;
+        for (const teacherId of entry.teacherIds) {
+          reservedTeacherCells.add(`${teacherId}|${chosen.day}|${chosen.slot}`);
+        }
+        injections.push({
+          school_id: options.schoolId,
+          class_id: plan.classId,
+          day_of_week: chosen.day + 1,
+          time_slot_id: slotRow.id,
+          subject_id: entry.subjectId,
+          teacher_id: entry.teacherIds[0],
+          entry_type: 'lesson',
+          level_group: options.levelKey,
+          effective_start_time: slotRow.start_time,
+          effective_end_time: slotRow.end_time,
+          stroked: true,
+        });
+      }
+
+      plan.needs = plan.needs.filter((entry) => entry.lessons > 0);
+      blockedCells.add(`${plan.classId}|${chosen.day}|${chosen.slot}`);
+    }
+  }
+
+  return { blockedCells, reservedTeacherCells, injections };
+}
+
 export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimetableSolverResult {
   const startedAt = Date.now();
   const issues: CspSolverIssue[] = [];
@@ -2538,6 +2639,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
 
   allowTwoPerDay = TWO_PER_DAY_LEVELS.includes(options.levelKey);
   const plans = buildClassPlans(options.classes, options.assignments, issues);
+  const stroked = planStrokedSubjects(plans, options, slots, issues);
   // Rule 14 is a warning, so a mismatch is recorded before anything can return
   // early: the admin must still be told which classes do not match the level.
   const expectedWeeklyCells = slotsPerDay * DAY_COUNT;
@@ -2591,7 +2693,10 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
 
   const perClassBudget = Math.max(50_000, options.maxSearchNodesPerClass ?? 500_000);
   const totalBudget = perClassBudget * solvableClassIds.length;
-  const reserved = options.reservedTeacherCells || new Set<string>();
+  const reserved = new Set<string>([...(options.reservedTeacherCells || []), ...stroked.reservedTeacherCells]);
+  const solverOptions: CspTimetableSolverOptions = stroked.blockedCells.size
+    ? { ...options, blockedClassCells: new Set<string>([...(options.blockedClassCells || []), ...stroked.blockedCells]) }
+    : options;
   const attempts = 1;
   let deepest = -1;
 
@@ -2603,13 +2708,13 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
 
     // Decide all weekday shapes and shared-teacher bookings together. The old
     // bounded random restarts could falsely report solvable schools impossible.
-    const ok = search.solveExact(slots, options);
+    const ok = search.solveExact(slots, solverOptions);
     searchNodes += search.nodes;
     if (ok) {
       const problem = search.verify(allowPartial);
       if (!problem) {
         accepted = true;
-        const entries = buildEntries(search, options, slots);
+        const entries = [...buildEntries(search, options, slots), ...stroked.injections];
         progress(`Solved ${options.levelKey}: ${entries.length} entries `
           + `(${searchNodes.toLocaleString()} search nodes, ${restartCount} attempt(s)).`);
         return finish(entries, 'csp');

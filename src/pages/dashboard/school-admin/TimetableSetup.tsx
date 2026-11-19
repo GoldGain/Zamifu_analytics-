@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
-import { Clock, Save, AlertCircle, Copy, ChevronDown, Info, Plus, Trash2 } from 'lucide-react';
+import { Clock, Save, AlertCircle, Copy, ChevronDown, Info, Plus, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { getLevelConfig } from '@/lib/timetable-generator';
 
@@ -130,6 +130,10 @@ export default function TimetableSetup() {
   const [selectedLevel, setSelectedLevel] = useState<string>('lower-primary');
   const [configs, setConfigs] = useState<Record<string, LevelConfig>>({});
   const [savedConfigLevels, setSavedConfigLevels] = useState<Set<string>>(new Set());
+  const [strokedSubjects, setStrokedSubjects] = useState<Record<string, string[]>>({});
+  const [strokedClasses, setStrokedClasses] = useState<any[]>([]);
+  const [strokedAssignments, setStrokedAssignments] = useState<any[]>([]);
+  const [savingStroked, setSavingStroked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copyFrom, setCopyFrom] = useState('');
@@ -208,6 +212,21 @@ export default function TimetableSetup() {
           .filter((level: string) => LEVEL_GROUPS.some((group) => group.key === level))
       ));
 
+      // Stroked subjects (one shared period per level) and the catalogue to pick from.
+      const [strokedRowsRes, strokedClassRes, strokedAssignmentRes] = await Promise.all([
+        supabaseUntyped.from('timetable_stroked_subjects').select('level_group, subject_id').eq('school_id', resolvedSchoolId),
+        supabaseUntyped.from('classes').select('id, grade_level, level').eq('school_id', resolvedSchoolId),
+        supabaseUntyped.from('teacher_subject_assignments').select('class_id, subject_id, subjects(name)').eq('school_id', resolvedSchoolId).eq('is_active', true),
+      ]);
+      const strokedMap: Record<string, string[]> = {};
+      (strokedRowsRes.data || []).forEach((row: any) => {
+        const key = String(row.level_group || '');
+        strokedMap[key] = [...(strokedMap[key] || []), String(row.subject_id)];
+      });
+      setStrokedSubjects(strokedMap);
+      setStrokedClasses(strokedClassRes.data || []);
+      setStrokedAssignments(strokedAssignmentRes.data || []);
+
       const { data: activityRows, error: activityError } = await supabaseUntyped
         .from('after_school_activities')
         .select('id, day_of_week, activity_name, start_time, end_time, target_classes, target_level_group, blocks_lessons')
@@ -256,6 +275,63 @@ export default function TimetableSetup() {
         [field]: v,
       },
     }));
+  };
+
+  const STROKED_LEVEL_RANGES: Record<string, number[]> = {
+    'pre-primary': [-3, -2, -1, 0],
+    'lower-primary': [1, 2, 3],
+    'upper-primary': [4, 5, 6],
+    'junior': [7, 8, 9],
+    'senior': [10, 11, 12],
+    'form-3-4': [11, 12],
+  };
+
+  const levelSubjectOptions = useMemo(() => {
+    const levels = STROKED_LEVEL_RANGES[selectedLevel] || [];
+    const classIds = new Set(strokedClasses
+      .filter((row: any) => levels.includes(Number(row.grade_level ?? row.level)))
+      .map((row: any) => String(row.id)));
+    const names = new Map<string, string>();
+    strokedAssignments.forEach((row: any) => {
+      if (!classIds.has(String(row.class_id))) return;
+      const id = String(row.subject_id || '');
+      const name = String(row.subjects?.name || '').trim();
+      if (id && name && !names.has(id)) names.set(id, name);
+    });
+    return [...names.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [selectedLevel, strokedClasses, strokedAssignments]);
+
+  const toggleStrokedSubject = (subjectId: string) => {
+    setStrokedSubjects((prev) => {
+      const current = prev[selectedLevel] || [];
+      const next = current.includes(subjectId) ? current.filter((id) => id !== subjectId) : [...current, subjectId];
+      return { ...prev, [selectedLevel]: next };
+    });
+  };
+
+  const handleSaveStroked = async () => {
+    if (!schoolId) { toast.error('No school selected'); return; }
+    setSavingStroked(true);
+    try {
+      const desired = strokedSubjects[selectedLevel] || [];
+      const { error: deleteError } = await supabaseUntyped
+        .from('timetable_stroked_subjects')
+        .delete()
+        .eq('school_id', schoolId)
+        .eq('level_group', selectedLevel);
+      if (deleteError) throw deleteError;
+      if (desired.length) {
+        const { error } = await supabaseUntyped
+          .from('timetable_stroked_subjects')
+          .insert(desired.map((subjectId) => ({ school_id: schoolId, level_group: selectedLevel, subject_id: subjectId })));
+        if (error) throw error;
+      }
+      toast.success(`${desired.length} stroked subject(s) saved for ${LEVEL_GROUPS.find((l) => l.key === selectedLevel)?.label || selectedLevel}.`);
+    } catch (err: any) {
+      toast.error('Could not save stroked subjects: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSavingStroked(false);
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -579,6 +655,52 @@ export default function TimetableSetup() {
         >
           <Save className="w-4 h-4" />
           {saving ? 'Saving...' : 'Save Configuration'}
+        </button>
+      </div>
+
+      {/* Stroked subjects */}
+      <div className="bg-white rounded-2xl p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.08)]">
+        <h2 className="text-lg font-bold text-[#111111] mb-2 flex items-center gap-2">
+          <Users className="w-5 h-5 text-indigo-600" />
+          Stroked Subjects
+        </h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Learning areas taught to every stream of a level at the same time — CRE, IRE, HRE, History. The generator keeps one shared period for the whole level and books the teacher once, so no other class can take that teacher in that period.
+        </p>
+        <p className="text-xs text-gray-500 mb-3">
+          Configuring <strong>{LEVEL_GROUPS.find((l) => l.key === selectedLevel)?.label || selectedLevel}</strong>. Change the level above to configure another.
+        </p>
+        {levelSubjectOptions.length === 0 ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            No learning areas are assigned to this level yet. Add Teacher Assignments first.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {levelSubjectOptions.map((subject) => {
+              const active = (strokedSubjects[selectedLevel] || []).includes(subject.id);
+              return (
+                <button
+                  key={subject.id}
+                  type="button"
+                  onClick={() => toggleStrokedSubject(subject.id)}
+                  aria-pressed={active}
+                  title="Stroke this subject across all streams at the same time"
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition ${active ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {active ? '✓ ' : ''}{subject.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleSaveStroked}
+          disabled={savingStroked}
+          className="mt-4 flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+        >
+          <Save className="w-4 h-4" />
+          {savingStroked ? 'Saving...' : 'Save Stroked Subjects'}
         </button>
       </div>
 
