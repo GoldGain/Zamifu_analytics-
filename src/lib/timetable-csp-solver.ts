@@ -2532,7 +2532,10 @@ function planStrokedSubjects(
   const pickSharedCells = (participating: ClassPlan[], count: number): { day: number; slot: number }[] => {
     const picked: { day: number; slot: number }[] = [];
     for (const day of dayOrder) {
-      for (let slot = 0; slot < slotsPerDay && picked.length < count; slot += 1) {
+      // Reserve the LAST period of each day first: no learning area has a window
+      // that requires the final period, so a shared cell there keeps a full week
+      // solvable instead of stealing a slot Mathematics or English need.
+      for (let slot = slotsPerDay - 1; slot >= 0 && picked.length < count; slot -= 1) {
         if (takenCells.has(`${day}|${slot}`)) continue;
         const freeForEveryStream = participating.every((plan) => {
           const cell = `${plan.classId}|${day}|${slot}`;
