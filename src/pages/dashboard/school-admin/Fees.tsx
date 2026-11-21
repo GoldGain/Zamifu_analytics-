@@ -35,6 +35,8 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
   const [savingPayment, setSavingPayment] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
   const [retiredInvoiceConfirmation, setRetiredInvoiceConfirmation] = useState<{ studentName: string; retiredAt: string } | null>(null);
+  const [paymentClassFilter, setPaymentClassFilter] = useState('');
+  const [paymentSearch, setPaymentSearch] = useState('');
 
   // Fee structure form: one row per fee type, any names the school uses.
   const [structureData, setStructureData] = useState({
@@ -189,6 +191,23 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
     .sort(compareLearners);
 
   const paymentStudents = sortByAdmissionNumber(students);
+
+  // Instant filter for the Record Payment form: class first, then a free-text
+  // search over name, admission number and assessment number.
+  const paymentStudentOptions = useMemo(() => {
+    const term = paymentSearch.trim().toLowerCase();
+    const filtered = paymentStudents.filter((student: any) => {
+      if (paymentClassFilter && String(student.class_id || '') !== paymentClassFilter) return false;
+      if (!term) return true;
+      return [student.first_name, student.last_name, student.admission_number, student.assessment_number]
+        .some((value) => String(value || '').toLowerCase().includes(term));
+    });
+    const selected = paymentStudents.find((student: any) => String(student.id) === String(paymentData.student_id));
+    if (selected && !filtered.some((student: any) => String(student.id) === String(selected.id))) {
+      return [selected, ...filtered];
+    }
+    return filtered;
+  }, [paymentStudents, paymentClassFilter, paymentSearch, paymentData.student_id]);
 
   const openEditPayment = (payment: any) => {
     setEditingPayment(payment);
@@ -1027,11 +1046,29 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
         <div className="bg-white rounded-2xl p-6 shadow-sm border">
           <h3 className="text-lg font-semibold mb-4">Record Fee Payment</h3>
           <form onSubmit={handleRecordPayment} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <select value={paymentClassFilter} onChange={e => setPaymentClassFilter(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white">
+                <option value="">All classes</option>
+                {classes.map((classItem: any) => <option key={classItem.id} value={classItem.id}>{formatClassStream(classItem)}</option>)}
+              </select>
+              <div className="relative sm:col-span-2">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <input
+                  value={paymentSearch}
+                  onChange={e => setPaymentSearch(e.target.value)}
+                  placeholder="Search learner by name, admission no. or assessment no."
+                  className="w-full pl-9 pr-3 py-2.5 border rounded-xl text-sm"
+                />
+              </div>
+              <p className="sm:col-span-3 -mt-1 text-xs text-gray-500">
+                {paymentStudentOptions.length} learner(s) match{paymentClassFilter ? ` in ${formatClassStream(classes.find((c: any) => c.id === paymentClassFilter))}` : ''}.
+              </p>
+            </div>
             <select value={paymentData.student_id} onChange={e => {
               setPaymentData({...paymentData, student_id: e.target.value, invoice_id: ''});
             }} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white" required>
               <option value="">Select Student *</option>
-              {paymentStudents.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} ({s.admission_number || 'No admission no.'})</option>)}
+              {paymentStudentOptions.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} — {s.admission_number || 'No adm no.'}{s.assessment_number ? ` · Ass ${s.assessment_number}` : ''}</option>)}
             </select>
             <select value={paymentData.invoice_id} onChange={e => setPaymentData({...paymentData, invoice_id: e.target.value})} className="w-full px-4 py-2.5 border rounded-xl text-sm bg-white">
               <option value="">Latest Unpaid Invoice (auto)</option>

@@ -9,8 +9,8 @@ export type SubscriptionPlanId = 'full_access_20' | 'full_access_50' | 'exam_ana
 export interface SubscriptionPlanOption { id: SubscriptionPlanId; name: string; price: number; unit: 'learner' | 'school' | 'sms'; period: 'term' | 'annual'; featureSummary: string; includesSms: boolean; }
 
 export const SUBSCRIPTION_PLANS: SubscriptionPlanOption[] = [
-  { id: 'full_access_20', name: 'Full Access — Term', price: 10, unit: 'learner', period: 'term', featureSummary: 'Every feature for one learner for one term. Examination papers are billed separately at KES 20 per paper.', includesSms: true },
-  { id: 'full_access_50', name: 'Full Access — Annual', price: 20, unit: 'learner', period: 'annual', featureSummary: 'Every feature for one learner for one year. Examination papers are billed separately at KES 20 per paper.', includesSms: true },
+  { id: 'full_access_20', name: 'Full Access — Term', price: 10, unit: 'learner', period: 'term', featureSummary: 'Every feature for one learner for one term.', includesSms: true },
+  { id: 'full_access_50', name: 'Full Access — Annual', price: 20, unit: 'learner', period: 'annual', featureSummary: 'Every feature for one learner for one year.', includesSms: true },
 ];
 export const SMS_NON_SUBSCRIBER_PLAN: SubscriptionPlanOption = { id: 'sms_non_subscriber', name: 'SMS Credits (All Schools)', price: 1, unit: 'sms', period: 'term', featureSummary: 'Keep purchasing SMS credits from the SMS Wallet.', includesSms: false };
 export interface TrialData { trialStartDate: string; trialEndDate: string; hasPaid: boolean; paymentDate?: string; learnersCount: number; paymentReference?: string; paidAmount?: number; }
