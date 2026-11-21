@@ -5,11 +5,12 @@ import { ArrowRight, Check, ExternalLink, Loader2, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { createLearnHandoff } from '@/lib/learn-sso';
 
+// Kept in step with the live Zamifu Learn pricing page (zamifulearn.company).
 const PLANS = [
-  { label: 'Day pass', price: '39', note: '24 hours' },
-  { label: 'Week', price: '199', note: '7 days' },
-  { label: 'Month', price: '599', note: '30 days' },
-  { label: 'Annual', price: '4,999', note: 'Best value', highlight: true },
+  { label: 'Day pass', price: '59', note: '24 hours' },
+  { label: 'Weekly plan', price: '399', note: '7 days' },
+  { label: 'Monthly plan', price: '999', note: '30 days' },
+  { label: 'Annual plan', price: '4,999', note: 'Best value', highlight: true },
 ];
 
 export default function ExamGeneratorRedirectModal({ open, onClose }: { open: boolean; onClose: () => void }) {
