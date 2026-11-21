@@ -200,6 +200,29 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
     });
   };
 
+  // Only the bursar (and platform admins) may remove a payment record; the RLS
+  // policies enforce the same rule on the server.
+  const canDeletePayments = ['bursar', 'super_admin', 'master_super_admin'].includes(String(user?.role || '').toLowerCase());
+
+  const handleDeletePayment = async (payment: any) => {
+    if (!payment?.id || !user?.schoolId) return;
+    const learner = `${payment.student?.first_name || ''} ${payment.student?.last_name || ''}`.trim() || 'this learner';
+    const amount = Number(payment.amount || 0).toLocaleString();
+    if (!window.confirm(`Delete this payment of Ksh ${amount} for ${learner}? The record is removed permanently and the invoice balance is recalculated.`)) return;
+    try {
+      const { error } = await supabaseUntyped
+        .from('fee_payments')
+        .delete()
+        .eq('id', payment.id)
+        .eq('school_id', user.schoolId);
+      if (error) throw error;
+      toast.success('Payment record deleted.');
+      await fetchData();
+    } catch (err: any) {
+      toast.error('Could not delete payment: ' + (err?.message || 'Unknown error'));
+    }
+  };
+
   const handleSavePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPayment?.id || !user?.schoolId) return;
@@ -1164,7 +1187,7 @@ export default function FeeWorkspace({ readOnly = false }: { readOnly?: boolean 
                     <td className="px-6 py-4 text-sm font-semibold text-green-600">Ksh {Number(payment.amount || 0).toLocaleString()}</td>
                     <td className="px-6 py-4 text-sm capitalize">{payment.payment_method || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{payment.payment_date ? new Date(payment.payment_date).toLocaleDateString() : '-'}</td>
-                    <td className="px-6 py-4"><div className="flex items-center gap-2"><button type="button" onClick={() => downloadHistoricalReceipt(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"><Download className="w-3.5 h-3.5" /> Receipt</button><button type="button" onClick={() => openEditPayment(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Pencil className="w-3.5 h-3.5" /> Edit</button></div></td>
+                    <td className="px-6 py-4"><div className="flex items-center gap-2"><button type="button" onClick={() => downloadHistoricalReceipt(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100"><Download className="w-3.5 h-3.5" /> Receipt</button><button type="button" onClick={() => openEditPayment(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold hover:bg-blue-100"><Pencil className="w-3.5 h-3.5" /> Edit</button>{canDeletePayments && (<button type="button" onClick={() => void handleDeletePayment(payment)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"><Trash2 className="w-3.5 h-3.5" /> Delete</button>)}</div></td>
                   </tr>
                 ))}
               </tbody>

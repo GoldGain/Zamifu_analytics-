@@ -97,7 +97,7 @@ export default function DataProcessingAgreement() {
           <Section title="8. Contact">
             <div className="space-y-2">
               <p className="flex items-center gap-2 text-gray-700"><Mail className="w-4 h-4 text-[#2563EB]" /> tutorsultimate@gmail.com</p>
-              <p className="flex items-center gap-2 text-gray-700"><Phone className="w-4 h-4 text-[#2563EB]" /> 0712644205</p>
+              <p className="flex items-center gap-2 text-gray-700"><Phone className="w-4 h-4 text-[#2563EB]" /> 0741 928390</p>
             </div>
           </Section>
         </div>

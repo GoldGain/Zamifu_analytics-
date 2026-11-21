@@ -101,6 +101,95 @@ export default function AIAssistant() {
     sessionStorage.setItem('copilot-position', JSON.stringify(position));
   }, [position]);
 
+  // ── Draggable floating launcher ────────────────────────────────────────────
+  // Drag it anywhere; on release it snaps to the nearest corner and is kept
+  // inside the viewport, so it never covers a button or a table row.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [buttonPosition, setButtonPosition] = useState<{ left: number; top: number } | null>(null);
+  const buttonDrag = useRef<{ pointerId: number; startX: number; startY: number; originLeft: number; originTop: number; moved: boolean } | null>(null);
+  const suppressButtonClick = useRef(false);
+
+  const clampButtonPosition = (left: number, top: number) => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    const width = rect?.width || 168;
+    const height = rect?.height || 48;
+    const margin = 8;
+    return {
+      left: Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - width - margin)),
+      top: Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin)),
+    };
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem('copilot-button-position');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (typeof parsed?.left === 'number' && typeof parsed?.top === 'number') {
+        setButtonPosition(clampButtonPosition(parsed.left, parsed.top));
+      }
+    } catch { /* ignore malformed saved position */ }
+  }, []);
+
+  useEffect(() => {
+    const onResize = () => setButtonPosition((prev) => (prev ? clampButtonPosition(prev.left, prev.top) : prev));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const handleButtonPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    buttonDrag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originLeft: rect.left,
+      originTop: rect.top,
+      moved: false,
+    };
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* ignore */ }
+  };
+
+  const handleButtonPointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = buttonDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(dx, dy) < 6) return; // still a tap
+    drag.moved = true;
+    setButtonPosition(clampButtonPosition(drag.originLeft + dx, drag.originTop + dy));
+  };
+
+  const handleButtonPointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = buttonDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    buttonDrag.current = null;
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* ignore */ }
+    if (!drag.moved) return; // a tap: onClick opens the panel
+    suppressButtonClick.current = true;
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centreX = rect.left + rect.width / 2;
+    const centreY = rect.top + rect.height / 2;
+    const snapped = clampButtonPosition(
+      centreX < window.innerWidth / 2 ? 12 : window.innerWidth - rect.width - 12,
+      centreY < window.innerHeight / 2 ? 12 : window.innerHeight - rect.height - 12,
+    );
+    setButtonPosition(snapped);
+    localStorage.setItem('copilot-button-position', JSON.stringify(snapped));
+  };
+
+  const handleButtonClick = () => {
+    if (suppressButtonClick.current) { suppressButtonClick.current = false; return; }
+    setOpen(true);
+  };
+
+  const buttonStyle = buttonPosition
+    ? { left: buttonPosition.left, top: buttonPosition.top, right: 'auto', bottom: 'auto' }
+    : undefined;
+
   // Handle dragging
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!headerRef.current) return;
@@ -221,9 +310,16 @@ Ask me to explain this page, walk through a task, or use a quick action below.`,
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-4 z-[60] flex max-w-[70%] items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-3 text-white shadow-lg shadow-blue-600/30 hover:from-blue-700 hover:to-indigo-700 transition-all sm:right-5 sm:px-4"
-        aria-label="Open Zamifu Copilot"
+        ref={buttonRef}
+        onPointerDown={handleButtonPointerDown}
+        onPointerMove={handleButtonPointerMove}
+        onPointerUp={handleButtonPointerUp}
+        onPointerCancel={handleButtonPointerUp}
+        onClick={handleButtonClick}
+        style={buttonStyle}
+        className={`fixed z-[60] flex max-w-[70%] touch-none select-none items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-3 text-white shadow-lg shadow-blue-600/30 transition-all hover:from-blue-700 hover:to-indigo-700 sm:px-4 ${buttonPosition ? 'cursor-grab active:cursor-grabbing' : 'bottom-5 right-4 sm:right-5'}`}
+        aria-label="Open Zamifu Copilot (drag to move)"
+        title="Drag to move"
       >
         <span className="relative flex-shrink-0">
           <Bot className="h-5 w-5" />

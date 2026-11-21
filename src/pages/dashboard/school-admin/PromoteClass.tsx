@@ -37,6 +37,7 @@ export default function PromoteClass() {
   const [classError, setClassError] = useState('');
   const [undoConfirm, setUndoConfirm] = useState(false);
   const [undoBusy, setUndoBusy] = useState(false);
+  const [promotionUndoConfirm, setPromotionUndoConfirm] = useState(false);
 
   const loadCurrentTerm = async () => {
     if (!user?.schoolId) return;
@@ -141,6 +142,30 @@ export default function PromoteClass() {
     setUndoBusy(false);
   };
 
+  const undoPromotion = async () => {
+    if (!fromClassId) return;
+    setUndoBusy(true);
+    setClassError('');
+    try {
+      const { data: { session } } = await supabaseUntyped.auth.getSession();
+      const res = await fetch('/api/promote-class', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
+        body: JSON.stringify({ mode: 'undo-promotion', fromClassId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { setClassError(`[${res.status}] ${json.error || 'The server did not explain why.'}`); setUndoBusy(false); return; }
+      const restored = Number(json.result?.restored || 0);
+      toast.success(`${restored} learner(s) moved back to their previous class.`);
+      setLastResult({ kind: 'promote', text: `${restored} learner(s) moved back from ${json.result?.class_name || from?.name || 'their class'}. Marks and fees are untouched.` });
+      setPromotionUndoConfirm(false);
+      await loadClasses();
+    } catch (err) {
+      setClassError(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setUndoBusy(false);
+  };
+
   const next = nextTermFor(currentTerm);
 
   return (
@@ -211,6 +236,12 @@ export default function PromoteClass() {
             <button type="button" onClick={() => setClassConfirm('graduate')} disabled={busy}
               className="inline-flex items-center gap-2 rounded-full bg-purple-600 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
               <GraduationCap className="h-4 w-4" /> Graduate learners from {from?.name}
+            </button>
+          )}
+          {from && !fromGraduates && (
+            <button type="button" onClick={() => setPromotionUndoConfirm(true)} disabled={busy || undoBusy}
+              className="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-6 py-2.5 text-sm font-semibold text-amber-800 disabled:opacity-50">
+              <Undo2 className="h-4 w-4" /> Undo promotion into {from.name}
             </button>
           )}
           {fromGraduates && (
@@ -296,6 +327,24 @@ export default function PromoteClass() {
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
               <button type="button" onClick={() => setUndoConfirm(false)} disabled={undoBusy} className="flex-1 rounded-xl border px-4 py-3 text-sm font-medium disabled:opacity-50">Cancel</button>
               <button type="button" onClick={() => void undoGraduation()} disabled={undoBusy} className="flex-1 rounded-xl bg-amber-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60">{undoBusy ? 'Reverting…' : 'Yes, undo graduation'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {promotionUndoConfirm && from && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-lg font-bold text-gray-900">Revert the promotion into {from.name}?</h2>
+            <p className="mt-3 text-sm text-gray-600">
+              Are you sure you want to revert this promotion? Learners will be moved back to their previous class.
+            </p>
+            <p className="mt-2 text-sm text-gray-500">Marks, fees and every other record stay exactly where they are.</p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+              <button type="button" onClick={() => setPromotionUndoConfirm(false)} disabled={undoBusy} className="flex-1 rounded-xl border px-4 py-3 text-sm font-medium disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => void undoPromotion()} disabled={undoBusy} className="flex-1 rounded-xl bg-amber-600 px-4 py-3 text-sm font-bold text-white disabled:opacity-60">
+                {undoBusy ? 'Reverting…' : 'Yes, undo promotion'}
+              </button>
             </div>
           </div>
         </div>

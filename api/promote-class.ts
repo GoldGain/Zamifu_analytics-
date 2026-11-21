@@ -34,7 +34,7 @@ export default async function handler(request: Req, response: Res): Promise<void
     : [];
   const fromClass = String(body.fromClassId || '').trim();
   const toClass = String(body.toClassId || '').trim();
-  if (mode !== 'undo' && (!fromClass || !toClass)) { response.status(400).json({ error: 'Choose both the current class and the next class.' }); return; }
+  if (mode !== 'undo' && mode !== 'undo-promotion' && (!fromClass || !toClass)) { response.status(400).json({ error: 'Choose both the current class and the next class.' }); return; }
 
   const supabase = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: { user }, error: userError } = await supabase.auth.getUser(token);
@@ -44,6 +44,31 @@ export default async function handler(request: Req, response: Res): Promise<void
   const role = String((profile as { role?: string } | null)?.role || '').toLowerCase();
   if (!ADMIN_ROLES.has(role)) {
     response.status(403).json({ error: `Only a school administrator can promote a class (your role is "${role || 'unknown'}").` });
+    return;
+  }
+
+  // ── Undo promotion ─────────────────────────────────────────────────────────
+  // Reverts one promotion step: every learner currently in the class returns to
+  // the class recorded in previous_class_id. Marks and fees are untouched.
+  if (mode === 'undo-promotion') {
+    if (!fromClass) { response.status(400).json({ error: 'Choose the class to revert.' }); return; }
+    const { data: classRow } = await supabase.from('classes').select('id, school_id, name').eq('id', fromClass).maybeSingle();
+    if (!classRow) { response.status(404).json({ error: 'That class could not be found.' }); return; }
+
+    const classSchool = (classRow as { school_id?: string }).school_id || '';
+    const callerSchool = (profile as { school_id?: string } | null)?.school_id || null;
+    const undoSuperRoles = new Set(['master_super_admin', 'reseller_super_admin', 'super_admin']);
+    if (callerSchool && callerSchool !== classSchool && !undoSuperRoles.has(role)) {
+      response.status(403).json({ error: 'That class belongs to another school.' });
+      return;
+    }
+
+    const { data: undone, error: undoError } = await supabase.rpc('undo_promotion', {
+      p_school_id: classSchool,
+      p_class_id: fromClass,
+    });
+    if (undoError) { response.status(400).json({ error: undoError.message }); return; }
+    response.status(200).json({ result: undone });
     return;
   }
 

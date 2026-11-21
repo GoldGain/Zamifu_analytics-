@@ -147,7 +147,7 @@ export default function Hero() {
                   Login
                 </Link>
                 <a
-                  href="https://wa.me/254712644205"
+                  href="https://wa.me/254741928390"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 bg-green-500 text-white px-5 py-2.5 rounded-full text-sm font-medium hover:bg-green-600 transition-colors"

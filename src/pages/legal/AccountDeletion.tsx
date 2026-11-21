@@ -47,7 +47,7 @@ export default function AccountDeletion() {
                 <span>
                   Email: <a className="text-[#2563EB] underline font-medium" href="mailto:tutorsultimate@gmail.com">tutorsultimate@gmail.com</a>
                   <br />
-                  Phone support: 0712644205
+                  Phone support: 0741 928390
                 </span>
               </p>
             </div>

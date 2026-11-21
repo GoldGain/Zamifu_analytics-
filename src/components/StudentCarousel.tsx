@@ -142,7 +142,7 @@ export default function StudentCarousel() {
           {/* WhatsApp contact action */}
           <div className="flex justify-center mb-6">
             <a
-              href="https://wa.me/254712644205"
+              href="https://wa.me/254741928390"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-green-500 text-white px-7 py-3 rounded-full text-base font-bold hover:bg-green-600 transition-colors cursor-pointer shadow-lg"
