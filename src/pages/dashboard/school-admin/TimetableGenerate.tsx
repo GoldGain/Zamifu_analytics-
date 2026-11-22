@@ -1050,7 +1050,10 @@ ${detail}`);
         if (dropped > 0) {
           console.warn(`[timetable] collapsed ${dropped} duplicate lesson-cell entries before insert`);
         }
-        const { error: insertError } = await supabase.from('timetable_entries').insert(dedupedEntries);
+        // PostgREST inserts NULL for a key missing from some rows, so every row
+        // carries an explicit flag (the column is nullable/default false anyway).
+        const rowsToInsert = dedupedEntries.map((entry: any) => ({ ...entry, is_stroked: entry.is_stroked === true }));
+        const { error: insertError } = await supabase.from('timetable_entries').insert(rowsToInsert);
         if (insertError) throw insertError;
       }
 
