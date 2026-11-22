@@ -13,6 +13,7 @@ import {
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
 import { assertTimetableRules, validateTimetableRules } from '@/lib/timetable-validator';
+import { alignStrokedSubjects } from '@/lib/timetable-stroke-align';
 import { formatClassStream } from '@/lib/class-label';
 import { formatCspSolverIssues, formatCspSolverWarnings, solveTimetableCsp } from '@/lib/timetable-csp-solver';
 
@@ -872,7 +873,8 @@ export default function TimetableGenerate() {
             // Weekly totals below capacity are normal; place every assigned lesson
             // and leave only each short class's unused cells blank.
             allowIncompleteClasses: true,
-            strokedSubjects: (strokedRows || []).map((row: any) => ({ subjectId: String(row.subject_id) })),
+            // Stroking is applied after solving (period alignment) so a full week never becomes unsolvable.
+            strokedSubjects: [],
           });
           // Stroking must never cost the school its timetable: if the shared
           // periods make the level impossible, regenerate without them and say so.
@@ -1023,6 +1025,27 @@ ${detail}`);
           uniqueEntries.set(key, entry);
         }
         const dedupedEntries = Array.from(uniqueEntries.values());
+
+        // Stroked subjects: give every stream taught by the same teacher the lesson
+        // in the same period by swapping lessons, so weekly counts stay exact.
+        const { data: strokeConfigRows } = await supabase
+          .from('timetable_stroked_subjects')
+          .select('level_group, subject_id')
+          .eq('school_id', schoolId);
+        const strokesByLevel = new Map<string, string[]>();
+        (strokeConfigRows || []).forEach((row: any) => {
+          const key = String(row.level_group || '');
+          strokesByLevel.set(key, [...(strokesByLevel.get(key) || []), String(row.subject_id)]);
+        });
+        for (const [strokedLevel, subjectIds] of strokesByLevel) {
+          const levelEntries = dedupedEntries.filter((entry: any) => entry.level_group === strokedLevel);
+          if (!levelEntries.length) continue;
+          const strokeResult = alignStrokedSubjects(levelEntries, subjectIds);
+          if (strokeResult.aligned > 0) {
+            console.info(`[timetable] ${strokedLevel}: ${strokeResult.aligned} stroked period(s) shared across streams`
+              + (strokeResult.skipped ? `, ${strokeResult.skipped} left per stream` : ''));
+          }
+        }
         const dropped = allEntries.length - dedupedEntries.length;
         if (dropped > 0) {
           console.warn(`[timetable] collapsed ${dropped} duplicate lesson-cell entries before insert`);
