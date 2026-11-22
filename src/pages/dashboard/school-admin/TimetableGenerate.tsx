@@ -859,7 +859,7 @@ export default function TimetableGenerate() {
             .select('level_group, subject_id')
             .eq('school_id', schoolId)
             .eq('level_group', levelKey);
-          const solverResult = solveTimetableCsp({
+          let solverResult = solveTimetableCsp({
             schoolId,
             levelKey,
             classes: classesToProcess,
@@ -873,8 +873,33 @@ export default function TimetableGenerate() {
             // and leave only each short class's unused cells blank.
             allowIncompleteClasses: true,
             strokedSubjects: (strokedRows || []).map((row: any) => ({ subjectId: String(row.subject_id) })),
+          });
+          // Stroking must never cost the school its timetable: if the shared
+          // periods make the level impossible, regenerate without them and say so.
+          if (solverResult.engine === 'none' && (strokedRows || []).length) {
+            const fallback = solveTimetableCsp({
+              schoolId,
+              levelKey,
+              classes: classesToProcess,
+              assignments,
+              lessonSlots,
+              reservedTeacherPeriods: cspReservedTeacherPeriods,
+              blockedClassCells: new Set(allEntries
+                .filter((entry: any) => entry.level_group === levelKey && entry.entry_type === 'activity')
+                .map((entry: any) => `${entry.class_id}|${Number(entry.day_of_week) - 1}|${lessonSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id))}`)),
+              allowIncompleteClasses: true,
+              strokedSubjects: [],
+              onProgress: (message) => console.info(`[timetable fallback] ${message}`),
+            });
+            if (fallback.entries.length) {
+              generationWarnings.push(`${levelLabel}: the stroked subjects could not all be shared across streams, so this level was generated with those lessons taught per stream. Free a period or reduce their weekly lessons, then generate again.`);
+              solverResult = fallback;
+            }
+          }
+          {
             onProgress: (message) => console.info(`[timetable] ${message}`),
           });
+          }
           const solverWarnings = solverResult.warnings.filter((warning) => !warning.code.startsWith('weekly-total-'));
           // A class the solver had to leave out is reported individually: a generic
           // "no timetable" message cannot tell the admin which class or teacher to fix.

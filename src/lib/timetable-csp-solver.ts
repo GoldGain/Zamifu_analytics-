@@ -2548,6 +2548,18 @@ function planStrokedSubjects(
     return picked;
   };
 
+  const cellsInWeek = slotsPerDay * DAY_COUNT;
+  const activityBlockedFor = (plan: ClassPlan): number => {
+    if (!options.blockedClassCells) return 0;
+    let blocked = 0;
+    for (let day = 0; day < DAY_COUNT; day += 1) {
+      for (let slot = 0; slot < slotsPerDay; slot += 1) {
+        if (options.blockedClassCells.has(`${plan.classId}|${day}|${slot}`)) blocked += 1;
+      }
+    }
+    return blocked;
+  };
+
   for (const selection of selections) {
     const subjectId = String(selection?.subjectId || '');
     if (!subjectId) continue;
@@ -2556,11 +2568,34 @@ function planStrokedSubjects(
       .filter((plan) => plan.needs.some((need) => need.subjectId === subjectId && need.lessons > 0));
     if (!participating.length) continue;
 
-    // Every lesson of a stroked subject is shared, not just the first one: the
-    // whole weekly load happens together, so no stream ever gets its own copy.
-    const weeklyLessons = Math.min(...participating.map((plan) =>
+    const subjectLabel = participating[0].needs.find((need) => need.subjectId === subjectId)?.subjectName || 'the stroked subject';
+
+    // A class only has as many free cells as the week minus its activities. The
+    // shared periods take cells away from the other lessons, so share no more
+    // than the tightest class can spare; otherwise a full week becomes
+    // unsolvable ("proven impossible") and no timetable is produced at all.
+    const shareCapacity = Math.min(...participating.map((plan) => {
+      const need = plan.needs.find((entry) => entry.subjectId === subjectId);
+      const otherLessons = plan.configuredTotal - (need?.lessons ?? 0);
+      return cellsInWeek - activityBlockedFor(plan) - otherLessons;
+    }));
+
+    // Every lesson of a stroked subject is shared where capacity allows: the
+    // whole weekly load happens together, so no stream gets its own copy.
+    const wantedLessons = Math.min(...participating.map((plan) =>
       plan.needs.find((need) => need.subjectId === subjectId)?.lessons ?? 0));
-    if (weeklyLessons <= 0) continue;
+    if (wantedLessons <= 0) continue;
+
+    if (shareCapacity <= 0) {
+      issues.push(makeIssue('stroked-no-capacity',
+        `${subjectLabel} cannot be taught to all streams together: the week is already full. Free a period (or reduce another subject) and generate again.`));
+      continue;
+    }
+    const weeklyLessons = Math.min(wantedLessons, shareCapacity);
+    if (weeklyLessons < wantedLessons) {
+      issues.push(makeIssue('stroked-trimmed',
+        `${subjectLabel} has ${wantedLessons} lesson(s) a week but only ${weeklyLessons} period(s) can be shared across every stream, so ${weeklyLessons} will be taught together and the rest per stream.`));
+    }
 
     const cells = pickSharedCells(participating, weeklyLessons);
     const subjectName = participating[0].needs.find((need) => need.subjectId === subjectId)?.subjectName || 'the stroked subject';
@@ -2580,9 +2615,10 @@ function planStrokedSubjects(
       const paired = isReligiousName(need.subjectName)
         ? plan.needs.find((entry) => entry !== need && isReligiousName(entry.subjectName) && entry.lessons > 0)
         : undefined;
-      const pairedCount = paired ? Math.min(need.lessons, paired.lessons) : 0;
+      const sharedLessons = Math.min(weeklyLessons, need.lessons);
+      const pairedCount = paired ? Math.min(sharedLessons, paired.lessons) : 0;
 
-      for (let index = 0; index < need.lessons; index += 1) {
+      for (let index = 0; index < sharedLessons; index += 1) {
         const cell = cells[index];
         const slotRow = slots[cell.slot];
         for (const teacherId of need.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
@@ -2619,10 +2655,10 @@ function planStrokedSubjects(
         }
       }
 
-      plan.configuredTotal -= need.lessons;
+      plan.configuredTotal -= sharedLessons;
       plan.configuredTotal -= pairedCount;
+      need.lessons -= sharedLessons;
       if (paired) paired.lessons -= pairedCount;
-      need.lessons = 0;
       plan.needs = plan.needs.filter((entry) => entry.lessons > 0);
     }
   }
