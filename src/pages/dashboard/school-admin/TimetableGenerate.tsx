@@ -896,10 +896,6 @@ export default function TimetableGenerate() {
               solverResult = fallback;
             }
           }
-          {
-            onProgress: (message) => console.info(`[timetable] ${message}`),
-          });
-          }
           const solverWarnings = solverResult.warnings.filter((warning) => !warning.code.startsWith('weekly-total-'));
           // A class the solver had to leave out is reported individually: a generic
           // "no timetable" message cannot tell the admin which class or teacher to fix.
