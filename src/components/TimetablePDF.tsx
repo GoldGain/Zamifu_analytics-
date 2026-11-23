@@ -114,6 +114,22 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
 
   const getEntry = (day: number, classId: string, slotId: string) => entryLookup.get(`${day}-${classId}-${slotId}`);
 
+  // A stroked period holds CRE and IRE together in one cell. The single-entry
+  // lookup above drops one of them, which is why the PDF appeared blank in places.
+  const entryLookupAll = React.useMemo(() => {
+    const lookup = new Map<string, TimetableEntry[]>();
+    entries.forEach((entry) => {
+      const key = `${entry.day_of_week}-${entry.class_id}-${entry.time_slot_id}`;
+      const list = lookup.get(key) || [];
+      list.push(entry);
+      lookup.set(key, list);
+    });
+    return lookup;
+  }, [entries]);
+
+  const getCellEntries = (day: number, classId: string, slotId: string): TimetableEntry[] =>
+    entryLookupAll.get(`${day}-${classId}-${slotId}`) || [];
+
   const getCellContent = (entry: TimetableEntry | undefined, slot: TimeSlot): React.ReactNode => {
     if (slot.slot_type === 'break') {
       const breakLabel = slot.label?.toUpperCase().includes('SECOND') ? 'SECOND BREAK' : 'FIRST BREAK';
@@ -159,6 +175,23 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
       <span style={{ display: 'inline-flex', alignItems: 'baseline', justifyContent: 'center', gap: '2px', whiteSpace: 'nowrap', fontWeight: 800, letterSpacing: '-0.025em', color: '#1f2937' }}>
         <span>{code}</span>
         {teacherNumDisplay ? <span style={{ color: '#3b82f6' }}>{teacherNumDisplay}</span> : null}
+      </span>
+    );
+  };
+
+  /** One cell, one or more lessons (CRE + IRE share a stroked period). */
+  const getCellContentMulti = (cellEntries: TimetableEntry[], slot: TimeSlot): React.ReactNode => {
+    if (slot.slot_type !== 'lesson' || cellEntries.length <= 1) {
+      return getCellContent(cellEntries[0], slot);
+    }
+    const codes = cellEntries.map((entry) => getSubjectCode(entry.subject_name || '', entry.subject_code || ''));
+    const teachers = cellEntries
+      .map((entry) => (entry.teacher_number ? `T${String(entry.teacher_number).padStart(2, '0')}` : ''))
+      .filter(Boolean);
+    return (
+      <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '1px', fontWeight: 800, color: '#1f2937' }}>
+        <span>{codes.join('/')}</span>
+        {teachers.length ? <span style={{ color: '#3b82f6', fontSize: '0.625rem' }}>{teachers.join(', ')}</span> : null}
       </span>
     );
   };
@@ -249,10 +282,10 @@ const TimetablePDF: React.FC<TimetablePDFProps> = ({
                         </td>
                       ) : (
                         classes.map((cls) => {
-                          const entry = getEntry(dayIdx + 1, cls.id, slot.id);
+                          const cellEntries = getCellEntries(dayIdx + 1, cls.id, slot.id);
                           return (
                             <td key={cls.id} style={{ padding: '8px', textAlign: 'center', borderRight: '1px solid #f3f4f6' }}>
-                              {getCellContent(entry, slot)}
+                              {getCellContentMulti(cellEntries, slot)}
                             </td>
                           );
                         })
