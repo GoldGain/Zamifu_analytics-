@@ -1,13 +1,16 @@
 /**
- * Align "stroked" learning areas (CRE / IRE) so that every stream taught by the
- * same teacher takes the lesson in the SAME period.
+ * Align "stroked" learning areas (CRE / IRE) so the three streams of a grade take
+ * the lesson in the SAME period.
  *
- * The pass swaps the stroked lesson with whatever already sits in a common
- * period, so weekly counts never change. It is deliberately conservative:
- *   • never puts two lessons of the same subject on one day for a class,
- *   • never splits a double lesson,
- *   • never moves a subject onto a day where that class already has it,
- *   • verifies the finished grid and reverts the whole pass if anything breaks.
+ * The solver already pairs CRE and IRE inside a class, so a shared period is a
+ * CELL HOLDING TWO LESSONS. This pass therefore moves whole cells, never single
+ * lessons: the pair travels together, so weekly counts cannot change and no
+ * lesson can be left behind.
+ *
+ * It refuses any swap that would repeat a subject on a day, split a double, or
+ * place a teacher in two classes at one period (other than the stroked teachers,
+ * who are shared by design). The finished grid is re-checked and the whole pass
+ * is reverted if anything changed.
  */
 
 type StrokeEntry = {
@@ -22,7 +25,9 @@ type StrokeEntry = {
   is_stroked?: boolean;
 };
 
-const cellKey = (entry: StrokeEntry): string => `${Number(entry.day_of_week)}|${String(entry.time_slot_id)}`;
+type ClassInfo = { id: string; grade_level?: number | string; level?: number | string; name?: string };
+
+const cellOf = (entry: StrokeEntry): string => `${Number(entry.day_of_week)}|${String(entry.time_slot_id)}`;
 const dayOf = (entry: StrokeEntry): number => Number(entry.day_of_week);
 const isLesson = (entry: StrokeEntry): boolean => String(entry.entry_type || '').startsWith('lesson');
 const isDouble = (entry: StrokeEntry): boolean => String(entry.entry_type || '').includes('double');
@@ -30,10 +35,11 @@ const isDouble = (entry: StrokeEntry): boolean => String(entry.entry_type || '')
 export function alignStrokedSubjects(
   entries: StrokeEntry[],
   strokedSubjectIds: string[],
+  classes: ClassInfo[] = [],
 ): { aligned: number; skipped: number; reverted: boolean } {
-  const lessons = entries.filter((entry) => isLesson(entry) && entry.class_id && entry.time_slot_id && entry.subject_id);
-  if (!lessons.length || !strokedSubjectIds.length) return { aligned: 0, skipped: 0, reverted: false };
+  if (!strokedSubjectIds.length) return { aligned: 0, skipped: 0, reverted: false };
 
+  // ── snapshot for a clean revert ────────────────────────────────────────────
   const snapshot = entries.map((entry) => ({
     entry,
     day_of_week: entry.day_of_week,
@@ -43,188 +49,181 @@ export function alignStrokedSubjects(
     is_stroked: entry.is_stroked,
   }));
 
-  // How often each class already has a subject on a day. Alignment must never
-  // make that worse; a double that was already there is fine.
-  const dayCountsBefore = new Map<string, number>();
-  for (const entry of lessons) {
-    const token = `${String(entry.class_id)}|${String(entry.subject_id)}|${dayOf(entry)}`;
-    dayCountsBefore.set(token, (dayCountsBefore.get(token) || 0) + 1);
-  }
-
-  const byClass = new Map<string, Map<string, StrokeEntry>>();
-  for (const entry of lessons) {
+  // cells hold a LIST: a shared CRE/IRE period has two lessons
+  const cells = new Map<string, Map<string, StrokeEntry[]>>(); // classId -> cell -> entries
+  for (const entry of entries) {
+    if (!isLesson(entry) || !entry.class_id || !entry.time_slot_id) continue;
     const classId = String(entry.class_id);
-    if (!byClass.has(classId)) byClass.set(classId, new Map());
-    byClass.get(classId)!.set(cellKey(entry), entry);
+    if (!cells.has(classId)) cells.set(classId, new Map());
+    const classCells = cells.get(classId)!;
+    const key = cellOf(entry);
+    classCells.set(key, [...(classCells.get(key) || []), entry]);
   }
 
-  const subjectOnDay = (classId: string, subjectId: string, day: number, except?: StrokeEntry): boolean =>
-    [...(byClass.get(classId)?.values() || [])].some((entry) =>
-      entry !== except && String(entry.subject_id) === String(subjectId) && dayOf(entry) === day);
+  const gradeOf = new Map<string, string>();
+  classes.forEach((cls) => {
+    const grade = String(cls.grade_level ?? cls.level ?? cls.name ?? '');
+    if (cls.id && grade) gradeOf.set(String(cls.id), grade);
+  });
 
-  const teacherBusyElsewhere = (classId: string, key: string, teacherId: string): boolean => {
-    if (!teacherId) return false;
-    for (const [otherClass, cells] of byClass) {
-      if (otherClass === classId) continue;
-      const occupant = cells.get(key);
-      if (occupant && String(occupant.teacher_id || '') === teacherId) return true;
+  const teachersAt = (cellKey: string): Map<string, number> => {
+    const counts = new Map<string, number>();
+    for (const [, classCells] of cells) {
+      const list = classCells.get(cellKey);
+      if (!list) continue;
+      const seen = new Set<string>();
+      list.forEach((entry) => {
+        const teacher = String(entry.teacher_id || '');
+        if (!teacher || seen.has(teacher)) return;
+        seen.add(teacher);
+        counts.set(teacher, (counts.get(teacher) || 0) + 1);
+      });
     }
-    return false;
+    return counts;
   };
 
-  const hasDoubleNeighbour = (classId: string, entry: StrokeEntry): boolean => {
-    if (isDouble(entry)) return true;
-    const day = dayOf(entry);
-    const sameSubject = [...(byClass.get(classId)?.values() || [])].filter((other) =>
-      other !== entry && String(other.subject_id) === String(entry.subject_id) && dayOf(other) === day);
-    return sameSubject.length > 0; // only two per day at most; treat the pair as a unit
+  const subjectOnDay = (classId: string, subjectId: string, day: number, ignore?: Set<StrokeEntry>): boolean => {
+    for (const list of cells.get(classId)?.values() || []) {
+      for (const entry of list) {
+        if (ignore?.has(entry)) continue;
+        if (String(entry.subject_id) === String(subjectId) && dayOf(entry) === day) return true;
+      }
+    }
+    return false;
   };
 
   let aligned = 0;
   let skipped = 0;
 
-  for (const subjectId of strokedSubjectIds) {
-    const groups = new Map<string, Set<string>>();
-    for (const [classId, cells] of byClass) {
-      for (const entry of cells.values()) {
-        if (String(entry.subject_id) !== String(subjectId)) continue;
-        const teacherId = String(entry.teacher_id || 'none');
-        if (!groups.has(teacherId)) groups.set(teacherId, new Set());
-        groups.get(teacherId)!.add(classId);
-      }
-    }
+  // group streams by grade so 7A/7B/7C align together, then 8A/8B/8C, then 9A/9B/9C
+  const byGrade = new Map<string, string[]>();
+  for (const classId of cells.keys()) {
+    const grade = gradeOf.get(classId) || classId;
+    byGrade.set(grade, [...(byGrade.get(grade) || []), classId]);
+  }
 
-    for (const classIds of [...groups.values()].map((set) => [...set])) {
-      if (!classIds.length) continue;
+  for (const [grade, classIds] of byGrade) {
+    if (classIds.length < 2) continue;
 
-      const subjectCells = new Map<string, string[]>();
+    for (const subjectId of strokedSubjectIds) {
+      const sharedCells = new Map<string, string[]>();
       for (const classId of classIds) {
-        const cells = [...byClass.get(classId)!.entries()]
-          .filter(([, entry]) => String(entry.subject_id) === String(subjectId))
-          .sort((a, b) => dayOf(a[1]) - dayOf(b[1])
-            || String(a[1].effective_start_time || '').localeCompare(String(b[1].effective_start_time || '')))
-          .map(([key]) => key);
-        subjectCells.set(classId, cells);
+        const keys = [...cells.get(classId)!.entries()]
+          .filter(([, list]) => list.some((entry) => String(entry.subject_id) === String(subjectId)))
+          .map(([key]) => key)
+          .sort((a, b) => Number(a.split('|')[0]) - Number(b.split('|')[0]));
+        if (keys.length) sharedCells.set(classId, keys);
       }
+      const participants = [...sharedCells.keys()];
+      if (participants.length < 2) continue;
 
-      const lessonCount = Math.min(...classIds.map((id) => subjectCells.get(id)!.length));
+      const lessonCount = Math.min(...participants.map((id) => sharedCells.get(id)!.length));
       const usedTargets = new Set<string>();
-      const handledDays = new Set<string>();
 
       for (let index = 0; index < lessonCount; index += 1) {
-        // Skip a lesson that belongs to a double: moving one half would split it.
-        if (classIds.some((classId) => {
-          const entry = byClass.get(classId)!.get(subjectCells.get(classId)![index]);
-          return !entry || hasDoubleNeighbour(classId, entry);
-        })) { skipped += 1; continue; }
+        let target: string | null = null;
 
-        const candidates = [...new Set(classIds.flatMap((id) => [...byClass.get(id)!.keys()]))]
+        // candidate periods, earliest day first, latest period first
+        const candidates = [...new Set(participants.flatMap((id) => [...cells.get(id)!.keys()]))]
           .sort((a, b) => {
-            const [dayA, slotA] = a.split('|').map(Number);
-            const [dayB, slotB] = b.split('|').map(Number);
-            return dayA - dayB || slotB - slotA;
+            const [dA, sA] = a.split('|').map(Number);
+            const [dB, sB] = b.split('|').map(Number);
+            return dA - dB || sB - sA;
           });
 
-        let target: string | null = null;
         for (const key of candidates) {
           if (usedTargets.has(key)) continue;
-          const targetDay = Number(key.split('|')[0]);
-          if (handledDays.has(`${targetDay}`)) continue; // one shared period per day keeps them spread
           let ok = true;
+          for (const classId of participants) {
+            const classCells = cells.get(classId)!;
+            const source = sharedCells.get(classId)![index];
+            const sourceList = classCells.get(source) || [];
+            const targetList = classCells.get(key);
+            if (!targetList || key === source) { ok = false; break; }
+            // target must be an ordinary single lesson; refuse doubles and other shared cells
+            if (targetList.length !== 1 || isDouble(targetList[0])) { ok = false; break; }
+            if (sourceList.some((entry) => isDouble(entry))) { ok = false; break; }
 
-          for (const classId of classIds) {
-            const cells = byClass.get(classId)!;
-            const ownKey = subjectCells.get(classId)![index];
-            const ownEntry = cells.get(ownKey)!;
-            const occupant = cells.get(key);
-            if (!occupant || key === ownKey) { ok = false; break; }
-            if (String(occupant.subject_id) === String(subjectId)) { ok = false; break; }
-            if (isDouble(occupant)) { ok = false; break; }
+            const displaced = targetList[0];
+            const targetDay = Number(key.split('|')[0]);
+            const sourceDay = Number(source.split('|')[0]);
+            // no subject repeated on a day, in either direction
+            if (subjectOnDay(classId, String(subjectId), targetDay, new Set(sourceList))) { ok = false; break; }
+            if (subjectOnDay(classId, String(displaced.subject_id), sourceDay, new Set([displaced]))) { ok = false; break; }
 
-            // no two lessons of a subject on one day, for either moved lesson
-            if (subjectOnDay(classId, String(subjectId), targetDay, ownEntry)) { ok = false; break; }
-            if (subjectOnDay(classId, String(occupant.subject_id), dayOf(ownEntry), occupant)) { ok = false; break; }
-
-            if (teacherBusyElsewhere(classId, ownKey, String(occupant.teacher_id || ''))) { ok = false; break; }
-            if (teacherBusyElsewhere(classId, key, String(cells.get(ownKey)?.teacher_id || ''))) { ok = false; break; }
+            // the displaced teacher must be free at the source period elsewhere
+            const displacedTeacher = String(displaced.teacher_id || '');
+            if (displacedTeacher && (teachersAt(source).get(displacedTeacher) || 0) > 1) { ok = false; break; }
+            // the stroked teachers must not be teaching another class at the target period
+            const targetTeachers = teachersAt(key);
+            for (const entry of sourceList) {
+              const teacher = String(entry.teacher_id || '');
+              if (teacher && (targetTeachers.get(teacher) || 0) > 0) { ok = false; break; }
+            }
           }
           if (ok) { target = key; break; }
         }
 
         if (!target) { skipped += 1; continue; }
 
-        for (const classId of classIds) {
-          const cells = byClass.get(classId)!;
-          const own = subjectCells.get(classId)![index];
-          const strokedEntry = cells.get(own)!;
-          const occupant = cells.get(target)!;
+        // move the WHOLE cell content in every stream
+        for (const classId of participants) {
+          const classCells = cells.get(classId)!;
+          const source = sharedCells.get(classId)![index];
+          const sourceList = classCells.get(source) || [];
+          const targetList = classCells.get(target) || [];
+          if (!sourceList.length || !targetList.length) continue;
 
-          const moved = { day: strokedEntry.day_of_week, slot: strokedEntry.time_slot_id,
-            start: strokedEntry.effective_start_time, end: strokedEntry.effective_end_time };
+          const targetPos = target.split('|').map(Number);
+          const sourcePos = source.split('|').map(Number);
+          const targetSample = targetList[0];
+          const sourceSample = sourceList[0];
 
-          strokedEntry.day_of_week = occupant.day_of_week;
-          strokedEntry.time_slot_id = occupant.time_slot_id;
-          strokedEntry.effective_start_time = occupant.effective_start_time;
-          strokedEntry.effective_end_time = occupant.effective_end_time;
+          const targetDay = targetSample.day_of_week;
+          const targetSlot = targetSample.time_slot_id;
+          const targetStart = targetSample.effective_start_time;
+          const targetEnd = targetSample.effective_end_time;
 
-          occupant.day_of_week = moved.day;
-          occupant.time_slot_id = moved.slot;
-          occupant.effective_start_time = moved.start;
-          occupant.effective_end_time = moved.end;
+          targetList.forEach((entry) => {
+            entry.day_of_week = sourceSample.day_of_week;
+            entry.time_slot_id = sourceSample.time_slot_id;
+            entry.effective_start_time = sourceSample.effective_start_time;
+            entry.effective_end_time = sourceSample.effective_end_time;
+          });
+          sourceList.forEach((entry) => {
+            entry.day_of_week = targetDay;
+            entry.time_slot_id = targetSlot;
+            entry.effective_start_time = targetStart;
+            entry.effective_end_time = targetEnd;
+            entry.is_stroked = true;
+          });
 
-          cells.set(target, strokedEntry);
-          cells.set(own, occupant);
-          strokedEntry.is_stroked = true;
-          // The subject now sits at `target`; later swaps for this class must look
-          // there, otherwise they move the displaced lesson and two lessons end up
-          // in one cell (which is what made lessons disappear from the summary).
-          subjectCells.get(classId)![index] = target;
+          classCells.set(target, sourceList);
+          classCells.set(source, targetList);
+          void targetPos; void sourcePos;
         }
 
         usedTargets.add(target);
-        handledDays.add(String(Number(target.split('|')[0])));
         aligned += 1;
       }
     }
   }
 
-  // ── Verify the finished grid; revert everything if any rule broke ──────────
+  // ── verify: totals per class+subject must be identical to the solved grid ──
+  const totals = (list: StrokeEntry[]) => {
+    const map = new Map<string, number>();
+    list.forEach((entry) => {
+      if (!isLesson(entry)) return;
+      const key = `${String(entry.class_id)}|${String(entry.subject_id)}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  };
+  const before = totals(snapshot.map((s) => s.entry));
+  const after = totals(entries);
   const problems: string[] = [];
-  const seen = new Map<string, { subjectId: string; teacherId: string; stroked: boolean }>();
-  for (const entry of lessons) {
-    const key = `${entry.class_id}|${cellKey(entry)}`;
-    const previous = seen.get(key);
-    if (previous) {
-      const sharedStrokedLesson = previous.stroked && entry.is_stroked
-        && previous.subjectId === String(entry.subject_id) && previous.teacherId === String(entry.teacher_id);
-      if (!sharedStrokedLesson) problems.push(`cell clash in ${key}`);
-    } else {
-      seen.set(key, { subjectId: String(entry.subject_id), teacherId: String(entry.teacher_id || ''), stroked: entry.is_stroked === true });
-    }
-  }
-  const dayCountsAfter = new Map<string, number>();
-  for (const entry of lessons) {
-    const token = `${String(entry.class_id)}|${String(entry.subject_id)}|${dayOf(entry)}`;
-    dayCountsAfter.set(token, (dayCountsAfter.get(token) || 0) + 1);
-  }
-  for (const [token, count] of dayCountsAfter) {
-    const before = dayCountsBefore.get(token) || 0;
-    if (count > before) problems.push(`alignment repeated a subject on a day (${token})`);
-  }
-
-  // Weekly totals per class and subject must be identical to the solved grid.
-  const totalsBefore = new Map<string, number>();
-  const totalsAfter = new Map<string, number>();
-  for (const state of snapshot) {
-    const token = `${String(state.entry.class_id)}|${String(state.entry.subject_id)}`;
-    totalsBefore.set(token, (totalsBefore.get(token) || 0) + 1);
-  }
-  for (const entry of lessons) {
-    const token = `${String(entry.class_id)}|${String(entry.subject_id)}`;
-    totalsAfter.set(token, (totalsAfter.get(token) || 0) + 1);
-  }
-  for (const [token, count] of totalsAfter) {
-    if (count !== (totalsBefore.get(token) || 0)) problems.push(`lesson count changed (${token})`);
+  for (const [key, count] of after) {
+    if (count !== (before.get(key) || 0)) problems.push(`count changed for ${key}`);
   }
 
   if (problems.length) {

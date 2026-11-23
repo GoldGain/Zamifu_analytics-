@@ -1057,11 +1057,7 @@ ${detail}`);
         for (const [strokedLevel, subjectIds] of strokesByLevel) {
           const levelEntries = dedupedEntries.filter((entry: any) => entry.level_group === strokedLevel);
           if (!levelEntries.length) continue;
-          // NOTE: cross-class period alignment is deliberately paused: the swap pass
-          // mishandled paired CRE/IRE cells and dropped lessons. The solver already
-          // pairs CRE and IRE inside a class (Rule 10); cross-stream alignment will be
-          // reintroduced once it can move whole cells safely.
-          const strokeResult = { aligned: 0, skipped: 0, reverted: false };
+          const strokeResult = alignStrokedSubjects(levelEntries, subjectIds, classesToProcess as any);
           if (strokeResult.aligned > 0) {
             console.info(`[timetable] ${strokedLevel}: ${strokeResult.aligned} stroked period(s) shared across streams`
               + (strokeResult.skipped ? `, ${strokeResult.skipped} left per stream` : ''));
