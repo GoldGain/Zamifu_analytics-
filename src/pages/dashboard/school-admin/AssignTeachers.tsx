@@ -291,9 +291,11 @@ export default function AssignTeachers() {
       .filter((assignment) => assignment.class_id === formData.class_id && !replacing.some((row) => row.id === assignment.id))
       .reduce((sum, assignment) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
     const candidateTotal = currentTotal + lessonsPerWeek;
+    // The weekly guide is advisory, not a hard cap: a stroked (shared) learning area
+    // is timetabled on top of a class's own lessons, so a class may legitimately carry
+    // more than the guide. The generator adds the extra periods it needs.
     if (candidateTotal > required) {
-      setError(`${formatClassStream(selectedClass) || 'This class'} (${levelGroup || 'level'}): ${candidateTotal} lessons are assigned, above the weekly maximum of ${required}. Reduce the allocation by ${candidateTotal - required} before saving.`);
-      return;
+      console.info(`[assignments] ${formatClassStream(selectedClass) || 'class'}: ${candidateTotal} lessons (guide ${required}); extra periods will be generated.`);
     }
     try {
       setSaving(true);

@@ -535,14 +535,22 @@ export default function TimetableGenerate() {
         // that overlaps a lesson owns that existing lesson slot; only a genuine
         // post-school activity is allowed to create a final activity segment.
         const targets = resolveLessonTargets(levelKey, config);
-        const lessonCount = targets.totalLessons;
+
+        // A class may carry more lessons than the weekly guide once stroked subjects
+        // are added. Count the real load and generate enough periods for it instead
+        // of refusing the level.
+        const highestClassTotal = Math.max(0, ...classesToProcess.map((cls: any) => assignments
+          .filter((assignment: any) => String(assignment.class_id) === String(cls.id))
+          .reduce((sum: number, assignment: any) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0)));
+        const periodsNeeded = Math.ceil(highestClassTotal / 5);
+        const lessonCount = Math.max(targets.totalLessons, periodsNeeded);
         const generationConfig = {
           ...config,
           // Explicit activities replace the generic activities window. They are
           // classified below by exact day/time and target scope.
           activities_start: freshActivities.length ? undefined : config.activities_start,
           activities_end: freshActivities.length ? undefined : config.activities_end,
-          lessons_per_day: targets.totalLessons,
+          lessons_per_day: lessonCount,
           after_lunch_lessons: targets.afterLunch,
         };
         const baseSlots = generateSlots(generationConfig, lessonCount, levelKey);
