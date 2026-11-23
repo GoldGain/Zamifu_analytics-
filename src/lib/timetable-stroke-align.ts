@@ -43,6 +43,14 @@ export function alignStrokedSubjects(
     is_stroked: entry.is_stroked,
   }));
 
+  // How often each class already has a subject on a day. Alignment must never
+  // make that worse; a double that was already there is fine.
+  const dayCountsBefore = new Map<string, number>();
+  for (const entry of lessons) {
+    const token = `${String(entry.class_id)}|${String(entry.subject_id)}|${dayOf(entry)}`;
+    dayCountsBefore.set(token, (dayCountsBefore.get(token) || 0) + 1);
+  }
+
   const byClass = new Map<string, Map<string, StrokeEntry>>();
   for (const entry of lessons) {
     const classId = String(entry.class_id);
@@ -190,13 +198,14 @@ export function alignStrokedSubjects(
       seen.set(key, { subjectId: String(entry.subject_id), teacherId: String(entry.teacher_id || ''), stroked: entry.is_stroked === true });
     }
   }
-  for (const classId of byClass.keys()) {
-    const perDaySubject = new Set<string>();
-    for (const entry of byClass.get(classId)!.values()) {
-      const token = `${dayOf(entry)}|${String(entry.subject_id)}`;
-      if (perDaySubject.has(token) && !isDouble(entry)) problems.push(`same subject twice on one day in ${classId}`);
-      perDaySubject.add(token);
-    }
+  const dayCountsAfter = new Map<string, number>();
+  for (const entry of lessons) {
+    const token = `${String(entry.class_id)}|${String(entry.subject_id)}|${dayOf(entry)}`;
+    dayCountsAfter.set(token, (dayCountsAfter.get(token) || 0) + 1);
+  }
+  for (const [token, count] of dayCountsAfter) {
+    const before = dayCountsBefore.get(token) || 0;
+    if (count > before) problems.push(`alignment repeated a subject on a day (${token})`);
   }
 
   if (problems.length) {
