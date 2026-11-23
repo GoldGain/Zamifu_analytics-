@@ -539,9 +539,18 @@ export default function TimetableGenerate() {
         // A class may carry more lessons than the weekly guide once stroked subjects
         // are added. Count the real load and generate enough periods for it instead
         // of refusing the level.
-        const highestClassTotal = Math.max(0, ...classesToProcess.map((cls: any) => assignments
-          .filter((assignment: any) => String(assignment.class_id) === String(cls.id))
-          .reduce((sum: number, assignment: any) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0)));
+        const highestClassTotal = Math.max(0, ...classesToProcess.map((cls: any) => {
+          const classAssignments = assignments.filter((assignment: any) => String(assignment.class_id) === String(cls.id));
+          const total = classAssignments.reduce((sum: number, assignment: any) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
+          // CRE and IRE run in the same period for this class, so count the pair once.
+          const religious = classAssignments.filter((assignment: any) =>
+            /\b(CRE|IRE|HRE)\b|religious/i.test(String(assignment.subjects?.name || assignment.subject_name || '')));
+          const religiousTotal = religious.reduce((sum: number, assignment: any) => sum + Math.max(0, Number(assignment.lessons_per_week) || 0), 0);
+          const religiousExtra = religious.length > 1
+            ? religiousTotal - Math.max(...religious.map((assignment: any) => Math.max(0, Number(assignment.lessons_per_week) || 0)))
+            : 0;
+          return total - religiousExtra;
+        }));
         const periodsNeeded = Math.ceil(highestClassTotal / 5);
         const lessonCount = Math.max(targets.totalLessons, periodsNeeded);
         const generationConfig = {
@@ -1048,7 +1057,11 @@ ${detail}`);
         for (const [strokedLevel, subjectIds] of strokesByLevel) {
           const levelEntries = dedupedEntries.filter((entry: any) => entry.level_group === strokedLevel);
           if (!levelEntries.length) continue;
-          const strokeResult = alignStrokedSubjects(levelEntries, subjectIds);
+          // NOTE: cross-class period alignment is deliberately paused: the swap pass
+          // mishandled paired CRE/IRE cells and dropped lessons. The solver already
+          // pairs CRE and IRE inside a class (Rule 10); cross-stream alignment will be
+          // reintroduced once it can move whole cells safely.
+          const strokeResult = { aligned: 0, skipped: 0, reverted: false };
           if (strokeResult.aligned > 0) {
             console.info(`[timetable] ${strokedLevel}: ${strokeResult.aligned} stroked period(s) shared across streams`
               + (strokeResult.skipped ? `, ${strokeResult.skipped} left per stream` : ''));

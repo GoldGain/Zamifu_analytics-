@@ -331,11 +331,18 @@ function buildClassPlans(
   for (const cls of classes) {
     const classId = String(cls.id);
     const needs = [...(byClassSubject.get(classId)?.values() || [])];
+    // CRE and IRE for one class run in the SAME period (Rule 10): a learner takes
+    // one of them, so the pair costs one period per lesson, not two. Counting both
+    // made a 40-period week look like 44 and no level could ever be built.
+    const religiousNeeds = needs.filter((need) => familyOf(need.subjectName) === 'religious');
+    const pairedReligiousExtra = religiousNeeds.length > 1
+      ? religiousNeeds.reduce((sum, need) => sum + need.lessons, 0) - Math.max(...religiousNeeds.map((need) => need.lessons))
+      : 0;
     plans.set(classId, {
       classId,
       className: normalizeName(cls.name) || `Class ${classId}`,
       needs,
-      configuredTotal: needs.reduce((sum, need) => sum + need.lessons, 0),
+      configuredTotal: needs.reduce((sum, need) => sum + need.lessons, 0) - pairedReligiousExtra,
     });
   }
   return plans;
