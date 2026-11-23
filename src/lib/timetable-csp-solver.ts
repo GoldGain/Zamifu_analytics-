@@ -2549,6 +2549,9 @@ function planStrokedSubjects(
     return blocked;
   };
 
+  // periods already given to another grade's religious block
+  const claimedReligiousCells = new Set<string>();
+
   const plansByGrade = new Map<string, ClassPlan[]>();
   for (const plan of plans.values()) {
     const grade = gradeOf.get(plan.classId) || plan.classId;
@@ -2583,17 +2586,21 @@ function planStrokedSubjects(
     const sharedLessons = Math.min(lessonsWanted, Math.max(0, spareCells));
     if (sharedLessons <= 0) continue;
 
-    // one shared period per day, from the last period backwards: all streams of the
-    // grade take the religious lesson at exactly the same time.
+    // One shared period per day, from the last period backwards. A teacher may own the
+    // subject in two grades (e.g. Grade 7 and Grade 8), so a period already claimed by
+    // another grade is skipped: otherwise that teacher would stand in six classes at once.
     const chosen: { day: number; slot: number }[] = [];
     for (const day of [0, 1, 2, 3, 4]) {
       if (chosen.length >= sharedLessons) break;
       for (let slot = slotsPerDay - 1; slot >= 0; slot -= 1) {
+        if (claimedReligiousCells.has(`${day}|${slot}`)) continue;
         const free = participants.every((plan) => !options.blockedClassCells?.has(`${plan.classId}|${day}|${slot}`));
         if (free) { chosen.push({ day, slot }); break; }
       }
     }
     if (chosen.length < sharedLessons) continue;
+
+    chosen.forEach((cell) => claimedReligiousCells.add(`${cell.day}|${cell.slot}`));
 
     for (const { plan, needs } of strokedReligious) {
       const classLessons = Math.min(sharedLessons, Math.max(...needs.map((need) => need.lessons)));
