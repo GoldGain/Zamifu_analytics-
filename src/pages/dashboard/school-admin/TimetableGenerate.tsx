@@ -1057,7 +1057,11 @@ ${detail}`);
         for (const [strokedLevel, subjectIds] of strokesByLevel) {
           const levelEntries = dedupedEntries.filter((entry: any) => entry.level_group === strokedLevel);
           if (!levelEntries.length) continue;
-          const strokeResult = alignStrokedSubjects(levelEntries, subjectIds, classesToProcess as any);
+          // Partial alignment is worse than none: either every stream of a teacher's group
+          // shares the period or the grid stays uniform. Doing that under the current rules
+          // would repeat a subject on a day, so cross-stream sharing stays disabled until
+          // that rule is relaxed. CRE and IRE still share a period inside each class.
+          const strokeResult = { aligned: 0, skipped: 0, reverted: false };
           if (strokeResult.aligned > 0) {
             console.info(`[timetable] ${strokedLevel}: ${strokeResult.aligned} stroked period(s) shared across streams`
               + (strokeResult.skipped ? `, ${strokeResult.skipped} left per stream` : ''));
