@@ -175,6 +175,10 @@ export function alignStrokedSubjects(
           cells.set(target, strokedEntry);
           cells.set(own, occupant);
           strokedEntry.is_stroked = true;
+          // The subject now sits at `target`; later swaps for this class must look
+          // there, otherwise they move the displaced lesson and two lessons end up
+          // in one cell (which is what made lessons disappear from the summary).
+          subjectCells.get(classId)![index] = target;
         }
 
         usedTargets.add(target);
@@ -206,6 +210,21 @@ export function alignStrokedSubjects(
   for (const [token, count] of dayCountsAfter) {
     const before = dayCountsBefore.get(token) || 0;
     if (count > before) problems.push(`alignment repeated a subject on a day (${token})`);
+  }
+
+  // Weekly totals per class and subject must be identical to the solved grid.
+  const totalsBefore = new Map<string, number>();
+  const totalsAfter = new Map<string, number>();
+  for (const state of snapshot) {
+    const token = `${String(state.entry.class_id)}|${String(state.entry.subject_id)}`;
+    totalsBefore.set(token, (totalsBefore.get(token) || 0) + 1);
+  }
+  for (const entry of lessons) {
+    const token = `${String(entry.class_id)}|${String(entry.subject_id)}`;
+    totalsAfter.set(token, (totalsAfter.get(token) || 0) + 1);
+  }
+  for (const [token, count] of totalsAfter) {
+    if (count !== (totalsBefore.get(token) || 0)) problems.push(`lesson count changed (${token})`);
   }
 
   if (problems.length) {
