@@ -496,9 +496,16 @@ export function resolveLessonTargets(
   levelKey: string,
   config?: Partial<TimetableConfig> | null
 ): { totalLessons: number; afterLunch: number } {
-  void config;
   const canonical = getLevelConfig(levelKey) || { totalLessons: 8, afterLunch: 2 };
-  return { totalLessons: canonical.totalLessons, afterLunch: canonical.afterLunch };
+  // A level may need more periods than the canonical shape when classes carry
+  // extra (stroked) lessons. Honour an explicit, larger request, capped so the
+  // school day cannot grow without limit.
+  const requested = Number((config as { lessons_per_day?: number } | null)?.lessons_per_day);
+  const totalLessons = Number.isFinite(requested) && requested > canonical.totalLessons
+    ? Math.min(Math.round(requested), 12)
+    : canonical.totalLessons;
+  const afterLunch = Math.max(canonical.afterLunch, totalLessons - 6);
+  return { totalLessons, afterLunch };
 }
 
 /**
@@ -614,8 +621,10 @@ export function generateSlots(
   // After-lunch lessons (0–3)
   if (afterLunch > 0) {
     currentMinutes = timeToMinutes(lunchEnd);
-    for (let i = 0; i < afterLunch; i++) {
-      pushLesson(7 + i);
+    // Build every remaining period, not a fixed 7-8 pair: a level that carries
+    // extra stroked lessons needs a 9th (or later) period to place them all.
+    for (let n = 7; n <= targetLessons; n++) {
+      pushLesson(n);
     }
   }
 
