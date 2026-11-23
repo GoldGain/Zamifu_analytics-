@@ -821,6 +821,24 @@ export default function TimetableView() {
     return m;
   }, [entries]);
 
+  // Every teacher involved in a shared (stroked) lesson, keyed by period + subject,
+  // so the grid can list them all beside "CRE/IRE (all streams)".
+  const strokedTeachersByPeriod = useMemo(() => {
+    const map = new Map<string, string[]>();
+    entries.forEach((entry) => {
+      if (!entry.is_stroked) return;
+      const teacherLabel = entry.teacher_number
+        ? `T${entry.teacher_number}`
+        : [entry.teacher_first_name, entry.teacher_last_name].filter(Boolean).join(' ').trim();
+      if (!teacherLabel) return;
+      const key = `${entry.day_of_week}|${entry.time_slot_id}|${entry.subject_id}`;
+      const list = map.get(key) || [];
+      if (!list.includes(teacherLabel)) list.push(teacherLabel);
+      map.set(key, list);
+    });
+    return map;
+  }, [entries]);
+
   const getCellDisplay = (entriesForCell: TimetableEntry[]): string => {
     if (!entriesForCell || entriesForCell.length === 0) return '';
     const parts: string[] = [];
@@ -855,8 +873,16 @@ export default function TimetableView() {
       // A stroked lesson is taught to every stream at once, so it is labelled as
       // the combined religious group rather than the stream's own subject.
       const label = entry.is_stroked ? (rel ? 'CRE/IRE' : combined) : combined;
+      if (entry.is_stroked) {
+        // Shared lesson: name the combined group and every teacher taking part.
+        const periodKey = `${entry.day_of_week}|${entry.time_slot_id}|${entry.subject_id}`;
+        const teachers = (strokedTeachersByPeriod.get(periodKey) || []).join(', ')
+          || (teacherNum ? `T${teacherNum}` : '');
+        parts.push(`${label} (all streams)${teachers ? ` · ${teachers}` : ''}`);
+        return;
+      }
       // Double lessons remain two consecutive timetable cells; no extra symbol is needed.
-      parts.push(`${label}${teacherNum}${entry.is_stroked ? ' (all streams)' : ''}`);
+      parts.push(`${label}${teacherNum}`);
     });
     return parts.join(' ') || '';
   };
