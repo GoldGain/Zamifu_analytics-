@@ -2556,20 +2556,27 @@ function planStrokedSubjects(
   }
 
   for (const [, gradePlans] of plansByGrade) {
+    // A stroked subject is whatever the admin listed (CRE, IRE, H.R.E, ...), matched by
+    // ID. Name-based detection misses plain names such as "CRE", which is exactly why
+    // stroking silently did nothing before.
+    const isStroked = (need: TeacherNeed): boolean =>
+      familyOf(need.subjectName) === 'religious'
+      || selections.some((sel) => String(sel.subjectId) === String(need.subjectId));
+
     const religiousPlans = gradePlans
-      .map((plan) => ({ plan, needs: plan.needs.filter((need) => familyOf(need.subjectName) === 'religious' && need.lessons > 0) }))
+      .map((plan) => ({ plan, needs: plan.needs.filter((need) => isStroked(need) && need.lessons > 0) }))
       .filter((entry) => entry.needs.length > 0);
     if (religiousPlans.length < 2) continue;
 
     const strokedReligious = religiousPlans.filter(({ needs }) =>
-      needs.some((need) => selections.some((sel) => String(sel.subjectId) === need.subjectId)));
+      needs.some((need) => selections.some((sel) => String(sel.subjectId) === String(need.subjectId))));
     if (!strokedReligious.length) continue;
 
     const participants = strokedReligious.map(({ plan }) => plan);
     const lessonsWanted = Math.max(...strokedReligious.map(({ needs }) => Math.max(...needs.map((need) => need.lessons))));
     const spareCells = Math.min(...participants.map((plan) => {
       const religiousLessons = plan.needs
-        .filter((need) => familyOf(need.subjectName) === 'religious')
+        .filter((need) => isStroked(need))
         .reduce((sum, need) => sum + need.lessons, 0);
       return cellsInWeek - activityBlockedFor(plan) - (plan.configuredTotal - religiousLessons);
     }));
