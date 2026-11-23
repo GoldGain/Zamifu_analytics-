@@ -420,10 +420,21 @@ export function getExactGridAssignmentIssues(options: {
   for (const cls of options.classes) {
     const classId = String(cls.id);
     const classAssignments = byClass.get(classId) || [];
-    const configuredTotal = classAssignments.reduce(
+    const rawConfiguredTotal = classAssignments.reduce(
       (total, assignment) => total + Math.max(0, Number(assignment.lessons_per_week) || 0),
       0,
     );
+    // CRE and IRE for one class run in the SAME period (parallel groups), so the
+    // pair costs one period per lesson, not two. Without this a 40-period week with
+    // CRE 4 + IRE 4 looks like 44 and the level is rejected before it is solved.
+    const religiousLoads = classAssignments
+      .filter((assignment) => /(^|\b)(C\.?R\.?E\.?|I\.?R\.?E\.?|H\.?R\.?E\.?)(\b|$)/i
+        .test(String(assignment.subjects?.name || assignment.subject_name || '')))
+      .map((assignment) => Math.max(0, Number(assignment.lessons_per_week) || 0));
+    const pairedReligiousExtra = religiousLoads.length > 1
+      ? religiousLoads.reduce((a, b) => a + b, 0) - Math.max(...religiousLoads)
+      : 0;
+    const configuredTotal = rawConfiguredTotal - pairedReligiousExtra;
     const capacity = options.totalLessons * days.length;
     if (configuredTotal > capacity) {
       issues.push({
