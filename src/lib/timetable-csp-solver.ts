@@ -2532,30 +2532,12 @@ function planStrokedSubjects(
   if (!selections.length) return { blockedCells, reservedTeacherCells, injections };
 
   const slotsPerDay = slots.length;
-  const takenCells = new Set<string>();
-  const dayOrder = [1, 0, 2, 3, 4];
-
-  /** Cells that are free for every participating class, preferring Tuesday L2. */
-  const pickSharedCells = (participating: ClassPlan[], count: number): { day: number; slot: number }[] => {
-    const picked: { day: number; slot: number }[] = [];
-    for (const day of dayOrder) {
-      // Reserve the LAST period of each day first: no learning area has a window
-      // that requires the final period, so a shared cell there keeps a full week
-      // solvable instead of stealing a slot Mathematics or English need.
-      for (let slot = slotsPerDay - 1; slot >= 0 && picked.length < count; slot -= 1) {
-        if (takenCells.has(`${day}|${slot}`)) continue;
-        const freeForEveryStream = participating.every((plan) => {
-          const cell = `${plan.classId}|${day}|${slot}`;
-          return !options.blockedClassCells?.has(cell) && !blockedCells.has(cell);
-        });
-        if (freeForEveryStream) picked.push({ day, slot });
-      }
-      if (picked.length >= count) break;
-    }
-    return picked;
-  };
-
   const cellsInWeek = slotsPerDay * DAY_COUNT;
+  const gradeOf = new Map<string, string>();
+  (options.classes || []).forEach((cls: any) => {
+    gradeOf.set(String(cls.id), String(cls.grade_level ?? cls.level ?? cls.name ?? ''));
+  });
+
   const activityBlockedFor = (plan: ClassPlan): number => {
     if (!options.blockedClassCells) return 0;
     let blocked = 0;
@@ -2567,105 +2549,65 @@ function planStrokedSubjects(
     return blocked;
   };
 
-  for (const selection of selections) {
-    const subjectId = String(selection?.subjectId || '');
-    if (!subjectId) continue;
+  const plansByGrade = new Map<string, ClassPlan[]>();
+  for (const plan of plans.values()) {
+    const grade = gradeOf.get(plan.classId) || plan.classId;
+    plansByGrade.set(grade, [...(plansByGrade.get(grade) || []), plan]);
+  }
 
-    const participating = [...plans.values()]
-      .filter((plan) => plan.needs.some((need) => need.subjectId === subjectId && need.lessons > 0));
-    if (!participating.length) continue;
+  for (const [, gradePlans] of plansByGrade) {
+    const religiousPlans = gradePlans
+      .map((plan) => ({ plan, needs: plan.needs.filter((need) => familyOf(need.subjectName) === 'religious' && need.lessons > 0) }))
+      .filter((entry) => entry.needs.length > 0);
+    if (religiousPlans.length < 2) continue;
 
-    const subjectLabel = participating[0].needs.find((need) => need.subjectId === subjectId)?.subjectName || 'the stroked subject';
+    const strokedReligious = religiousPlans.filter(({ needs }) =>
+      needs.some((need) => selections.some((sel) => String(sel.subjectId) === need.subjectId)));
+    if (!strokedReligious.length) continue;
 
-    // A class only has as many free cells as the week minus its activities. The
-    // shared periods take cells away from the other lessons, so share no more
-    // than the tightest class can spare; otherwise a full week becomes
-    // unsolvable ("proven impossible") and no timetable is produced at all.
-    const shareCapacity = Math.min(...participating.map((plan) => {
-      const need = plan.needs.find((entry) => entry.subjectId === subjectId);
-      const otherLessons = plan.configuredTotal - (need?.lessons ?? 0);
-      return cellsInWeek - activityBlockedFor(plan) - otherLessons;
+    const participants = strokedReligious.map(({ plan }) => plan);
+    const lessonsWanted = Math.max(...strokedReligious.map(({ needs }) => Math.max(...needs.map((need) => need.lessons))));
+    const spareCells = Math.min(...participants.map((plan) => {
+      const religiousLessons = plan.needs
+        .filter((need) => familyOf(need.subjectName) === 'religious')
+        .reduce((sum, need) => sum + need.lessons, 0);
+      return cellsInWeek - activityBlockedFor(plan) - (plan.configuredTotal - religiousLessons);
     }));
+    const sharedLessons = Math.min(lessonsWanted, Math.max(0, spareCells));
+    if (sharedLessons <= 0) continue;
 
-    // Every lesson of a stroked subject is shared where capacity allows: the
-    // whole weekly load happens together, so no stream gets its own copy.
-    const wantedLessons = Math.min(...participating.map((plan) =>
-      plan.needs.find((need) => need.subjectId === subjectId)?.lessons ?? 0));
-    if (wantedLessons <= 0) continue;
-
-    if (shareCapacity <= 0) {
-      issues.push(makeIssue('stroked-no-capacity',
-        `${subjectLabel} cannot be taught to all streams together: the week is already full. Free a period (or reduce another subject) and generate again.`));
-      continue;
-    }
-    const weeklyLessons = Math.min(wantedLessons, shareCapacity);
-    if (weeklyLessons < wantedLessons) {
-      issues.push(makeIssue('stroked-trimmed',
-        `${subjectLabel} has ${wantedLessons} lesson(s) a week but only ${weeklyLessons} period(s) can be shared across every stream, so ${weeklyLessons} will be taught together and the rest per stream.`));
-    }
-
-    const cells = pickSharedCells(participating, weeklyLessons);
-    const subjectName = participating[0].needs.find((need) => need.subjectId === subjectId)?.subjectName || 'the stroked subject';
-    if (cells.length < weeklyLessons) {
-      issues.push(makeIssue('stroked-no-shared-period',
-        `${subjectName} needs ${weeklyLessons} shared period(s) every week, but only ${cells.length} are free in every stream at once. Free a period or reduce its weekly lessons, then generate again.`));
-      continue;
-    }
-    cells.forEach((cell) => takenCells.add(`${cell.day}|${cell.slot}`));
-
-    for (const plan of participating) {
-      const need = plan.needs.find((entry) => entry.subjectId === subjectId && entry.lessons > 0);
-      if (!need) continue;
-
-      // Rule 10 pairs one IRE with one CRE. Keep the pair in the same shared
-      // periods so those learners are placed while the CRE group is together.
-      const paired = isReligiousName(need.subjectName)
-        ? plan.needs.find((entry) => entry !== need && isReligiousName(entry.subjectName) && entry.lessons > 0)
-        : undefined;
-      const sharedLessons = Math.min(weeklyLessons, need.lessons);
-      const pairedCount = paired ? Math.min(sharedLessons, paired.lessons) : 0;
-
-      for (let index = 0; index < sharedLessons; index += 1) {
-        const cell = cells[index];
-        const slotRow = slots[cell.slot];
-        for (const teacherId of need.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
-        injections.push({
-          school_id: options.schoolId,
-          class_id: plan.classId,
-          day_of_week: cell.day + 1,
-          time_slot_id: slotRow.id,
-          subject_id: need.subjectId,
-          teacher_id: need.teacherIds[0],
-          entry_type: 'lesson',
-          level_group: options.levelKey,
-          effective_start_time: slotRow.start_time,
-          effective_end_time: slotRow.end_time,
-          stroked: true,
-        });
-        blockedCells.add(`${plan.classId}|${cell.day}|${cell.slot}`);
-
-        if (paired && index < pairedCount) {
-          for (const teacherId of paired.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
-          injections.push({
-            school_id: options.schoolId,
-            class_id: plan.classId,
-            day_of_week: cell.day + 1,
-            time_slot_id: slotRow.id,
-            subject_id: paired.subjectId,
-            teacher_id: paired.teacherIds[0],
-            entry_type: 'lesson',
-            level_group: options.levelKey,
-            effective_start_time: slotRow.start_time,
-            effective_end_time: slotRow.end_time,
-            stroked: true,
-          });
-        }
+    // one shared period per day, from the last period backwards: all streams of the
+    // grade take the religious lesson at exactly the same time.
+    const chosen: { day: number; slot: number }[] = [];
+    for (const day of [0, 1, 2, 3, 4]) {
+      if (chosen.length >= sharedLessons) break;
+      for (let slot = slotsPerDay - 1; slot >= 0; slot -= 1) {
+        const free = participants.every((plan) => !options.blockedClassCells?.has(`${plan.classId}|${day}|${slot}`));
+        if (free) { chosen.push({ day, slot }); break; }
       }
+    }
+    if (chosen.length < sharedLessons) continue;
 
-      plan.configuredTotal -= sharedLessons;
-      plan.configuredTotal -= pairedCount;
-      need.lessons -= sharedLessons;
-      if (paired) paired.lessons -= pairedCount;
+    for (const { plan, needs } of strokedReligious) {
+      const classLessons = Math.min(sharedLessons, Math.max(...needs.map((need) => need.lessons)));
+      for (let index = 0; index < classLessons; index += 1) {
+        const cell = chosen[index];
+        const slotRow = slots[cell.slot];
+        for (const need of needs) {
+          if (index >= need.lessons) continue;
+          for (const teacherId of need.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
+          injections.push({
+            school_id: options.schoolId, class_id: plan.classId, day_of_week: cell.day + 1,
+            time_slot_id: slotRow.id, subject_id: need.subjectId, teacher_id: need.teacherIds[0],
+            entry_type: 'lesson', level_group: options.levelKey,
+            effective_start_time: slotRow.start_time, effective_end_time: slotRow.end_time,
+            is_stroked: true, stroked: true,
+          });
+          plan.configuredTotal -= 1;
+          need.lessons -= 1;
+        }
+        blockedCells.add(`${plan.classId}|${cell.day}|${cell.slot}`);
+      }
       plan.needs = plan.needs.filter((entry) => entry.lessons > 0);
     }
   }

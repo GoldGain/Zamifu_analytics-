@@ -891,7 +891,7 @@ export default function TimetableGenerate() {
             // and leave only each short class's unused cells blank.
             allowIncompleteClasses: true,
             // Stroking is applied after solving (period alignment) so a full week never becomes unsolvable.
-            strokedSubjects: [],
+            strokedSubjects: (strokedRows || []).map((row: any) => ({ subjectId: String(row.subject_id) })),
           });
           // Stroking must never cost the school its timetable: if the shared
           // periods make the level impossible, regenerate without them and say so.
@@ -907,7 +907,7 @@ export default function TimetableGenerate() {
                 .filter((entry: any) => entry.level_group === levelKey && entry.entry_type === 'activity')
                 .map((entry: any) => `${entry.class_id}|${Number(entry.day_of_week) - 1}|${lessonSlots.findIndex((slot: any) => String(slot.id) === String(entry.time_slot_id))}`)),
               allowIncompleteClasses: true,
-              strokedSubjects: [],
+              strokedSubjects: (strokedRows || []).map((row: any) => ({ subjectId: String(row.subject_id) })),
               onProgress: (message) => console.info(`[timetable fallback] ${message}`),
             });
             if (fallback.entries.length) {
