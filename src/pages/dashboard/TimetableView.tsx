@@ -46,6 +46,7 @@ interface TimetableEntry {
   teacher_last_name?: string;
   subject_name?: string;
   subject_code?: string;
+  is_stroked?: boolean;
 }
 
 interface TimeSlot {
@@ -611,7 +612,7 @@ export default function TimetableView() {
     const { data, error: err } = await supabase
       .from('timetable_entries')
       .select(
-        `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name, level_group, effective_start_time, effective_end_time,
+        `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name, level_group, effective_start_time, effective_end_time, is_stroked,
         teachers(teacher_number, first_name, last_name), subjects(name, code)`
       )
       .eq('school_id', user?.schoolId);
@@ -632,6 +633,7 @@ export default function TimetableView() {
       teacher_last_name: entry.teachers?.last_name,
       subject_name: entry.subjects?.name,
       subject_code: entry.subjects?.code,
+      is_stroked: entry.is_stroked === true,
     }));
     setEntries(mapped);
   };
@@ -847,11 +849,14 @@ export default function TimetableView() {
       const classReligions = rel ? religiousCodesByClass.get(entry.class_id) : undefined;
       // Rule 4: a class taking multiple religious options (CRE + IRE/HRE) shows
       // the combined label ("CRE/IRE"). One option shows that subject alone.
-      const label = rel && classReligions && classReligions.size > 1
+      const combined = rel && classReligions && classReligions.size > 1
         ? [...classReligions].sort().join('/')
         : getSubjectCode(entry.subject_name || '', entry.subject_code || '');
+      // A stroked lesson is taught to every stream at once, so it is labelled as
+      // the combined religious group rather than the stream's own subject.
+      const label = entry.is_stroked ? (rel ? 'CRE/IRE' : combined) : combined;
       // Double lessons remain two consecutive timetable cells; no extra symbol is needed.
-      parts.push(`${label}${teacherNum}`);
+      parts.push(`${label}${teacherNum}${entry.is_stroked ? ' (all streams)' : ''}`);
     });
     return parts.join(' ') || '';
   };
