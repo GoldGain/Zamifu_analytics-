@@ -11,6 +11,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { GenderType } from '@/types/database';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllPages } from '@/lib/supabase-paginate';
 
 const DEFAULT_TEACHER_PASSWORD = 'Teacher@2025';
 const TEACHER_TIMETABLE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -86,13 +87,17 @@ export default function SchoolAdminTeachers() {
     }
     setExportingTimetables(true);
     try {
-      const { data: entries, error } = await supabaseUntyped
+      // A school-wide timetable is larger than PostgREST's 1000-row answer
+      // limit; read every page so the last classes are not missing from the
+      // exported teacher timetables.
+      const entries = await fetchAllPages<AdminTeacherTimetableEntry>((from, to) => supabaseUntyped
         .from('timetable_entries')
         .select('teacher_id, day_of_week, entry_type, activity_name, timetable_time_slots(start_time, end_time), subjects(name), classes(name, stream, stream_name)')
         .eq('school_id', user.schoolId)
         .not('teacher_id', 'is', null)
-        .in('entry_type', ['lesson', 'class', 'activity']);
-      if (error) throw error;
+        .in('entry_type', ['lesson', 'class', 'activity'])
+        .order('id')
+        .range(from, to));
 
       const entriesByTeacher = new Map<string, AdminTeacherTimetableEntry[]>();
       (entries || []).forEach((entry: AdminTeacherTimetableEntry) => {

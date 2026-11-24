@@ -20,6 +20,7 @@ import {
 import { getReligiousCode, getSubjectCode } from '@/lib/timetable-subject-code';
 import { buildWeeklyLessonSummary, type TimetableSummaryRequirement } from '@/lib/timetable-summary';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllPages } from '@/lib/supabase-paginate';
 
 interface SchoolClass {
   id: string;
@@ -609,14 +610,17 @@ export default function TimetableView() {
   };
 
   const fetchEntries = async () => {
-    const { data, error: err } = await supabase
+    // A whole school passes PostgREST's 1000-row answer limit, and the rows that
+    // were dropped used to render as empty cells. Read every page instead.
+    const data = await fetchAllPages<any>((from, to) => supabase
       .from('timetable_entries')
       .select(
         `id, class_id, day_of_week, time_slot_id, teacher_id, subject_id, entry_type, activity_name, level_group, effective_start_time, effective_end_time, is_stroked,
         teachers(teacher_number, first_name, last_name), subjects(name, code)`
       )
-      .eq('school_id', user?.schoolId);
-    if (err) throw err;
+      .eq('school_id', user?.schoolId)
+      .order('id')
+      .range(from, to));
     const mapped: TimetableEntry[] = (data || []).map((entry: any) => ({
       id: entry.id,
       class_id: entry.class_id,

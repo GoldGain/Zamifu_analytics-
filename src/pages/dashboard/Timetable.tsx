@@ -5,6 +5,7 @@ import { Calendar, Download, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { formatClassStream } from '@/lib/class-label';
+import { fetchAllPages } from '@/lib/supabase-paginate';
 
 interface TimeSlot {
   id: string;
@@ -81,15 +82,19 @@ export default function Timetable() {
 
       setTimeSlots(slotsData || []);
 
-      // Fetch timetable entries
-      const { data: entriesData } = await supabaseUntyped
+      // Fetch timetable entries. A whole school is larger than PostgREST's
+      // 1000-row answer limit, so every page is read; otherwise the later
+      // classes of the week silently disappear from the grid.
+      const entriesData = await fetchAllPages<any>((from, to) => supabaseUntyped
         .from('timetable_entries')
         .select(`
           *,
           classes(name, stream, stream_name),
           subjects(name)
         `)
-        .eq('school_id', profile.school_id);
+        .eq('school_id', profile.school_id)
+        .order('id')
+        .range(from, to));
 
       setEntries(entriesData || []);
     } catch (err) {
