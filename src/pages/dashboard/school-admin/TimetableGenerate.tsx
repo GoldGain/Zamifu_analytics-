@@ -952,6 +952,7 @@ ${detail}`);
             'no-blanks',
             'activity-overlap',
             'once-per-day',
+            'religious-cross-stream-alignment',
           ]);
           const validationIssues = validateTimetableRules({
             entries: [...allEntries, ...solverResult.entries],
@@ -970,6 +971,7 @@ ${detail}`);
             ],
             requiredLessonCounts,
             requireReligiousPairing: true,
+            requireCrossStreamReligiousAlignment: true,
           });
           const blockingIssues = validationIssues.filter((issue) => BLOCKING_RULES.has(issue.rule));
           const advisoryIssues = validationIssues.filter((issue) => !BLOCKING_RULES.has(issue.rule));

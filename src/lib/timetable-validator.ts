@@ -28,6 +28,8 @@ export interface TimetableValidationClass {
   name?: string | null;
   stream?: string | null;
   stream_name?: string | null;
+  grade_level?: string | number | null;
+  level?: string | number | null;
 }
 
 export interface TimetableValidationOptions {
@@ -42,6 +44,8 @@ export interface TimetableValidationOptions {
   requiredLessonCounts?: ReadonlyMap<string, number> | Readonly<Record<string, number>>;
   /** Enforce same-day/same-slot pairing when both IRE and CRE are offered. */
   requireReligiousPairing?: boolean;
+  /** Enforce one identical CRE/IRE split period across every stream of a grade. */
+  requireCrossStreamReligiousAlignment?: boolean;
   /** Allow generation to proceed when the assignment graph makes this ordering unsatisfiable. */
   allowMathScienceAdjacency?: boolean;
   /** Allow a complete timetable to be saved when exact counts cannot be reconciled. */
@@ -295,6 +299,43 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
           rule: 'ire-cre-same-slot',
           message: `IRE and CRE are not paired at the same day and lesson slot for class ${key}.`,
         });
+      }
+    }
+
+    if (options.requireCrossStreamReligiousAlignment && options.classes?.length) {
+      const gradeKey = (item: TimetableValidationClass): string => {
+        const explicit = item.grade_level ?? item.level;
+        if (explicit != null && String(explicit).trim()) return String(explicit).trim().toLowerCase();
+        return String(item.name || item.id).replace(/\s*(?:stream|class)?\s*[a-z]$/i, '').trim().toLowerCase();
+      };
+      const classesByGrade = new Map<string, TimetableValidationClass[]>();
+      for (const item of options.classes) {
+        const key = gradeKey(item);
+        classesByGrade.set(key, [...(classesByGrade.get(key) || []), item]);
+      }
+      for (const [grade, gradeClasses] of classesByGrade) {
+        if (gradeClasses.length < 2) continue;
+        for (const family of ['cre', 'ire'] as const) {
+          const perStream = gradeClasses.map((item) => new Set(
+            filteredEntries
+              .filter((entry) => String(entry.class_id) === String(item.id))
+              .filter((entry) => {
+                const name = nameFor(options.subjectNames, entry.subject_id).toLowerCase();
+                return family === 'cre'
+                  ? /\bcre\b|christian/.test(name)
+                  : /\bire\b|islamic|muslim/.test(name);
+              })
+              .map((entry) => `${entry.day_of_week}-${String(entry.time_slot_id)}`),
+          ));
+          if (perStream.some((set) => set.size === 0)) continue;
+          const first = [...perStream[0]].sort().join('|');
+          if (perStream.some((set) => [...set].sort().join('|') !== first)) {
+            issues.push({
+              rule: 'religious-cross-stream-alignment',
+              message: `${family.toUpperCase()} is not scheduled at the same day and lesson slots across all streams of grade ${grade}.`,
+            });
+          }
+        }
       }
     }
   }

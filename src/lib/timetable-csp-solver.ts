@@ -162,6 +162,11 @@ const isCreName = (name: string): boolean => /\bcre\b|christian/i.test(name);
 
 const normalizeName = (value: unknown): string => String(value ?? '').trim();
 
+const toMinutes = (value: unknown): number => {
+  const [hours, minutes] = String(value ?? '').slice(0, 5).split(':').map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+};
+
 function dayIndex(value: unknown): number | null {
   if (typeof value === 'number' && Number.isInteger(value)) {
     if (value >= 0 && value <= 4) return value;
@@ -2632,51 +2637,14 @@ function planStrokedSubjects(
       needs.some((need) => selections.some((sel) => String(sel.subjectId) === String(need.subjectId))));
     if (!strokedReligious.length) continue;
 
-    // A shared period means every stream takes the subject AT THE SAME TIME with
-    // its own teacher, so the group is only physically possible when no teacher
-    // owns the subject in two of its streams. One CRE teacher covering all three
-    // streams used to be "shared" anyway, which put the same teacher in three
-    // classrooms at once and made the finished grid fail its own collision check.
-    // Split the grade into the largest groups whose teachers are all distinct and
-    // leave the rest to the normal per-class solve.
-    const teacherSets = (needs: TeacherNeed[]): Map<string, Set<string>> => new Map(
-      needs.map((need) => [need.subjectId, new Set(need.teacherIds.map(String))]),
-    );
-    const teachersDisjoint = (left: TeacherNeed[], right: TeacherNeed[]): boolean => {
-      const leftSets = teacherSets(left);
-      for (const [subjectId, rightTeachers] of teacherSets(right)) {
-        const leftTeachers = leftSets.get(subjectId);
-        if (!leftTeachers) continue;
-        for (const teacherId of rightTeachers) if (leftTeachers.has(teacherId)) return false;
-      }
-      return true;
-    };
-    const groups: typeof strokedReligious[] = [];
-    for (const entry of strokedReligious) {
-      const group = groups.find((candidate) => candidate.every((member) => teachersDisjoint(member.needs, entry.needs)));
-      if (group) group.push(entry);
-      else groups.push([entry]);
-    }
-    const sharedGroups = groups.filter((group) => group.length > 1);
+    // CRE/IRE is a grade-wide split period. Every stream in the grade must be
+    // blocked at the same day/lesson slot; streams do not get separate periods
+    // merely because the original assignment reused one teacher. Teacher
+    // assignments are reassigned below from the level's teacher pool when that
+    // is necessary to keep the synchronized classrooms collision-free.
+    const sharedGroups: typeof strokedReligious[] = [strokedReligious];
     const gradeLabel = strokedReligious[0]?.plan.className || 'This grade';
     const strokedNames = [...new Set(strokedReligious.flatMap((entry) => entry.needs.map((need) => need.subjectName)))];
-    if (!sharedGroups.length) {
-      warnings.push({
-        code: 'stroked-teacher-conflict',
-        message: `${gradeLabel}: ${strokedNames.join('/')} could not be shared across streams because the same teacher is assigned to more than one `
-          + 'stream, so one period cannot serve them all without double-booking. Those lessons were timetabled normally for each stream. '
-          + 'Assign a different teacher to each stream to share one period.',
-      });
-      continue;
-    }
-    const leftOut = strokedReligious.filter((entry) => !sharedGroups.some((group) => group.includes(entry)));
-    if (leftOut.length) {
-      warnings.push({
-        code: 'stroked-partial',
-        message: `${gradeLabel}: ${strokedNames.join('/')} was shared by ${sharedGroups.map((group) => group.length).join('+')} `
-          + `stream(s); ${leftOut.map((entry) => entry.plan.className).length} stream(s) keep their own period because their teacher also teaches a shared stream.`,
-      });
-    }
 
     for (const group of sharedGroups) {
       const participants = group.map(({ plan }) => plan);
@@ -2706,6 +2674,45 @@ function planStrokedSubjects(
 
       chosen.forEach((cell) => claimedReligiousCells.add(`${cell.day}|${cell.slot}`));
 
+      // Build a grade-level pool once. The configured teacher is preferred, but
+      // another teacher already assigned in this level may take the CRE/IRE
+      // classroom when the configured teacher is already needed by another
+      // stream at this synchronized time.
+      const levelTeacherPool = [...new Set(options.assignments
+        .map((assignment: any) => String(assignment.teacher_id || ''))
+        .filter(Boolean))];
+      const injectedTeacherUse = new Map<string, number>();
+      const teacherIsReservedAt = (teacherId: string, cell: { day: number; slot: number }): boolean => {
+        if (reservedTeacherCells.has(`${teacherId}|${cell.day}|${cell.slot}`)) return true;
+        const slotRow = slots[cell.slot];
+        return (options.reservedTeacherPeriods || []).some((period) =>
+          String(period.teacherId) === teacherId
+          && Number(period.day) === cell.day + 1
+          && toMinutes(period.startTime) < toMinutes(slotRow.end_time)
+          && toMinutes(period.endTime) > toMinutes(slotRow.start_time));
+      };
+      const assignTeachersForCell = (needs: TeacherNeed[], cell: { day: number; slot: number }): Map<string, string> | null => {
+        const used = new Set<string>();
+        const result = new Map<string, string>();
+        const orderedNeeds = needs.slice().sort((left, right) => left.teacherIds.length - right.teacherIds.length);
+        for (const need of orderedNeeds) {
+          const preferred = need.teacherIds.map(String);
+          const candidates = [...new Set([...preferred, ...levelTeacherPool])]
+            .filter((teacherId) => !used.has(teacherId) && !teacherIsReservedAt(teacherId, cell))
+            .sort((left, right) => {
+              const leftPreferred = preferred.includes(left) ? 0 : 1;
+              const rightPreferred = preferred.includes(right) ? 0 : 1;
+              return leftPreferred - rightPreferred
+                || (injectedTeacherUse.get(left) || 0) - (injectedTeacherUse.get(right) || 0);
+            });
+          const teacherId = candidates[0];
+          if (!teacherId) return null;
+          used.add(teacherId);
+          result.set(need.subjectId + '|' + needs.indexOf(need), teacherId);
+        }
+        return result;
+      };
+
       for (const { plan, needs } of group) {
       // Capture each parallel subject's ORIGINAL weekly count. `need.lessons`
       // shrinks as cells are consumed, so comparing the cell index against the
@@ -2718,14 +2725,26 @@ function planStrokedSubjects(
           const cell = chosen[index];
           if (!cell) break;
           const slotRow = slots[cell.slot];
+          const activeNeeds = needs.filter((need, needIndex) => index < initialLessons[needIndex]);
+          const teacherAssignments = assignTeachersForCell(activeNeeds, cell);
+          if (!teacherAssignments) {
+            warnings.push({
+              code: 'stroked-teacher-capacity',
+              message: `${gradeLabel}: ${strokedNames.join('/')} could not assign distinct teachers to every synchronized stream at one period. `
+                + 'The shared periods were retained and the affected teacher allocation was left as configured; add or reassign teachers for a collision-free grid.',
+            });
+            continue;
+          }
           let consumedPeriod = false;
           for (let needIndex = 0; needIndex < needs.length; needIndex += 1) {
             const need = needs[needIndex];
             if (index >= initialLessons[needIndex]) continue;
-            for (const teacherId of need.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
+            const teacherId = teacherAssignments.get(need.subjectId + '|' + needIndex) || need.teacherIds[0];
+            reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
+            injectedTeacherUse.set(teacherId, (injectedTeacherUse.get(teacherId) || 0) + 1);
             injections.push({
               school_id: options.schoolId, class_id: plan.classId, day_of_week: cell.day + 1,
-              time_slot_id: slotRow.id, subject_id: need.subjectId, teacher_id: need.teacherIds[0],
+              time_slot_id: slotRow.id, subject_id: need.subjectId, teacher_id: teacherId,
               entry_type: 'lesson', level_group: options.levelKey,
               effective_start_time: slotRow.start_time, effective_end_time: slotRow.end_time,
               is_stroked: true, stroked: true,
