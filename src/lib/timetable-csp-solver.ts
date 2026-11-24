@@ -2687,7 +2687,9 @@ function planStrokedSubjects(
         const slotRow = slots[cell.slot];
         return (options.reservedTeacherPeriods || []).some((period) =>
           String(period.teacherId) === teacherId
-          && Number(period.day) === cell.day + 1
+          // The generation pipeline stores reserved periods with zero-based
+          // days, matching the solver's internal cell coordinates.
+          && Number(period.day) === cell.day
           && toMinutes(period.startTime) < toMinutes(slotRow.end_time)
           && toMinutes(period.endTime) > toMinutes(slotRow.start_time));
       };
