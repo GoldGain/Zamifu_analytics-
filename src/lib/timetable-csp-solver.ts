@@ -2273,7 +2273,7 @@ class LevelSearch {
   solveExact(slots: any[], options: CspTimetableSolverOptions): boolean {
     this.resetModel();
     this.vertexClear();
-    const result = solveExactTimetable({
+    const searchOptions = {
       sessions: this.model.sessions,
       classCount: this.model.classes.length,
       slotsPerDay: this.slotsPerDay,
@@ -2296,7 +2296,14 @@ class LevelSearch {
         return this.model.sessions[session.index].subjectNames.every(name =>
           isValidDoubleLessonStart(name, this.lessonNumber(start)));
       },
-    });
+    };
+    // Prefer a grid whose free cells trail each day. The prefix rule can make a
+    // marginal level unsolvable, so it stays a preference: fall back to the plain
+    // model rather than reporting a solvable school as impossible.
+    let result = solveExactTimetable({ ...searchOptions, compactShortClasses: true });
+    if (!result.units && searchOptions.shortClasses.size) {
+      result = solveExactTimetable({ ...searchOptions, compactShortClasses: false });
+    }
     this.nodes += result.variables;
     if (!result.units) return false;
     for (const unit of result.units) {
@@ -2510,6 +2517,55 @@ function buildEntries(search: LevelSearch, options: CspTimetableSolverOptions, s
   return entries;
 }
 
+/**
+ * A class whose own weekly totals add up to fewer periods than the level holds
+ * cannot be filled with lessons, but the grid still must not show holes. Every
+ * cell the class cannot use is written as a supervised study period instead, so
+ * the rendered timetable is complete (no blank cells, no "undefined") while the
+ * school's real lesson totals stay exactly as configured — study rows carry no
+ * subject and no teacher, and the validator only counts real lessons.
+ */
+function fillStudyPeriods(
+  entries: any[],
+  model: LevelSearch['model'],
+  options: CspTimetableSolverOptions,
+  slots: any[],
+  shortClassIndexes: Set<number>,
+): void {
+  if (!shortClassIndexes.size) return;
+  const slotIndexById = new Map<string, number>(slots.map((slot, index) => [String(slot.id), index]));
+  const filled = new Set<string>(
+    entries
+      .filter((entry) => slotIndexById.has(String(entry.time_slot_id)))
+      .map((entry) => `${entry.class_id}|${Number(entry.day_of_week) - 1}|${slotIndexById.get(String(entry.time_slot_id))}`),
+  );
+  for (const classIndex of shortClassIndexes) {
+    const cls = model.classes[classIndex];
+    if (!cls) continue;
+    for (let day = 0; day < DAY_COUNT; day += 1) {
+      for (let slot = 0; slot < slots.length; slot += 1) {
+        const key = `${cls.id}|${day}|${slot}`;
+        if (filled.has(key)) continue;
+        // Fixed activities already own their cell; never cover them with study.
+        if (options.blockedClassCells?.has(key)) continue;
+        const entrySlot = slots[slot];
+        entries.push({
+          school_id: options.schoolId,
+          class_id: cls.id,
+          day_of_week: day + 1,
+          time_slot_id: entrySlot.id,
+          entry_type: 'study',
+          activity_name: 'PRIVATE STUDY',
+          level_group: options.levelKey,
+          effective_start_time: entrySlot.start_time,
+          effective_end_time: entrySlot.end_time,
+        });
+        filled.add(key);
+      }
+    }
+  }
+}
+
 /* ──────────────────────────────── entry point ──────────────────────────────── */
 
 /**
@@ -2524,6 +2580,7 @@ function planStrokedSubjects(
   options: CspTimetableSolverOptions,
   slots: any[],
   issues: CspSolverIssue[],
+  warnings: CspSolverWarning[],
 ): { blockedCells: Set<string>; reservedTeacherCells: Set<string>; injections: any[] } {
   const blockedCells = new Set<string>();
   const reservedTeacherCells = new Set<string>();
@@ -2575,54 +2632,116 @@ function planStrokedSubjects(
       needs.some((need) => selections.some((sel) => String(sel.subjectId) === String(need.subjectId))));
     if (!strokedReligious.length) continue;
 
-    const participants = strokedReligious.map(({ plan }) => plan);
-    const lessonsWanted = Math.max(...strokedReligious.map(({ needs }) => Math.max(...needs.map((need) => need.lessons))));
-    const spareCells = Math.min(...participants.map((plan) => {
-      const religiousLessons = plan.needs
-        .filter((need) => isStroked(need))
-        .reduce((sum, need) => sum + need.lessons, 0);
-      return cellsInWeek - activityBlockedFor(plan) - (plan.configuredTotal - religiousLessons);
-    }));
-    const sharedLessons = Math.min(lessonsWanted, Math.max(0, spareCells));
-    if (sharedLessons <= 0) continue;
-
-    // One shared period per day, from the last period backwards. A teacher may own the
-    // subject in two grades (e.g. Grade 7 and Grade 8), so a period already claimed by
-    // another grade is skipped: otherwise that teacher would stand in six classes at once.
-    const chosen: { day: number; slot: number }[] = [];
-    for (const day of [0, 1, 2, 3, 4]) {
-      if (chosen.length >= sharedLessons) break;
-      for (let slot = slotsPerDay - 1; slot >= 0; slot -= 1) {
-        if (claimedReligiousCells.has(`${day}|${slot}`)) continue;
-        const free = participants.every((plan) => !options.blockedClassCells?.has(`${plan.classId}|${day}|${slot}`));
-        if (free) { chosen.push({ day, slot }); break; }
+    // A shared period means every stream takes the subject AT THE SAME TIME with
+    // its own teacher, so the group is only physically possible when no teacher
+    // owns the subject in two of its streams. One CRE teacher covering all three
+    // streams used to be "shared" anyway, which put the same teacher in three
+    // classrooms at once and made the finished grid fail its own collision check.
+    // Split the grade into the largest groups whose teachers are all distinct and
+    // leave the rest to the normal per-class solve.
+    const teacherSets = (needs: TeacherNeed[]): Map<string, Set<string>> => new Map(
+      needs.map((need) => [need.subjectId, new Set(need.teacherIds.map(String))]),
+    );
+    const teachersDisjoint = (left: TeacherNeed[], right: TeacherNeed[]): boolean => {
+      const leftSets = teacherSets(left);
+      for (const [subjectId, rightTeachers] of teacherSets(right)) {
+        const leftTeachers = leftSets.get(subjectId);
+        if (!leftTeachers) continue;
+        for (const teacherId of rightTeachers) if (leftTeachers.has(teacherId)) return false;
       }
+      return true;
+    };
+    const groups: typeof strokedReligious[] = [];
+    for (const entry of strokedReligious) {
+      const group = groups.find((candidate) => candidate.every((member) => teachersDisjoint(member.needs, entry.needs)));
+      if (group) group.push(entry);
+      else groups.push([entry]);
     }
-    if (chosen.length < sharedLessons) continue;
+    const sharedGroups = groups.filter((group) => group.length > 1);
+    const gradeLabel = strokedReligious[0]?.plan.className || 'This grade';
+    const strokedNames = [...new Set(strokedReligious.flatMap((entry) => entry.needs.map((need) => need.subjectName)))];
+    if (!sharedGroups.length) {
+      warnings.push({
+        code: 'stroked-teacher-conflict',
+        message: `${gradeLabel}: ${strokedNames.join('/')} could not be shared across streams because the same teacher is assigned to more than one `
+          + 'stream, so one period cannot serve them all without double-booking. Those lessons were timetabled normally for each stream. '
+          + 'Assign a different teacher to each stream to share one period.',
+      });
+      continue;
+    }
+    const leftOut = strokedReligious.filter((entry) => !sharedGroups.some((group) => group.includes(entry)));
+    if (leftOut.length) {
+      warnings.push({
+        code: 'stroked-partial',
+        message: `${gradeLabel}: ${strokedNames.join('/')} was shared by ${sharedGroups.map((group) => group.length).join('+')} `
+          + `stream(s); ${leftOut.map((entry) => entry.plan.className).length} stream(s) keep their own period because their teacher also teaches a shared stream.`,
+      });
+    }
 
-    chosen.forEach((cell) => claimedReligiousCells.add(`${cell.day}|${cell.slot}`));
+    for (const group of sharedGroups) {
+      const participants = group.map(({ plan }) => plan);
+      const lessonsWanted = Math.max(...group.map(({ needs }) => Math.max(...needs.map((need) => need.lessons))));
+      const spareCells = Math.min(...participants.map((plan) => {
+        const religiousLessons = plan.needs
+          .filter((need) => isStroked(need))
+          .reduce((sum, need) => sum + need.lessons, 0);
+        return cellsInWeek - activityBlockedFor(plan) - (plan.configuredTotal - religiousLessons);
+      }));
+      const sharedLessons = Math.min(lessonsWanted, Math.max(0, spareCells));
+      if (sharedLessons <= 0) continue;
 
-    for (const { plan, needs } of strokedReligious) {
-      const classLessons = Math.min(sharedLessons, Math.max(...needs.map((need) => need.lessons)));
-      for (let index = 0; index < classLessons; index += 1) {
-        const cell = chosen[index];
-        const slotRow = slots[cell.slot];
-        for (const need of needs) {
-          if (index >= need.lessons) continue;
-          for (const teacherId of need.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
-          injections.push({
-            school_id: options.schoolId, class_id: plan.classId, day_of_week: cell.day + 1,
-            time_slot_id: slotRow.id, subject_id: need.subjectId, teacher_id: need.teacherIds[0],
-            entry_type: 'lesson', level_group: options.levelKey,
-            effective_start_time: slotRow.start_time, effective_end_time: slotRow.end_time,
-            is_stroked: true, stroked: true,
-          });
-          plan.configuredTotal -= 1;
-          need.lessons -= 1;
+      // One shared period per day, from the last period backwards. A teacher may own the
+      // subject in two grades (e.g. Grade 7 and Grade 8), so a period already claimed by
+      // another grade is skipped: otherwise that teacher would stand in six classes at once.
+      const chosen: { day: number; slot: number }[] = [];
+      for (const day of [0, 1, 2, 3, 4]) {
+        if (chosen.length >= sharedLessons) break;
+        for (let slot = slotsPerDay - 1; slot >= 0; slot -= 1) {
+          if (claimedReligiousCells.has(`${day}|${slot}`)) continue;
+          const free = participants.every((plan) => !options.blockedClassCells?.has(`${plan.classId}|${day}|${slot}`));
+          if (free) { chosen.push({ day, slot }); break; }
         }
-        blockedCells.add(`${plan.classId}|${cell.day}|${cell.slot}`);
       }
-      plan.needs = plan.needs.filter((entry) => entry.lessons > 0);
+      if (chosen.length < sharedLessons) continue;
+
+      chosen.forEach((cell) => claimedReligiousCells.add(`${cell.day}|${cell.slot}`));
+
+      for (const { plan, needs } of group) {
+      // Capture each parallel subject's ORIGINAL weekly count. `need.lessons`
+      // shrinks as cells are consumed, so comparing the cell index against the
+      // running remainder stopped the loop halfway through: a 4-lesson CRE group
+      // only received 2 shared periods, yet 4 cells had already been blocked, and
+      // the level was then mathematically unsolvable (40 lessons, 36 free cells).
+      const initialLessons = needs.map((need) => need.lessons);
+        const classLessons = Math.min(sharedLessons, Math.max(0, ...initialLessons));
+        for (let index = 0; index < classLessons; index += 1) {
+          const cell = chosen[index];
+          if (!cell) break;
+          const slotRow = slots[cell.slot];
+          let consumedPeriod = false;
+          for (let needIndex = 0; needIndex < needs.length; needIndex += 1) {
+            const need = needs[needIndex];
+            if (index >= initialLessons[needIndex]) continue;
+            for (const teacherId of need.teacherIds) reservedTeacherCells.add(`${teacherId}|${cell.day}|${cell.slot}`);
+            injections.push({
+              school_id: options.schoolId, class_id: plan.classId, day_of_week: cell.day + 1,
+              time_slot_id: slotRow.id, subject_id: need.subjectId, teacher_id: need.teacherIds[0],
+              entry_type: 'lesson', level_group: options.levelKey,
+              effective_start_time: slotRow.start_time, effective_end_time: slotRow.end_time,
+              is_stroked: true, stroked: true,
+            });
+            need.lessons -= 1;
+            consumedPeriod = true;
+          }
+          // CRE and IRE sit the same period (Rule 10), so the shared cell costs the
+          // class ONE weekly period even when both parallel subjects are injected.
+          // Counting one per subject made a 40-period class look 4 periods short and
+          // pushed the solver into partial mode, leaving cells blank.
+          if (consumedPeriod) plan.configuredTotal -= 1;
+          blockedCells.add(`${plan.classId}|${cell.day}|${cell.slot}`);
+        }
+        plan.needs = plan.needs.filter((entry) => entry.lessons > 0);
+      }
     }
   }
 
@@ -2672,7 +2791,7 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
 
   allowTwoPerDay = TWO_PER_DAY_LEVELS.includes(options.levelKey);
   const plans = buildClassPlans(options.classes, options.assignments, issues);
-  const stroked = planStrokedSubjects(plans, options, slots, issues);
+  const stroked = planStrokedSubjects(plans, options, slots, issues, warnings);
   // Rule 14 is a warning, so a mismatch is recorded before anything can return
   // early: the admin must still be told which classes do not match the level.
   const expectedWeeklyCells = slotsPerDay * DAY_COUNT;
@@ -2748,6 +2867,9 @@ export function solveTimetableCsp(options: CspTimetableSolverOptions): CspTimeta
       if (!problem) {
         accepted = true;
         const entries = [...buildEntries(search, options, slots), ...stroked.injections];
+        // Under-capacity classes get supervised study in the cells their own
+        // weekly totals cannot fill, so no grid is ever saved with holes.
+        fillStudyPeriods(entries, model, options, slots, shortClassIndexSet);
         progress(`Solved ${options.levelKey}: ${entries.length} entries `
           + `(${searchNodes.toLocaleString()} search nodes, ${restartCount} attempt(s)).`);
         return finish(entries, 'csp');

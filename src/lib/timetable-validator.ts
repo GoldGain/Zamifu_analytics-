@@ -226,7 +226,11 @@ export function validateTimetableRules(options: TimetableValidationOptions): Tim
         rule: 'once-per-day',
         message: `${subjectName || `Subject ${subjectId}`} appears more than once on day ${day} for class ${classId}; only one consecutive configured double is allowed.`,
       });
-    } else if (!isValidDoubleLessonStart(subjectName, firstLessonIndex + 1)) {
+    } else if (isLegalDouble && !isValidDoubleLessonStart(subjectName, firstLessonIndex + 1)) {
+      // Only a real configured double is bound by the subject's double window.
+      // Two independent single lessons on one day (allowed in Lower/Upper Primary)
+      // are not a double, even when they happen to be adjacent, so applying the
+      // double-start rule to them rejected perfectly valid grids.
       issues.push({
         rule: 'subject-double-window',
         message: `${subjectName} double for class ${classId} starts at Lesson ${firstLessonIndex + 1} on day ${day}; the subject-specific double window does not allow this pair.`,

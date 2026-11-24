@@ -21,6 +21,13 @@ export interface ExactSearchOptions {
   classFree?: (classIndex: number, day: number, slot: number) => boolean;
   teacherFree: (teacher: number, day: number, slot: number) => boolean;
   pairAllowed: (session: ExactSession, day: number, slot: number) => boolean;
+  /**
+   * Keep a short class's free cells at the END of each day by filling every day
+   * from Lesson 1. Without it the SAT assignment can leave a hole in the middle
+   * of a day, which reads as a broken timetable even though the weekly total is
+   * correct.
+   */
+  compactShortClasses?: boolean;
 }
 
 /**
@@ -79,7 +86,13 @@ export function solveExactTimetable(options: ExactSearchOptions): { units: Exact
   }
   for(let c=0;c<classCount;c++)for(let day=0;day<5;day++)for(let slot=0;slot<slotsPerDay;slot++){
     const idx=cellIndex(c,day,slot);
-    solver.require(options.shortClasses.has(c)?Logic.atMostOne(cells[idx]):Logic.exactlyOne(cells[idx]));
+    const shortClass=options.shortClasses.has(c);
+    solver.require(shortClass?Logic.atMostOne(cells[idx]):Logic.exactlyOne(cells[idx]));
+    // A lesson may not follow a free period in the same day: every gap trails the
+    // day's last lesson instead of splitting the grid.
+    if(shortClass&&options.compactShortClasses&&slot>0&&cells[idx].length&&cells[idx-1].length){
+      solver.require(Logic.implies(Logic.or(cells[idx]),Logic.or(cells[idx-1])));
+    }
     if(slot+1<slotsPerDay){
       const next=idx+1;
       if(maths[idx].length&&sciences[next].length)solver.forbid(Logic.and(Logic.or(maths[idx]),Logic.or(sciences[next])));

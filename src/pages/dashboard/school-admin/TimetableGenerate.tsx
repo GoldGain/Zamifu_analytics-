@@ -12,7 +12,7 @@ import {
   isPostLessonActivity,
   resolveActivityLessonSlot,
 } from '@/lib/timetable-activity';
-import { assertTimetableRules, validateTimetableRules } from '@/lib/timetable-validator';
+import { validateTimetableRules } from '@/lib/timetable-validator';
 import { alignStrokedSubjects } from '@/lib/timetable-stroke-align';
 import { formatClassStream } from '@/lib/class-label';
 import { formatCspSolverIssues, formatCspSolverWarnings, solveTimetableCsp } from '@/lib/timetable-csp-solver';
@@ -937,7 +937,23 @@ ${detail}`);
             generationWarnings.push(`${levelLabel}: ${parts.join(' ')}`);
           }
 
-          assertTimetableRules({
+          // Validate the finished grid before it is saved. Structural breakage
+          // (a teacher in two rooms, a lesson in an unknown slot, a fabricated
+          // learning area, a blank cell in a class that should be full) still
+          // blocks the save. Policy preferences that the school's own data makes
+          // impossible — a double that cannot fit its window, Maths beside
+          // Science, an exact weekly count that the solver had to trim — are
+          // reported as warnings so the admin keeps the best grid the solver
+          // could build instead of losing the whole run to a blank screen.
+          const BLOCKING_RULES = new Set([
+            'teacher-collision',
+            'unknown-slot',
+            'real-subject',
+            'no-blanks',
+            'activity-overlap',
+            'once-per-day',
+          ]);
+          const validationIssues = validateTimetableRules({
             entries: [...allEntries, ...solverResult.entries],
             slots: createdSlots,
             subjectNames,
@@ -955,6 +971,21 @@ ${detail}`);
             requiredLessonCounts,
             requireReligiousPairing: true,
           });
+          const blockingIssues = validationIssues.filter((issue) => BLOCKING_RULES.has(issue.rule));
+          const advisoryIssues = validationIssues.filter((issue) => !BLOCKING_RULES.has(issue.rule));
+          if (blockingIssues.length > 0) {
+            const details = blockingIssues.slice(0, 8).map((issue) => `- [${issue.rule}] ${issue.message}`).join('\n');
+            throw new Error(
+              `${levelLabel} generated a grid that would be unsafe to publish:\n${details}\n`
+              + 'Nothing was saved. Review Teacher Assignments and Timetable Setup, then generate again.',
+            );
+          }
+          if (advisoryIssues.length > 0) {
+            generationWarnings.push(
+              `${levelLabel}: the best possible timetable was generated, but ${advisoryIssues.length} `
+              + `rule(s) could not be fully met: ${advisoryIssues.slice(0, 6).map((issue) => `[${issue.rule}] ${issue.message}`).join(' ')}`,
+            );
+          }
 
           allEntries.push(...solverResult.entries);
           solverResult.entries.forEach((entry: any) => {
