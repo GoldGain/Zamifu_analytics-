@@ -1005,7 +1005,14 @@ ${detail}`);
           const normalBlankClasses = solverResult.shortClasses
             .filter((entry) => entry.configuredTotal < entry.expectedTotal);
           if (normalBlankClasses.length > 0) {
-            generatedSummary.push(`Unused lesson slots left blank by design: ${normalBlankClasses.map((entry) => `${entry.className} (${entry.configuredTotal}/${entry.expectedTotal}; ${entry.expectedTotal - entry.configuredTotal} blank)`).join(', ')}.`);
+            // The grid stays full: cells the weekly totals cannot fill are
+            // written as supervised study, so the message names them as such
+            // instead of telling the admin to expect empty cells.
+            generatedSummary.push(
+              `Weekly totals are below the level capacity, so these cells are supervised study rather than lessons: `
+              + `${normalBlankClasses.map((entry) => `${entry.className} (${entry.configuredTotal}/${entry.expectedTotal}; ${entry.expectedTotal - entry.configuredTotal} study period(s))`).join(', ')}. `
+              + 'Add the missing lessons under Teacher Assignments to convert them into lessons.',
+            );
           }
           console.info(`[timetable] ${levelKey}: CSP solver placed ${solverResult.entries.length} entries in ${solverResult.durationMs}ms`);
           continue;
