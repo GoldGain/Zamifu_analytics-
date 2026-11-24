@@ -2749,7 +2749,9 @@ function planStrokedSubjects(
               time_slot_id: slotRow.id, subject_id: need.subjectId, teacher_id: teacherId,
               entry_type: 'lesson', level_group: options.levelKey,
               effective_start_time: slotRow.start_time, effective_end_time: slotRow.end_time,
-              is_stroked: true, stroked: true,
+              // `is_stroked` is the deployed schema column. Do not send the
+              // legacy `stroked` alias: some production schemas reject it.
+              is_stroked: true,
             });
             need.lessons -= 1;
             consumedPeriod = true;
