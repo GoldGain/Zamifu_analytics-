@@ -918,6 +918,37 @@ export default function TimetableView() {
       const combined = rel && classReligions && classReligions.size > 1
         ? [...classReligions].sort().join('/')
         : getSubjectCode(entry.subject_name || '', entry.subject_code || '');
+      // CRE/IRE entries can arrive as separate non-stroked rows in a class
+      // export. Treat the combined religious block as one display cell so
+      // teacher numbers never overlap or repeat in the PDF.
+      if (rel && classReligions && classReligions.size > 1) {
+        const periodKey = `${gradeKeyForClassId(entry.class_id)}|${entry.day_of_week}|${entry.time_slot_id}`;
+        if (renderedStrokedPeriods.has(periodKey)) return;
+        const gradeKey = gradeKeyForClassId(entry.class_id);
+        const teachersByReligion = new Map<string, string[]>();
+        entriesForCell.forEach((cellEntry) => {
+          const cellRel = getReligiousCode(cellEntry.subject_name || '', cellEntry.subject_code || '');
+          if (!cellRel) return;
+          const configuredTeacher = strokedTeacherMapByGrade[gradeKey]?.[
+            `${cellRel}_${cellEntry.teacher_number || 0}`
+          ];
+          if (!configuredTeacher) return;
+          const teachers = teachersByReligion.get(cellRel) || [];
+          if (!teachers.includes(configuredTeacher.name)) teachers.push(configuredTeacher.name);
+          teachersByReligion.set(cellRel, teachers);
+        });
+        const religiousLabels = [...teachersByReligion.keys()].sort((a, b) => {
+          const order = ['CRE', 'IRE', 'HRE'];
+          return (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)) || a.localeCompare(b);
+        });
+        const teacherText = religiousLabels
+          .map((code) => `${code}: ${(teachersByReligion.get(code) || []).join(', ')}`)
+          .filter((text) => !text.endsWith(': '))
+          .join(' | ');
+        parts.push(`${combined}${teacherText ? ` · ${teacherText}` : ''}`);
+        renderedStrokedPeriods.add(periodKey);
+        return;
+      }
       // A stroked lesson is taught to every stream at once, so it is labelled as
       // the combined religious group rather than the stream's own subject.
       const label = entry.is_stroked ? (rel ? 'CRE/IRE' : combined) : combined;
@@ -1420,6 +1451,13 @@ export default function TimetableView() {
       height: 34px !important;
       font-size: 0.56rem !important;
     }
+    .pdf-class-export .tt-cell strong,
+    .pdf-full-export .tt-cell strong {
+      font-size: 0.5rem !important;
+      line-height: 1 !important;
+      overflow-wrap: anywhere !important;
+      word-break: break-word !important;
+    }
     .pdf-class-export .tt-break,
     .pdf-class-export .tt-lunch {
       width: auto !important;
@@ -1535,8 +1573,13 @@ export default function TimetableView() {
       font-size: 0.45rem !important;
     }
     .pdf-full-export .tt-subtime {
-      font-size: 0.34rem !important;
+      font-size: 0.37rem !important;
     }
+    .tt-day-repeat { display: none; }
+    .pdf-class-export .tt-day-merged,
+    .pdf-full-export .tt-day-merged { display: none !important; }
+    .pdf-class-export .tt-day-repeat,
+    .pdf-full-export .tt-day-repeat { display: table-cell !important; }
     @media print {
       .no-print { display: none !important; }
       .bb-wrap { border: none; box-shadow: none; background: white; color: black; }
@@ -1777,10 +1820,11 @@ export default function TimetableView() {
                 {classesToRender.map((cls, clsIdx) => (
                   <tr key={`${day}-${cls.id}`}>
                     {clsIdx === 0 && (
-                      <td rowSpan={classesToRender.length} className="tt-day">
+                      <td rowSpan={classesToRender.length} className="tt-day tt-day-merged">
                         {day}
                       </td>
                     )}
+                    <td className="tt-day tt-day-repeat">{day}</td>
                     <td className="tt-class">{displayClassName(cls)}</td>
                     {slotsForTable.map(slot => {
                       if (slot.slot_type === 'break') {
