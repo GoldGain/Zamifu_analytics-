@@ -843,6 +843,24 @@ export default function TimetableView() {
     return name || (entry.teacher_number ? `T${entry.teacher_number}` : '');
   };
 
+  const strokedTeacherMapByGrade: Record<string, Record<string, { number: number; name: string }>> = {
+    'grade-7': {
+      CRE_5: { number: 5, name: 'Mary Waghungu' },
+      CRE_43: { number: 43, name: 'Belinda' },
+      IRE_12: { number: 12, name: 'Zainab' },
+    },
+    'grade-8': {
+      CRE_5: { number: 5, name: 'Mary Waghungu' },
+      CRE_43: { number: 43, name: 'Belinda' },
+      IRE_12: { number: 12, name: 'Zainab' },
+    },
+    'grade-9': {
+      CRE_5: { number: 5, name: 'Mary Waghungu' },
+      CRE_43: { number: 43, name: 'Belinda' },
+      IRE_10: { number: 10, name: 'Mwanabiishe' },
+    },
+  };
+
   // Scope shared CRE/IRE teachers to the grade and period. The old map was
   // school-wide, so every CRE/IRE teacher appeared in every stroked cell.
   const strokedTeachersByGradePeriod = useMemo(() => {
@@ -853,7 +871,11 @@ export default function TimetableView() {
       const gradeKey = gradeKeyForClassId(entry.class_id);
       const periodKey = `${gradeKey}|${entry.day_of_week}|${entry.time_slot_id}`;
       const byReligion = map.get(periodKey) || new Map<string, string[]>();
-      const teacherLabel = teacherLabelForEntry(entry);
+      const configuredTeacher = strokedTeacherMapByGrade[gradeKey]?.[
+        `${religiousCode}_${entry.teacher_number || 0}`
+      ];
+      const teacherLabel = configuredTeacher?.name || teacherLabelForEntry(entry);
+      if (gradeKey.startsWith('grade-') && !configuredTeacher) return;
       if (teacherLabel) {
         const teachers = byReligion.get(religiousCode) || [];
         if (!teachers.includes(teacherLabel)) teachers.push(teacherLabel);
@@ -903,7 +925,7 @@ export default function TimetableView() {
         if (!rel) {
           const fallbackKey = `${entry.day_of_week}|${entry.time_slot_id}|${entry.subject_id}`;
           if (!renderedStrokedPeriods.has(fallbackKey)) {
-            parts.push(`${label} (all streams)${teacherNum ? ` · T${teacherNum}` : ''}`);
+            parts.push(`${label}${teacherNum ? ` · T${teacherNum}` : ''}`);
             renderedStrokedPeriods.add(fallbackKey);
           }
           return;
@@ -920,7 +942,7 @@ export default function TimetableView() {
           .filter((text) => !text.endsWith(': '))
           .join(' | ');
         const sharedLabel = religiousLabels.length ? religiousLabels.join('/') : label;
-        parts.push(`${sharedLabel} (all streams)${teacherText ? ` · ${teacherText}` : ''}`);
+        parts.push(`${sharedLabel}${teacherText ? ` · ${teacherText}` : ''}`);
         renderedStrokedPeriods.add(periodKey);
         return;
       }
