@@ -845,19 +845,19 @@ export default function TimetableView() {
 
   const strokedTeacherMapByGrade: Record<string, Record<string, { number: number; name: string }>> = {
     'grade-7': {
-      CRE_5: { number: 5, name: 'Mary Waghungu' },
-      CRE_43: { number: 43, name: 'Belinda' },
-      IRE_12: { number: 12, name: 'Zainab' },
+      CRE_5: { number: 5, name: 'T05' },
+      CRE_43: { number: 43, name: 'T43' },
+      IRE_12: { number: 12, name: 'T12' },
     },
     'grade-8': {
-      CRE_5: { number: 5, name: 'Mary Waghungu' },
-      CRE_43: { number: 43, name: 'Belinda' },
-      IRE_12: { number: 12, name: 'Zainab' },
+      CRE_5: { number: 5, name: 'T05' },
+      CRE_43: { number: 43, name: 'T43' },
+      IRE_12: { number: 12, name: 'T12' },
     },
     'grade-9': {
-      CRE_5: { number: 5, name: 'Mary Waghungu' },
-      CRE_43: { number: 43, name: 'Belinda' },
-      IRE_10: { number: 10, name: 'Mwanabiishe' },
+      CRE_5: { number: 5, name: 'T05' },
+      CRE_43: { number: 43, name: 'T43' },
+      IRE_10: { number: 10, name: 'T10' },
     },
   };
 
