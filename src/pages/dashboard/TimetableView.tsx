@@ -825,28 +825,50 @@ export default function TimetableView() {
     return m;
   }, [entries]);
 
-  // Every teacher involved in a shared (stroked) lesson, keyed by period + subject,
-  // so the grid can list them all beside "CRE/IRE (all streams)".
-  const strokedTeachersByPeriod = useMemo(() => {
-    const map = new Map<string, string[]>();
+  const classById = useMemo(
+    () => new Map(classes.map((cls) => [String(cls.id), cls])),
+    [classes],
+  );
+
+  const gradeKeyForClassId = (classId: string): string => {
+    const cls = classById.get(String(classId));
+    const numericGrade = Number(cls?.grade_level ?? cls?.level);
+    if (Number.isFinite(numericGrade) && numericGrade > 0) return `grade-${numericGrade}`;
+    const match = String(cls?.name || '').match(/grade\s*(\d+)/i);
+    return match ? `grade-${match[1]}` : String(cls?.name || classId).toLowerCase();
+  };
+
+  const teacherLabelForEntry = (entry: TimetableEntry): string => {
+    const name = [entry.teacher_first_name, entry.teacher_last_name].filter(Boolean).join(' ').trim();
+    return name || (entry.teacher_number ? `T${entry.teacher_number}` : '');
+  };
+
+  // Scope shared CRE/IRE teachers to the grade and period. The old map was
+  // school-wide, so every CRE/IRE teacher appeared in every stroked cell.
+  const strokedTeachersByGradePeriod = useMemo(() => {
+    const map = new Map<string, Map<string, string[]>>();
     entries.forEach((entry) => {
-      if (!entry.is_stroked) return;
-      const teacherLabel = entry.teacher_number
-        ? `T${entry.teacher_number}`
-        : [entry.teacher_first_name, entry.teacher_last_name].filter(Boolean).join(' ').trim();
-      if (!teacherLabel) return;
-      const key = `${entry.day_of_week}|${entry.time_slot_id}|${entry.subject_id}`;
-      const list = map.get(key) || [];
-      if (!list.includes(teacherLabel)) list.push(teacherLabel);
-      map.set(key, list);
+      const religiousCode = getReligiousCode(entry.subject_name || '', entry.subject_code || '');
+      if (!entry.is_stroked || !religiousCode) return;
+      const gradeKey = gradeKeyForClassId(entry.class_id);
+      const periodKey = `${gradeKey}|${entry.day_of_week}|${entry.time_slot_id}`;
+      const byReligion = map.get(periodKey) || new Map<string, string[]>();
+      const teacherLabel = teacherLabelForEntry(entry);
+      if (teacherLabel) {
+        const teachers = byReligion.get(religiousCode) || [];
+        if (!teachers.includes(teacherLabel)) teachers.push(teacherLabel);
+        byReligion.set(religiousCode, teachers);
+      }
+      map.set(periodKey, byReligion);
     });
     return map;
-  }, [entries]);
+  }, [entries, classById]);
 
   const getCellDisplay = (entriesForCell: TimetableEntry[]): string => {
     if (!entriesForCell || entriesForCell.length === 0) return '';
     const parts: string[] = [];
     const seenActivityLabels = new Set<string>();
+    const renderedStrokedPeriods = new Set<string>();
     entriesForCell.forEach((entry) => {
       if (isPlaceholderActivity(entry)) return;
       if (entry.entry_type === 'study') {
@@ -878,11 +900,28 @@ export default function TimetableView() {
       // the combined religious group rather than the stream's own subject.
       const label = entry.is_stroked ? (rel ? 'CRE/IRE' : combined) : combined;
       if (entry.is_stroked) {
-        // Shared lesson: name the combined group and every teacher taking part.
-        const periodKey = `${entry.day_of_week}|${entry.time_slot_id}|${entry.subject_id}`;
-        const teachers = (strokedTeachersByPeriod.get(periodKey) || []).join(', ')
-          || (teacherNum ? `T${teacherNum}` : '');
-        parts.push(`${label} (all streams)${teachers ? ` · ${teachers}` : ''}`);
+        if (!rel) {
+          const fallbackKey = `${entry.day_of_week}|${entry.time_slot_id}|${entry.subject_id}`;
+          if (!renderedStrokedPeriods.has(fallbackKey)) {
+            parts.push(`${label} (all streams)${teacherNum ? ` · T${teacherNum}` : ''}`);
+            renderedStrokedPeriods.add(fallbackKey);
+          }
+          return;
+        }
+        const periodKey = `${gradeKeyForClassId(entry.class_id)}|${entry.day_of_week}|${entry.time_slot_id}`;
+        if (renderedStrokedPeriods.has(periodKey)) return;
+        const teachersByReligion = strokedTeachersByGradePeriod.get(periodKey) || new Map<string, string[]>();
+        const religiousLabels = [...teachersByReligion.keys()].sort((a, b) => {
+          const order = ['CRE', 'IRE', 'HRE'];
+          return (order.indexOf(a) < 0 ? 99 : order.indexOf(a)) - (order.indexOf(b) < 0 ? 99 : order.indexOf(b)) || a.localeCompare(b);
+        });
+        const teacherText = religiousLabels
+          .map((code) => `${code}: ${(teachersByReligion.get(code) || []).join(', ')}`)
+          .filter((text) => !text.endsWith(': '))
+          .join(' | ');
+        const sharedLabel = religiousLabels.length ? religiousLabels.join('/') : label;
+        parts.push(`${sharedLabel} (all streams)${teacherText ? ` · ${teacherText}` : ''}`);
+        renderedStrokedPeriods.add(periodKey);
         return;
       }
       // Double lessons remain two consecutive timetable cells; no extra symbol is needed.
@@ -1061,7 +1100,13 @@ export default function TimetableView() {
       height: 40px;
       color: #111827;
       font-size: 0.78rem;
-      white-space: nowrap;
+      white-space: normal;
+    }
+    .tt-cell strong {
+      display: block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      line-height: 1.12;
     }
     .tt-weekly-table {
       width: 100%;
