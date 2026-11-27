@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { AlertCircle, ArrowRight, CreditCard, Loader2, WalletCards } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabaseUntyped } from '@/lib/supabase/client';
+import StaffClockCard from '@/components/staff/StaffClockCard';
 
 type FeeSummary = {
   invoiced: number;
@@ -93,6 +94,8 @@ export default function BursarDashboard() {
           Open Fee Management <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
+
+      <StaffClockCard />
 
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 

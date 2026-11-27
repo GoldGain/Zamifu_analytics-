@@ -6,6 +6,7 @@ import { Upload, ClipboardList, BookOpen, Users, Clock, Trophy, School } from 'l
 import { computeBestPerSubject } from '@/lib/bestPerSubject';
 import type { BestInSubject } from '@/lib/bestPerSubject';
 import { formatClassStream } from '@/lib/class-label';
+import StaffClockCard from '@/components/staff/StaffClockCard';
 
 interface TimetableEntry {
   id: string;
@@ -203,6 +204,8 @@ export default function TeacherDashboard() {
           <p className="text-sm text-[#666666]">Welcome back, {user?.firstName}</p>
         </div>
       </div>
+
+      <StaffClockCard />
 
       <div className="bg-white rounded-2xl border border-gray-100 p-5">
         <div className="flex items-center gap-2 mb-1">

@@ -78,6 +78,9 @@ import SchoolAdminClassList from '@/pages/dashboard/school-admin/ClassList';
 import SchoolAdminSMSSettings from '@/pages/dashboard/school-admin/SMSSettings';
 import SchoolAdminSMSWallet from '@/pages/dashboard/school-admin/SMSWallet';
 import SchoolAdminSchoolSettings from '@/pages/dashboard/school-admin/SchoolSettings';
+import SchoolAdminStaffAttendanceSettings from '@/pages/dashboard/school-admin/StaffAttendanceSettings';
+import SchoolAdminStaffAttendanceReport from '@/pages/dashboard/school-admin/StaffAttendanceReport';
+import MyStaffAttendance from '@/pages/dashboard/staff/MyAttendance';
 import SchoolAdminSubscriptionReceipts from '@/pages/dashboard/school-admin/SubscriptionReceipts';
 import SchoolAdminActivityHistory from '@/pages/dashboard/school-admin/ActivityHistory';
 import SchoolAdminLibrary from '@/pages/dashboard/school-admin/Library';
@@ -311,6 +314,8 @@ function AppRoutes() {
       <Route path="/school-admin/subscription-receipts" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSubscriptionReceipts /></ProtectedRoute>} />
       <Route path="/school-admin/activity" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminActivityHistory /></ProtectedRoute>} />
       <Route path="/school-admin/settings" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminSchoolSettings /></ProtectedRoute>} />
+      <Route path="/school-admin/settings/staff-attendance" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminStaffAttendanceSettings /></ProtectedRoute>} />
+      <Route path="/school-admin/staff-attendance" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminStaffAttendanceReport /></ProtectedRoute>} />
       <Route path="/school-admin/promote-class" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminPromoteClass /></ProtectedRoute>} />
       <Route path="/school-admin/class-list" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><SchoolAdminClassList /></ProtectedRoute>} />
       <Route path="/school-admin/timetable/view" element={<ProtectedRoute allowedRoles={['school_admin']} lockTarget="school_admin"><TimetableView /></ProtectedRoute>} />
@@ -327,6 +332,9 @@ function AppRoutes() {
       {/* Librarian routes: the existing Library workspace, no school-admin modules */}
       <Route path="/librarian" element={<ProtectedRoute allowedRoles={['librarian']} lockTarget="school_admin"><Navigate to="/librarian/library" replace /></ProtectedRoute>} />
       <Route path="/librarian/library" element={<ProtectedRoute allowedRoles={['librarian']} lockTarget="school_admin"><SchoolAdminLibrary /></ProtectedRoute>} />
+
+      {/* Staff self-service attendance for every tracked staff role */}
+      <Route path="/staff/attendance" element={<ProtectedRoute allowedRoles={['teacher', 'bursar', 'store_keeper', 'school_admin']}><MyStaffAttendance /></ProtectedRoute>} />
 
       {/* Teacher routes */}
       <Route path="/teacher" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />

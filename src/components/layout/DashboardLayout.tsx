@@ -51,6 +51,7 @@ import {
   Package,
   Gift,
   ExternalLink,
+  MapPin,
 } from 'lucide-react';
 
 interface NavItem {
@@ -133,6 +134,8 @@ const navConfig: Record<string, NavItem[]> = {
     nav('Staff & Payroll', 'Librarians', <Library className="w-5 h-5" />, '/school-admin/librarians'),
     nav('Staff & Payroll', 'Store Keepers', <Package className="w-5 h-5" />, '/school-admin/store-keepers'),
     nav('Staff & Payroll', 'Staff Payroll', <DollarSign className="w-5 h-5" />, '/school-admin/payroll'),
+    nav('Staff & Payroll', 'Staff Attendance', <ClipboardList className="w-5 h-5" />, '/school-admin/staff-attendance'),
+    nav('Staff & Payroll', 'My Attendance', <Clock className="w-5 h-5" />, '/staff/attendance'),
     nav('Staff & Payroll', 'Assign Roles', <UserCheck className="w-5 h-5" />, '/school-admin/assign-roles'),
 
     nav('Communication', 'Communicate', <MessageSquare className="w-5 h-5" />, '/school-admin/communicate'),
@@ -144,6 +147,8 @@ const navConfig: Record<string, NavItem[]> = {
     nav('Library & Inventory', 'Library', <BookOpen className="w-5 h-5" />, '/school-admin/library'),
     nav('Library & Inventory', 'Inventory', <Package className="w-5 h-5" />, '/school-admin/inventory'),
 
+    nav('Settings', 'Staff Attendance Setup', <MapPin className="w-5 h-5" />, '/school-admin/settings/staff-attendance'),
+
     nav('Account', 'My Profile', <User className="w-5 h-5" />, '/school-admin/profile'),
     nav('Account', 'Refer & Earn', <Gift className="w-5 h-5" />, '/school-admin/refer-and-earn'),
     nav('Account', 'Change Password', <Settings className="w-5 h-5" />, '/school-admin/change-password'),
@@ -151,10 +156,12 @@ const navConfig: Record<string, NavItem[]> = {
   ],
   'store-keeper': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/store-keeper' },
+    { label: 'My Attendance', icon: <Clock className="w-5 h-5" />, path: '/staff/attendance' },
     { label: 'Inventory', icon: <Package className="w-5 h-5" />, path: '/store-keeper/inventory' },
   ],
   'bursar': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/bursar' },
+    { label: 'My Attendance', icon: <Clock className="w-5 h-5" />, path: '/staff/attendance' },
     { label: 'Fee Management', icon: <CreditCard className="w-5 h-5" />, path: '/bursar/fees' },
     { label: 'Refer & Earn', icon: <Gift className="w-5 h-5" />, path: '/bursar/refer-and-earn' },
   ],
@@ -163,6 +170,7 @@ const navConfig: Record<string, NavItem[]> = {
   ],
   'teacher': [
     { label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" />, path: '/teacher' },
+    { label: 'My Attendance', icon: <Clock className="w-5 h-5" />, path: '/staff/attendance' },
     { label: 'Class Teacher Workspace', icon: <Users className="w-5 h-5" />, path: '/teacher/class-dashboard' },
     { label: 'DoS Dashboard', icon: <GraduationCap className="w-5 h-5" />, path: '/dean-of-studies' },
     { label: 'DoS Results', icon: <FileText className="w-5 h-5" />, path: '/dean-of-studies/results' },

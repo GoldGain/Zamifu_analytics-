@@ -4,6 +4,7 @@ import { supabase, supabaseUntyped } from '@/lib/supabase/client';
 import { Link } from 'react-router';
 import { Users, Bell, BookOpen, ChevronRight, BarChart3, UserCheck } from 'lucide-react';
 import TrialCountdown from '@/components/TrialCountdown';
+import StaffClockCard from '@/components/staff/StaffClockCard';
 
 interface SchoolStats {
   totalStudents: number;
@@ -83,6 +84,8 @@ export default function SchoolAdminDashboard() {
 
       {/* Trial Countdown Banner */}
       <TrialCountdown />
+
+      <StaffClockCard />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((card, i) => (

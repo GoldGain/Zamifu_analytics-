@@ -10,6 +10,7 @@ import {
 import { toast } from 'sonner';
 import { MarksProgress } from '@/components/MarksProgress';
 import { formatClassStream } from '@/lib/class-label';
+import StaffClockCard from '@/components/staff/StaffClockCard';
 
 interface ClassInfo {
   id: string;
@@ -300,6 +301,8 @@ export default function DeanOfStudiesDashboard() {
           </select>
         </div>
       </div>
+
+      <StaffClockCard />
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -749,4 +752,3 @@ function ClassListExpander({ cls, schoolId, isExpanded, onToggle }: { cls: Class
     </div>
   );
 }
-

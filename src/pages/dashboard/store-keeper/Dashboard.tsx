@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { ArrowRight, ClipboardList, Package, Warehouse } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import StaffClockCard from '@/components/staff/StaffClockCard';
 
 export default function StoreKeeperDashboard() {
   const { user, schoolData } = useAuth();
@@ -10,6 +11,8 @@ export default function StoreKeeperDashboard() {
         <h1 className="text-2xl font-black text-gray-900">Store Keeper</h1>
         <p className="mt-1 text-sm text-gray-500">{schoolData?.name || 'Your school'} · {user?.firstName} {user?.lastName}</p>
       </div>
+
+      <StaffClockCard />
 
       <div className="rounded-2xl border border-blue-100 bg-white p-6 shadow-sm">
         <div className="flex items-start gap-3">
