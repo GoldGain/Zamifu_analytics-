@@ -7,6 +7,7 @@ import { supabaseUntyped } from '@/lib/supabase/client';
 import {
   SCHOOL_ATTENDANCE_SELECT,
   addDaysToKey,
+  attendanceTrackingStart,
   datesInRange,
   formatDateLabel,
   formatDistance,
@@ -71,6 +72,7 @@ export default function MyAttendancePage() {
   const timeZone = settings?.attendance_timezone || 'Africa/Nairobi';
   const today = todayInZone(timeZone);
   const workingDays = settings?.attendance_working_days || [1, 2, 3, 4, 5];
+  const trackingStart = attendanceTrackingStart(settings, timeZone);
 
   const history = useMemo(() => {
     if (!monthAnchor) return [];
@@ -80,10 +82,11 @@ export default function MyAttendancePage() {
       .sort((a, b) => b.localeCompare(a))
       .map((date) => {
         const record = recordByDate.get(date) || null;
-        const status = record?.status || (date === today ? null : 'Absent');
+        const beforeTracking = Boolean(trackingStart && date < trackingStart);
+        const status = record?.status || (date === today || beforeTracking ? null : 'Absent');
         return { date, record, status };
       });
-  }, [monthAnchor, records, today, workingDays]);
+  }, [monthAnchor, records, today, workingDays, trackingStart]);
 
   const summary = useMemo(() => {
     let present = 0;

@@ -27,6 +27,7 @@ import {
   SCHOOL_ATTENDANCE_SELECT,
   STAFF_ATTENDANCE_ROLES,
   addDaysToKey,
+  attendanceTrackingStart,
   countWorkingDays,
   datesInRange,
   formatDateLabel,
@@ -174,6 +175,7 @@ export default function StaffAttendanceReportPage() {
   const timeZone = school?.attendance_timezone || 'Africa/Nairobi';
   const today = todayInZone(timeZone);
   const workingDays = school?.attendance_working_days?.length ? school.attendance_working_days : [1, 2, 3, 4, 5];
+  const trackingStart = attendanceTrackingStart(school, timeZone);
   const singleDay = Boolean(from && to && from === to);
   const reportDateIsWorkingDay = from ? isWorkingDay(from, workingDays) : true;
 
@@ -214,26 +216,28 @@ export default function StaffAttendanceReportPage() {
   const dailyRows: DailyRow[] = useMemo(() => {
     if (!singleDay || !from) return [];
     const isFuture = from > today;
+    const trackable = !trackingStart || from >= trackingStart;
     return filteredStaff.map((member) => {
       const record = recordLookup.get(`${member.id}|${from}`) || null;
-      const status = record?.status || (!isFuture && reportDateIsWorkingDay ? 'Absent' : null);
+      const status = record?.status || (!isFuture && reportDateIsWorkingDay && trackable ? 'Absent' : null);
       return { staff: member, record, status };
     });
-  }, [filteredStaff, recordLookup, singleDay, from, today, reportDateIsWorkingDay]);
+  }, [filteredStaff, recordLookup, singleDay, from, today, reportDateIsWorkingDay, trackingStart]);
 
   const summaryRows: RangeRow[] = useMemo(() => {
     if (!from || !to) return [];
     const effectiveTo = to > today ? today : to;
+    const effectiveFrom = trackingStart && from < trackingStart ? trackingStart : from;
     return filteredStaff.map((member) => {
       const memberRecords = records.filter((record) => record.user_id === member.id);
-      const working = countWorkingDays(from, effectiveTo, workingDays);
+      const working = countWorkingDays(effectiveFrom, effectiveTo, workingDays);
       const presentDays = memberRecords.filter((record) => record.status === 'Present').length;
       const lateDays = memberRecords.filter((record) => record.status === 'Late').length;
       const absentDays = Math.max(0, working - presentDays - lateDays);
       const rate = working ? Math.min(100, Math.round(((presentDays + lateDays) / working) * 100)) : 0;
       return { staff: member, workingDays: working, presentDays, lateDays, absentDays, rate };
     });
-  }, [filteredStaff, records, from, to, today, workingDays]);
+  }, [filteredStaff, records, from, to, today, workingDays, trackingStart]);
 
   const summary: PdfSummary = useMemo(() => {
     if (singleDay) {
@@ -319,9 +323,10 @@ export default function StaffAttendanceReportPage() {
     setPdfBusy(true);
     try {
       const effectiveTo = to > today ? today : to;
+      const effectiveFrom = trackingStart && from < trackingStart ? trackingStart : from;
       const memberRecords = records.filter((record) => record.user_id === member.id);
       const recordByDate = new Map(memberRecords.map((record) => [record.date, record]));
-      const dayKeys = datesInRange(from, effectiveTo).filter((date) => isWorkingDay(date, workingDays));
+      const dayKeys = datesInRange(effectiveFrom, effectiveTo).filter((date) => isWorkingDay(date, workingDays));
       const pdfRows: PdfAttendanceRow[] = dayKeys.map((date) => {
         const record = recordByDate.get(date) || null;
         return {
@@ -425,6 +430,14 @@ export default function StaffAttendanceReportPage() {
             Staff attendance is not fully configured yet. Set the school location, radius and hours before staff can clock in.
           </p>
           <Link to="/school-admin/settings/staff-attendance" className="font-bold text-amber-900 underline">Open setup</Link>
+        </div>
+      )}
+      {trackingStart && from && from < trackingStart && (
+        <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <CalendarDays className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <span>
+            Staff attendance tracking started on <strong>{formatDateLabel(trackingStart)}</strong>. Days before that date are not counted as absences.
+          </span>
         </div>
       )}
 

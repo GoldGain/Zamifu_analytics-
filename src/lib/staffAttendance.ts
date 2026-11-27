@@ -51,6 +51,7 @@ export interface SchoolAttendanceSettings {
   attendance_timezone: string;
   attendance_working_days: number[];
   staff_attendance_enabled: boolean;
+  staff_attendance_enabled_at?: string | null;
 }
 
 export interface StaffAttendanceRecord {
@@ -89,7 +90,7 @@ export interface StaffMember {
 }
 
 export const SCHOOL_ATTENDANCE_SELECT =
-  'id, name, logo_url, address, latitude, longitude, attendance_radius, check_in_start, check_in_end, check_out_start, check_out_end, grace_period, attendance_timezone, attendance_working_days, staff_attendance_enabled';
+  'id, name, logo_url, address, latitude, longitude, attendance_radius, check_in_start, check_in_end, check_out_start, check_out_end, grace_period, attendance_timezone, attendance_working_days, staff_attendance_enabled, staff_attendance_enabled_at';
 
 /** Great-circle distance in metres using the Haversine formula. */
 export function haversineDistanceMeters(
@@ -178,6 +179,16 @@ export function dateKeyInZone(value: Date | string, timeZone: string): string {
 
 export function todayInZone(timeZone: string): string {
   return dateKeyInZone(new Date(), timeZone);
+}
+
+/** First date (school timezone) on which absences should be counted. */
+export function attendanceTrackingStart(
+  settings: Pick<SchoolAttendanceSettings, 'staff_attendance_enabled_at'> | null | undefined,
+  timeZone: string,
+): string | null {
+  if (!settings?.staff_attendance_enabled_at) return null;
+  const key = dateKeyInZone(settings.staff_attendance_enabled_at, timeZone);
+  return Number.isNaN(new Date(`${key}T00:00:00Z`).getTime()) ? null : key;
 }
 
 export function formatDateLabel(dateKey: string | null | undefined): string {
